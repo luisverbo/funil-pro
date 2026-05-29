@@ -11,7 +11,6 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Build response first so cookie writes are captured
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(

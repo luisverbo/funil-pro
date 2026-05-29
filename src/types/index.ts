@@ -1,3 +1,5 @@
+import type { Node } from '@xyflow/react'
+
 export type Plan = 'starter' | 'pro' | 'scale'
 export type LeadStatus = 'active' | 'converted' | 'unsubscribed' | 'lost'
 export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page'
@@ -181,6 +183,31 @@ export interface Page {
   pixel_meta_id: string | null
   published: boolean
   created_at: string
+}
+
+export interface FunnelNodeData extends Record<string, unknown> {
+  label: string
+  blockType: string
+  config: Record<string, unknown>
+  onDelete?: (id: string) => void
+}
+
+export type FunnelNode = Node<FunnelNodeData>
+
+export interface BlockDTO {
+  id: string
+  block_type: string
+  label: string
+  config: Record<string, unknown>
+  position_x: number
+  position_y: number
+}
+
+export interface EdgeDTO {
+  id: string
+  source_block_id: string
+  target_block_id: string
+  condition: string
 }
 
 export interface FunnelAgent {
