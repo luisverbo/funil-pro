@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-29 — Etapas 1, 2 e 3 concluídas
+**Última atualização:** 2026-05-29 — Etapas 1, 2, 3 e 4 concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -478,13 +478,21 @@ APP_SECRET=
   - Server actions: createFunnel, saveFunnel (delete edges→blocks→reinsert), publishFunnel
   - SSR seguro: dynamic import com ssr:false para React Flow
   - Build passando sem erros TypeScript
-- Branch de trabalho: `claude/blissful-cannon-UQ4n7` (pendente merge para main)
+- Etapa 4: Motor de execução BullMQ completo:
+  - `src/lib/queue/handlers/` — 5 handlers: message, condition, delay, tag, sale
+  - `src/lib/queue/worker.ts` — Worker BullMQ com concurrency 10, enfileira próximo bloco automaticamente
+  - `src/server.ts` — processo standalone para rodar o worker em produção
+  - `src/app/api/funnels/[id]/activate/route.ts` — endpoint POST para entrada de lead no funil
+  - Handler condition: avalia eventos do lead (opened/clicked/replied/purchased) e roteia yes/no
+  - Handler delay: calcula delayMs (minutos/horas/dias) e passa para BullMQ
+  - Handler tag: add/remove tags com fallback direto se RPC falhar
+  - docker-compose.yml: serviço worker já configurado com `npx tsx src/server.ts`
 
 **Próximos passos:**
-- Fazer merge do branch `claude/blissful-cannon-UQ4n7` → `main` para deploy em produção
-- Etapa 4: Motor de execução (BullMQ + processamento de blocos)
-- Etapa 5: Integração WhatsApp (Evolution API)
-- Etapa 6: Integração e-mail (Resend)
+- Etapa 5: Integração WhatsApp (Evolution API — envio + webhook recebimento)
+- Etapa 6: Integração e-mail (Resend + sequências)
+- Etapa 7: Rastreamento UTM + lead_source
+- Etapa 8: Webhooks de pagamento (Hotmart, Kiwify, Eduzz, Yampi)
 
 ---
 
