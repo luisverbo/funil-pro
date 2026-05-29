@@ -465,29 +465,26 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-29 — sessão de inicialização do projeto (Etapa 1)
+**Última atualização:** 2026-05-29 — Etapas 1, 2 e 3 concluídas
 **O que foi feito:**
-- Next.js 14 scaffolded (TypeScript + Tailwind + App Router + src/ + @/* alias)
-- Dependências instaladas: @supabase/supabase-js, @supabase/ssr, bullmq@5, ioredis@5, @xyflow/react, resend
-- Estrutura completa de pastas criada conforme spec
-- `src/lib/supabase/client.ts` e `server.ts` criados (padrão oficial @supabase/ssr)
-- `src/lib/evolution/index.ts` criado (sendTextMessage, createInstance)
-- `src/lib/resend/index.ts` criado (sendEmail helper)
-- `src/lib/meta/index.ts` criado (fetchAdMetrics)
-- `src/lib/queue/index.ts` criado (funnelQueue — BullMQ Queue, sem Worker)
-- `src/types/index.ts` criado (interfaces TypeScript para todas as tabelas)
-- Todas as páginas placeholder criadas (auth + dashboard + builder route)
-- Todos os webhook API route stubs criados (Hotmart, Kiwify, Eduzz, Yampi, Evolution)
-- `src/middleware.ts` criado (auth guard Supabase SSR)
-- `supabase/migrations/20260529000000_initial_schema.sql` criado (15 tabelas + RLS + indexes)
-- `docker-compose.yml` criado (Redis)
-- `.env.example` criado
+- Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
+- Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
+- Etapa 3: Builder visual React Flow completo:
+  - `/funnels` — lista de funis com status badge e empty state
+  - `CreateFunnelDialog` — modal nativo Tailwind para criar funil
+  - `/funnels/[id]/builder` — canvas React Flow com palette lateral
+  - 5 node types: message (💬), condition (🔀), delay (⏱️), tag (🏷️), sale (💰)
+  - Custom edge com label de condição clicável
+  - Server actions: createFunnel, saveFunnel (delete edges→blocks→reinsert), publishFunnel
+  - SSR seguro: dynamic import com ssr:false para React Flow
+  - Build passando sem erros TypeScript
+- Branch de trabalho: `claude/blissful-cannon-UQ4n7` (pendente merge para main)
 
 **Próximos passos:**
-- Aplicar migration: copiar SQL de `supabase/migrations/20260529000000_initial_schema.sql` no Supabase SQL Editor
-- Criar `.env.local` com as variáveis reais do Supabase
-- Etapa 2: Auth completo (formulários login/registro, session handling, onboarding de tenant)
-- Etapa 3: Builder visual React Flow
+- Fazer merge do branch `claude/blissful-cannon-UQ4n7` → `main` para deploy em produção
+- Etapa 4: Motor de execução (BullMQ + processamento de blocos)
+- Etapa 5: Integração WhatsApp (Evolution API)
+- Etapa 6: Integração e-mail (Resend)
 
 ---
 
