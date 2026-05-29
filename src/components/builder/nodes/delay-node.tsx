@@ -1,55 +1,66 @@
 'use client'
 
-import { useCallback } from 'react'
-import { useReactFlow } from '@xyflow/react'
+import React, { useCallback } from 'react'
+import { useReactFlow, type NodeProps } from '@xyflow/react'
 import BaseNode from './base-node'
-import type { NodeProps } from '@xyflow/react'
 import type { FunnelNodeData } from '@/types'
 
-export default function DelayNode({ id, data }: NodeProps) {
+const ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+    <circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" />
+  </svg>
+)
+
+export default function DelayNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as FunnelNodeData
-  const { updateNodeData, deleteElements } = useReactFlow()
+  const { setNodes } = useReactFlow()
+  const config = (nodeData.config ?? {}) as { duration?: number; unit?: string }
+
+  const update = useCallback((patch: Partial<typeof config>) => {
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, config: { ...config, ...patch } } } : n
+      )
+    )
+  }, [id, config, setNodes])
 
   const handleDelete = useCallback(() => {
-    deleteElements({ nodes: [{ id }] })
-  }, [id, deleteElements])
-
-  const handleDurationChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      updateNodeData(id, { ...nodeData, config: { ...nodeData.config, duration: e.target.value } })
-    },
-    [id, nodeData, updateNodeData]
-  )
-
-  const handleUnitChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      updateNodeData(id, { ...nodeData, config: { ...nodeData.config, unit: e.target.value } })
-    },
-    [id, nodeData, updateNodeData]
-  )
-
-  const duration = (nodeData.config?.duration as string) ?? '1'
-  const unit = (nodeData.config?.unit as string) ?? 'horas'
+    setNodes((nds) => nds.filter((n) => n.id !== id))
+  }, [id, setNodes])
 
   return (
-    <BaseNode headerColor="bg-blue-500" icon="⏰" label="Delay" id={id} onDelete={handleDelete}>
+    <BaseNode
+      id={id}
+      selected={selected}
+      headerColor="#8b5cf6"
+      headerBg="#f5f3ff"
+      icon={ICON}
+      typeLabel="Atraso"
+      onDelete={handleDelete}
+    >
       <div className="flex gap-2">
-        <input
-          type="number"
-          min="1"
-          value={duration}
-          onChange={handleDurationChange}
-          className="w-16 border border-gray-200 rounded px-2 py-1 text-xs"
-        />
-        <select
-          value={unit}
-          onChange={handleUnitChange}
-          className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs bg-white"
-        >
-          <option value="minutos">minutos</option>
-          <option value="horas">horas</option>
-          <option value="dias">dias</option>
-        </select>
+        <div className="flex-1">
+          <label className="text-xs font-medium text-gray-500 block mb-1">Duração</label>
+          <input
+            type="number"
+            min={1}
+            value={config.duration ?? 1}
+            onChange={(e) => update({ duration: Number(e.target.value) })}
+            className="nodrag w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="text-xs font-medium text-gray-500 block mb-1">Unidade</label>
+          <select
+            value={config.unit ?? 'horas'}
+            onChange={(e) => update({ unit: e.target.value })}
+            className="nodrag w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400"
+          >
+            <option value="minutos">Minutos</option>
+            <option value="horas">Horas</option>
+            <option value="dias">Dias</option>
+          </select>
+        </div>
       </div>
     </BaseNode>
   )
