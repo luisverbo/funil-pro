@@ -11,5 +11,14 @@ services:
     command: redis-server --appendonly yes
     restart: unless-stopped
 
+  worker:
+    build: .
+    command: npx tsx src/server.ts
+    env_file:
+      - .env.local
+    depends_on:
+      - redis
+    restart: unless-stopped
+
 volumes:
   redis_data:
