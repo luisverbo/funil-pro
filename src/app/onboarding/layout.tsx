@@ -1,19 +1,9 @@
-import type { Metadata } from 'next'
-import './globals.css'
-
-export const metadata: Metadata = {
-  title: 'FunilPro',
-  description: 'SaaS de funis de vendas com rastreamento completo de ROI',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className="h-full">
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-md p-8">
+        {children}
+      </div>
+    </div>
   )
 }
