@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-30 — Etapas 1–5 + 7–8 + 10 concluídas
+**Última atualização:** 2026-05-30 — Etapas 1–5 + 7–8 + 10 + 12A concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -524,11 +524,23 @@ APP_SECRET=
   - `/leads/[id]` aprimorado — card de receita com total, lista de produtos comprados com plataforma, % de contribuição na receita do anúncio
   - Componentes client: `LeadsChart` (recharts LineChart), `FunnelChart` (barras horizontais de drop-off), `FunnelFilter` (select com router navigation)
 
+- Etapa 12A: Painel Admin Master completo:
+  - Migration: `users_tenants.role` (owner/admin/member) + `platform_settings` table
+  - `/admin` — visão geral com 5 KPIs (clientes, MRR, ativos 30d, funis, leads) + tabela recentes
+  - `/admin/tenants` — lista todos os clientes com contagem de funis/leads, dropdown para alterar plano
+  - `/admin/settings` — configurações globais da plataforma (Meta, Evolution API, Resend) com forms por seção
+  - `/admin/templates` — gerencia templates oficiais (tenant_id=null), publicar/despublicar/excluir/criar
+  - `AdminSidebar` — sidebar escura com badge "Admin" vermelho e link voltar ao App
+  - Guard no layout: só role='admin' acessa /admin, outros redirect para /funnels
+  - `src/app/actions/admin.ts` — 6 server actions com verificação de admin
+  - Dashboard sidebar atualizado: link "Admin" com ícone Shield só visível para admins
+  - Usuário inicial setado como admin no banco
+
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
 - Etapa 11: Templates + marketplace
-- Etapa 12: Planos + billing (Asaas)
+- Etapa 12B: Planos + billing (Asaas) — falta implementar
 
 
 ---
