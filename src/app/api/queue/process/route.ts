@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server'
 import { processBlock } from '@/lib/queue/process-block'
 import { getFunnelQueue } from '@/lib/queue'
 
-// Called by Vercel Cron every minute to drain the BullMQ queue.
-// On VPS the standalone worker (src/server.ts) handles this instead.
 export async function GET() {
   try {
     const queue = getFunnelQueue()

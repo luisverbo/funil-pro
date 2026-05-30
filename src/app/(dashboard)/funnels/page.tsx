@@ -45,7 +45,6 @@ export default async function FunnelsPage() {
     .eq('tenant_id', userTenant.tenant_id)
     .order('created_at', { ascending: false })
 
-  // Fetch WA instances to enrich funnel cards
   const funnelList = (funnels ?? []) as Funnel[]
   const waInstanceIds = funnelList.map((f) => f.whatsapp_instance_id).filter((id): id is string => !!id)
   let waMap: Record<string, { instance_name: string; status: string }> = {}
@@ -56,22 +55,19 @@ export default async function FunnelsPage() {
       .in('id', waInstanceIds)
     if (instances) {
       waMap = Object.fromEntries(instances.map((i) => [i.id, {
-        instance_name: i.display_name || i.instance_name,
+        instance_name: (i.display_name as string | null) || i.instance_name,
         status: i.status,
       }]))
     }
   }
 
   const admin = createAdminClient()
-
-  // Fetch lead counts per funnel
   const funnelIds = funnelList.map((f) => f.id)
   let leadsCountMap: Record<string, number> = {}
   let salesCountMap: Record<string, number> = {}
   let lastActivityMap: Record<string, string> = {}
 
   if (funnelIds.length > 0) {
-    // Lead counts
     const { data: leadCounts } = await admin
       .from('leads')
       .select('funnel_id')
@@ -83,19 +79,16 @@ export default async function FunnelsPage() {
       }
     }
 
-    // Purchase events per funnel (to count conversions)
     const { data: purchaseEvents } = await admin
       .from('lead_events')
       .select('funnel_id, lead_id, created_at')
       .in('funnel_id', funnelIds)
       .eq('event_type', 'purchased')
     if (purchaseEvents) {
-      // Unique leads with purchase per funnel
       const salesLeads: Record<string, Set<string>> = {}
       for (const ev of purchaseEvents) {
         if (!salesLeads[ev.funnel_id]) salesLeads[ev.funnel_id] = new Set()
         salesLeads[ev.funnel_id].add(ev.lead_id)
-        // Track latest event date
         if (!lastActivityMap[ev.funnel_id] || ev.created_at > lastActivityMap[ev.funnel_id]) {
           lastActivityMap[ev.funnel_id] = ev.created_at
         }
@@ -105,7 +98,6 @@ export default async function FunnelsPage() {
       }
     }
 
-    // Last activity (any event)
     const { data: recentEvents } = await admin
       .from('lead_events')
       .select('funnel_id, created_at')
@@ -127,6 +119,7 @@ export default async function FunnelsPage() {
     _salesCount: salesCountMap[f.id] ?? 0,
     _lastActivity: lastActivityMap[f.id] ?? null,
   }))
+
   const { data: tplData } = await admin
     .from('funnel_templates')
     .select('*')
@@ -137,7 +130,6 @@ export default async function FunnelsPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Page header */}
       <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Funis</h1>

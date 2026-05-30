@@ -20,8 +20,6 @@ export interface BlockJobData {
   tenantId: string
 }
 
-// Executes a single block and returns { nextBlockId, delayMs }
-// Used by the BullMQ worker AND the inline Vercel cron processor
 export async function processBlock(data: BlockJobData): Promise<{ nextBlockId?: string; delayMs?: number }> {
   const { funnelId, blockId, leadId, tenantId } = data
   const supabase = createAdminClient()

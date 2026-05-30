@@ -39,7 +39,6 @@ export async function POST(
   if (!funnel) return NextResponse.json({ error: 'Funil não encontrado' }, { status: 404 })
   if (funnel.status !== 'published') return NextResponse.json({ error: 'Funil não está publicado' }, { status: 400 })
 
-  // Dedup: reuse existing lead with same phone in this tenant
   const { data: existingLead } = await supabase
     .from('leads')
     .select('id, name')
@@ -53,7 +52,6 @@ export async function POST(
 
   if (existingLead) {
     leadId = existingLead.id
-    // Update name if provided and different
     if (name && name !== existingLead.name) {
       await supabase.from('leads').update({ name, status: 'active', funnel_id: funnelId }).eq('id', leadId)
     } else {
@@ -100,7 +98,6 @@ export async function POST(
     .eq('funnel_id', funnelId)
 
   const targetIds = new Set((allEdges ?? []).map((e) => e.target_block_id))
-  // Prefer entry block, else root (no incoming edges), else first by position
   const entryBlock = (allBlocks ?? []).find((b) => b.block_type === 'entry')
   const rootBlocks = (allBlocks ?? []).filter((b) => !targetIds.has(b.id))
   const firstBlock = entryBlock
@@ -118,7 +115,6 @@ export async function POST(
     event_data: { utm_source, utm_campaign, utm_campaign_id, utm_adset_id, utm_ad_id, utm_content, is_returning: !isNew },
   })
 
-  // Find first actionable block (skip entry which just marks the start)
   const { data: nextEdge } = await supabase
     .from('funnel_edges')
     .select('target_block_id')
@@ -133,8 +129,6 @@ export async function POST(
 
   const jobData = { funnelId, blockId: actionBlockId, leadId, tenantId: funnel.tenant_id }
 
-  // Execute inline (works on Vercel serverless — no idle worker needed)
-  // For delay blocks the result will have delayMs and we enqueue for the cron to pick up
   try {
     const result = await processBlock(jobData)
     if (result.nextBlockId) {
@@ -145,7 +139,6 @@ export async function POST(
       )
     }
   } catch (err) {
-    // Fallback to queue if inline execution fails (e.g. Redis unavailable)
     console.error('[activate] inline processBlock failed, enqueueing:', err)
     try {
       await getFunnelQueue().add('execute-block', jobData)

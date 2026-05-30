@@ -68,7 +68,6 @@ export async function saveFunnel(
     const supabase = await getSupabase()
     const tenantId = await getTenantId(supabase)
 
-    // Verify ownership
     const { data: funnel } = await supabase
       .from('funnels')
       .select('id')
@@ -80,11 +79,9 @@ export async function saveFunnel(
 
     const admin = createAdminClient()
 
-    // Delete edges first (FK constraint), then blocks
     await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
     await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)
 
-    // Insert blocks
     if (blocks.length > 0) {
       const { error: blocksError } = await admin.from('funnel_blocks').insert(
         blocks.map((b) => ({
@@ -100,7 +97,6 @@ export async function saveFunnel(
       if (blocksError) return { success: false, error: blocksError.message }
     }
 
-    // Insert edges
     if (edges.length > 0) {
       const { error: edgesError } = await admin.from('funnel_edges').insert(
         edges.map((e) => ({

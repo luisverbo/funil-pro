@@ -82,7 +82,6 @@ export default function FunnelsGrid({ initialFunnels, waMap = {}, leadsCountMap 
                   </span>
                 </div>
 
-                {/* Metrics row */}
                 <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
                   <span className="flex items-center gap-1">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 text-indigo-400">
@@ -109,7 +108,6 @@ export default function FunnelsGrid({ initialFunnels, waMap = {}, leadsCountMap 
                   )}
                 </div>
 
-                {/* WhatsApp indicator */}
                 {waInst ? (
                   <div className="flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${waInst.status === 'connected' ? 'bg-green-500' : 'bg-red-400'}`} />
