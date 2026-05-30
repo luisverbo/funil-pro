@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react'
 
 export type Plan = 'starter' | 'pro' | 'scale'
 export type LeadStatus = 'active' | 'converted' | 'unsubscribed' | 'lost'
-export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page'
+export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page' | 'entry' | 'cart_abandoned'
 export type FunnelStatus = 'draft' | 'published' | 'paused'
 export type EdgeCondition =
   | 'opened'
@@ -50,6 +50,8 @@ export interface WhatsappInstance {
   id: string
   tenant_id: string
   instance_name: string
+  display_name: string | null
+  description: string | null
   phone_number: string | null
   status: WhatsappStatus
   is_addon: boolean
@@ -185,10 +187,18 @@ export interface Page {
   created_at: string
 }
 
+export interface BlockMetrics {
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+}
+
 export interface FunnelNodeData extends Record<string, unknown> {
   label: string
   blockType: string
   config: Record<string, unknown>
+  metrics?: BlockMetrics | null
   onDelete?: (id: string) => void
 }
 
@@ -208,6 +218,17 @@ export interface EdgeDTO {
   source_block_id: string
   target_block_id: string
   condition: string
+}
+
+export interface Product {
+  id: string
+  tenant_id: string
+  platform: string
+  product_id_external: string
+  name: string
+  price_cents: number
+  type: 'main' | 'order_bump' | 'upsell'
+  created_at: string
 }
 
 export interface FunnelAgent {
