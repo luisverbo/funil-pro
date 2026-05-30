@@ -7,6 +7,7 @@ import { saveCapturePageConfig } from '@/app/actions/funnels'
 interface Props {
   funnelId: string
   onClose: () => void
+  entryType?: string
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
@@ -17,7 +18,7 @@ const TEMPLATES = [
   { key: 'split', label: 'Split' },
 ]
 
-export default function CapturePageEditor({ funnelId, onClose }: Props) {
+export default function CapturePageEditor({ funnelId, onClose, entryType }: Props) {
   const [template, setTemplate] = useState('minimal')
   const [headline, setHeadline] = useState('')
   const [subheadline, setSubheadline] = useState('')
@@ -248,6 +249,14 @@ export default function CapturePageEditor({ funnelId, onClose }: Props) {
         >
           {saved ? 'Salvo!' : saving ? 'Salvando...' : 'Salvar'}
         </button>
+        {saved && entryType === 'form' && (
+          <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-green-500 shrink-0">
+              <polyline points="20,6 9,17 4,12" />
+            </svg>
+            <span className="text-xs text-green-700 font-medium">Página vinculada ao bloco Entrada ✓</span>
+          </div>
+        )}
       </div>
     </div>
   )

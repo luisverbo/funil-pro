@@ -6,36 +6,35 @@ import { Globe, BarChart2, Zap, X, Copy, Check } from 'lucide-react'
 interface Props {
   funnelId: string
   onClose: () => void
+  entryType?: string
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
 
-export default function LinksDrawer({ funnelId, onClose }: Props) {
+export default function LinksDrawer({ funnelId, onClose, entryType = 'link_utm' }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
 
-  const links = [
-    {
-      key: 'capture',
-      title: 'Página de Captura',
-      url: `${APP_URL}/p/${funnelId}`,
-      desc: 'Compartilhe este link nos seus anúncios e posts para capturar leads.',
-      Icon: Globe,
-    },
-    {
-      key: 'meta',
-      title: 'Meta Ads (com UTM)',
-      url: `${APP_URL}/p/${funnelId}?utm_source=meta&utm_campaign={{campaign.id}}&utm_content={{ad.id}}`,
-      desc: 'Cole no campo URL do anúncio. As macros {{...}} são substituídas automaticamente pelo Meta.',
-      Icon: BarChart2,
-    },
-    {
-      key: 'api',
-      title: 'API de Ativação',
-      url: `${APP_URL}/api/funnels/${funnelId}/activate`,
-      desc: 'Endpoint POST (JSON: {name, phone, email}). Use em integrações externas como Typeform, Zapier.',
-      Icon: Zap,
-    },
-  ]
+  const captureUrl = `${APP_URL}/p/${funnelId}`
+  const metaUrl = `${APP_URL}/p/${funnelId}?utm_source=meta&utm_campaign={{campaign.id}}&utm_content={{ad.id}}`
+  const apiUrl = `${APP_URL}/api/funnels/${funnelId}/activate`
+  const utmUrl = `${APP_URL}/f/${funnelId}?utm_source=meta&utm_campaign={{campaign.id}}&utm_content={{ad.id}}`
+
+  const links = entryType === 'form'
+    ? [
+        { key: 'capture', title: 'Página de Captura', url: captureUrl, desc: 'Compartilhe este link nos seus anúncios e posts para capturar leads.', Icon: Globe },
+        { key: 'meta', title: 'Meta Ads (com UTM)', url: metaUrl, desc: 'Cole no campo URL do anúncio. As macros {{...}} são substituídas automaticamente pelo Meta.', Icon: BarChart2 },
+        { key: 'api', title: 'API de Ativação', url: apiUrl, desc: 'Endpoint POST (JSON: {name, phone, email}). Use em integrações externas.', Icon: Zap },
+      ]
+    : entryType === 'webhook'
+    ? [
+        { key: 'api', title: 'Endpoint de Ativação (Webhook)', url: apiUrl, desc: 'Endpoint POST (JSON: {name, phone, email}). Configure em plataformas externas para ativar o funil.', Icon: Zap },
+        { key: 'meta', title: 'Meta Ads (com UTM)', url: utmUrl, desc: 'Use este link com macros do Meta para rastrear a origem dos leads.', Icon: BarChart2 },
+      ]
+    : [
+        // link_utm (default)
+        { key: 'utm', title: 'Link com UTM (Meta Ads)', url: utmUrl, desc: 'Cole no campo URL do anúncio Meta. As macros {{...}} são substituídas automaticamente.', Icon: BarChart2 },
+        { key: 'api', title: 'API de Ativação', url: apiUrl, desc: 'Endpoint POST (JSON: {name, phone, email}). Use em integrações externas.', Icon: Zap },
+      ]
 
   function handleCopy(key: string, url: string) {
     navigator.clipboard.writeText(url).then(() => {

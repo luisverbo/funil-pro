@@ -9,6 +9,7 @@ interface Props {
   nodes: Node[]
   onClose: () => void
   funnelId: string
+  onOpenCaptureEditor?: () => void
 }
 
 const TYPE_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -123,7 +124,7 @@ const inputClass =
 const selectClass =
   'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow'
 
-export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId }: Props) {
+export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, onOpenCaptureEditor }: Props) {
   const { setNodes } = useReactFlow()
 
   const node = nodes.find((n) => n.id === selectedNodeId)
@@ -221,6 +222,38 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId }
                 ))}
               </div>
             </FieldWrap>
+            {(config.entry_type as string) === 'form' && (
+              <FieldWrap>
+                <Label>Página de captura</Label>
+                {(config.page_configured as boolean) ? (
+                  <div className="space-y-2">
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-indigo-500 shrink-0">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                        <polyline points="9,22 9,12 15,12 15,22" />
+                      </svg>
+                      <span className="text-xs text-indigo-700 font-medium">Página configurada</span>
+                    </div>
+                    <button
+                      onClick={onOpenCaptureEditor}
+                      className="w-full text-xs px-3 py-2 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors font-medium"
+                    >
+                      Editar página de captura
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500">Nenhuma página configurada ainda.</p>
+                    <button
+                      onClick={onOpenCaptureEditor}
+                      className="w-full text-xs px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      Configurar página de captura
+                    </button>
+                  </div>
+                )}
+              </FieldWrap>
+            )}
           </>
         )}
 

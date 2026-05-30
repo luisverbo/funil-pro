@@ -314,18 +314,21 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
               nodes={nodes}
               onClose={() => setSelectedNodeId(null)}
               funnelId={funnel.id}
+              onOpenCaptureEditor={() => setShowCaptureEditor(true)}
             />
           )}
           {showCaptureEditor && (
             <CapturePageEditor
               funnelId={funnel.id}
               onClose={() => setShowCaptureEditor(false)}
+              entryType={(nodes.find(n => n.type === 'entry')?.data as FunnelNodeData | undefined)?.config?.entry_type as string | undefined}
             />
           )}
           {showLinksDrawer && (
             <LinksDrawer
               funnelId={funnel.id}
               onClose={() => setShowLinksDrawer(false)}
+              entryType={(nodes.find(n => n.type === 'entry')?.data as FunnelNodeData | undefined)?.config?.entry_type as string | undefined}
             />
           )}
         </div>
