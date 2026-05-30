@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import InstanceCard from '@/components/whatsapp/instance-card'
 import CreateInstanceButton from '@/components/whatsapp/create-instance-button'
 import CopyUrlButton from '@/components/funnels/copy-url-button'
+import MetaSection from '@/components/integrations/meta-section'
 import type { WhatsappInstance } from '@/types'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
@@ -59,7 +60,7 @@ export default async function IntegrationsPage() {
 
   const admin = createAdminClient()
 
-  const [{ data: instances }, { data: recentEvents }] = await Promise.all([
+  const [{ data: instances }, { data: recentEvents }, { data: tenantData }] = await Promise.all([
     admin
       .from('whatsapp_instances')
       .select('*')
@@ -71,6 +72,11 @@ export default async function IntegrationsPage() {
       .eq('tenant_id', ut.tenant_id)
       .in('platform', ['hotmart', 'kiwify', 'eduzz', 'yampi'])
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+    admin
+      .from('tenants')
+      .select('meta_access_token, meta_ad_account_id, meta_pixel_id')
+      .eq('id', ut.tenant_id)
+      .single(),
   ])
 
   const activePlatforms = new Set((recentEvents ?? []).map((e: { platform: string }) => e.platform))
@@ -175,6 +181,16 @@ export default async function IntegrationsPage() {
             )
           })}
         </div>
+      </div>
+
+      {/* Meta Ads section */}
+      <div className="mb-8">
+        <MetaSection
+          metaAccessToken={tenantData?.meta_access_token ?? null}
+          metaAdAccountId={tenantData?.meta_ad_account_id ?? null}
+          metaPixelId={tenantData?.meta_pixel_id ?? null}
+          tenantId={ut.tenant_id}
+        />
       </div>
 
       {/* Email — coming soon */}
