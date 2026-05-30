@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { funnelQueue } from '@/lib/queue'
+import { getFunnelQueue } from '@/lib/queue'
 
 export async function POST(
   request: NextRequest,
@@ -90,7 +90,7 @@ export async function POST(
     return NextResponse.json({ error: 'Funil sem blocos' }, { status: 400 })
   }
 
-  await funnelQueue.add('execute-block', {
+  await getFunnelQueue().add('execute-block', {
     funnelId,
     blockId: firstBlock.id,
     leadId: lead.id,
