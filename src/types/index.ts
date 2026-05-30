@@ -220,6 +220,17 @@ export interface EdgeDTO {
   condition: string
 }
 
+export interface Product {
+  id: string
+  tenant_id: string
+  platform: string
+  product_id_external: string
+  name: string
+  price_cents: number
+  type: 'main' | 'order_bump' | 'upsell'
+  created_at: string
+}
+
 export interface FunnelAgent {
   id: string
   funnel_id: string
