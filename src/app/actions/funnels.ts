@@ -3,6 +3,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { BlockDTO, EdgeDTO } from '@/types'
 
@@ -144,4 +145,29 @@ export async function publishFunnel(funnelId: string): Promise<{ success: boolea
   } catch (err) {
     return { success: false, error: String(err) }
   }
+}
+
+export async function deleteFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = await getSupabase()
+  const tenantId = await getTenantId(supabase)
+
+  const admin = createAdminClient()
+
+  const { data: funnel } = await admin
+    .from('funnels')
+    .select('id')
+    .eq('id', funnelId)
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (!funnel) return { success: false, error: 'Funil não encontrado' }
+
+  await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
+  await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)
+  const { error } = await admin.from('funnels').delete().eq('id', funnelId)
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/funnels')
+  return { success: true }
 }

@@ -17,6 +17,7 @@ export default function CreateInstanceButton() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [phone, setPhone] = useState('')
   const [isPending, startTransition] = useTransition()
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -25,6 +26,7 @@ export default function CreateInstanceButton() {
     const fd = new FormData()
     fd.set('name', name.trim())
     fd.set('description', description.trim())
+    fd.set('phone', phone.trim())
     startTransition(async () => {
       const result = await createWhatsappInstance(fd)
       if (result.error) {
@@ -33,6 +35,7 @@ export default function CreateInstanceButton() {
         setOpen(false)
         setName('')
         setDescription('')
+        setPhone('')
       }
     })
   }
@@ -104,6 +107,20 @@ export default function CreateInstanceButton() {
                   placeholder="Ex: Instância para o funil de emagrecimento"
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Número do WhatsApp <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Ex: +55 11 99999-9999"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
+                />
+                <p className="mt-1 text-xs text-gray-400">Apenas para referência visual — o número real vem do QR code</p>
               </div>
 
               <div className="flex items-center gap-3 pt-1">

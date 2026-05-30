@@ -20,31 +20,22 @@ function slugify(name: string): string {
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
+    .slice(0, 30)
 }
 
-// createWhatsappInstance — creates in Evolution API + DB
 export async function createWhatsappInstance(formData: FormData) {
   const tenantId = await getTenantId()
   if (!tenantId) return { error: 'Não autenticado' }
 
   const displayName = (formData.get('name') as string | null)?.trim() || 'Instância'
-  const description = (formData.get('description') as string | null)?.trim() || ''
+  const description = (formData.get('description') as string | null)?.trim() || null
+  const phoneDisplay = (formData.get('phone') as string | null)?.trim() || null
 
-  // Technical instance name for Evolution API (must be unique and slug-safe)
-  const instanceName = `tenant_${tenantId.slice(0, 8)}_${slugify(displayName)}_${Date.now().toString(36)}`
+  const instanceName = `t${tenantId.slice(0, 6)}_${slugify(displayName)}_${Date.now().toString(36)}`
 
   try {
-    // Create in Evolution API
-    const evoUrl = process.env.EVOLUTION_API_URL
-    const evoKey = process.env.EVOLUTION_API_KEY
-    console.log('[whatsapp] EVOLUTION_API_URL:', evoUrl)
-    console.log('[whatsapp] EVOLUTION_API_KEY set:', !!evoKey)
-
     await createInstance(instanceName)
 
-    // Save to DB — store display_name in instance_name col fallback: store JSON with both
-    // Since display_name column doesn't exist yet, we store displayName in phone_number temporarily
-    // and use instance_name for the technical name. We'll add a comment in the record.
     const admin = createAdminClient()
     const { data: instance, error } = await admin
       .from('whatsapp_instances')
@@ -52,16 +43,20 @@ export async function createWhatsappInstance(formData: FormData) {
         tenant_id: tenantId,
         instance_name: instanceName,
         display_name: displayName,
-        description: description || null,
+        description,
+        phone_number_display: phoneDisplay,
         status: 'connecting',
       } as Record<string, unknown>)
       .select('id')
       .single()
 
-    if (error || !instance) return { error: 'Erro ao criar instância no banco' }
+    if (error) {
+      console.error('[whatsapp] DB insert error:', error.message, error.details)
+      return { error: `Erro ao salvar: ${error.message}` }
+    }
+    if (!instance) return { error: 'Erro ao criar instância no banco' }
 
-    // Set webhook on Evolution API pointing to our endpoint
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.funil.pro'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
     try {
       await setInstanceWebhook(instanceName, `${appUrl}/api/webhooks/evolution/${instance.id}`)
     } catch {
@@ -77,14 +72,12 @@ export async function createWhatsappInstance(formData: FormData) {
   }
 }
 
-// deleteWhatsappInstance
 export async function deleteWhatsappInstance(instanceId: string) {
   const tenantId = await getTenantId()
   if (!tenantId) return { error: 'Não autenticado' }
 
   const admin = createAdminClient()
 
-  // Verify ownership
   const { data: instance } = await admin
     .from('whatsapp_instances')
     .select('instance_name, tenant_id')
@@ -93,12 +86,39 @@ export async function deleteWhatsappInstance(instanceId: string) {
 
   if (!instance || instance.tenant_id !== tenantId) return { error: 'Instância não encontrada' }
 
-  // Delete from Evolution API (best effort)
-  try { await deleteInstance(instance.instance_name) } catch {}
+  try {
+    await deleteInstance(instance.instance_name)
+  } catch (err) {
+    console.warn('[whatsapp] Evolution API delete failed (continuing):', err instanceof Error ? err.message : err)
+  }
 
-  // Delete from DB
   await admin.from('whatsapp_instances').delete().eq('id', instanceId)
 
   revalidatePath('/integrations')
+  return { success: true }
+}
+
+export async function deleteFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
+  const tenantId = await getTenantId()
+  if (!tenantId) return { success: false, error: 'Não autenticado' }
+
+  const admin = createAdminClient()
+
+  const { data: funnel } = await admin
+    .from('funnels')
+    .select('id, tenant_id')
+    .eq('id', funnelId)
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (!funnel) return { success: false, error: 'Funil não encontrado' }
+
+  await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
+  await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)
+  const { error } = await admin.from('funnels').delete().eq('id', funnelId)
+
+  if (error) return { success: false, error: error.message }
+
+  revalidatePath('/funnels')
   return { success: true }
 }
