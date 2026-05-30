@@ -63,7 +63,7 @@ Pixel Meta:           disparado nas páginas e eventos do funil
 | Auth + multi-tenant | Login, registro, isolamento por tenant | ✅ concluído |
 | Builder de funis | Canvas React Flow, blocos, conexões, condições | ✅ concluído |
 | Motor de execução | BullMQ processa blocos em fila, dispara ações | ✅ concluído |
-| WhatsApp | Evolution API, instâncias por tenant, envio/recebimento | 🔴 não iniciado |
+| WhatsApp | Evolution API, instâncias por tenant, envio/recebimento | ✅ concluído |
 | E-mail | Resend, sequências, broadcasts | 🔴 não iniciado |
 | Rastreamento UTM | Captura parâmetros na entrada, grava lead_source | 🔴 não iniciado |
 | Integração Meta API | Puxa ad_spend, calcula CPL e ROAS | 🔴 não iniciado |
