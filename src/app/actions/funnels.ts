@@ -178,6 +178,21 @@ export async function saveCapturePageConfig(
   }
 }
 
+export async function getCapturePageConfig(funnelId: string): Promise<{ page_template: string | null; page_config: Record<string, unknown> | null } | null> {
+  const supabase = await getSupabase()
+  const { data } = await supabase.from('funnels').select('page_template, page_config').eq('id', funnelId).single()
+  return data as { page_template: string | null; page_config: Record<string, unknown> | null } | null
+}
+
+export async function clearCapturePageConfig(funnelId: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = await getSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized', success: false }
+  await supabase.from('funnels').update({ page_template: null, page_config: null }).eq('id', funnelId)
+  revalidatePath('/capture-pages')
+  return { success: true }
+}
+
 export async function deleteFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
   const supabase = await getSupabase()
   const tenantId = await getTenantId(supabase)

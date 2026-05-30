@@ -4,15 +4,16 @@ import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/app/actions/auth'
-import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, PanelLeftClose, PanelLeftOpen, LayoutTemplate, Shield } from 'lucide-react'
+import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, PanelLeftClose, PanelLeftOpen, LayoutTemplate, Shield, Globe } from 'lucide-react'
 
 const NAV = [
-  { href: '/funnels',      label: 'Funis',          Icon: LayoutGrid },
-  { href: '/integrations', label: 'Integrações',     Icon: Plug },
-  { href: '/leads',        label: 'Leads',           Icon: Users },
-  { href: '/templates',    label: 'Templates',       Icon: LayoutTemplate },
-  { href: '/metrics',      label: 'Métricas',        Icon: BarChart2 },
-  { href: '/settings',     label: 'Configurações',   Icon: Settings },
+  { href: '/funnels',         label: 'Funis',               Icon: LayoutGrid },
+  { href: '/integrations',    label: 'Integrações',          Icon: Plug },
+  { href: '/leads',           label: 'Leads',                Icon: Users },
+  { href: '/templates',       label: 'Templates',            Icon: LayoutTemplate },
+  { href: '/capture-pages',   label: 'Páginas de Captura',   Icon: Globe },
+  { href: '/metrics',         label: 'Métricas',             Icon: BarChart2 },
+  { href: '/settings',        label: 'Configurações',        Icon: Settings },
 ]
 
 const STORAGE_KEY = 'funilpro:sidebar-collapsed'

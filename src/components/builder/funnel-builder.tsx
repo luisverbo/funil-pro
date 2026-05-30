@@ -322,6 +322,15 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
               funnelId={funnel.id}
               onClose={() => setShowCaptureEditor(false)}
               entryType={(nodes.find(n => n.type === 'entry')?.data as FunnelNodeData | undefined)?.config?.entry_type as string | undefined}
+              onSaved={(tpl) => {
+                setNodes((nds) =>
+                  nds.map((n) => {
+                    if (n.type !== 'entry') return n
+                    const nd = n.data as FunnelNodeData
+                    return { ...n, data: { ...nd, config: { ...nd.config, page_configured: true, page_template: tpl } } }
+                  })
+                )
+              }}
             />
           )}
           {showLinksDrawer && (

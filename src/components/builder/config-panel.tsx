@@ -227,28 +227,43 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 <Label>Página de captura</Label>
                 {(config.page_configured as boolean) ? (
                   <div className="space-y-2">
-                    <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-indigo-500 shrink-0">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                        <polyline points="9,22 9,12 15,12 15,22" />
+                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-green-500 shrink-0">
+                        <polyline points="20,6 9,17 4,12" />
                       </svg>
-                      <span className="text-xs text-indigo-700 font-medium">Página configurada</span>
+                      <span className="text-xs text-green-700 font-medium">
+                        Página configurada ✓{(config.page_template as string) ? ` — ${config.page_template as string}` : ''}
+                      </span>
                     </div>
-                    <button
-                      onClick={onOpenCaptureEditor}
-                      className="w-full text-xs px-3 py-2 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors font-medium"
-                    >
-                      Editar página de captura
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={onOpenCaptureEditor}
+                        className="flex-1 text-xs px-3 py-2 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors font-medium"
+                      >
+                        Editar página
+                      </button>
+                      {funnelId && (
+                        <a
+                          href={`/p/${funnelId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs px-3 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                        >
+                          Ver
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Nenhuma página configurada ainda.</p>
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                      <p className="text-xs text-gray-500">Nenhuma página configurada.</p>
+                    </div>
                     <button
                       onClick={onOpenCaptureEditor}
                       className="w-full text-xs px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
                     >
-                      Configurar página de captura
+                      Criar página de captura
                     </button>
                   </div>
                 )}

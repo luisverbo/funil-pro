@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Copy, Check, ExternalLink } from 'lucide-react'
-import { saveCapturePageConfig } from '@/app/actions/funnels'
+import { saveCapturePageConfig, getCapturePageConfig } from '@/app/actions/funnels'
 
 interface Props {
   funnelId: string
   onClose: () => void
   entryType?: string
+  onSaved?: (template: string) => void
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
@@ -18,7 +19,7 @@ const TEMPLATES = [
   { key: 'split', label: 'Split' },
 ]
 
-export default function CapturePageEditor({ funnelId, onClose, entryType }: Props) {
+export default function CapturePageEditor({ funnelId, onClose, entryType, onSaved }: Props) {
   const [template, setTemplate] = useState('minimal')
   const [headline, setHeadline] = useState('')
   const [subheadline, setSubheadline] = useState('')
@@ -32,8 +33,34 @@ export default function CapturePageEditor({ funnelId, onClose, entryType }: Prop
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [isExisting, setIsExisting] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const pageUrl = `${APP_URL}/p/${funnelId}`
+
+  useEffect(() => {
+    async function loadConfig() {
+      setLoading(true)
+      const data = await getCapturePageConfig(funnelId)
+      if (data?.page_config) {
+        setIsExisting(true)
+        const cfg = data.page_config as Record<string, unknown>
+        if (data.page_template) setTemplate(data.page_template)
+        if (cfg.headline) setHeadline(cfg.headline as string)
+        if (cfg.subheadline) setSubheadline(cfg.subheadline as string)
+        if (cfg.cta_text) setCtaText(cfg.cta_text as string)
+        if (cfg.cta_color) setCtaColor(cfg.cta_color as string)
+        if (cfg.logo_url) setLogoUrl(cfg.logo_url as string)
+        if (cfg.bg_image_url) setBgImageUrl(cfg.bg_image_url as string)
+        if (cfg.redirect_url) setRedirectUrl(cfg.redirect_url as string)
+        if (cfg.thank_you_message) setThankYouMessage(cfg.thank_you_message as string)
+        const fields = cfg.fields_enabled as Record<string, boolean> | undefined
+        if (fields?.email !== undefined) setEmailEnabled(fields.email)
+      }
+      setLoading(false)
+    }
+    loadConfig()
+  }, [funnelId])
 
   async function handleSave() {
     setSaving(true)
@@ -51,6 +78,8 @@ export default function CapturePageEditor({ funnelId, onClose, entryType }: Prop
     await saveCapturePageConfig(funnelId, { template, page_config })
     setSaving(false)
     setSaved(true)
+    setIsExisting(true)
+    onSaved?.(template)
     setTimeout(() => setSaved(false), 2000)
   }
 
@@ -61,10 +90,20 @@ export default function CapturePageEditor({ funnelId, onClose, entryType }: Prop
     })
   }
 
+  if (loading) {
+    return (
+      <div className="w-80 border-l border-gray-200 bg-white h-full flex items-center justify-center shrink-0">
+        <div className="text-sm text-gray-400">Carregando...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="w-80 border-l border-gray-200 bg-white h-full overflow-y-auto flex flex-col shrink-0">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <span className="text-sm font-semibold text-gray-800">Página de Captura</span>
+        <span className="text-sm font-semibold text-gray-800">
+          {isExisting ? 'Editar página de captura' : 'Criar página de captura'}
+        </span>
         <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 transition-colors">
           <X className="w-4 h-4 text-gray-500" />
         </button>
@@ -249,12 +288,23 @@ export default function CapturePageEditor({ funnelId, onClose, entryType }: Prop
         >
           {saved ? 'Salvo!' : saving ? 'Salvando...' : 'Salvar'}
         </button>
+        {saved && (
+          <a
+            href={`/p/${funnelId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 mt-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4 text-green-500 shrink-0" />
+            <span className="text-xs text-green-700 font-medium">Ver página</span>
+          </a>
+        )}
         {saved && entryType === 'form' && (
-          <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-green-500 shrink-0">
+          <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-indigo-500 shrink-0">
               <polyline points="20,6 9,17 4,12" />
             </svg>
-            <span className="text-xs text-green-700 font-medium">Página vinculada ao bloco Entrada ✓</span>
+            <span className="text-xs text-indigo-700 font-medium">Página vinculada ao bloco Entrada ✓</span>
           </div>
         )}
       </div>

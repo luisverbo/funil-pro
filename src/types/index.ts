@@ -70,6 +70,8 @@ export interface Funnel {
   utm_source: string | null
   created_at: string
   published_at: string | null
+  page_config?: Record<string, unknown> | null
+  page_template?: string | null
 }
 
 export interface FunnelBlock {
