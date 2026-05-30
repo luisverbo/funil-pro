@@ -23,6 +23,11 @@ export async function createWhatsappInstance(formData: FormData) {
 
   try {
     // Create in Evolution API
+    const evoUrl = process.env.EVOLUTION_API_URL
+    const evoKey = process.env.EVOLUTION_API_KEY
+    console.log('[whatsapp] EVOLUTION_API_URL:', evoUrl)
+    console.log('[whatsapp] EVOLUTION_API_KEY set:', !!evoKey)
+
     await createInstance(instanceName)
 
     // Save to DB
@@ -50,8 +55,9 @@ export async function createWhatsappInstance(formData: FormData) {
     revalidatePath('/integrations')
     return { success: true, instanceId: instance.id, instanceName }
   } catch (err) {
-    console.error('[whatsapp] Erro ao criar instância:', err)
-    return { error: 'Erro ao criar instância no Evolution API' }
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[whatsapp] Erro ao criar instância:', msg)
+    return { error: `Erro: ${msg}` }
   }
 }
 
