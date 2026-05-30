@@ -67,7 +67,7 @@ Pixel Meta:           disparado nas páginas e eventos do funil
 | E-mail | Resend, sequências, broadcasts | 🔴 não iniciado |
 | Rastreamento UTM | Captura parâmetros na entrada, grava lead_source | 🔴 não iniciado |
 | Integração Meta API | Puxa ad_spend, calcula CPL e ROAS | 🔴 não iniciado |
-| Webhooks pagamento | Hotmart, Kiwify, Eduzz, Yampi | 🔴 não iniciado |
+| Webhooks pagamento | Hotmart, Kiwify, Eduzz, Yampi | ✅ concluído |
 | Painel de métricas | CPL, ROAS, drop-off por etapa, timeline do lead | 🔴 não iniciado |
 | Templates de funil | Exportar/importar JSON, marketplace | 🔴 não iniciado |
 | Planos + billing | Starter/Pro/Scale + add-ons, Asaas ou Stripe | 🔴 não iniciado |
@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-30 — Etapas 1–5 + 7 concluídas
+**Última atualização:** 2026-05-30 — Etapas 1–5 + 7–8 concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -505,10 +505,18 @@ APP_SECRET=
   - `/leads/[id]` — timeline vertical de eventos, card de origem UTM, dados do lead
   - `src/components/funnels/copy-url-button.tsx` — botão copiar com feedback "Copiado!"
   - `src/components/public/capture-form.tsx` — formulário client-side com loading state e disparo de fbq('track', 'Lead')
+- Etapa 8: Webhooks de pagamento completos:
+  - `supabase/migrations/20260530010000_orphan_purchases.sql` — tabela orphan_purchases para compras sem lead
+  - `src/lib/webhooks/purchase-handler.ts` — helper compartilhado: busca lead por email/telefone, grava lead_events, converte lead, avança funil via BullMQ, salva orphan se não encontrar
+  - `src/app/api/webhooks/hotmart/[tenantId]/route.ts` — mapeamento de eventos Hotmart
+  - `src/app/api/webhooks/kiwify/[tenantId]/route.ts` — mapeamento de eventos Kiwify
+  - `src/app/api/webhooks/eduzz/[tenantId]/route.ts` — mapeamento de eventos Eduzz
+  - `src/app/api/webhooks/yampi/[tenantId]/route.ts` — mapeamento de eventos Yampi
+  - `/integrations` — nova seção "Plataformas de Pagamento" com URLs de webhook, badge ativo (7 dias), botão copiar e instruções por plataforma
+  - `/integrations/orphans` — tabela de compras não vinculadas com badge por plataforma e valor formatado
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
-- Etapa 8: Webhooks de pagamento (Hotmart, Kiwify, Eduzz, Yampi)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
 - Etapa 10: Painel de métricas (CPL, ROAS, drop-off, timeline)
 
