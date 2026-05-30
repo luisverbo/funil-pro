@@ -25,6 +25,7 @@ import ConditionNode from './nodes/condition-node'
 import DelayNode from './nodes/delay-node'
 import TagNode from './nodes/tag-node'
 import SaleNode from './nodes/sale-node'
+import EntryNode from './nodes/entry-node'
 import CustomEdge from './custom-edge'
 import BlockPalette from './block-palette'
 
@@ -37,6 +38,7 @@ const nodeTypes = {
   delay: DelayNode,
   tag: TagNode,
   sale: SaleNode,
+  entry: EntryNode,
 }
 
 const edgeTypes = { custom: CustomEdge }
@@ -54,7 +56,10 @@ interface Props {
   initialEdges: FunnelEdge[]
 }
 
-function blockToNode(block: FunnelBlock): Node {
+function blockToNode(block: FunnelBlock, funnelId: string): Node {
+  const config = block.block_type === 'entry'
+    ? { entry_type: 'link_utm', funnel_id: funnelId, ...block.config }
+    : block.config
   return {
     id: block.id,
     type: block.block_type,
@@ -62,7 +67,7 @@ function blockToNode(block: FunnelBlock): Node {
     data: {
       label: block.label,
       blockType: block.block_type,
-      config: block.config,
+      config,
     } as FunnelNodeData,
   }
 }
@@ -78,7 +83,7 @@ function dbEdgeToFlowEdge(edge: FunnelEdge): Edge {
 }
 
 function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialBlocks.map(blockToNode))
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialBlocks.map((b) => blockToNode(b, funnel.id)))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges.map(dbEdgeToFlowEdge))
   const { screenToFlowPosition } = useReactFlow()
 
@@ -111,14 +116,19 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
       if (!type) return
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
       const LABELS: Record<string, string> = {
-        message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda',
+        message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda', entry: 'Entrada',
       }
-      setNodes((nds) => nds.concat({
-        id: crypto.randomUUID(),
-        type,
-        position,
-        data: { label: LABELS[type] ?? type, blockType: type, config: {} } as FunnelNodeData,
-      }))
+      setNodes((nds) => {
+        // Enforce single entry block
+        if (type === 'entry' && nds.some((n) => n.type === 'entry')) return nds
+        const config = type === 'entry' ? { entry_type: 'link_utm', funnel_id: funnel.id } : {}
+        return nds.concat({
+          id: crypto.randomUUID(),
+          type,
+          position,
+          data: { label: LABELS[type] ?? type, blockType: type, config } as FunnelNodeData,
+        })
+      })
     },
     [screenToFlowPosition, setNodes]
   )
