@@ -233,3 +233,20 @@ export async function updateFunnelWhatsapp(funnelId: string, instanceId: string 
     return { success: false, error: String(e) }
   }
 }
+
+export async function deleteLead(leadId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+    const admin = createAdminClient()
+    const { data: lead } = await admin.from('leads').select('id').eq('id', leadId).eq('tenant_id', tenantId).single()
+    if (!lead) return { success: false, error: 'Lead não encontrado' }
+    await admin.from('lead_events').delete().eq('lead_id', leadId)
+    await admin.from('lead_sources').delete().eq('lead_id', leadId)
+    await admin.from('leads').delete().eq('id', leadId)
+    revalidatePath('/leads')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}

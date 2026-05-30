@@ -13,7 +13,26 @@ const statusConfig: Record<string, { label: string; badgeClass: string; areaBg: 
   paused:    { label: 'Pausado',   badgeClass: 'bg-amber-50 text-amber-700',   areaBg: '#FFFBEB', iconColor: '#f59e0b' },
 }
 
-export default function FunnelsGrid({ initialFunnels, waMap = {} }: { initialFunnels: Funnel[]; waMap?: Record<string, { instance_name: string; status: string }> }) {
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'agora'
+  if (m < 60) return `há ${m} min`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `há ${h}h`
+  const d = Math.floor(h / 24)
+  return `há ${d}d`
+}
+
+interface Props {
+  initialFunnels: Funnel[]
+  waMap?: Record<string, { instance_name: string; status: string }>
+  leadsCountMap?: Record<string, number>
+  salesCountMap?: Record<string, number>
+  lastActivityMap?: Record<string, string>
+}
+
+export default function FunnelsGrid({ initialFunnels, waMap = {}, leadsCountMap = {}, salesCountMap = {}, lastActivityMap = {} }: Props) {
   const [funnels, setFunnels] = useState(initialFunnels)
   const [templateFunnel, setTemplateFunnel] = useState<Funnel | null>(null)
 
@@ -40,13 +59,17 @@ export default function FunnelsGrid({ initialFunnels, waMap = {} }: { initialFun
         {funnels.map((funnel) => {
           const st = statusConfig[funnel.status] ?? statusConfig.draft
           const waInst = funnel.whatsapp_instance_id ? (waMap[funnel.whatsapp_instance_id] ?? null) : null
+          const leads = leadsCountMap[funnel.id] ?? 0
+          const sales = salesCountMap[funnel.id] ?? 0
+          const lastActivity = lastActivityMap[funnel.id] ?? null
+          const convRate = leads > 0 ? Math.round((sales / leads) * 100) : 0
           return (
             <div
               key={funnel.id}
               className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col"
             >
-              <div className="flex items-center justify-center h-24" style={{ backgroundColor: st.areaBg }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10" style={{ color: st.iconColor }}>
+              <div className="flex items-center justify-center h-20" style={{ backgroundColor: st.areaBg }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-9 h-9" style={{ color: st.iconColor }}>
                   <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
                 </svg>
               </div>
@@ -58,9 +81,35 @@ export default function FunnelsGrid({ initialFunnels, waMap = {} }: { initialFun
                     {st.label}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400">
-                  Criado em {new Date(funnel.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </p>
+
+                {/* Metrics row */}
+                <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 text-indigo-400">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+                    </svg>
+                    {leads} lead{leads !== 1 ? 's' : ''}
+                  </span>
+                  {sales > 0 && (
+                    <span className="flex items-center gap-1 text-emerald-600">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                        <line x1="12" y1="1" x2="12" y2="23" />
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                      </svg>
+                      {sales} venda{sales !== 1 ? 's' : ''} ({convRate}%)
+                    </span>
+                  )}
+                  {lastActivity && (
+                    <span className="flex items-center gap-1">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 text-gray-400">
+                        <circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" />
+                      </svg>
+                      {timeAgo(lastActivity)}
+                    </span>
+                  )}
+                </div>
+
+                {/* WhatsApp indicator */}
                 {waInst ? (
                   <div className="flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full ${waInst.status === 'connected' ? 'bg-green-500' : 'bg-red-400'}`} />

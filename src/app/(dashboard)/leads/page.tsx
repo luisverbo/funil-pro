@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { User, Phone, Mail } from 'lucide-react'
 import type { Lead } from '@/types'
+import DeleteLeadButton from '@/components/leads/delete-lead-button'
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -126,12 +127,15 @@ export default async function LeadsPage() {
                         })}
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
-                        >
-                          Ver detalhes →
-                        </Link>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={`/leads/${lead.id}`}
+                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
+                          >
+                            Ver detalhes →
+                          </Link>
+                          <DeleteLeadButton leadId={lead.id} leadName={lead.name} />
+                        </div>
                       </td>
                     </tr>
                   )

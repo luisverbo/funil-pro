@@ -52,19 +52,81 @@ export default async function FunnelsPage() {
   if (waInstanceIds.length > 0) {
     const { data: instances } = await supabase
       .from('whatsapp_instances')
-      .select('id, instance_name, status')
+      .select('id, instance_name, display_name, status')
       .in('id', waInstanceIds)
     if (instances) {
-      waMap = Object.fromEntries(instances.map((i) => [i.id, { instance_name: i.instance_name, status: i.status }]))
+      waMap = Object.fromEntries(instances.map((i) => [i.id, {
+        instance_name: i.display_name || i.instance_name,
+        status: i.status,
+      }]))
+    }
+  }
+
+  const admin = createAdminClient()
+
+  // Fetch lead counts per funnel
+  const funnelIds = funnelList.map((f) => f.id)
+  let leadsCountMap: Record<string, number> = {}
+  let salesCountMap: Record<string, number> = {}
+  let lastActivityMap: Record<string, string> = {}
+
+  if (funnelIds.length > 0) {
+    // Lead counts
+    const { data: leadCounts } = await admin
+      .from('leads')
+      .select('funnel_id')
+      .in('funnel_id', funnelIds)
+      .eq('tenant_id', userTenant.tenant_id)
+    if (leadCounts) {
+      for (const row of leadCounts) {
+        leadsCountMap[row.funnel_id] = (leadsCountMap[row.funnel_id] ?? 0) + 1
+      }
+    }
+
+    // Purchase events per funnel (to count conversions)
+    const { data: purchaseEvents } = await admin
+      .from('lead_events')
+      .select('funnel_id, lead_id, created_at')
+      .in('funnel_id', funnelIds)
+      .eq('event_type', 'purchased')
+    if (purchaseEvents) {
+      // Unique leads with purchase per funnel
+      const salesLeads: Record<string, Set<string>> = {}
+      for (const ev of purchaseEvents) {
+        if (!salesLeads[ev.funnel_id]) salesLeads[ev.funnel_id] = new Set()
+        salesLeads[ev.funnel_id].add(ev.lead_id)
+        // Track latest event date
+        if (!lastActivityMap[ev.funnel_id] || ev.created_at > lastActivityMap[ev.funnel_id]) {
+          lastActivityMap[ev.funnel_id] = ev.created_at
+        }
+      }
+      for (const [fid, leads] of Object.entries(salesLeads)) {
+        salesCountMap[fid] = leads.size
+      }
+    }
+
+    // Last activity (any event)
+    const { data: recentEvents } = await admin
+      .from('lead_events')
+      .select('funnel_id, created_at')
+      .in('funnel_id', funnelIds)
+      .order('created_at', { ascending: false })
+      .limit(funnelIds.length * 2)
+    if (recentEvents) {
+      for (const ev of recentEvents) {
+        if (!lastActivityMap[ev.funnel_id]) {
+          lastActivityMap[ev.funnel_id] = ev.created_at
+        }
+      }
     }
   }
 
   const list = funnelList.map((f) => ({
     ...f,
-    _waInstance: f.whatsapp_instance_id ? (waMap[f.whatsapp_instance_id] ?? null) : null,
+    _leadsCount: leadsCountMap[f.id] ?? 0,
+    _salesCount: salesCountMap[f.id] ?? 0,
+    _lastActivity: lastActivityMap[f.id] ?? null,
   }))
-
-  const admin = createAdminClient()
   const { data: tplData } = await admin
     .from('funnel_templates')
     .select('*')
@@ -84,7 +146,13 @@ export default async function FunnelsPage() {
         <CreateFunnelDialog popularTemplates={popularTemplates} />
       </div>
 
-      <FunnelsGrid initialFunnels={list as unknown as Funnel[]} waMap={waMap} />
+      <FunnelsGrid
+        initialFunnels={list as unknown as Funnel[]}
+        waMap={waMap}
+        leadsCountMap={leadsCountMap}
+        salesCountMap={salesCountMap}
+        lastActivityMap={lastActivityMap}
+      />
     </div>
   )
 }

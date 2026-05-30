@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, User, Phone, Mail, Tag } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Lead, LeadSource, LeadEvent } from '@/types'
+import DeleteLeadButton from '@/components/leads/delete-lead-button'
 
 function fmtBRL(cents: number) {
   return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -260,9 +261,12 @@ export default async function LeadDetailPage({
               </div>
             </div>
           </div>
-          <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${st.className}`}>
-            {st.label}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${st.className}`}>
+              {st.label}
+            </span>
+            <DeleteLeadButton leadId={typedLead.id} leadName={typedLead.name} redirectAfter="/leads" />
+          </div>
         </div>
 
         {typedLead.tags && typedLead.tags.length > 0 && (
