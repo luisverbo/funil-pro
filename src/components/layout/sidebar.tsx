@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/app/actions/auth'
-import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, PanelLeftClose, PanelLeftOpen, LayoutTemplate } from 'lucide-react'
+import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, PanelLeftClose, PanelLeftOpen, LayoutTemplate, Shield } from 'lucide-react'
 
 const NAV = [
   { href: '/funnels',      label: 'Funis',          Icon: LayoutGrid },
@@ -19,9 +19,10 @@ const STORAGE_KEY = 'funilpro:sidebar-collapsed'
 
 interface Props {
   displayName: string
+  isAdmin?: boolean
 }
 
-export default function Sidebar({ displayName }: Props) {
+export default function Sidebar({ displayName, isAdmin }: Props) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -129,6 +130,27 @@ export default function Sidebar({ displayName }: Props) {
           )
         })}
       </nav>
+
+      {/* Admin link */}
+      {isAdmin && (
+        <div className="px-2 pb-1">
+          <Link
+            href="/admin"
+            title={collapsed ? 'Admin' : undefined}
+            className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap overflow-hidden ${
+              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
+            } text-red-400 hover:text-red-300 hover:bg-white/5`}
+          >
+            <Shield size={17} strokeWidth={2} className="shrink-0" />
+            {!collapsed && 'Admin'}
+            {collapsed && (
+              <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-zinc-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+                Admin
+              </span>
+            )}
+          </Link>
+        </div>
+      )}
 
       {/* User footer */}
       <div className={`py-3 border-t border-white/5 shrink-0 ${collapsed ? 'px-2' : 'px-2'}`} ref={dropdownRef}>
