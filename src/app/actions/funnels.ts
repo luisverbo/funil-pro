@@ -103,7 +103,7 @@ export async function saveFunnel(
     if (edges.length > 0) {
       const { error: edgesError } = await admin.from('funnel_edges').insert(
         edges.map((e) => ({
-          id: e.id,
+          id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(e.id) ? e.id : crypto.randomUUID(),
           funnel_id: funnelId,
           source_block_id: e.source_block_id,
           target_block_id: e.target_block_id,
