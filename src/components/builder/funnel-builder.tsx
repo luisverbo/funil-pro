@@ -8,7 +8,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -17,6 +16,7 @@ import {
   type Node,
   type Edge,
   type OnConnect,
+  type NodeMouseHandler,
 } from '@xyflow/react'
 import Link from 'next/link'
 
@@ -28,6 +28,7 @@ import SaleNode from './nodes/sale-node'
 import EntryNode from './nodes/entry-node'
 import CustomEdge from './custom-edge'
 import BlockPalette from './block-palette'
+import ConfigPanel from './config-panel'
 
 import { saveFunnel, publishFunnel } from '@/app/actions/funnels'
 import type { Funnel, FunnelBlock, FunnelEdge, FunnelNodeData, BlockDTO, EdgeDTO } from '@/types'
@@ -42,7 +43,6 @@ const nodeTypes = {
 }
 
 const edgeTypes = { custom: CustomEdge }
-
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   draft:     { label: 'Rascunho',  color: '#6b7280', bg: '#f3f4f6' },
@@ -92,6 +92,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
   const [funnelStatus, setFunnelStatus] = useState(funnel.status)
   const [editingName, setEditingName] = useState(false)
   const [funnelName, setFunnelName] = useState(funnel.name)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   const showMsg = (text: string, ok: boolean) => {
     setStatusMsg({ text, ok })
@@ -103,6 +104,10 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
       setEdges((eds) => addEdge({ ...connection, type: 'custom', data: { condition: 'default' } }, eds)),
     [setEdges]
   )
+
+  const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    setSelectedNodeId((prev) => (prev === node.id ? null : node.id))
+  }, [])
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -119,7 +124,6 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
         message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda', entry: 'Entrada',
       }
       setNodes((nds) => {
-        // Enforce single entry block
         if (type === 'entry' && nds.some((n) => n.type === 'entry')) return nds
         const config = type === 'entry' ? { entry_type: 'link_utm', funnel_id: funnel.id } : {}
         return nds.concat({
@@ -130,7 +134,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
         })
       })
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, funnel.id]
   )
 
   const handleSave = useCallback(() => {
@@ -249,27 +253,40 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
           </div>
         </header>
 
-        {/* Canvas */}
-        <div className="flex-1">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            snapToGrid
-            snapGrid={[20, 20]}
-            fitView
-            deleteKeyCode="Delete"
-            defaultEdgeOptions={{ type: 'custom', data: { condition: 'default' } }}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={20} color="#e2e8f0" size={1.5} />
-            <Controls className="!shadow-md !rounded-xl !border !border-gray-200 !bg-white" />
-          </ReactFlow>
+        {/* Canvas + Config Panel */}
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onNodeClick={onNodeClick}
+              onPaneClick={() => setSelectedNodeId(null)}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              snapToGrid
+              snapGrid={[20, 20]}
+              fitView
+              deleteKeyCode="Delete"
+              defaultEdgeOptions={{ type: 'custom', data: { condition: 'default' } }}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={20} color="#e2e8f0" size={1.5} />
+              <Controls className="!shadow-md !rounded-xl !border !border-gray-200 !bg-white" />
+            </ReactFlow>
+          </div>
+
+          {selectedNodeId && (
+            <ConfigPanel
+              selectedNodeId={selectedNodeId}
+              nodes={nodes}
+              onClose={() => setSelectedNodeId(null)}
+              funnelId={funnel.id}
+            />
+          )}
         </div>
       </div>
     </div>

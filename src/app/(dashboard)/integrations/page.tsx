@@ -54,7 +54,7 @@ export default async function IntegrationsPage() {
               </svg>
             </div>
             <p className="text-gray-600 font-medium">Nenhuma instância WhatsApp</p>
-            <p className="text-sm text-gray-400 mt-1">Clique em "Nova Instância" para conectar seu WhatsApp</p>
+            <p className="text-sm text-gray-400 mt-1">Clique em &quot;Nova Instância&quot; para conectar seu WhatsApp</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -66,14 +66,14 @@ export default async function IntegrationsPage() {
       </div>
 
       {/* Email — coming soon */}
-      <div className="border border-gray-100 rounded-2xl p-5 bg-gray-50">
+      <div className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm">
         <div className="flex items-center gap-2 mb-1">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5 text-gray-400">
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
             <polyline points="22,6 12,13 2,6" />
           </svg>
           <h2 className="text-base font-semibold text-gray-400">E-mail via Resend</h2>
-          <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-medium">Em breve</span>
+          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">Em breve</span>
         </div>
         <p className="text-sm text-gray-400">Integração com Resend para envio de e-mails transacionais e sequências.</p>
       </div>

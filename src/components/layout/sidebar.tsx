@@ -49,14 +49,17 @@ export default function Sidebar({ displayName }: Props) {
   }, [])
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-[220px] bg-white border-r border-gray-100 flex flex-col z-30">
+    <aside
+      className="fixed inset-y-0 left-0 w-[220px] flex flex-col z-30 border-r border-white/5"
+      style={{ backgroundColor: '#111827' }}
+    >
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-gray-100">
-        <span className="font-bold text-indigo-600 text-lg tracking-tight">FunilPro</span>
+      <div className="px-5 py-5">
+        <span className="font-bold text-white text-lg tracking-tight">FunilPro</span>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
         {NAV.map(({ href, label, Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
@@ -65,13 +68,12 @@ export default function Sidebar({ displayName }: Props) {
               href={href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Icon
                 size={17}
-                className={active ? 'text-indigo-600' : 'text-gray-400'}
                 strokeWidth={active ? 2.5 : 2}
               />
               {label}
@@ -81,15 +83,15 @@ export default function Sidebar({ displayName }: Props) {
       </nav>
 
       {/* User footer */}
-      <div className="px-3 py-3 border-t border-gray-100" ref={dropdownRef}>
+      <div className="px-3 py-3 border-t border-white/5" ref={dropdownRef}>
         <button
           onClick={() => setDropdownOpen((v) => !v)}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors text-left"
         >
-          <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+          <div className="w-7 h-7 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-bold shrink-0">
             {initials || <User size={14} />}
           </div>
-          <span className="flex-1 text-sm font-medium text-gray-700 truncate">{displayName}</span>
+          <span className="flex-1 text-sm font-medium text-white truncate">{displayName}</span>
           <ChevronUp
             size={14}
             className={`text-gray-400 transition-transform ${dropdownOpen ? '' : 'rotate-180'}`}
@@ -97,11 +99,11 @@ export default function Sidebar({ displayName }: Props) {
         </button>
 
         {dropdownOpen && (
-          <div className="mt-1 bg-white border border-gray-100 rounded-xl shadow-lg overflow-hidden">
+          <div className="mt-1 bg-gray-800 border border-white/10 rounded-xl shadow-lg overflow-hidden">
             <Link
               href="/settings"
               onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors"
             >
               <User size={14} className="text-gray-400" />
               Perfil
@@ -109,7 +111,7 @@ export default function Sidebar({ displayName }: Props) {
             <form action={logout}>
               <button
                 type="submit"
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
               >
                 <LogOut size={14} />
                 Sair
