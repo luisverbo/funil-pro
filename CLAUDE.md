@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-29 — Etapas 1, 2, 3 e 4 concluídas
+**Última atualização:** 2026-05-30 — Etapas 1, 2, 3, 4 e 5 concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -487,12 +487,21 @@ APP_SECRET=
   - Handler delay: calcula delayMs (minutos/horas/dias) e passa para BullMQ
   - Handler tag: add/remove tags com fallback direto se RPC falhar
   - docker-compose.yml: serviço worker já configurado com `npx tsx src/server.ts`
+- Etapa 5: Integração WhatsApp Evolution API completa:
+  - `src/lib/evolution/index.ts` — funções: sendTextMessage, sendMediaMessage, createInstance, getInstanceQRCode, getInstanceStatus, deleteInstance, setInstanceWebhook
+  - `src/app/actions/whatsapp.ts` — server actions: createWhatsappInstance, deleteWhatsappInstance
+  - `src/app/api/whatsapp/[instanceId]/qrcode/route.ts` — endpoint GET para QR code
+  - `src/app/api/whatsapp/[instanceId]/status/route.ts` — endpoint GET para status (sincroniza DB)
+  - `src/app/api/webhooks/evolution/[instanceId]/route.ts` — webhook: processa CONNECTION_UPDATE, MESSAGES_UPSERT, grava evento 'replied', re-enfileira condition block
+  - `src/components/whatsapp/instance-card.tsx` — card com QR code, polling de status, badge animado
+  - `src/components/whatsapp/create-instance-button.tsx` — botão client-side com useTransition
+  - `src/app/(dashboard)/integrations/page.tsx` — página completa com lista de instâncias
 
 **Próximos passos:**
-- Etapa 5: Integração WhatsApp (Evolution API — envio + webhook recebimento)
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 7: Rastreamento UTM + lead_source
 - Etapa 8: Webhooks de pagamento (Hotmart, Kiwify, Eduzz, Yampi)
+
 
 ---
 
