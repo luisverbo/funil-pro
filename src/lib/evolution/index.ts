@@ -36,7 +36,7 @@ export async function createInstance(instanceName: string) {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-    body: JSON.stringify({ instanceName, qrcode: true }),
+    body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
   })
   if (!res.ok) throw new Error(`Evolution API error: ${res.status}`)
   return res.json()
