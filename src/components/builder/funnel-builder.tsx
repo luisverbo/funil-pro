@@ -30,6 +30,8 @@ import CartAbandonedNode from './nodes/cart-abandoned-node'
 import CustomEdge from './custom-edge'
 import BlockPalette from './block-palette'
 import ConfigPanel from './config-panel'
+import CapturePageEditor from './capture-page-editor'
+import LinksDrawer from './links-drawer'
 
 import { saveFunnel, publishFunnel } from '@/app/actions/funnels'
 import type { Funnel, FunnelBlock, FunnelEdge, FunnelNodeData, BlockDTO, EdgeDTO, BlockMetrics } from '@/types'
@@ -97,6 +99,8 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
   const [editingName, setEditingName] = useState(false)
   const [funnelName, setFunnelName] = useState(funnel.name)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [showCaptureEditor, setShowCaptureEditor] = useState(false)
+  const [showLinksDrawer, setShowLinksDrawer] = useState(false)
 
   const showMsg = (text: string, ok: boolean) => {
     setStatusMsg({ text, ok })
@@ -224,6 +228,27 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
               </span>
             )}
             <button
+              onClick={() => { setShowLinksDrawer(v => !v); setShowCaptureEditor(false) }}
+              className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              Links
+            </button>
+            <button
+              onClick={() => { setShowCaptureEditor(v => !v); setShowLinksDrawer(false) }}
+              className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              Captura
+            </button>
+            <button
               onClick={handleSave}
               disabled={isPending}
               className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 font-medium"
@@ -283,12 +308,24 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
             </ReactFlow>
           </div>
 
-          {selectedNodeId && (
+          {selectedNodeId && !showCaptureEditor && !showLinksDrawer && (
             <ConfigPanel
               selectedNodeId={selectedNodeId}
               nodes={nodes}
               onClose={() => setSelectedNodeId(null)}
               funnelId={funnel.id}
+            />
+          )}
+          {showCaptureEditor && (
+            <CapturePageEditor
+              funnelId={funnel.id}
+              onClose={() => setShowCaptureEditor(false)}
+            />
+          )}
+          {showLinksDrawer && (
+            <LinksDrawer
+              funnelId={funnel.id}
+              onClose={() => setShowLinksDrawer(false)}
             />
           )}
         </div>

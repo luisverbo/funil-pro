@@ -147,6 +147,37 @@ export async function publishFunnel(funnelId: string): Promise<{ success: boolea
   }
 }
 
+export async function saveCapturePageConfig(
+  funnelId: string,
+  config: { template: string; page_config: Record<string, unknown> }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+
+    const { data: funnel } = await supabase
+      .from('funnels')
+      .select('id')
+      .eq('id', funnelId)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    if (!funnel) return { success: false, error: 'Funil não encontrado' }
+
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('funnels')
+      .update({ page_template: config.template, page_config: config.page_config })
+      .eq('id', funnelId)
+
+    if (error) return { success: false, error: error.message }
+    revalidatePath(`/funnels/${funnelId}/builder`)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
 export async function deleteFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
   const supabase = await getSupabase()
   const tenantId = await getTenantId(supabase)
