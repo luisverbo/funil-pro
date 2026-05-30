@@ -1,9 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import type { Funnel } from '@/types'
+import type { Funnel, FunnelTemplate } from '@/types'
 import CreateFunnelDialog from '@/components/funnels/create-funnel-dialog'
 import FunnelsGrid from '@/components/funnels/funnels-grid'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -46,6 +47,15 @@ export default async function FunnelsPage() {
 
   const list = (funnels ?? []) as Funnel[]
 
+  const admin = createAdminClient()
+  const { data: tplData } = await admin
+    .from('funnel_templates')
+    .select('*')
+    .eq('is_public', true)
+    .order('downloads_count', { ascending: false })
+    .limit(6)
+  const popularTemplates = (tplData ?? []) as FunnelTemplate[]
+
   return (
     <div className="max-w-6xl mx-auto">
       {/* Page header */}
@@ -54,7 +64,7 @@ export default async function FunnelsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Funis</h1>
           <p className="text-sm text-gray-500 mt-1">Crie e gerencie seus funis de vendas</p>
         </div>
-        <CreateFunnelDialog />
+        <CreateFunnelDialog popularTemplates={popularTemplates} />
       </div>
 
       <FunnelsGrid initialFunnels={list} />
