@@ -38,7 +38,7 @@ export default function ConditionNode({ id, data, selected }: NodeProps) {
   }, [id, setNodes])
 
   const extraHandles = (
-    <div className="relative h-8 bg-white border-t border-gray-100">
+    <div className="relative h-8 bg-white border-t border-gray-100 rounded-b-xl">
       <div className="absolute inset-x-0 flex justify-between items-center px-6 h-full">
         <span className="text-xs font-semibold text-emerald-600">Sim ✓</span>
         <span className="text-xs font-semibold text-red-500">Não ✗</span>
@@ -47,15 +47,29 @@ export default function ConditionNode({ id, data, selected }: NodeProps) {
         type="source"
         position={Position.Bottom}
         id="yes"
-        style={{ left: '28%', bottom: -8, borderColor: '#10b981' }}
-        className="!w-4 !h-4 !bg-white !border-2 !rounded-full"
+        style={{
+          left: '28%',
+          bottom: -7,
+          width: 14,
+          height: 14,
+          background: 'white',
+          border: '2.5px solid #10b981',
+          borderRadius: '50%',
+        }}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         id="no"
-        style={{ left: '72%', bottom: -8, borderColor: '#ef4444' }}
-        className="!w-4 !h-4 !bg-white !border-2 !rounded-full"
+        style={{
+          left: '72%',
+          bottom: -7,
+          width: 14,
+          height: 14,
+          background: 'white',
+          border: '2.5px solid #ef4444',
+          borderRadius: '50%',
+        }}
       />
     </div>
   )

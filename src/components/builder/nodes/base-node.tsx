@@ -33,18 +33,24 @@ export default function BaseNode({
       className="rounded-xl transition-all duration-150"
       style={{
         width: 220,
-        border: selected ? `2px solid #6366f1` : '2px solid transparent',
+        border: selected ? `2px solid #6366f1` : `2px solid ${headerColor}22`,
         boxShadow: selected
           ? '0 0 0 3px rgba(99,102,241,0.15), 0 4px 16px rgba(0,0,0,0.10)'
           : '0 2px 12px rgba(0,0,0,0.08)',
       }}
     >
-      {/* Target handle (input — top) */}
+      {/* Target handle (input — top center) — NO negative positioning, React Flow manages it */}
       <Handle
         type="target"
         position={Position.Top}
-        className="!w-4 !h-4 !bg-white !border-2 !rounded-full !-top-2"
-        style={{ borderColor: headerColor }}
+        style={{
+          width: 14,
+          height: 14,
+          background: 'white',
+          border: `2.5px solid ${headerColor}`,
+          borderRadius: '50%',
+          top: -7,
+        }}
       />
 
       {/* Header */}
@@ -75,16 +81,22 @@ export default function BaseNode({
         {children}
       </div>
 
-      {/* Extra handles (for condition node dual outputs) */}
+      {/* Extra handles (condition node dual outputs) */}
       {extraHandles}
 
-      {/* Default source handle (output — bottom) */}
+      {/* Default source handle (output — bottom center) */}
       {!hideSourceHandle && !extraHandles && (
         <Handle
           type="source"
           position={Position.Bottom}
-          className="!w-4 !h-4 !bg-white !border-2 !rounded-full !-bottom-2"
-          style={{ borderColor: headerColor }}
+          style={{
+            width: 14,
+            height: 14,
+            background: 'white',
+            border: `2.5px solid ${headerColor}`,
+            borderRadius: '50%',
+            bottom: -7,
+          }}
         />
       )}
     </div>

@@ -8,7 +8,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
+
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -41,13 +41,6 @@ const nodeTypes = {
 
 const edgeTypes = { custom: CustomEdge }
 
-const NODE_COLORS: Record<string, string> = {
-  message: '#0ea5e9',
-  condition: '#f59e0b',
-  delay: '#8b5cf6',
-  tag: '#10b981',
-  sale: '#f97316',
-}
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   draft:     { label: 'Rascunho',  color: '#6b7280', bg: '#f3f4f6' },
@@ -266,11 +259,6 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
           >
             <Background variant={BackgroundVariant.Dots} gap={20} color="#e2e8f0" size={1.5} />
             <Controls className="!shadow-md !rounded-xl !border !border-gray-200 !bg-white" />
-            <MiniMap
-              nodeColor={(node) => NODE_COLORS[node.type ?? ''] ?? '#94a3b8'}
-              className="!rounded-xl !border !border-gray-200 !shadow-md"
-              maskColor="rgba(241,245,249,0.8)"
-            />
           </ReactFlow>
         </div>
       </div>
