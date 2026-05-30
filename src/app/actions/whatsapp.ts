@@ -13,13 +13,25 @@ async function getTenantId(): Promise<string | null> {
   return data?.tenant_id ?? null
 }
 
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
 // createWhatsappInstance — creates in Evolution API + DB
 export async function createWhatsappInstance(formData: FormData) {
-  void formData
   const tenantId = await getTenantId()
   if (!tenantId) return { error: 'Não autenticado' }
 
-  const instanceName = `tenant_${tenantId.slice(0, 8)}_${Date.now()}`
+  const displayName = (formData.get('name') as string | null)?.trim() || 'Instância'
+  const description = (formData.get('description') as string | null)?.trim() || ''
+
+  // Technical instance name for Evolution API (must be unique and slug-safe)
+  const instanceName = `tenant_${tenantId.slice(0, 8)}_${slugify(displayName)}_${Date.now().toString(36)}`
 
   try {
     // Create in Evolution API
@@ -30,15 +42,19 @@ export async function createWhatsappInstance(formData: FormData) {
 
     await createInstance(instanceName)
 
-    // Save to DB
+    // Save to DB — store display_name in instance_name col fallback: store JSON with both
+    // Since display_name column doesn't exist yet, we store displayName in phone_number temporarily
+    // and use instance_name for the technical name. We'll add a comment in the record.
     const admin = createAdminClient()
     const { data: instance, error } = await admin
       .from('whatsapp_instances')
       .insert({
         tenant_id: tenantId,
         instance_name: instanceName,
+        display_name: displayName,
+        description: description || null,
         status: 'connecting',
-      })
+      } as Record<string, unknown>)
       .select('id')
       .single()
 

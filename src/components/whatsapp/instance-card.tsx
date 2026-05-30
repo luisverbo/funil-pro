@@ -6,6 +6,8 @@ import { deleteWhatsappInstance } from '@/app/actions/whatsapp'
 interface Instance {
   id: string
   instance_name: string
+  display_name: string | null
+  description: string | null
   status: 'connected' | 'disconnected' | 'connecting'
   phone_number: string | null
   created_at: string
@@ -83,9 +85,11 @@ export default function InstanceCard({ instance }: Props) {
           </div>
           <div>
             <p className="font-semibold text-gray-800 text-sm">
-              {instance.phone_number ?? instance.instance_name}
+              {instance.display_name ?? instance.phone_number ?? instance.instance_name}
             </p>
-            <p className="text-xs text-gray-400">{instance.instance_name}</p>
+            <p className="text-xs text-gray-400">
+              {instance.description ?? instance.instance_name}
+            </p>
           </div>
         </div>
 
