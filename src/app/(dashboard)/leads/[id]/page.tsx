@@ -3,7 +3,12 @@ import { cookies } from 'next/headers'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, User, Phone, Mail, Tag } from 'lucide-react'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Lead, LeadSource, LeadEvent } from '@/types'
+
+function fmtBRL(cents: number) {
+  return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -178,6 +183,46 @@ export default async function LeadDetailPage({
   const typedEvents = (events ?? []) as LeadEvent[]
   const st = statusConfig[typedLead.status] ?? statusConfig.active
 
+  // Revenue enrichment
+  const purchaseEvents = typedEvents.filter((e) =>
+    e.event_type === 'purchased' || e.event_type === 'purchased_order_bump' || e.event_type === 'purchased_upsell'
+  )
+  const totalRevenue = purchaseEvents.reduce((s, e) => s + (e.revenue_cents ?? 0), 0)
+
+  // Ad revenue contribution (if lead has utm_ad_id)
+  let adTotalRevenue = 0
+  let adRevenueContribution: number | null = null
+  if (typedSource?.utm_ad_id && totalRevenue > 0) {
+    const admin = createAdminClient()
+    const { data: adEventsRaw } = await admin
+      .from('lead_events')
+      .select('revenue_cents')
+      .eq('tenant_id', userTenant.tenant_id)
+      .or('event_type.eq.purchased,event_type.eq.purchased_order_bump,event_type.eq.purchased_upsell')
+
+    // Get all leads with same utm_ad_id
+    const { data: sameAdSources } = await admin
+      .from('lead_sources')
+      .select('lead_id')
+      .eq('utm_ad_id', typedSource.utm_ad_id)
+
+    const sameAdLeadIds = (sameAdSources ?? []).map((s: { lead_id: string }) => s.lead_id)
+
+    if (sameAdLeadIds.length > 0) {
+      const { data: adRevEventsRaw } = await admin
+        .from('lead_events')
+        .select('revenue_cents')
+        .eq('tenant_id', userTenant.tenant_id)
+        .in('lead_id', sameAdLeadIds)
+        .or('event_type.eq.purchased,event_type.eq.purchased_order_bump,event_type.eq.purchased_upsell')
+
+      adTotalRevenue = (adRevEventsRaw ?? []).reduce((s: number, e: { revenue_cents: number | null }) => s + (e.revenue_cents ?? 0), 0)
+      if (adTotalRevenue > 0) {
+        adRevenueContribution = (totalRevenue / adTotalRevenue) * 100
+      }
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
@@ -283,6 +328,38 @@ export default async function LeadDetailPage({
           {!typedSource.utm_source && !typedSource.utm_campaign && !typedSource.utm_ad_id && (
             <p className="text-sm text-gray-400">Nenhum dado de UTM registrado para este lead.</p>
           )}
+        </div>
+      )}
+
+      {/* Revenue card */}
+      {totalRevenue > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-5">
+          <h2 className="font-semibold text-gray-900 mb-4">Receita Gerada</h2>
+          <div className="flex items-center gap-4 mb-4">
+            <div>
+              <p className="text-2xl font-bold text-emerald-700">{fmtBRL(totalRevenue)}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{purchaseEvents.length} evento{purchaseEvents.length !== 1 ? 's' : ''} de compra</p>
+            </div>
+            {adRevenueContribution !== null && (
+              <div className="ml-6 pl-6 border-l border-gray-100">
+                <p className="text-sm font-semibold text-gray-700">{adRevenueContribution.toFixed(1)}%</p>
+                <p className="text-xs text-gray-400 mt-0.5">da receita do anúncio ({fmtBRL(adTotalRevenue)})</p>
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            {purchaseEvents.map((ev) => (
+              <div key={ev.id} className="flex items-center justify-between text-sm">
+                <div>
+                  <span className="text-gray-700">{ev.product_name ?? 'Produto não identificado'}</span>
+                  {ev.platform && (
+                    <span className="ml-2 text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{ev.platform}</span>
+                  )}
+                </div>
+                <span className="font-semibold text-emerald-700">{fmtBRL(ev.revenue_cents ?? 0)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

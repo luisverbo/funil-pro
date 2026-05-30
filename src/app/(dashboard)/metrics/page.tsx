@@ -1,33 +1,55 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { AdMetric } from '@/types'
+import LeadsChart from '@/components/metrics/leads-chart'
+import FunnelChart from '@/components/metrics/funnel-chart'
+import FunnelFilter from '@/components/metrics/funnel-filter'
 
 function fmtBRL(cents: number) {
   return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function fmtROAS(roas: number) {
-  return `${roas.toFixed(2)}x`
+function getPeriodDates(period: string, from?: string, to?: string): { since: string; until: string } {
+  const now = new Date()
+  const until = now.toISOString().split('T')[0]
+  if (period === 'today') return { since: until, until }
+  if (period === '7d') {
+    const d = new Date(now)
+    d.setDate(d.getDate() - 7)
+    return { since: d.toISOString().split('T')[0], until }
+  }
+  if (period === 'custom' && from && to) return { since: from, until: to }
+  const d = new Date(now)
+  d.setDate(d.getDate() - 30)
+  return { since: d.toISOString().split('T')[0], until }
 }
 
-const PLATFORM_LABELS: Record<string, string> = {
-  hotmart: 'Hotmart',
-  kiwify: 'Kiwify',
-  eduzz: 'Eduzz',
-  yampi: 'Yampi',
-  internal: 'Interno',
+const eventLabels: Record<string, string> = {
+  entered_funnel: 'Entrou no funil',
+  message_sent: 'Mensagem enviada',
+  message_opened: 'Mensagem aberta',
+  message_clicked: 'Link clicado',
+  replied: 'Respondeu',
+  purchased: 'Compra realizada',
+  purchased_order_bump: 'Order Bump',
+  purchased_upsell: 'Upsell',
+  tag_added: 'Tag adicionada',
+  agent_activated: 'Agente IA ativado',
+  funnel_completed: 'Funil concluído',
 }
 
-const PLATFORM_COLORS: Record<string, string> = {
-  hotmart: 'bg-orange-100 text-orange-700',
-  kiwify: 'bg-purple-100 text-purple-700',
-  eduzz: 'bg-blue-100 text-blue-700',
-  yampi: 'bg-green-100 text-green-700',
-  internal: 'bg-gray-100 text-gray-600',
-}
+export default async function MetricsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string>>
+}) {
+  const sp = await searchParams
+  const period = sp.period ?? '30d'
+  const funnelId = sp.funnel_id ?? ''
 
-export default async function MetricsPage() {
+  const { since, until } = getPeriodDates(period, sp.from, sp.to)
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -43,415 +65,372 @@ export default async function MetricsPage() {
   const admin = createAdminClient()
   const tenantId = ut.tenant_id
 
-  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  // Fetch all funnels for dropdown
+  const { data: funnelsRaw } = await admin
+    .from('funnels')
+    .select('id, name, status')
+    .eq('tenant_id', tenantId)
+    .order('name')
 
-  const [{ data: purchaseEvents }, { data: adMetricsRaw }, { data: tenantData }] = await Promise.all([
-    admin
-      .from('lead_events')
-      .select('event_type, revenue_cents, product_name, platform, event_data')
-      .eq('tenant_id', tenantId)
-      .or('event_type.eq.purchased,event_type.eq.purchased_order_bump,event_type.eq.purchased_upsell'),
-    admin
-      .from('ad_metrics')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .gte('date', since30)
-      .order('date', { ascending: false }),
-    admin
-      .from('tenants')
-      .select('meta_access_token, meta_ad_account_id')
-      .eq('id', tenantId)
-      .single(),
-  ])
+  const funnels = (funnelsRaw ?? []) as Array<{ id: string; name: string; status: string }>
 
-  const events = (purchaseEvents ?? []) as Array<{
-    event_type: string
-    revenue_cents: number | null
-    product_name: string | null
-    platform: string | null
-    event_data: Record<string, unknown> | null
+  // Build lead query with optional funnel filter
+  let leadsQuery = admin
+    .from('leads')
+    .select('id, name, phone, email, status, current_block_id, funnel_id, created_at')
+    .eq('tenant_id', tenantId)
+    .gte('created_at', since)
+    .lte('created_at', until + 'T23:59:59.999Z')
+    .order('created_at', { ascending: false })
+
+  if (funnelId) leadsQuery = leadsQuery.eq('funnel_id', funnelId)
+
+  const { data: leadsRaw } = await leadsQuery
+  const leads = (leadsRaw ?? []) as Array<{
+    id: string
+    name: string | null
+    phone: string | null
+    email: string | null
+    status: string
+    current_block_id: string | null
+    funnel_id: string
+    created_at: string
   }>
 
-  // Calculate revenue totals
-  let totalRevenue = 0
-  let funnelRevenue = 0
-  let organicRevenue = 0
-  let orderBumpRevenue = 0
-  const productsMap = new Map<string, { count: number; revenue: number; platform: string }>()
+  // Count active leads (all time)
+  let activeQuery = admin
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+  if (funnelId) activeQuery = activeQuery.eq('funnel_id', funnelId)
+  const { count: activeCount } = await activeQuery
 
-  for (const e of events) {
-    const revenue = e.revenue_cents ?? 0
-    totalRevenue += revenue
+  // Purchase events in period
+  let purchaseQuery = admin
+    .from('lead_events')
+    .select('lead_id, revenue_cents, created_at')
+    .eq('tenant_id', tenantId)
+    .or('event_type.eq.purchased,event_type.eq.purchased_order_bump,event_type.eq.purchased_upsell')
+    .gte('created_at', since)
+    .lte('created_at', until + 'T23:59:59.999Z')
+  if (funnelId) purchaseQuery = purchaseQuery.eq('funnel_id', funnelId)
+  const { data: purchaseEventsRaw } = await purchaseQuery
+  const purchaseEvents = (purchaseEventsRaw ?? []) as Array<{ lead_id: string; revenue_cents: number | null; created_at: string }>
 
-    const attribution = (e.event_data as Record<string, unknown> | null)?.attribution as string | undefined
-    const withinFunnel = (e.event_data as Record<string, unknown> | null)?.within_funnel
+  const uniqueBuyers = new Set(purchaseEvents.map((e) => e.lead_id)).size
+  const totalRevenue = purchaseEvents.reduce((s, e) => s + (e.revenue_cents ?? 0), 0)
 
-    if (withinFunnel === true || withinFunnel === 'true') funnelRevenue += revenue
-    if (attribution === 'organic') organicRevenue += revenue
-    if (e.event_type === 'purchased_order_bump' || e.event_type === 'purchased_upsell') orderBumpRevenue += revenue
+  // Ad metrics summary
+  let adQuery = admin
+    .from('ad_metrics')
+    .select('spend_cents, leads_count, revenue_cents')
+    .eq('tenant_id', tenantId)
+    .gte('date', since)
+    .lte('date', until)
+  const { data: adMetricsRaw } = await adQuery
+  const adMetrics = (adMetricsRaw ?? []) as Array<{ spend_cents: number; leads_count: number; revenue_cents: number }>
 
-    if (e.product_name) {
-      const existing = productsMap.get(e.product_name)
-      if (existing) {
-        existing.count++
-        existing.revenue += revenue
-      } else {
-        productsMap.set(e.product_name, { count: 1, revenue, platform: e.platform ?? 'internal' })
-      }
-    }
-  }
-
-  const topProducts = Array.from(productsMap.entries())
-    .sort((a, b) => b[1].revenue - a[1].revenue)
-    .slice(0, 10)
-    .map(([name, stats]) => ({ name, ...stats }))
-
-  const hasRevenueData = events.length > 0
-
-  // Process ad metrics
-  const adMetrics = (adMetricsRaw ?? []) as AdMetric[]
-  const hasMetaConnected = !!tenantData?.meta_access_token && !!tenantData?.meta_ad_account_id
-  const hasAdData = adMetrics.length > 0
-
-  // Aggregate totals
-  let totalSpend = 0
-  let totalLeadsMeta = 0
-  let totalRevenueMeta = 0
-
+  let totalSpend = 0, totalLeadsMeta = 0, totalRevenueMeta = 0
   for (const m of adMetrics) {
     totalSpend += m.spend_cents
     totalLeadsMeta += m.leads_count
     totalRevenueMeta += m.revenue_cents
   }
-
   const avgCPL = totalLeadsMeta > 0 ? Math.round(totalSpend / totalLeadsMeta) : 0
   const avgROAS = totalSpend > 0 ? totalRevenueMeta / totalSpend : 0
 
-  // Group by campaign
-  const campaignMap = new Map<string, { spend: number; leads: number; revenue: number }>()
-  for (const m of adMetrics) {
-    const key = m.campaign_name ?? m.campaign_id ?? 'Sem campanha'
-    const existing = campaignMap.get(key)
-    if (existing) {
-      existing.spend += m.spend_cents
-      existing.leads += m.leads_count
-      existing.revenue += m.revenue_cents
-    } else {
-      campaignMap.set(key, { spend: m.spend_cents, leads: m.leads_count, revenue: m.revenue_cents })
-    }
+  // Leads per day for chart
+  const leadsPerDay = new Map<string, number>()
+  for (const lead of leads) {
+    const day = lead.created_at.split('T')[0]
+    leadsPerDay.set(day, (leadsPerDay.get(day) ?? 0) + 1)
   }
-  const campaigns = Array.from(campaignMap.entries())
-    .map(([name, stats]) => ({ name, ...stats }))
-    .sort((a, b) => b.spend - a.spend)
 
-  // Group by ad (most recent row per ad_id)
-  const adMap = new Map<string, AdMetric & { totalSpend: number; totalLeads: number; totalRevenue: number }>()
-  for (const m of adMetrics) {
-    const existing = adMap.get(m.ad_id)
-    if (existing) {
-      existing.totalSpend += m.spend_cents
-      existing.totalLeads += m.leads_count
-      existing.totalRevenue += m.revenue_cents
-    } else {
-      adMap.set(m.ad_id, { ...m, totalSpend: m.spend_cents, totalLeads: m.leads_count, totalRevenue: m.revenue_cents })
+  const purchasesPerDay = new Map<string, number>()
+  for (const ev of purchaseEvents) {
+    const day = ev.created_at.split('T')[0]
+    purchasesPerDay.set(day, (purchasesPerDay.get(day) ?? 0) + 1)
+  }
+
+  // Build date range for chart
+  const chartData: Array<{ date: string; leads: number; purchases: number }> = []
+  const startDate = new Date(since)
+  const endDate = new Date(until)
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().split('T')[0]
+    chartData.push({
+      date: key,
+      leads: leadsPerDay.get(key) ?? 0,
+      purchases: purchasesPerDay.get(key) ?? 0,
+    })
+  }
+
+  // Conversion funnel data (only if funnel selected)
+  let funnelSteps: Array<{ blockId: string; label: string; blockType: string; count: number }> = []
+  if (funnelId) {
+    const { data: blocksRaw } = await admin
+      .from('funnel_blocks')
+      .select('id, label, block_type, position_y')
+      .eq('funnel_id', funnelId)
+      .order('position_y')
+
+    const blocks = (blocksRaw ?? []) as Array<{ id: string; label: string; block_type: string; position_y: number }>
+
+    if (blocks.length > 0) {
+      // Count leads at each block
+      const blockIds = blocks.map((b) => b.id)
+      const { data: blockLeadsRaw } = await admin
+        .from('leads')
+        .select('current_block_id')
+        .eq('tenant_id', tenantId)
+        .eq('funnel_id', funnelId)
+        .in('current_block_id', blockIds)
+
+      const blockLeadCounts = new Map<string, number>()
+      for (const row of (blockLeadsRaw ?? [])) {
+        if (row.current_block_id) {
+          blockLeadCounts.set(row.current_block_id, (blockLeadCounts.get(row.current_block_id) ?? 0) + 1)
+        }
+      }
+
+      funnelSteps = blocks.map((b) => ({
+        blockId: b.id,
+        label: b.label,
+        blockType: b.block_type,
+        count: blockLeadCounts.get(b.id) ?? 0,
+      })).filter((s) => s.count > 0)
     }
   }
-  const ads = Array.from(adMap.values())
-    .sort((a, b) => {
-      const roasA = a.totalSpend > 0 ? a.totalRevenue / a.totalSpend : 0
-      const roasB = b.totalSpend > 0 ? b.totalRevenue / b.totalSpend : 0
-      return roasB - roasA
-    })
-    .slice(0, 20)
+
+  // Recent leads enrichment
+  const recentLeads = leads.slice(0, 20)
+  const leadIds = recentLeads.map((l) => l.id)
+
+  let sourcesMap = new Map<string, string>()
+  let lastEventMap = new Map<string, { event_type: string; created_at: string }>()
+  let revenueMap = new Map<string, number>()
+
+  if (leadIds.length > 0) {
+    const { data: sourcesRaw } = await admin
+      .from('lead_sources')
+      .select('lead_id, utm_source')
+      .in('lead_id', leadIds)
+
+    for (const s of (sourcesRaw ?? [])) {
+      if (s.utm_source) sourcesMap.set(s.lead_id, s.utm_source)
+    }
+
+    // Last event per lead
+    const { data: lastEventsRaw } = await admin
+      .from('lead_events')
+      .select('lead_id, event_type, created_at')
+      .eq('tenant_id', tenantId)
+      .in('lead_id', leadIds)
+      .order('created_at', { ascending: false })
+
+    const seen = new Set<string>()
+    for (const ev of (lastEventsRaw ?? [])) {
+      if (!seen.has(ev.lead_id)) {
+        seen.add(ev.lead_id)
+        lastEventMap.set(ev.lead_id, { event_type: ev.event_type, created_at: ev.created_at })
+      }
+    }
+
+    // Revenue per lead
+    const { data: revEventsRaw } = await admin
+      .from('lead_events')
+      .select('lead_id, revenue_cents')
+      .eq('tenant_id', tenantId)
+      .in('lead_id', leadIds)
+      .or('event_type.eq.purchased,event_type.eq.purchased_order_bump,event_type.eq.purchased_upsell')
+
+    for (const ev of (revEventsRaw ?? [])) {
+      revenueMap.set(ev.lead_id, (revenueMap.get(ev.lead_id) ?? 0) + (ev.revenue_cents ?? 0))
+    }
+  }
+
+  const periodLabels: Record<string, string> = {
+    today: 'Hoje',
+    '7d': '7 dias',
+    '30d': '30 dias',
+  }
+
+  const statusConfig: Record<string, { label: string; className: string }> = {
+    active: { label: 'Ativo', className: 'bg-indigo-50 text-indigo-700' },
+    converted: { label: 'Convertido', className: 'bg-emerald-50 text-emerald-700' },
+    unsubscribed: { label: 'Descadastrado', className: 'bg-gray-100 text-gray-600' },
+    lost: { label: 'Perdido', className: 'bg-red-50 text-red-700' },
+  }
 
   return (
     <div className="max-w-5xl">
-      {/* Page header */}
-      <div className="mb-8">
+      {/* Header */}
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Métricas</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Visão geral de receita e desempenho dos seus funis</p>
+        <p className="text-sm text-gray-500 mt-0.5">Visão geral de desempenho dos seus funis</p>
       </div>
 
-      {/* Revenue section */}
-      {!hasRevenueData ? (
-        <div className="bg-white border border-gray-200 rounded-2xl p-16 text-center mb-8">
-          <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 text-gray-400">
-              <line x1="12" y1="1" x2="12" y2="23" />
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          </div>
-          <p className="text-gray-600 font-semibold">Nenhuma venda registrada ainda</p>
-          <p className="text-sm text-gray-400 mt-1 max-w-xs mx-auto">
-            As métricas aparecerão aqui quando seus funis receberem as primeiras compras via Hotmart, Kiwify, Eduzz ou Yampi.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Revenue Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-medium text-gray-500">Receita Total</p>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5 text-indigo-500">
-                  <line x1="12" y1="1" x2="12" y2="23" />
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
-              </div>
-              <p className="text-xl font-bold text-gray-900">{fmtBRL(totalRevenue)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{events.length} venda{events.length !== 1 ? 's' : ''}</p>
-            </div>
+      {/* Sub-nav */}
+      <div className="flex gap-6 border-b border-gray-200 mb-6 text-sm font-medium">
+        <Link href="/metrics" className="pb-2.5 border-b-2 border-indigo-600 text-indigo-600">
+          Visão Geral
+        </Link>
+        <Link href="/metrics/funnels" className="pb-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+          Por Funil
+        </Link>
+        <Link href="/metrics/ads" className="pb-2.5 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+          Anúncios
+        </Link>
+      </div>
 
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-medium text-gray-500">Receita do Funil</p>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5 text-emerald-500">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                </svg>
-              </div>
-              <p className="text-xl font-bold text-emerald-700">{fmtBRL(funnelRevenue)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {totalRevenue > 0 ? `${Math.round((funnelRevenue / totalRevenue) * 100)}% do total` : '0%'}
-              </p>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-medium text-gray-500">Receita Orgânica</p>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5 text-blue-500">
-                  <path d="M12 22V12M12 12C12 6 6 3 3 3c0 3 3 9 9 9zM12 12c0-6 6-9 9-9 0 3-3 9-9 9" />
-                </svg>
-              </div>
-              <p className="text-xl font-bold text-blue-700">{fmtBRL(organicRevenue)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {totalRevenue > 0 ? `${Math.round((organicRevenue / totalRevenue) * 100)}% do total` : '0%'}
-              </p>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-medium text-gray-500">Order Bumps & Upsells</p>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5 text-orange-500">
-                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-                  <polyline points="17 6 23 6 23 12" />
-                </svg>
-              </div>
-              <p className="text-xl font-bold text-orange-700">{fmtBRL(orderBumpRevenue)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {totalRevenue > 0 ? `${Math.round((orderBumpRevenue / totalRevenue) * 100)}% do total` : '0%'}
-              </p>
-            </div>
-          </div>
-
-          {/* Top Products Table */}
-          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-800">Produtos mais vendidos</h2>
-            </div>
-            {topProducts.length === 0 ? (
-              <div className="px-6 py-10 text-center text-gray-400 text-sm">
-                Nenhum produto identificado ainda
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Produto</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Vendas</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Receita</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Plataforma</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topProducts.map((p, i) => (
-                      <tr key={p.name} className={i < topProducts.length - 1 ? 'border-b border-gray-100' : ''}>
-                        <td className="px-6 py-3.5">
-                          <p className="font-medium text-gray-800 truncate max-w-[200px]">{p.name}</p>
-                        </td>
-                        <td className="px-6 py-3.5 text-right text-gray-600 font-medium">{p.count}</td>
-                        <td className="px-6 py-3.5 text-right font-semibold text-gray-800">{fmtBRL(p.revenue)}</td>
-                        <td className="px-6 py-3.5">
-                          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${PLATFORM_COLORS[p.platform] ?? 'bg-gray-100 text-gray-600'}`}>
-                            {PLATFORM_LABELS[p.platform] ?? p.platform}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Meta Ads section */}
-      <div className="mb-2">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-xs">
-              f
-            </div>
-            <h2 className="text-base font-semibold text-gray-800">Meta Ads</h2>
-            <span className="text-xs text-gray-400 font-normal">últimos 30 dias</span>
-          </div>
-          {hasMetaConnected && (
-            <a
-              href="/api/meta/sync"
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex rounded-lg border border-gray-200 bg-white overflow-hidden text-sm">
+          {(['today', '7d', '30d'] as const).map((p) => (
+            <Link
+              key={p}
+              href={`/metrics?period=${p}${funnelId ? `&funnel_id=${funnelId}` : ''}`}
+              className={`px-4 py-2 font-medium transition-colors ${
+                period === p
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              Sincronizar
-            </a>
-          )}
+              {periodLabels[p]}
+            </Link>
+          ))}
+        </div>
+
+        <FunnelFilter funnels={funnels} currentFunnelId={funnelId} />
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 mb-1">Leads no período</p>
+          <p className="text-2xl font-bold text-gray-900">{leads.length.toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{since} → {until}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 mb-1">Compradores</p>
+          <p className="text-2xl font-bold text-emerald-700">{uniqueBuyers.toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {leads.length > 0 ? `${((uniqueBuyers / leads.length) * 100).toFixed(1)}% conversão` : '—'}
+          </p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 mb-1">Receita</p>
+          <p className="text-2xl font-bold text-gray-900">{fmtBRL(totalRevenue)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{purchaseEvents.length} evento{purchaseEvents.length !== 1 ? 's' : ''} de compra</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 mb-1">Leads Ativos</p>
+          <p className="text-2xl font-bold text-indigo-700">{(activeCount ?? 0).toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">em andamento agora</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 mb-1">CPL Médio</p>
+          <p className="text-2xl font-bold text-gray-900">{totalLeadsMeta > 0 ? fmtBRL(avgCPL) : '—'}</p>
+          <p className="text-xs text-gray-400 mt-0.5">custo por lead (Meta)</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 mb-1">ROAS Médio</p>
+          <p className={`text-2xl font-bold ${totalSpend > 0 ? (avgROAS >= 1 ? 'text-emerald-700' : 'text-red-600') : 'text-gray-900'}`}>
+            {totalSpend > 0 ? `${avgROAS.toFixed(2)}x` : '—'}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">retorno sobre gasto</p>
         </div>
       </div>
 
-      {!hasMetaConnected ? (
-        <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-10 text-center">
-          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">f</div>
-          </div>
-          <p className="text-gray-600 font-medium text-sm mb-1">Meta Ads não conectado</p>
-          <p className="text-xs text-gray-400 mb-3">Conecte o Meta Ads em Integrações para ver métricas de anúncios, CPL e ROAS.</p>
-          <a
-            href="/integrations"
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 rounded-lg px-3 py-1.5 transition-colors"
-          >
-            Ir para Integrações
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
-          </a>
-        </div>
-      ) : !hasAdData ? (
-        <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-10 text-center">
-          <p className="text-gray-500 font-medium text-sm">Nenhum dado de anúncio nos últimos 30 dias</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Clique em &quot;Sincronizar&quot; acima para importar dados do Meta Ads agora.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Meta Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-medium text-gray-500 mb-2">Total Gasto</p>
-              <p className="text-xl font-bold text-gray-900">{fmtBRL(totalSpend)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">no período</p>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-medium text-gray-500 mb-2">Total Leads</p>
-              <p className="text-xl font-bold text-gray-900">{totalLeadsMeta.toLocaleString('pt-BR')}</p>
-              <p className="text-xs text-gray-400 mt-0.5">via anúncios Meta</p>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-medium text-gray-500 mb-2">CPL Médio</p>
-              <p className="text-xl font-bold text-gray-900">{fmtBRL(avgCPL)}</p>
-              <p className="text-xs text-gray-400 mt-0.5">custo por lead</p>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-medium text-gray-500 mb-2">ROAS Médio</p>
-              <p className={`text-xl font-bold ${avgROAS >= 1 ? 'text-emerald-700' : 'text-red-600'}`}>
-                {fmtROAS(avgROAS)}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">retorno sobre gasto</p>
-            </div>
-          </div>
+      {/* Chart */}
+      <div className="mb-6">
+        <LeadsChart data={chartData} />
+      </div>
 
-          {/* Campaigns Table */}
-          {campaigns.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-6">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-800">Por Campanha</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Campanha</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Gasto</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Leads</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">CPL</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Receita</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">ROAS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {campaigns.map((c, i) => {
-                      const cpl = c.leads > 0 ? Math.round(c.spend / c.leads) : 0
-                      const roas = c.spend > 0 ? c.revenue / c.spend : 0
-                      return (
-                        <tr key={c.name} className={i < campaigns.length - 1 ? 'border-b border-gray-100' : ''}>
-                          <td className="px-6 py-3.5 font-medium text-gray-800 max-w-[200px] truncate">{c.name}</td>
-                          <td className="px-6 py-3.5 text-right text-gray-600">{fmtBRL(c.spend)}</td>
-                          <td className="px-6 py-3.5 text-right text-gray-600">{c.leads.toLocaleString('pt-BR')}</td>
-                          <td className="px-6 py-3.5 text-right text-gray-600">{cpl > 0 ? fmtBRL(cpl) : '—'}</td>
-                          <td className="px-6 py-3.5 text-right font-semibold text-gray-800">{fmtBRL(c.revenue)}</td>
-                          <td className={`px-6 py-3.5 text-right font-semibold ${roas >= 1 ? 'text-emerald-700' : 'text-red-600'}`}>
-                            {fmtROAS(roas)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+      {/* Funnel drop-off */}
+      <div className="mb-6">
+        {funnelId ? (
+          <FunnelChart steps={funnelSteps} />
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-800 mb-2">Drop-off por Etapa</h3>
+            <p className="text-sm text-gray-400">Selecione um funil no filtro acima para ver o drop-off por etapa.</p>
+          </div>
+        )}
+      </div>
 
-          {/* Ads Table */}
-          {ads.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-800">Por Anúncio — ordenado por ROAS</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Anúncio</th>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500">Campanha</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Gasto</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Leads</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">CPL</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">Receita</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500">ROAS</th>
+      {/* Recent leads table */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-800">Leads Recentes</h2>
+        </div>
+        {recentLeads.length === 0 ? (
+          <div className="px-6 py-12 text-center text-sm text-gray-400">
+            Nenhum lead no período selecionado
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Nome</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Telefone</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Origem</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Status</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Último evento</th>
+                  <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500">Valor</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500">Entrada</th>
+                  <th className="px-5 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {recentLeads.map((lead) => {
+                  const st = statusConfig[lead.status] ?? statusConfig.active
+                  const lastEv = lastEventMap.get(lead.id)
+                  const rev = revenueMap.get(lead.id) ?? 0
+                  const utmSource = sourcesMap.get(lead.id)
+                  return (
+                    <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3.5 font-medium text-gray-900">{lead.name ?? '—'}</td>
+                      <td className="px-5 py-3.5 text-gray-600">{lead.phone ?? '—'}</td>
+                      <td className="px-5 py-3.5">
+                        {utmSource ? (
+                          <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{utmSource}</span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${st.className}`}>
+                          {st.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-500 text-xs">
+                        {lastEv ? (eventLabels[lastEv.event_type] ?? lastEv.event_type) : '—'}
+                      </td>
+                      <td className="px-5 py-3.5 text-right font-semibold text-gray-800">
+                        {rev > 0 ? fmtBRL(rev) : '—'}
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-500 text-xs">
+                        {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <Link
+                          href={`/leads/${lead.id}`}
+                          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                        >
+                          Ver →
+                        </Link>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {ads.map((a, i) => {
-                      const cpl = a.totalLeads > 0 ? Math.round(a.totalSpend / a.totalLeads) : 0
-                      const roas = a.totalSpend > 0 ? a.totalRevenue / a.totalSpend : 0
-                      return (
-                        <tr key={a.ad_id} className={i < ads.length - 1 ? 'border-b border-gray-100' : ''}>
-                          <td className="px-6 py-3.5 max-w-[180px]">
-                            <p className="font-medium text-gray-800 truncate">{a.ad_name ?? a.ad_id}</p>
-                          </td>
-                          <td className="px-6 py-3.5 max-w-[140px]">
-                            <p className="text-gray-500 truncate text-xs">{a.campaign_name ?? '—'}</p>
-                          </td>
-                          <td className="px-6 py-3.5 text-right text-gray-600">{fmtBRL(a.totalSpend)}</td>
-                          <td className="px-6 py-3.5 text-right text-gray-600">{a.totalLeads.toLocaleString('pt-BR')}</td>
-                          <td className="px-6 py-3.5 text-right text-gray-600">{cpl > 0 ? fmtBRL(cpl) : '—'}</td>
-                          <td className="px-6 py-3.5 text-right font-semibold text-gray-800">{fmtBRL(a.totalRevenue)}</td>
-                          <td className={`px-6 py-3.5 text-right font-semibold ${roas >= 1 ? 'text-emerald-700' : 'text-red-600'}`}>
-                            {fmtROAS(roas)}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
