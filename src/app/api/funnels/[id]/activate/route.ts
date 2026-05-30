@@ -8,13 +8,20 @@ export async function POST(
 ) {
   const { id: funnelId } = await params
 
-  const secret = request.headers.get('x-funil-secret')
-  if (secret !== process.env.APP_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const body = await request.json()
-  const { phone, name, email, utm_source, utm_campaign_id, utm_ad_id, utm_content } = body
+  const {
+    phone,
+    name,
+    email,
+    utm_source,
+    utm_campaign,
+    utm_campaign_id,
+    utm_adset_id,
+    utm_ad_id,
+    utm_content,
+    referrer_url,
+    landing_url,
+  } = body
 
   if (!phone || !name) {
     return NextResponse.json({ error: 'phone e name são obrigatórios' }, { status: 400 })
@@ -56,19 +63,13 @@ export async function POST(
   await supabase.from('lead_sources').insert({
     lead_id: lead.id,
     utm_source: utm_source ?? null,
+    utm_campaign: utm_campaign ?? null,
     utm_campaign_id: utm_campaign_id ?? null,
+    utm_adset_id: utm_adset_id ?? null,
     utm_ad_id: utm_ad_id ?? null,
     utm_content: utm_content ?? null,
-    landing_url: request.headers.get('referer') ?? null,
-  })
-
-  await supabase.from('lead_events').insert({
-    tenant_id: funnel.tenant_id,
-    lead_id: lead.id,
-    funnel_id: funnelId,
-    block_id: null,
-    event_type: 'entered_funnel',
-    event_data: { utm_source, utm_campaign_id, utm_ad_id },
+    referrer_url: referrer_url ?? null,
+    landing_url: landing_url ?? request.headers.get('referer') ?? null,
   })
 
   const { data: allBlocks } = await supabase
@@ -90,6 +91,15 @@ export async function POST(
     return NextResponse.json({ error: 'Funil sem blocos' }, { status: 400 })
   }
 
+  await supabase.from('lead_events').insert({
+    tenant_id: funnel.tenant_id,
+    lead_id: lead.id,
+    funnel_id: funnelId,
+    block_id: firstBlock.id,
+    event_type: 'entered_funnel',
+    event_data: { utm_source, utm_campaign, utm_campaign_id, utm_adset_id, utm_ad_id, utm_content },
+  })
+
   await getFunnelQueue().add('execute-block', {
     funnelId,
     blockId: firstBlock.id,
@@ -97,5 +107,5 @@ export async function POST(
     tenantId: funnel.tenant_id,
   })
 
-  return NextResponse.json({ leadId: lead.id, message: 'Funil iniciado' })
+  return NextResponse.json({ success: true, lead_id: lead.id })
 }

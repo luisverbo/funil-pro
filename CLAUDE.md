@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-30 — Etapas 1, 2, 3, 4 e 5 concluídas
+**Última atualização:** 2026-05-30 — Etapas 1–5 + 7 concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -496,11 +496,21 @@ APP_SECRET=
   - `src/components/whatsapp/instance-card.tsx` — card com QR code, polling de status, badge animado
   - `src/components/whatsapp/create-instance-button.tsx` — botão client-side com useTransition
   - `src/app/(dashboard)/integrations/page.tsx` — página completa com lista de instâncias
+- Etapa 7: Rastreamento UTM completo:
+  - `/api/funnels/[id]/activate` atualizado — aceita todos os campos UTM + referrer_url + landing_url, insere lead_sources completo, grava evento entered_funnel com block_id do primeiro bloco
+  - `/funnels/[id]/links` — página de links com URL base, link Meta Ads com macros e página de captura pública
+  - `/f/[id]` — landing page pública com formulário de captura (nome, email, telefone), propagação de UTMs, Meta Pixel opcional
+  - `/f/[id]/obrigado` — página de agradecimento pós-captura
+  - `/leads` — CRM com tabela real de leads, link para detalhe
+  - `/leads/[id]` — timeline vertical de eventos, card de origem UTM, dados do lead
+  - `src/components/funnels/copy-url-button.tsx` — botão copiar com feedback "Copiado!"
+  - `src/components/public/capture-form.tsx` — formulário client-side com loading state e disparo de fbq('track', 'Lead')
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
-- Etapa 7: Rastreamento UTM + lead_source
 - Etapa 8: Webhooks de pagamento (Hotmart, Kiwify, Eduzz, Yampi)
+- Etapa 9: Integração API Meta (ad_spend + métricas)
+- Etapa 10: Painel de métricas (CPL, ROAS, drop-off, timeline)
 
 
 ---
