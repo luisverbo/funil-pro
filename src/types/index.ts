@@ -50,6 +50,8 @@ export interface WhatsappInstance {
   id: string
   tenant_id: string
   instance_name: string
+  display_name: string | null
+  description: string | null
   phone_number: string | null
   status: WhatsappStatus
   is_addon: boolean
