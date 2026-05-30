@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendTextMessage } from '../../evolution'
+import { sendTextMessage, sendMediaMessage } from '../../evolution'
 import { sendEmail } from '../../resend'
 
 interface HandlerCtx {
@@ -8,10 +8,19 @@ interface HandlerCtx {
   supabase: SupabaseClient
 }
 
-export async function handleMessage({ lead, block, supabase }: HandlerCtx): Promise<{ nextBlockId?: string; delayMs?: number }> {
-  const config = block.config as { channel?: string; body?: string }
+type MediaType = 'none' | 'image' | 'video' | 'document'
+
+export async function handleMessage({ lead, block, supabase }: HandlerCtx): Promise<{ nextBlockId?: string }> {
+  const config = block.config as {
+    channel?: string
+    body?: string
+    media_type?: MediaType
+    media_url?: string
+  }
   const body = config.body ?? ''
   const channel = config.channel ?? 'whatsapp'
+  const mediaType = config.media_type ?? 'none'
+  const mediaUrl = config.media_url ?? ''
 
   try {
     if (channel === 'whatsapp' && lead.phone) {
@@ -29,17 +38,31 @@ export async function handleMessage({ lead, block, supabase }: HandlerCtx): Prom
           .single()
 
         if (instance?.instance_name) {
-          await sendTextMessage(instance.instance_name, lead.phone, body)
+          if (mediaType !== 'none' && mediaUrl) {
+            await sendMediaMessage(
+              instance.instance_name,
+              lead.phone,
+              mediaUrl,
+              mediaType as 'image' | 'video' | 'document',
+              body
+            )
+          } else {
+            await sendTextMessage(instance.instance_name, lead.phone, body)
+          }
         }
       } else {
         console.warn(`[message] Funil ${block.funnel_id} sem instância WA configurada`)
       }
     } else if (channel === 'email' && lead.email) {
+      const htmlBody = mediaUrl && mediaType !== 'none'
+        ? `<p>${body}</p><p><a href="${mediaUrl}" target="_blank">📎 Clique aqui para acessar o anexo</a></p>`
+        : `<p>${body}</p>`
+
       await sendEmail({
         from: 'FunilPro <funil@funil.pro>',
         to: lead.email,
         subject: 'Nova mensagem',
-        html: `<p>${body}</p>`,
+        html: htmlBody,
       })
     }
   } catch (err) {

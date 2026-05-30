@@ -30,7 +30,7 @@ export default function BaseNode({
 }: BaseNodeProps) {
   return (
     <div
-      className="rounded-xl overflow-hidden transition-all duration-150"
+      className="rounded-xl transition-all duration-150"
       style={{
         width: 220,
         border: selected ? `2px solid #6366f1` : '2px solid transparent',
@@ -49,7 +49,7 @@ export default function BaseNode({
 
       {/* Header */}
       <div
-        className="flex items-center justify-between px-3 py-2"
+        className="flex items-center justify-between px-3 py-2 rounded-t-xl"
         style={{ backgroundColor: headerBg }}
       >
         <div className="flex items-center gap-2">
@@ -71,7 +71,7 @@ export default function BaseNode({
       </div>
 
       {/* Body */}
-      <div className="bg-white px-3 py-2.5 space-y-2">
+      <div className="bg-white px-3 py-2.5 space-y-2 rounded-b-xl">
         {children}
       </div>
 
