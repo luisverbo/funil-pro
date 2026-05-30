@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { handlePurchaseWebhook } from '@/lib/webhooks/purchase-handler'
+import { handlePurchaseWebhook, handleAbandonedCart } from '@/lib/webhooks/purchase-handler'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = await params
   try {
     const body = await req.json()
     const status = body?.key ?? body?.trans_status
+
+    // Handle abandoned cart
+    if (status === 'abandoned_cart' || body?.key === 'abandoned_cart') {
+      await handleAbandonedCart({
+        tenantId,
+        platform: 'eduzz',
+        buyerEmail: body?.client_email ?? body?.cus_email ?? null,
+        buyerPhone: body?.client_cel ?? body?.client_phone ?? null,
+        buyerName: body?.client_name ?? null,
+        productName: body?.product_name ?? null,
+        rawPayload: body,
+      })
+      return NextResponse.json({ ok: true })
+    }
 
     const eventMap: Record<string, 'purchased' | 'refunded' | 'chargeback' | 'canceled'> = {
       sale_approved: 'purchased',

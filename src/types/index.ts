@@ -2,7 +2,7 @@ import type { Node } from '@xyflow/react'
 
 export type Plan = 'starter' | 'pro' | 'scale'
 export type LeadStatus = 'active' | 'converted' | 'unsubscribed' | 'lost'
-export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page' | 'entry'
+export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page' | 'entry' | 'cart_abandoned'
 export type FunnelStatus = 'draft' | 'published' | 'paused'
 export type EdgeCondition =
   | 'opened'

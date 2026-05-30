@@ -473,7 +473,7 @@ APP_SECRET=
   - `/funnels` — lista de funis com status badge e empty state
   - `CreateFunnelDialog` — modal nativo Tailwind para criar funil
   - `/funnels/[id]/builder` — canvas React Flow com palette lateral
-  - 5 node types: message (💬), condition (🔀), delay (⏱️), tag (🏷️), sale (💰)
+  - 6 node types: message (💬), condition (🔀), delay (⏱️), tag (🏷️), sale (💰), cart_abandoned (🛒)
   - Custom edge com label de condição clicável
   - Server actions: createFunnel, saveFunnel (delete edges→blocks→reinsert), publishFunnel
   - SSR seguro: dynamic import com ssr:false para React Flow
@@ -505,15 +505,17 @@ APP_SECRET=
   - `/leads/[id]` — timeline vertical de eventos, card de origem UTM, dados do lead
   - `src/components/funnels/copy-url-button.tsx` — botão copiar com feedback "Copiado!"
   - `src/components/public/capture-form.tsx` — formulário client-side com loading state e disparo de fbq('track', 'Lead')
-- Etapa 8: Webhooks de pagamento completos:
+- Etapa 8: Webhooks de pagamento completos + carrinho abandonado:
   - `supabase/migrations/20260530010000_orphan_purchases.sql` — tabela orphan_purchases para compras sem lead
-  - `src/lib/webhooks/purchase-handler.ts` — helper compartilhado: busca lead por email/telefone, grava lead_events, converte lead, avança funil via BullMQ, salva orphan se não encontrar
-  - `src/app/api/webhooks/hotmart/[tenantId]/route.ts` — mapeamento de eventos Hotmart
-  - `src/app/api/webhooks/kiwify/[tenantId]/route.ts` — mapeamento de eventos Kiwify
-  - `src/app/api/webhooks/eduzz/[tenantId]/route.ts` — mapeamento de eventos Eduzz
-  - `src/app/api/webhooks/yampi/[tenantId]/route.ts` — mapeamento de eventos Yampi
+  - Migration adicional: `ALTER TABLE orphan_purchases ADD COLUMN IF NOT EXISTS event_type text`
+  - `src/lib/webhooks/purchase-handler.ts` — handlePurchaseWebhook (compras) + handleAbandonedCart (carrinho abandonado): busca lead, cria se não existir usando bloco cart_abandoned do funil, enfileira via BullMQ, salva orphan com event_type='abandoned_cart' se não houver funil configurado
+  - Hotmart: ABANDONED_CART + PURCHASE_PROTEST (chargeback)
+  - Kiwify: abandoned_checkout / order_status=abandoned
+  - Eduzz: key=abandoned_cart
+  - Yampi: cart.abandoned
   - `/integrations` — nova seção "Plataformas de Pagamento" com URLs de webhook, badge ativo (7 dias), botão copiar e instruções por plataforma
   - `/integrations/orphans` — tabela de compras não vinculadas com badge por plataforma e valor formatado
+  - Bloco `cart_abandoned` no builder: node visual (indigo/carrinho), palette INÍCIO, config-panel com seletor de plataforma
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)

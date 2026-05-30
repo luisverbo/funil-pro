@@ -73,6 +73,17 @@ const TYPE_META: Record<string, { label: string; color: string; icon: React.Reac
       </svg>
     ),
   },
+  cart_abandoned: {
+    label: 'Carr. Abandonado',
+    color: '#6366f1',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+        <circle cx="9" cy="21" r="1" />
+        <circle cx="20" cy="21" r="1" />
+        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+      </svg>
+    ),
+  },
 }
 
 const CONDITIONS = [
@@ -346,6 +357,28 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId }
                   </button>
                 ))}
               </div>
+            </FieldWrap>
+          </>
+        )}
+
+        {blockType === 'cart_abandoned' && (
+          <>
+            <FieldWrap>
+              <Label>Plataforma de origem</Label>
+              <select
+                value={(config.platform as string) ?? 'all'}
+                onChange={(e) => update({ platform: e.target.value })}
+                className={selectClass}
+              >
+                <option value="all">Todas as plataformas</option>
+                <option value="hotmart">Hotmart</option>
+                <option value="kiwify">Kiwify</option>
+                <option value="eduzz">Eduzz</option>
+                <option value="yampi">Yampi</option>
+              </select>
+              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                Este bloco é ativado automaticamente quando a plataforma envia um evento de carrinho abandonado.
+              </p>
             </FieldWrap>
           </>
         )}

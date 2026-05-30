@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { handlePurchaseWebhook } from '@/lib/webhooks/purchase-handler'
+import { handlePurchaseWebhook, handleAbandonedCart } from '@/lib/webhooks/purchase-handler'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = await params
@@ -7,11 +7,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ten
     const body = await req.json()
     const event = body?.event ?? body?.data?.event
 
+    // Handle abandoned cart separately
+    if (event === 'ABANDONED_CART') {
+      const buyer = body?.data?.buyer ?? body?.buyer ?? {}
+      await handleAbandonedCart({
+        tenantId,
+        platform: 'hotmart',
+        buyerEmail: buyer.email ?? null,
+        buyerPhone: buyer.checkout_phone ?? buyer.phone ?? null,
+        buyerName: buyer.name ?? null,
+        productName: body?.data?.product?.name ?? body?.product?.name ?? null,
+        rawPayload: body,
+      })
+      return NextResponse.json({ ok: true })
+    }
+
     // Map Hotmart events
     const eventMap: Record<string, 'purchased' | 'refunded' | 'chargeback' | 'canceled'> = {
       PURCHASE_APPROVED: 'purchased',
       PURCHASE_REFUNDED: 'refunded',
       PURCHASE_CHARGEBACK: 'chargeback',
+      PURCHASE_PROTEST: 'chargeback',
       PURCHASE_CANCELED: 'canceled',
       PURCHASE_COMPLETE: 'purchased',
     }

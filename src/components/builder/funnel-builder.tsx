@@ -26,6 +26,7 @@ import DelayNode from './nodes/delay-node'
 import TagNode from './nodes/tag-node'
 import SaleNode from './nodes/sale-node'
 import EntryNode from './nodes/entry-node'
+import CartAbandonedNode from './nodes/cart-abandoned-node'
 import CustomEdge from './custom-edge'
 import BlockPalette from './block-palette'
 import ConfigPanel from './config-panel'
@@ -40,6 +41,7 @@ const nodeTypes = {
   tag: TagNode,
   sale: SaleNode,
   entry: EntryNode,
+  cart_abandoned: CartAbandonedNode,
 }
 
 const edgeTypes = { custom: CustomEdge }
@@ -123,7 +125,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
       if (!type) return
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
       const LABELS: Record<string, string> = {
-        message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda', entry: 'Entrada',
+        message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda', entry: 'Entrada', cart_abandoned: 'Carr. Abandonado',
       }
       setNodes((nds) => {
         if (type === 'entry' && nds.some((n) => n.type === 'entry')) return nds
