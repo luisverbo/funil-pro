@@ -31,7 +31,7 @@ import BlockPalette from './block-palette'
 import ConfigPanel from './config-panel'
 
 import { saveFunnel, publishFunnel } from '@/app/actions/funnels'
-import type { Funnel, FunnelBlock, FunnelEdge, FunnelNodeData, BlockDTO, EdgeDTO } from '@/types'
+import type { Funnel, FunnelBlock, FunnelEdge, FunnelNodeData, BlockDTO, EdgeDTO, BlockMetrics } from '@/types'
 
 const nodeTypes = {
   message: MessageNode,
@@ -54,9 +54,10 @@ interface Props {
   funnel: Funnel
   initialBlocks: FunnelBlock[]
   initialEdges: FunnelEdge[]
+  blockMetrics?: Record<string, BlockMetrics> | null
 }
 
-function blockToNode(block: FunnelBlock, funnelId: string): Node {
+function blockToNode(block: FunnelBlock, funnelId: string, metrics?: Record<string, BlockMetrics> | null): Node {
   const config = block.block_type === 'entry'
     ? { entry_type: 'link_utm', funnel_id: funnelId, ...block.config }
     : block.config
@@ -68,6 +69,7 @@ function blockToNode(block: FunnelBlock, funnelId: string): Node {
       label: block.label,
       blockType: block.block_type,
       config,
+      metrics: metrics?.[block.id] ?? null,
     } as FunnelNodeData,
   }
 }
@@ -82,8 +84,8 @@ function dbEdgeToFlowEdge(edge: FunnelEdge): Edge {
   }
 }
 
-function BuilderCanvas({ funnel, initialBlocks, initialEdges }: Props) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialBlocks.map((b) => blockToNode(b, funnel.id)))
+function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Props) {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialBlocks.map((b) => blockToNode(b, funnel.id, blockMetrics)))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges.map(dbEdgeToFlowEdge))
   const { screenToFlowPosition } = useReactFlow()
 

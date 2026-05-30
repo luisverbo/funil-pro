@@ -187,10 +187,18 @@ export interface Page {
   created_at: string
 }
 
+export interface BlockMetrics {
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+}
+
 export interface FunnelNodeData extends Record<string, unknown> {
   label: string
   blockType: string
   config: Record<string, unknown>
+  metrics?: BlockMetrics | null
   onDelete?: (id: string) => void
 }
 

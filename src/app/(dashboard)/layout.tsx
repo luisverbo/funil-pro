@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/layout/sidebar'
+import MainContent from '@/components/layout/main-content'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -10,7 +11,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       <Sidebar displayName={displayName} />
-      <main className="ml-[220px] min-h-screen p-6">{children}</main>
+      <MainContent>{children}</MainContent>
     </div>
   )
 }

@@ -58,11 +58,38 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
     .select('*')
     .eq('funnel_id', id)
 
+  // Fetch metrics per block (only for published funnels)
+  const blockIds = (blocks ?? []).map((b) => b.id)
+  let blockMetrics: Record<string, { sent: number; delivered: number; opened: number; clicked: number }> = {}
+
+  if (funnel.status === 'published' && blockIds.length > 0) {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const admin = createAdminClient()
+    const { data: events } = await admin
+      .from('lead_events')
+      .select('block_id, event_type')
+      .eq('funnel_id', id)
+      .in('block_id', blockIds)
+      .in('event_type', ['message_sent', 'message_delivered', 'message_opened', 'message_clicked', 'link_clicked'])
+
+    if (events) {
+      for (const ev of events) {
+        if (!ev.block_id) continue
+        if (!blockMetrics[ev.block_id]) blockMetrics[ev.block_id] = { sent: 0, delivered: 0, opened: 0, clicked: 0 }
+        if (ev.event_type === 'message_sent') blockMetrics[ev.block_id].sent++
+        if (ev.event_type === 'message_delivered') blockMetrics[ev.block_id].delivered++
+        if (ev.event_type === 'message_opened') blockMetrics[ev.block_id].opened++
+        if (ev.event_type === 'message_clicked' || ev.event_type === 'link_clicked') blockMetrics[ev.block_id].clicked++
+      }
+    }
+  }
+
   return (
     <FunnelBuilderWrapper
       funnel={funnel as Funnel}
       initialBlocks={(blocks ?? []) as FunnelBlock[]}
       initialEdges={(edges ?? []) as FunnelEdge[]}
+      blockMetrics={funnel.status === 'published' ? blockMetrics : null}
     />
   )
 }

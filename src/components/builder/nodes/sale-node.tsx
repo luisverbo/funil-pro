@@ -3,7 +3,7 @@
 import React from 'react'
 import { type NodeProps } from '@xyflow/react'
 import BaseNode from './base-node'
-import type { FunnelNodeData } from '@/types'
+import type { FunnelNodeData, BlockMetrics } from '@/types'
 
 const ICON = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
@@ -15,6 +15,7 @@ const ICON = (
 export default function SaleNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as FunnelNodeData
   const config = (nodeData.config ?? {}) as { product_name?: string; payment_link?: string }
+  const metrics = nodeData.metrics as BlockMetrics | null | undefined
 
   const preview = config.product_name ?? config.payment_link ?? ''
 
@@ -26,6 +27,8 @@ export default function SaleNode({ id, data, selected }: NodeProps) {
       icon={ICON}
       typeLabel="Venda"
       preview={preview}
+      metrics={metrics}
+      showMetrics
     />
   )
 }

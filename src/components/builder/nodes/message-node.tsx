@@ -3,7 +3,7 @@
 import React from 'react'
 import { type NodeProps } from '@xyflow/react'
 import BaseNode from './base-node'
-import type { FunnelNodeData } from '@/types'
+import type { FunnelNodeData, BlockMetrics } from '@/types'
 
 const ICON = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
@@ -14,17 +14,15 @@ const ICON = (
 interface MessageConfig {
   channel?: string
   body?: string
-  media_type?: string
 }
 
 export default function MessageNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as FunnelNodeData
   const config = (nodeData.config ?? {}) as MessageConfig
+  const metrics = nodeData.metrics as BlockMetrics | null | undefined
 
   const channel = config.channel === 'email' ? 'Email' : 'WhatsApp'
-  const preview = config.body
-    ? `${channel}: ${config.body}`
-    : `Via ${channel}`
+  const preview = config.body ? `${channel}: ${config.body}` : `Via ${channel}`
 
   return (
     <BaseNode
@@ -34,6 +32,8 @@ export default function MessageNode({ id, data, selected }: NodeProps) {
       icon={ICON}
       typeLabel="Mensagem"
       preview={preview}
+      metrics={metrics}
+      showMetrics
     />
   )
 }
