@@ -90,6 +90,19 @@ export default function FunnelsGrid({ initialFunnels }: { initialFunnels: Funnel
                     <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
                   </svg>
                 </Link>
+                <a
+                  href={`/p/${funnel.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                  title="Ver página de captura"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15,3 21,3 21,9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </a>
                 <DeleteFunnelButton
                   funnelId={funnel.id}
                   funnelName={funnel.name}
