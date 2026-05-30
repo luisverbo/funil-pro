@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-30 — Etapas 1–5 + 7–8 concluídas
+**Última atualização:** 2026-05-30 — Etapas 1–5 + 7–8 + 10 concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -516,11 +516,19 @@ APP_SECRET=
   - `/integrations` — nova seção "Plataformas de Pagamento" com URLs de webhook, badge ativo (7 dias), botão copiar e instruções por plataforma
   - `/integrations/orphans` — tabela de compras não vinculadas com badge por plataforma e valor formatado
   - Bloco `cart_abandoned` no builder: node visual (indigo/carrinho), palette INÍCIO, config-panel com seletor de plataforma
+- Etapa 10: Painel de métricas completo:
+  - `/metrics` — rebuilt com filtros de período (Hoje/7d/30d), filtro de funil, 6 KPI cards (leads, compradores, receita, ativos, CPL, ROAS), gráfico Leads vs Compras (recharts), drop-off por etapa, tabela de leads recentes com utm_source/último evento/valor/data
+  - `/metrics/funnels` — tabela por funil com leads, taxa de conversão, receita e link para builder
+  - `/metrics/ads` — tabela ordenável de anúncios (ROAS/gasto/leads/CPL/receita) com badges coloridos de ROAS; redireciona para /integrations se Meta não conectado
+  - Sub-navegação com tabs nas 3 páginas de métricas
+  - `/leads/[id]` aprimorado — card de receita com total, lista de produtos comprados com plataforma, % de contribuição na receita do anúncio
+  - Componentes client: `LeadsChart` (recharts LineChart), `FunnelChart` (barras horizontais de drop-off), `FunnelFilter` (select com router navigation)
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
-- Etapa 10: Painel de métricas (CPL, ROAS, drop-off, timeline)
+- Etapa 11: Templates + marketplace
+- Etapa 12: Planos + billing (Asaas)
 
 
 ---
