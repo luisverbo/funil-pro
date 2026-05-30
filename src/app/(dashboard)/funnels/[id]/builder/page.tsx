@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect, notFound } from 'next/navigation'
-import type { FunnelBlock, FunnelEdge, Funnel } from '@/types'
+import type { FunnelBlock, FunnelEdge, Funnel, WhatsappInstance } from '@/types'
 import FunnelBuilderWrapper from '@/components/builder/funnel-builder-wrapper'
 
 async function getSupabase() {
@@ -48,6 +48,12 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
 
   if (!funnel) notFound()
 
+  const { data: waInstances } = await supabase
+    .from('whatsapp_instances')
+    .select('id, instance_name, phone_number, status')
+    .eq('tenant_id', userTenant.tenant_id)
+    .order('created_at')
+
   const { data: blocks } = await supabase
     .from('funnel_blocks')
     .select('*')
@@ -90,6 +96,7 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
       initialBlocks={(blocks ?? []) as FunnelBlock[]}
       initialEdges={(edges ?? []) as FunnelEdge[]}
       blockMetrics={funnel.status === 'published' ? blockMetrics : null}
+      waInstances={(waInstances ?? []) as WhatsappInstance[]}
     />
   )
 }

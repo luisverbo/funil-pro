@@ -13,7 +13,7 @@ const statusConfig: Record<string, { label: string; badgeClass: string; areaBg: 
   paused:    { label: 'Pausado',   badgeClass: 'bg-amber-50 text-amber-700',   areaBg: '#FFFBEB', iconColor: '#f59e0b' },
 }
 
-export default function FunnelsGrid({ initialFunnels }: { initialFunnels: Funnel[] }) {
+export default function FunnelsGrid({ initialFunnels, waMap = {} }: { initialFunnels: Funnel[]; waMap?: Record<string, { instance_name: string; status: string }> }) {
   const [funnels, setFunnels] = useState(initialFunnels)
   const [templateFunnel, setTemplateFunnel] = useState<Funnel | null>(null)
 
@@ -39,6 +39,7 @@ export default function FunnelsGrid({ initialFunnels }: { initialFunnels: Funnel
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {funnels.map((funnel) => {
           const st = statusConfig[funnel.status] ?? statusConfig.draft
+          const waInst = funnel.whatsapp_instance_id ? (waMap[funnel.whatsapp_instance_id] ?? null) : null
           return (
             <div
               key={funnel.id}
@@ -60,6 +61,20 @@ export default function FunnelsGrid({ initialFunnels }: { initialFunnels: Funnel
                 <p className="text-xs text-gray-400">
                   Criado em {new Date(funnel.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </p>
+                {waInst ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${waInst.status === 'connected' ? 'bg-green-500' : 'bg-red-400'}`} />
+                    <span className="text-xs text-gray-500">{waInst.instance_name}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 text-amber-400">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <span className="text-xs text-amber-500">Sem WhatsApp</span>
+                  </div>
+                )}
               </div>
 
               <div className="px-4 pb-4 flex items-center gap-2">

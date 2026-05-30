@@ -217,3 +217,19 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
   revalidatePath('/funnels')
   return { success: true }
 }
+
+export async function updateFunnelWhatsapp(funnelId: string, instanceId: string | null): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+    const admin = createAdminClient()
+    const { data: funnel } = await admin.from('funnels').select('id').eq('id', funnelId).eq('tenant_id', tenantId).single()
+    if (!funnel) return { success: false, error: 'Funil não encontrado' }
+    await admin.from('funnels').update({ whatsapp_instance_id: instanceId }).eq('id', funnelId)
+    revalidatePath('/funnels')
+    revalidatePath(`/funnels/${funnelId}/builder`)
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}

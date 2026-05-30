@@ -33,8 +33,8 @@ import ConfigPanel from './config-panel'
 import CapturePageEditor from './capture-page-editor'
 import LinksDrawer from './links-drawer'
 
-import { saveFunnel, publishFunnel } from '@/app/actions/funnels'
-import type { Funnel, FunnelBlock, FunnelEdge, FunnelNodeData, BlockDTO, EdgeDTO, BlockMetrics } from '@/types'
+import { saveFunnel, publishFunnel, updateFunnelWhatsapp } from '@/app/actions/funnels'
+import type { Funnel, FunnelBlock, FunnelEdge, FunnelNodeData, BlockDTO, EdgeDTO, BlockMetrics, WhatsappInstance } from '@/types'
 
 const nodeTypes = {
   message: MessageNode,
@@ -59,6 +59,7 @@ interface Props {
   initialBlocks: FunnelBlock[]
   initialEdges: FunnelEdge[]
   blockMetrics?: Record<string, BlockMetrics> | null
+  waInstances?: WhatsappInstance[]
 }
 
 function blockToNode(block: FunnelBlock, funnelId: string, metrics?: Record<string, BlockMetrics> | null): Node {
@@ -88,7 +89,7 @@ function dbEdgeToFlowEdge(edge: FunnelEdge): Edge {
   }
 }
 
-function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Props) {
+function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waInstances = [] }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialBlocks.map((b) => blockToNode(b, funnel.id, blockMetrics)))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges.map(dbEdgeToFlowEdge))
   const { screenToFlowPosition } = useReactFlow()
@@ -101,6 +102,8 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [showCaptureEditor, setShowCaptureEditor] = useState(false)
   const [showLinksDrawer, setShowLinksDrawer] = useState(false)
+  const [waInstanceId, setWaInstanceId] = useState<string | null>(funnel.whatsapp_instance_id)
+  const [waDropdownOpen, setWaDropdownOpen] = useState(false)
 
   const showMsg = (text: string, ok: boolean) => {
     setStatusMsg({ text, ok })
@@ -166,21 +169,46 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
     })
   }, [nodes, edges, funnel.id, startTransition])
 
+  const handleSelectWaInstance = useCallback((id: string | null) => {
+    setWaInstanceId(id)
+    setWaDropdownOpen(false)
+    startTransition(async () => {
+      await updateFunnelWhatsapp(funnel.id, id)
+    })
+  }, [funnel.id, startTransition])
+
   const handlePublish = useCallback(() => {
+    if (!waInstanceId) {
+      showMsg('Selecione uma instância WhatsApp antes de publicar', false)
+      return
+    }
     startTransition(async () => {
       const result = await publishFunnel(funnel.id)
       if (result.success) setFunnelStatus('published')
       showMsg(result.success ? 'Funil publicado!' : `Erro: ${result.error}`, !!result.success)
     })
-  }, [funnel.id, startTransition])
+  }, [funnel.id, startTransition, waInstanceId])
 
   const statusMeta = STATUS_META[funnelStatus] ?? STATUS_META.draft
+  const selectedInstance = waInstances.find((i) => i.id === waInstanceId) ?? null
+  const isWaDisconnected = selectedInstance && selectedInstance.status !== 'connected'
 
   return (
     <div className="flex h-[calc(100vh-61px)] -m-6 bg-gray-50">
       <BlockPalette />
 
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* WhatsApp disconnection warning */}
+        {isWaDisconnected && (
+          <div className="bg-red-50 border-b border-red-200 px-4 py-1.5 flex items-center gap-2 shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-red-500 shrink-0">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span className="text-xs text-red-600 font-medium">WhatsApp desconectado — as mensagens não serão enviadas</span>
+          </div>
+        )}
+
         {/* Header */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 gap-4">
           {/* Left */}
@@ -218,6 +246,69 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
             >
               {statusMeta.label}
             </span>
+
+            {/* WhatsApp instance selector */}
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setWaDropdownOpen((v) => !v)}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors font-medium ${
+                  selectedInstance
+                    ? selectedInstance.status === 'connected'
+                      ? 'border-green-200 bg-green-50 text-green-700'
+                      : 'border-red-200 bg-red-50 text-red-600'
+                    : 'border-amber-200 bg-amber-50 text-amber-600'
+                }`}
+              >
+                {selectedInstance ? (
+                  <>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedInstance.status === 'connected' ? 'bg-green-500' : 'bg-red-400'}`} />
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.555 4.116 1.528 5.843L0 24l6.302-1.513A11.94 11.94 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.89 0-3.663-.497-5.198-1.367l-.371-.22-3.742.897.938-3.635-.242-.374A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                    </svg>
+                    <span className="max-w-[100px] truncate">{selectedInstance.instance_name}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Sem WhatsApp
+                  </>
+                )}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 shrink-0">
+                  <polyline points="6,9 12,15 18,9" />
+                </svg>
+              </button>
+              {waDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                  <button
+                    onClick={() => handleSelectWaInstance(null)}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors flex items-center gap-2 ${!waInstanceId ? 'bg-gray-50 font-medium' : ''}`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0" />
+                    Nenhum
+                  </button>
+                  {waInstances.length === 0 && (
+                    <p className="px-3 py-2 text-xs text-gray-400 italic">Nenhuma instância cadastrada</p>
+                  )}
+                  {waInstances.map((inst) => (
+                    <button
+                      key={inst.id}
+                      onClick={() => handleSelectWaInstance(inst.id)}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors flex items-center gap-2 ${waInstanceId === inst.id ? 'bg-indigo-50' : ''}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${inst.status === 'connected' ? 'bg-green-500' : inst.status === 'connecting' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                      <span className="flex-1 truncate font-medium text-gray-700">{inst.instance_name}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${inst.status === 'connected' ? 'bg-green-100 text-green-600' : inst.status === 'connecting' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-500'}`}>
+                        {inst.status === 'connected' ? 'Conectado' : inst.status === 'connecting' ? 'Conectando' : 'Desconectado'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right */}
@@ -315,6 +406,8 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics }: Pr
               onClose={() => setSelectedNodeId(null)}
               funnelId={funnel.id}
               onOpenCaptureEditor={() => setShowCaptureEditor(true)}
+              waInstances={waInstances}
+              waInstanceId={waInstanceId}
             />
           )}
           {showCaptureEditor && (

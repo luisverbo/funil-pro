@@ -45,7 +45,24 @@ export default async function FunnelsPage() {
     .eq('tenant_id', userTenant.tenant_id)
     .order('created_at', { ascending: false })
 
-  const list = (funnels ?? []) as Funnel[]
+  // Fetch WA instances to enrich funnel cards
+  const funnelList = (funnels ?? []) as Funnel[]
+  const waInstanceIds = funnelList.map((f) => f.whatsapp_instance_id).filter((id): id is string => !!id)
+  let waMap: Record<string, { instance_name: string; status: string }> = {}
+  if (waInstanceIds.length > 0) {
+    const { data: instances } = await supabase
+      .from('whatsapp_instances')
+      .select('id, instance_name, status')
+      .in('id', waInstanceIds)
+    if (instances) {
+      waMap = Object.fromEntries(instances.map((i) => [i.id, { instance_name: i.instance_name, status: i.status }]))
+    }
+  }
+
+  const list = funnelList.map((f) => ({
+    ...f,
+    _waInstance: f.whatsapp_instance_id ? (waMap[f.whatsapp_instance_id] ?? null) : null,
+  }))
 
   const admin = createAdminClient()
   const { data: tplData } = await admin
@@ -67,7 +84,7 @@ export default async function FunnelsPage() {
         <CreateFunnelDialog popularTemplates={popularTemplates} />
       </div>
 
-      <FunnelsGrid initialFunnels={list} />
+      <FunnelsGrid initialFunnels={list as unknown as Funnel[]} waMap={waMap} />
     </div>
   )
 }

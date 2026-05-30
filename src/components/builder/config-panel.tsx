@@ -2,7 +2,7 @@
 
 import React, { useCallback } from 'react'
 import { useReactFlow, type Node } from '@xyflow/react'
-import type { FunnelNodeData } from '@/types'
+import type { FunnelNodeData, WhatsappInstance } from '@/types'
 
 interface Props {
   selectedNodeId: string | null
@@ -10,6 +10,8 @@ interface Props {
   onClose: () => void
   funnelId: string
   onOpenCaptureEditor?: () => void
+  waInstances?: WhatsappInstance[]
+  waInstanceId?: string | null
 }
 
 const TYPE_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -124,7 +126,7 @@ const inputClass =
 const selectClass =
   'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow'
 
-export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, onOpenCaptureEditor }: Props) {
+export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, onOpenCaptureEditor, waInstances = [], waInstanceId }: Props) {
   const { setNodes } = useReactFlow()
 
   const node = nodes.find((n) => n.id === selectedNodeId)
@@ -324,6 +326,55 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                     <p className="text-xs text-gray-400 mt-1">Use um link público direto para o arquivo.</p>
                   </FieldWrap>
                 )}
+                {/* WhatsApp instance info + override */}
+                <FieldWrap>
+                  <Label>Instância WhatsApp</Label>
+                  {(() => {
+                    const inherited = waInstances.find((i) => i.id === waInstanceId)
+                    return (
+                      <div className="space-y-2">
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex items-center gap-2">
+                          {inherited ? (
+                            <>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${inherited.status === 'connected' ? 'bg-green-500' : 'bg-red-400'}`} />
+                              <span className="text-xs text-gray-600">Herdado do funil: <strong>{inherited.instance_name}</strong></span>
+                            </>
+                          ) : (
+                            <>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-amber-500 shrink-0">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                              </svg>
+                              <span className="text-xs text-amber-600">Sem instância selecionada no funil</span>
+                            </>
+                          )}
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!(config.override_whatsapp_instance_id)}
+                            onChange={(e) => update({ override_whatsapp_instance_id: e.target.checked ? (waInstances[0]?.id ?? '') : null })}
+                            className="rounded border-gray-300"
+                          />
+                          <span className="text-xs text-gray-600">Usar instância específica para esta mensagem</span>
+                        </label>
+                        {!!config.override_whatsapp_instance_id && (
+                          <select
+                            value={(config.override_whatsapp_instance_id as string) ?? ''}
+                            onChange={(e) => update({ override_whatsapp_instance_id: e.target.value })}
+                            className={selectClass}
+                          >
+                            {waInstances.map((inst) => (
+                              <option key={inst.id} value={inst.id}>
+                                {inst.instance_name} ({inst.status === 'connected' ? 'Conectado' : 'Desconectado'})
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </FieldWrap>
               </>
             )}
           </>
