@@ -143,6 +143,15 @@ const eventLabels: Record<string, string> = {
   cart_abandoned: '🛒 Carrinho abandonado',
 }
 
+function DelayScheduledInfo({ eventData }: { eventData: unknown }) {
+  const sf = (eventData as Record<string, unknown> | null)?.scheduled_for
+  if (!sf) return null
+  const formatted = new Date(String(sf)).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+  return <p className="text-xs text-gray-500 mt-0.5">Agendado para: {formatted}</p>
+}
+
 export default async function LeadDetailPage({
   params,
 }: {
@@ -391,17 +400,8 @@ export default async function LeadDetailPage({
                     <p className="font-medium text-gray-900 text-sm">
                       {eventLabels[event.event_type] ?? event.event_type}
                     </p>
-                    {event.event_type === 'delay_scheduled' && (event.event_data as Record<string, unknown>)?.scheduled_for && (
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Agendado para: {new Date(String((event.event_data as Record<string, unknown>).scheduled_for)).toLocaleString('pt-BR', {
-                          timeZone: 'America/Sao_Paulo',
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
+                    {event.event_type === 'delay_scheduled' && (
+                      <DelayScheduledInfo eventData={event.event_data} />
                     )}
                     {event.product_name && (
                       <p className="text-xs text-gray-500 mt-0.5">Produto: {event.product_name}</p>

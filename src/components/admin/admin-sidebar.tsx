@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutGrid, Users, LayoutTemplate, Settings, ArrowLeft, Shield } from 'lucide-react'
+import { LayoutGrid, Users, LayoutTemplate, Settings, ArrowLeft, Shield, ListTodo } from 'lucide-react'
 
 const NAV = [
   { href: '/admin', label: 'Visão Geral', Icon: LayoutGrid, exact: true },
   { href: '/admin/tenants', label: 'Clientes', Icon: Users },
   { href: '/admin/templates', label: 'Templates', Icon: LayoutTemplate },
+  { href: '/admin/queue', label: 'Fila de Jobs', Icon: ListTodo },
   { href: '/admin/settings', label: 'Configurações', Icon: Settings },
 ]
 

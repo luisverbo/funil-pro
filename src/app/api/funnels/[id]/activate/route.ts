@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getFunnelQueue } from '@/lib/queue'
-import { processBlock } from '@/lib/queue/process-block'
+import { processJob, type QueueJob } from '@/lib/queue/processor'
 
 export async function POST(
   request: NextRequest,
@@ -127,21 +126,30 @@ export async function POST(
     ? nextEdge.target_block_id
     : firstBlock.id
 
-  const jobData = { funnelId, blockId: actionBlockId, leadId, tenantId: funnel.tenant_id }
+  const job: QueueJob = {
+    id: crypto.randomUUID(),
+    tenant_id: funnel.tenant_id,
+    lead_id: leadId,
+    funnel_id: funnelId,
+    block_id: actionBlockId,
+    status: 'pending',
+    scheduled_for: new Date().toISOString(),
+    attempts: 0,
+  }
 
   try {
-    const result = await processBlock(jobData)
-    if (result.nextBlockId) {
-      await getFunnelQueue().add(
-        'execute-block',
-        { funnelId, blockId: result.nextBlockId, leadId, tenantId: funnel.tenant_id },
-        result.delayMs ? { delay: result.delayMs } : {}
-      )
-    }
+    await processJob(job)
   } catch (err) {
-    console.error('[activate] inline processBlock failed, enqueueing:', err)
+    console.error('[activate] inline processJob failed, inserting to queue:', err)
     try {
-      await getFunnelQueue().add('execute-block', jobData)
+      await supabase.from('queue_jobs').insert({
+        tenant_id: job.tenant_id,
+        lead_id: job.lead_id,
+        funnel_id: job.funnel_id,
+        block_id: job.block_id,
+        status: 'pending',
+        scheduled_for: job.scheduled_for,
+      })
     } catch {}
   }
 
