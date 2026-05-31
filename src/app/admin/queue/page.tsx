@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Clock, CheckCircle, XCircle, Loader2, RefreshCw, Play } from 'lucide-react'
+import { Clock, CheckCircle, XCircle, Loader2, RefreshCw, Play, RotateCcw } from 'lucide-react'
 
 interface QueueJob {
   id: string
@@ -69,18 +69,14 @@ export default function AdminQueuePage() {
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
 
-    // Fetch jobs without FK join (no FK constraints on table)
     const { data: rawJobs, error: jobsError } = await supabase
       .from('queue_jobs')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(50)
 
-    if (jobsError) {
-      addLog(`Erro ao buscar jobs: ${jobsError.message}`)
-    }
+    if (jobsError) addLog(`Erro ao buscar jobs: ${jobsError.message}`)
 
-    // Enrich with lead names and block info
     const enriched: QueueJob[] = []
     for (const job of rawJobs ?? []) {
       let lead_name: string | null = null
@@ -157,66 +153,67 @@ export default function AdminQueuePage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fila de Jobs</h1>
-          <p className="text-sm text-gray-500 mt-1">Monitor e controle do motor de execução</p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => load()}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </button>
-          <button
-            onClick={retryFailed}
-            disabled={retrying || stats.failed === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            {retrying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Reprocessar falhos ({stats.failed})
-          </button>
-          <button
-            onClick={processNow}
-            disabled={processing}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-          >
-            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            Processar agora
-          </button>
-        </div>
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Fila de Jobs</h1>
+        <p className="text-sm text-gray-500 mt-1">Monitor e controle do motor de execução</p>
+      </div>
+
+      {/* Action buttons — stack on mobile */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-6">
+        <button
+          onClick={() => load()}
+          disabled={loading}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors min-h-[44px]"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Atualizar
+        </button>
+        <button
+          onClick={retryFailed}
+          disabled={retrying || stats.failed === 0}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors min-h-[44px]"
+        >
+          {retrying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Reprocessar falhos ({stats.failed})
+        </button>
+        <button
+          onClick={processNow}
+          disabled={processing}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 transition-colors min-h-[44px] sm:ml-auto"
+        >
+          {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          Processar agora
+        </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
-            <Clock className="w-5 h-5 text-yellow-600" />
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3">
+          <div className="w-9 h-9 bg-yellow-100 rounded-xl flex items-center justify-center shrink-0">
+            <Clock className="w-4 h-4 text-yellow-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900">{stats.pending}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Pendentes</p>
+            <p className="text-xl font-bold text-gray-900">{stats.pending}</p>
+            <p className="text-xs text-gray-500">Pendentes</p>
           </div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-            <CheckCircle className="w-5 h-5 text-emerald-600" />
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3">
+          <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900">{stats.done_today}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Concluídos hoje</p>
+            <p className="text-xl font-bold text-gray-900">{stats.done_today}</p>
+            <p className="text-xs text-gray-500">Concluídos hoje</p>
           </div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
-          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-            <XCircle className="w-5 h-5 text-red-600" />
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-3">
+          <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
+            <XCircle className="w-4 h-4 text-red-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900">{stats.failed}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Com falha</p>
+            <p className="text-xl font-bold text-gray-900">{stats.failed}</p>
+            <p className="text-xs text-gray-500">Com falha</p>
           </div>
         </div>
       </div>
@@ -231,11 +228,12 @@ export default function AdminQueuePage() {
         </div>
       )}
 
-      {/* Jobs table */}
+      {/* Jobs — cards on mobile, table on desktop */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden mb-6">
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">Últimos 50 jobs</h2>
         </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -243,54 +241,100 @@ export default function AdminQueuePage() {
         ) : jobs.length === 0 ? (
           <div className="text-center py-16 text-gray-400 text-sm">Nenhum job na fila.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">ID</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Lead</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Bloco</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Agendado</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Erros</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {jobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs text-gray-400">{job.id.slice(0, 8)}</td>
-                    <td className="px-4 py-3">{statusBadge(job.status)}</td>
-                    <td className="px-4 py-3 text-gray-700">{job.lead_name ?? <span className="text-gray-400 text-xs font-mono">{job.lead_id?.slice(0, 8)}</span>}</td>
-                    <td className="px-4 py-3">
-                      {job.block_type ? (
-                        <span>
-                          <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-1">{job.block_type}</span>
-                          {job.block_label && <span className="text-gray-500 text-xs">{job.block_label}</span>}
-                        </span>
-                      ) : <span className="text-gray-400 text-xs font-mono">{job.block_id?.slice(0, 8)}</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(job.scheduled_for)}</td>
-                    <td className="px-4 py-3">
-                      {job.error ? (
-                        <span className="text-red-600 text-xs" title={job.error}>{job.error.slice(0, 60)}{job.error.length > 60 ? '…' : ''}</span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {(job.status === 'failed' || job.status === 'pending') && (
-                        <button
-                          onClick={() => retrySingle(job.id)}
-                          className="text-xs text-indigo-600 hover:underline"
-                        >
-                          Reprocessar
-                        </button>
-                      )}
-                    </td>
+          <>
+            {/* Mobile cards */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {jobs.map((job) => (
+                <div key={job.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 text-sm truncate">
+                        {job.lead_name ?? <span className="font-mono text-xs text-gray-400">{job.lead_id?.slice(0, 8) ?? '—'}</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 font-mono">{job.id.slice(0, 8)}</p>
+                    </div>
+                    {statusBadge(job.status)}
+                  </div>
+
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                    {job.block_type && (
+                      <span>
+                        <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded mr-1">{job.block_type}</span>
+                        {job.block_label}
+                      </span>
+                    )}
+                    <span>{fmtDate(job.scheduled_for)}</span>
+                  </div>
+
+                  {job.error && (
+                    <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 break-words">
+                      {job.error.slice(0, 120)}{job.error.length > 120 ? '…' : ''}
+                    </p>
+                  )}
+
+                  {(job.status === 'failed' || job.status === 'pending') && (
+                    <button
+                      onClick={() => retrySingle(job.id)}
+                      className="flex items-center gap-1.5 text-xs text-indigo-600 font-medium py-1 min-h-[44px]"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Reprocessar este job
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">ID</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Lead</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Bloco</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Agendado</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Erros</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {jobs.map((job) => (
+                    <tr key={job.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-gray-400">{job.id.slice(0, 8)}</td>
+                      <td className="px-4 py-3">{statusBadge(job.status)}</td>
+                      <td className="px-4 py-3 text-gray-700">{job.lead_name ?? <span className="text-gray-400 text-xs font-mono">{job.lead_id?.slice(0, 8)}</span>}</td>
+                      <td className="px-4 py-3">
+                        {job.block_type ? (
+                          <span>
+                            <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-1">{job.block_type}</span>
+                            {job.block_label && <span className="text-gray-500 text-xs">{job.block_label}</span>}
+                          </span>
+                        ) : <span className="text-gray-400 text-xs font-mono">{job.block_id?.slice(0, 8)}</span>}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(job.scheduled_for)}</td>
+                      <td className="px-4 py-3">
+                        {job.error ? (
+                          <span className="text-red-600 text-xs" title={job.error}>{job.error.slice(0, 60)}{job.error.length > 60 ? '…' : ''}</span>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(job.status === 'failed' || job.status === 'pending') && (
+                          <button
+                            onClick={() => retrySingle(job.id)}
+                            className="text-xs text-indigo-600 hover:underline"
+                          >
+                            Reprocessar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -305,7 +349,7 @@ export default function AdminQueuePage() {
         ) : (
           <div className="space-y-0.5 max-h-64 overflow-y-auto">
             {logs.map((log, i) => (
-              <p key={i} className="text-xs font-mono text-gray-400">{log}</p>
+              <p key={i} className="text-xs font-mono text-gray-400 break-words">{log}</p>
             ))}
           </div>
         )}
