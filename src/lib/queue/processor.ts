@@ -140,7 +140,9 @@ async function enqueueNext(
   admin: ReturnType<typeof createAdminClient>,
   scheduledFor?: string
 ) {
-  const { data: edge } = await admin
+  // Try exact condition first, then fall back to 'default'
+  let edge: { target_block_id: string } | null = null
+  const { data: exact } = await admin
     .from('funnel_edges')
     .select('target_block_id')
     .eq('funnel_id', job.funnel_id)
@@ -148,6 +150,19 @@ async function enqueueNext(
     .eq('condition', condition)
     .limit(1)
     .maybeSingle()
+  edge = exact
+
+  if (!edge?.target_block_id && condition !== 'default') {
+    const { data: fallback } = await admin
+      .from('funnel_edges')
+      .select('target_block_id')
+      .eq('funnel_id', job.funnel_id)
+      .eq('source_block_id', job.block_id)
+      .eq('condition', 'default')
+      .limit(1)
+      .maybeSingle()
+    edge = fallback
+  }
 
   if (!edge?.target_block_id) return
 

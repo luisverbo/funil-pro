@@ -11,12 +11,14 @@ import {
 
 const CONDITION_META: Record<string, { label: string; color: string; bg: string }> = {
   default:     { label: 'Padrão',     color: '#3b82f6', bg: '#eff6ff' },
-  opened:      { label: 'Abriu',      color: '#10b981', bg: '#ecfdf5' },
-  not_opened:  { label: 'Não abriu',  color: '#ef4444', bg: '#fef2f2' },
-  clicked:     { label: 'Clicou',     color: '#6366f1', bg: '#eef2ff' },
-  not_clicked: { label: 'Não clicou', color: '#f97316', bg: '#fff7ed' },
+  yes:         { label: '✅ Sim',      color: '#10b981', bg: '#ecfdf5' },
+  no:          { label: '❌ Não',      color: '#ef4444', bg: '#fef2f2' },
   replied:     { label: 'Respondeu',  color: '#8b5cf6', bg: '#f5f3ff' },
   purchased:   { label: 'Comprou',    color: '#f59e0b', bg: '#fffbeb' },
+  clicked:     { label: 'Clicou',     color: '#6366f1', bg: '#eef2ff' },
+  opened:      { label: 'Abriu',      color: '#10b981', bg: '#ecfdf5' },
+  not_opened:  { label: 'Não abriu',  color: '#ef4444', bg: '#fef2f2' },
+  not_clicked: { label: 'Não clicou', color: '#f97316', bg: '#fff7ed' },
 }
 
 const CONDITIONS = Object.entries(CONDITION_META).map(([value, meta]) => ({ value, ...meta }))
@@ -54,7 +56,6 @@ export default function CustomEdge({
     deleteElements({ edges: [{ id }] })
   }, [id, deleteElements])
 
-  // Midpoint for the delete button (slightly offset from label)
   const midX = (sourceX + targetX) / 2
   const midY = (sourceY + targetY) / 2
 
@@ -70,7 +71,6 @@ export default function CustomEdge({
       />
 
       <EdgeLabelRenderer>
-        {/* Condition label */}
         <div
           style={{
             position: 'absolute',
@@ -115,7 +115,6 @@ export default function CustomEdge({
           )}
         </div>
 
-        {/* Delete button at midpoint when edge is selected and label is far from midpoint */}
         {selected && Math.abs(midX - labelX) + Math.abs(midY - labelY) > 60 && (
           <div
             style={{
