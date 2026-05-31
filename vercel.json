@@ -1,9 +1,3 @@
 {
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/queue/process",
-      "schedule": "* * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
