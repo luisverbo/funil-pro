@@ -57,10 +57,10 @@ export default async function LeadsPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-          <p className="text-sm text-gray-500 mt-1">{list.length} leads registrados</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Leads</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{list.length} leads registrados</p>
         </div>
       </div>
 
@@ -73,78 +73,120 @@ export default async function LeadsPage() {
           <p className="text-gray-400 text-sm">Os leads aparecerão aqui quando alguém entrar no funil.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Lead</th>
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Contato</th>
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Criado em</th>
-                  <th className="px-5 py-3.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {list.map((lead) => {
-                  const st = statusConfig[lead.status] ?? statusConfig.active
-                  return (
-                    <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
-                            <User className="w-4 h-4 text-indigo-500" />
-                          </div>
-                          <span className="font-medium text-gray-900">{lead.name ?? '—'}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="space-y-0.5">
-                          {lead.phone && (
-                            <div className="flex items-center gap-1.5 text-gray-600">
-                              <Phone className="w-3.5 h-3.5 text-gray-400" />
-                              {lead.phone}
-                            </div>
-                          )}
-                          {lead.email && (
-                            <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-                              <Mail className="w-3 h-3 text-gray-400" />
-                              {lead.email}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${st.className}`}>
-                          {st.label}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-gray-500">
-                        {new Date(lead.created_at).toLocaleString('pt-BR', {
-                          timeZone: 'America/Sao_Paulo',
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                        })}
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Link
-                            href={`/leads/${lead.id}`}
-                            className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
-                          >
-                            Ver detalhes →
-                          </Link>
-                          <DeleteLeadButton leadId={lead.id} leadName={lead.name} />
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+        <>
+          {/* Mobile: cards */}
+          <div className="md:hidden space-y-3">
+            {list.map((lead) => {
+              const st = statusConfig[lead.status] ?? statusConfig.active
+              return (
+                <div key={lead.id} className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center shrink-0 text-indigo-600 font-bold text-sm">
+                      {lead.name?.charAt(0)?.toUpperCase() ?? <User className="w-4 h-4" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{lead.name ?? '—'}</p>
+                      {lead.phone && (
+                        <p className="text-sm text-gray-500 flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {lead.phone}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${st.className}`}>
+                      {st.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                    <span className="text-xs text-gray-400">
+                      {new Date(lead.created_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <Link href={`/leads/${lead.id}`} className="text-xs font-medium text-indigo-600 min-h-[44px] flex items-center">
+                        Ver detalhes →
+                      </Link>
+                      <DeleteLeadButton leadId={lead.id} leadName={lead.name} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </div>
+
+          {/* Desktop: table */}
+          <div className="hidden md:block bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Lead</th>
+                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Contato</th>
+                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Criado em</th>
+                    <th className="px-5 py-3.5"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {list.map((lead) => {
+                    const st = statusConfig[lead.status] ?? statusConfig.active
+                    return (
+                      <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0">
+                              <User className="w-4 h-4 text-indigo-500" />
+                            </div>
+                            <span className="font-medium text-gray-900">{lead.name ?? '—'}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="space-y-0.5">
+                            {lead.phone && (
+                              <div className="flex items-center gap-1.5 text-gray-600">
+                                <Phone className="w-3.5 h-3.5 text-gray-400" />
+                                {lead.phone}
+                              </div>
+                            )}
+                            {lead.email && (
+                              <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+                                <Mail className="w-3 h-3 text-gray-400" />
+                                {lead.email}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${st.className}`}>
+                            {st.label}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-gray-500">
+                          {new Date(lead.created_at).toLocaleString('pt-BR', {
+                            timeZone: 'America/Sao_Paulo',
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                          })}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/leads/${lead.id}`}
+                              className="text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
+                            >
+                              Ver detalhes →
+                            </Link>
+                            <DeleteLeadButton leadId={lead.id} leadName={lead.name} />
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

@@ -129,13 +129,15 @@ export default async function FunnelsPage() {
   const popularTemplates = (tplData ?? []) as FunnelTemplate[]
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex items-start justify-between mb-8">
+    <div className="max-w-6xl mx-auto pb-24 md:pb-0">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Funis</h1>
-          <p className="text-sm text-gray-500 mt-1">Crie e gerencie seus funis de vendas</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Funis</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Crie e gerencie seus funis de vendas</p>
         </div>
-        <CreateFunnelDialog popularTemplates={popularTemplates} />
+        <div className="hidden md:block">
+          <CreateFunnelDialog popularTemplates={popularTemplates} />
+        </div>
       </div>
 
       <FunnelsGrid
@@ -145,6 +147,11 @@ export default async function FunnelsPage() {
         salesCountMap={salesCountMap}
         lastActivityMap={lastActivityMap}
       />
+
+      {/* Mobile: FAB */}
+      <div className="md:hidden fixed bottom-6 right-6 z-30">
+        <CreateFunnelDialog popularTemplates={popularTemplates} fab />
+      </div>
     </div>
   )
 }

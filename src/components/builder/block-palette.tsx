@@ -118,10 +118,46 @@ const GROUPS = [
   },
 ]
 
-export default function BlockPalette() {
+interface Props {
+  onBlockClick?: (type: string) => void
+  mode?: 'sidebar' | 'sheet'
+}
+
+export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) {
   const onDragStart = (e: React.DragEvent, type: string) => {
     e.dataTransfer.setData('application/reactflow', type)
     e.dataTransfer.effectAllowed = 'move'
+  }
+
+  if (mode === 'sheet') {
+    return (
+      <div className="p-4 space-y-4">
+        {GROUPS.map((group) => (
+          <div key={group.title}>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">
+              {group.title}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {group.blocks.map((block) => (
+                <button
+                  key={block.type}
+                  onClick={() => onBlockClick?.(block.type)}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white text-left active:bg-gray-50 transition-colors"
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: block.bg, color: block.color }}
+                  >
+                    {block.icon}
+                  </div>
+                  <p className="text-sm font-medium text-gray-800">{block.label}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   return (
