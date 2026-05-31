@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import AdminSidebar from '@/components/admin/admin-sidebar'
+import AdminShell from '@/components/admin/admin-shell'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -15,10 +15,5 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   if (!ut || ut.role !== 'admin') redirect('/funnels')
 
-  return (
-    <div className="min-h-screen bg-[#F9FAFB] flex">
-      <AdminSidebar />
-      <main className="flex-1 p-8 ml-56">{children}</main>
-    </div>
-  )
+  return <AdminShell>{children}</AdminShell>
 }
