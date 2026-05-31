@@ -7,11 +7,12 @@ export const maxDuration = 60
 async function run() {
   const admin = createAdminClient()
 
-  // Fetch all pending jobs (no scheduled_for filter — process everything pending)
+  const now = new Date().toISOString()
   const { data: jobs, error: fetchError } = await admin
     .from('queue_jobs')
     .select('*')
     .eq('status', 'pending')
+    .lte('scheduled_for', now)
     .order('scheduled_for', { ascending: true })
     .limit(10)
 

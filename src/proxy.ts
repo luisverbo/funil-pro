@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding'])
-const PUBLIC_PREFIXES = ['/api/webhooks', '/api/funnels', '/p/', '/f/', '/_next', '/favicon.ico']
+const PUBLIC_PREFIXES = ['/api/webhooks', '/api/funnels', '/api/queue/process', '/p/', '/f/', '/_next', '/favicon.ico']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -47,6 +47,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

@@ -1,7 +1,6 @@
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL!
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY!
 
-// Normaliza telefone para o formato aceito pela Evolution API: apenas dígitos com DDI 55
 function normalizePhone(phone: string): string {
   let digits = phone.replace(/\D/g, '')
   if (digits.startsWith('0')) digits = digits.slice(1)
@@ -54,7 +53,6 @@ export async function createInstance(instanceName: string) {
   return res.json()
 }
 
-// Get QR code for an instance
 export async function getInstanceQRCode(instanceName: string): Promise<{ qrcode?: { base64?: string }; instance?: { state?: string } }> {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
     headers: { apikey: EVOLUTION_API_KEY },
@@ -63,7 +61,6 @@ export async function getInstanceQRCode(instanceName: string): Promise<{ qrcode?
   return res.json()
 }
 
-// Get instance connection status
 export async function getInstanceStatus(instanceName: string): Promise<{ instance?: { state?: string; profileName?: string; profilePictureUrl?: string } }> {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
     headers: { apikey: EVOLUTION_API_KEY },
@@ -72,7 +69,6 @@ export async function getInstanceStatus(instanceName: string): Promise<{ instanc
   return res.json()
 }
 
-// Delete/disconnect instance
 export async function deleteInstance(instanceName: string) {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
     method: 'DELETE',
@@ -81,7 +77,6 @@ export async function deleteInstance(instanceName: string) {
   return res.ok
 }
 
-// Set webhook URL on instance
 export async function setInstanceWebhook(instanceName: string, webhookUrl: string) {
   const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
     method: 'POST',
