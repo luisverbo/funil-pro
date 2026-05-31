@@ -7,38 +7,36 @@ export const maxDuration = 60
 async function run() {
   const admin = createAdminClient()
 
+  // Fetch all pending jobs (no scheduled_for filter — process everything pending)
   const { data: jobs, error: fetchError } = await admin
     .from('queue_jobs')
     .select('*')
     .eq('status', 'pending')
-    .lte('scheduled_for', new Date().toISOString())
     .order('scheduled_for', { ascending: true })
     .limit(10)
 
   if (fetchError) {
     console.error('[queue/process] Erro ao buscar jobs:', fetchError)
-    return { processed: 0, failed: 0, error: fetchError.message, details: [] }
+    return { processed: 0, failed: 0, error: `DB error: ${fetchError.message}`, details: [] }
   }
 
-  if (!jobs || jobs.length === 0) {
-    console.log('[queue/process] Nenhum job pendente.')
-    return { processed: 0, failed: 0, details: [] }
-  }
+  const total = jobs?.length ?? 0
+  console.log(`[queue/process] ${total} jobs pendentes encontrados. Horário: ${new Date().toISOString()}`)
 
-  console.log(`[queue/process] Encontrados ${jobs.length} jobs pendentes.`)
+  if (total === 0) {
+    return { processed: 0, failed: 0, details: [], debug: `Nenhum job pendente às ${new Date().toISOString()}` }
+  }
 
   const details: Array<{ id: string; block_type?: string; status: string; error?: string }> = []
   let processed = 0
   let failed = 0
 
   for (const job of jobs as QueueJob[]) {
-    console.log(`[queue/process] Processando job ${job.id} | block_id: ${job.block_id}`)
-
-    // Fetch block type for logging
     const { data: block } = await admin.from('funnel_blocks').select('block_type').eq('id', job.block_id).single()
     const blockType = block?.block_type ?? 'unknown'
 
-    // Mark as processing
+    console.log(`[queue/process] Processando job ${job.id} | tipo: ${blockType}`)
+
     await admin.from('queue_jobs')
       .update({ status: 'processing', attempts: (job.attempts ?? 0) + 1 })
       .eq('id', job.id)
@@ -46,13 +44,13 @@ async function run() {
     try {
       await processJob(job)
       await admin.from('queue_jobs').update({ status: 'done' }).eq('id', job.id)
-      console.log(`[queue/process] Job ${job.id} [${blockType}] concluído.`)
+      console.log(`[queue/process] Job ${job.id} [${blockType}] ✅ concluído`)
       details.push({ id: job.id, block_type: blockType, status: 'done' })
       processed++
     } catch (err) {
       const errMsg = String(err)
       await admin.from('queue_jobs').update({ status: 'failed', error: errMsg }).eq('id', job.id)
-      console.error(`[queue/process] Job ${job.id} [${blockType}] falhou:`, errMsg)
+      console.error(`[queue/process] Job ${job.id} [${blockType}] ❌ falhou: ${errMsg}`)
       details.push({ id: job.id, block_type: blockType, status: 'failed', error: errMsg })
       failed++
     }
@@ -66,8 +64,9 @@ export async function GET() {
     const result = await run()
     return NextResponse.json(result)
   } catch (err) {
-    console.error('[queue/process] Erro fatal:', err)
-    return NextResponse.json({ processed: 0, failed: 0, error: String(err) }, { status: 500 })
+    const msg = String(err)
+    console.error('[queue/process] Erro fatal:', msg)
+    return NextResponse.json({ processed: 0, failed: 0, error: msg }, { status: 500 })
   }
 }
 
