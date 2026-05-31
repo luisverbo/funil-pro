@@ -11,4 +11,8 @@ jobs:
     steps:
       - name: Trigger Vercel Deploy
         run: |
-          curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_eRXulORN1u2x2WvvUTEtJhdv743H/libcNQtnyg
+          echo "Triggering deploy hook..."
+          RESPONSE=$(curl -sv -X POST \
+            'https://api.vercel.com/v1/integrations/deploy/prj_eRXulORN1u2x2WvvUTEtJhdv743H/libcNQtnyg' \
+            2>&1)
+          echo "Response: $RESPONSE"
