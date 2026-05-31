@@ -120,7 +120,8 @@ export default async function LeadsPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-gray-500">
-                        {new Date(lead.created_at).toLocaleDateString('pt-BR', {
+                        {new Date(lead.created_at).toLocaleString('pt-BR', {
+                          timeZone: 'America/Sao_Paulo',
                           day: '2-digit',
                           month: '2-digit',
                           year: 'numeric',

@@ -36,7 +36,7 @@ export default function CustomEdge({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
   })
-  const { setEdges } = useReactFlow()
+  const { setEdges, deleteElements } = useReactFlow()
   const [editing, setEditing] = useState(false)
 
   const condition = (data?.condition as string) ?? 'default'
@@ -48,6 +48,15 @@ export default function CustomEdge({
     )
     setEditing(false)
   }, [id, setEdges])
+
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    deleteElements({ edges: [{ id }] })
+  }, [id, deleteElements])
+
+  // Midpoint for the delete button (slightly offset from label)
+  const midX = (sourceX + targetX) / 2
+  const midY = (sourceY + targetY) / 2
 
   return (
     <>
@@ -61,6 +70,7 @@ export default function CustomEdge({
       />
 
       <EdgeLabelRenderer>
+        {/* Condition label */}
         <div
           style={{
             position: 'absolute',
@@ -83,15 +93,51 @@ export default function CustomEdge({
               ))}
             </select>
           ) : (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-xs font-semibold px-2 py-0.5 rounded-full border shadow-sm transition-all hover:shadow-md"
-              style={{ color: meta.color, backgroundColor: meta.bg, borderColor: meta.color + '40' }}
-            >
-              {meta.label}
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setEditing(true)}
+                className="text-xs font-semibold px-2 py-0.5 rounded-full border shadow-sm transition-all hover:shadow-md"
+                style={{ color: meta.color, backgroundColor: meta.bg, borderColor: meta.color + '40' }}
+              >
+                {meta.label}
+              </button>
+              <button
+                onClick={handleDelete}
+                title="Remover conexão"
+                className="w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2.5} className="w-3 h-3">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
           )}
         </div>
+
+        {/* Delete button at midpoint when edge is selected and label is far from midpoint */}
+        {selected && Math.abs(midX - labelX) + Math.abs(midY - labelY) > 60 && (
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${midX}px,${midY}px)`,
+              pointerEvents: 'all',
+              zIndex: 10,
+            }}
+            className="nodrag nopan"
+          >
+            <button
+              onClick={handleDelete}
+              title="Remover conexão"
+              className="w-5 h-5 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm hover:bg-red-50 hover:border-red-300 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2.5} className="w-3 h-3">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        )}
       </EdgeLabelRenderer>
     </>
   )

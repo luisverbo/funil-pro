@@ -123,20 +123,24 @@ function eventIcon(type: string) {
 }
 
 const eventLabels: Record<string, string> = {
-  entered_funnel: 'Entrou no funil',
-  message_sent: 'Mensagem enviada',
-  message_opened: 'Mensagem aberta',
-  message_clicked: 'Link clicado',
-  link_clicked: 'Link clicado',
-  replied: 'Respondeu',
-  purchased: 'Compra realizada',
-  tag_added: 'Tag adicionada',
-  agent_activated: 'Agente IA ativado',
-  agent_deactivated: 'Agente IA desativado',
-  page_viewed: 'Página visualizada',
-  page_button_clicked: 'Botão da página clicado',
-  unsubscribed: 'Descadastrado',
-  funnel_completed: 'Funil concluído',
+  entered_funnel: '⚡ Entrou no funil',
+  message_sent: '💬 Mensagem enviada',
+  message_opened: '👁️ Mensagem aberta',
+  message_clicked: '🖱️ Link clicado',
+  link_clicked: '🖱️ Link clicado',
+  replied: '↩️ Respondeu',
+  purchased: '💰 Compra realizada',
+  purchased_order_bump: '💰 Order bump comprado',
+  purchased_upsell: '💰 Upsell comprado',
+  delay_scheduled: '⏱️ Atraso agendado',
+  tag_added: '🏷️ Tag adicionada',
+  agent_activated: '🤖 Agente ativado',
+  agent_deactivated: '🤖 Agente desativado',
+  page_viewed: '📄 Página visualizada',
+  page_button_clicked: '🖱️ Botão clicado',
+  unsubscribed: '🚫 Descadastrou',
+  funnel_completed: '✅ Funil concluído',
+  cart_abandoned: '🛒 Carrinho abandonado',
 }
 
 export default async function LeadDetailPage({
@@ -387,6 +391,18 @@ export default async function LeadDetailPage({
                     <p className="font-medium text-gray-900 text-sm">
                       {eventLabels[event.event_type] ?? event.event_type}
                     </p>
+                    {event.event_type === 'delay_scheduled' && (event.event_data as Record<string, unknown>)?.scheduled_for && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Agendado para: {new Date(String((event.event_data as Record<string, unknown>).scheduled_for)).toLocaleString('pt-BR', {
+                          timeZone: 'America/Sao_Paulo',
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    )}
                     {event.product_name && (
                       <p className="text-xs text-gray-500 mt-0.5">Produto: {event.product_name}</p>
                     )}
@@ -397,6 +413,7 @@ export default async function LeadDetailPage({
                     )}
                     <p className="text-xs text-gray-400 mt-1">
                       {new Date(event.created_at).toLocaleString('pt-BR', {
+                        timeZone: 'America/Sao_Paulo',
                         day: '2-digit',
                         month: '2-digit',
                         year: 'numeric',
