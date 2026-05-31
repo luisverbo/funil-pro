@@ -5,9 +5,12 @@ export async function sendTextMessage(instanceName: string, phone: string, messa
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-    body: JSON.stringify({ number: phone, text: message }),
+    body: JSON.stringify({ number: phone, textMessage: { text: message } }),
   })
-  if (!res.ok) throw new Error(`Evolution API error: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Evolution API error: ${res.status} — ${body}`)
+  }
   return res.json()
 }
 
@@ -42,7 +45,6 @@ export async function createInstance(instanceName: string) {
   return res.json()
 }
 
-// Get QR code for an instance
 export async function getInstanceQRCode(instanceName: string): Promise<{ qrcode?: { base64?: string }; instance?: { state?: string } }> {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
     headers: { apikey: EVOLUTION_API_KEY },
@@ -51,7 +53,6 @@ export async function getInstanceQRCode(instanceName: string): Promise<{ qrcode?
   return res.json()
 }
 
-// Get instance connection status
 export async function getInstanceStatus(instanceName: string): Promise<{ instance?: { state?: string; profileName?: string; profilePictureUrl?: string } }> {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
     headers: { apikey: EVOLUTION_API_KEY },
@@ -60,7 +61,6 @@ export async function getInstanceStatus(instanceName: string): Promise<{ instanc
   return res.json()
 }
 
-// Delete/disconnect instance
 export async function deleteInstance(instanceName: string) {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
     method: 'DELETE',
@@ -69,7 +69,6 @@ export async function deleteInstance(instanceName: string) {
   return res.ok
 }
 
-// Set webhook URL on instance
 export async function setInstanceWebhook(instanceName: string, webhookUrl: string) {
   const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
     method: 'POST',

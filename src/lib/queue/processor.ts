@@ -16,13 +16,17 @@ export interface QueueJob {
 export async function processJob(job: QueueJob): Promise<void> {
   const admin = createAdminClient()
 
-  // Fetch lead
   const { data: lead } = await admin.from('leads').select('id, name, phone, email, tenant_id').eq('id', job.lead_id).single()
-  if (!lead) throw new Error('Lead not found')
+  if (!lead) {
+    console.warn(`[processor] Lead ${job.lead_id} não encontrado — pulando job ${job.id}`)
+    return
+  }
 
-  // Fetch block
   const { data: block } = await admin.from('funnel_blocks').select('*').eq('id', job.block_id).single()
-  if (!block) throw new Error('Block not found')
+  if (!block) {
+    console.warn(`[processor] Bloco ${job.block_id} não encontrado — pulando job ${job.id}`)
+    return
+  }
 
   const config = (block.config ?? {}) as Record<string, unknown>
 
