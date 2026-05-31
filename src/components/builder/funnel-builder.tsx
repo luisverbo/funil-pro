@@ -102,6 +102,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [showCaptureEditor, setShowCaptureEditor] = useState(false)
   const [showLinksDrawer, setShowLinksDrawer] = useState(false)
+  const [showMobilePalette, setShowMobilePalette] = useState(false)
   const [waInstanceId, setWaInstanceId] = useState<string | null>(funnel.whatsapp_instance_id)
   const [waDropdownOpen, setWaDropdownOpen] = useState(false)
 
@@ -189,16 +190,35 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
     })
   }, [funnel.id, startTransition, waInstanceId])
 
+  const handleAddBlockMobile = useCallback((type: string) => {
+    const LABELS: Record<string, string> = {
+      message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda', entry: 'Entrada', cart_abandoned: 'Carr. Abandonado',
+    }
+    setNodes((nds) => {
+      if (type === 'entry' && nds.some((n) => n.type === 'entry')) return nds
+      const config = type === 'entry' ? { entry_type: 'link_utm', funnel_id: funnel.id } : {}
+      return nds.concat({
+        id: crypto.randomUUID(),
+        type,
+        position: { x: 80 + Math.random() * 160, y: 80 + nds.length * 120 },
+        data: { label: LABELS[type] ?? type, blockType: type, config } as FunnelNodeData,
+      })
+    })
+    setShowMobilePalette(false)
+  }, [setNodes, funnel.id])
+
   const statusMeta = STATUS_META[funnelStatus] ?? STATUS_META.draft
   const selectedInstance = waInstances.find((i) => i.id === waInstanceId) ?? null
   const isWaDisconnected = selectedInstance && selectedInstance.status !== 'connected'
 
   return (
-    <div className="flex h-[calc(100vh-61px)] -m-6 bg-gray-50">
-      <BlockPalette />
+    <div className="flex h-[calc(100dvh-52px)] md:h-[calc(100vh-61px)] -m-4 md:-m-6 bg-gray-50">
+      {/* Desktop sidebar palette */}
+      <div className="hidden md:flex">
+        <BlockPalette />
+      </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* WhatsApp disconnection warning */}
         {isWaDisconnected && (
           <div className="bg-red-50 border-b border-red-200 px-4 py-1.5 flex items-center gap-2 shrink-0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-red-500 shrink-0">
@@ -209,20 +229,15 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
           </div>
         )}
 
-        {/* Header */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 gap-4">
-          {/* Left */}
           <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/funnels"
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors shrink-0"
-            >
+            <Link href="/funnels" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors shrink-0">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
                 <polyline points="15,18 9,12 15,6" />
               </svg>
-              Funis
+              <span className="hidden sm:inline">Funis</span>
             </Link>
-            <span className="text-gray-200">/</span>
+            <span className="text-gray-200 hidden sm:inline">/</span>
             {editingName ? (
               <input
                 autoFocus
@@ -230,12 +245,12 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
                 onChange={(e) => setFunnelName(e.target.value)}
                 onBlur={() => setEditingName(false)}
                 onKeyDown={(e) => e.key === 'Enter' && setEditingName(false)}
-                className="text-sm font-semibold text-gray-800 border-b-2 border-indigo-500 bg-transparent outline-none px-0.5 min-w-0 w-48"
+                className="text-sm font-semibold text-gray-800 border-b-2 border-indigo-500 bg-transparent outline-none px-0.5 min-w-0 w-32 sm:w-48"
               />
             ) : (
               <button
                 onClick={() => setEditingName(true)}
-                className="text-sm font-semibold text-gray-800 hover:text-indigo-600 transition-colors truncate max-w-xs"
+                className="text-sm font-semibold text-gray-800 hover:text-indigo-600 transition-colors truncate max-w-[100px] sm:max-w-xs"
               >
                 {funnelName}
               </button>
@@ -247,8 +262,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
               {statusMeta.label}
             </span>
 
-            {/* WhatsApp instance selector */}
-            <div className="relative shrink-0">
+            <div className="relative shrink-0 hidden sm:block">
               <button
                 onClick={() => setWaDropdownOpen((v) => !v)}
                 className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors font-medium ${
@@ -266,16 +280,10 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
                       <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.555 4.116 1.528 5.843L0 24l6.302-1.513A11.94 11.94 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.89 0-3.663-.497-5.198-1.367l-.371-.22-3.742.897.938-3.635-.242-.374A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
                     </svg>
-                    <span className="max-w-[100px] truncate">{selectedInstance.instance_name}</span>
+                    <span className="max-w-[80px] truncate">{selectedInstance.instance_name}</span>
                   </>
                 ) : (
-                  <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    Sem WhatsApp
-                  </>
+                  <span className="text-xs">Sem WA</span>
                 )}
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 shrink-0">
                   <polyline points="6,9 12,15 18,9" />
@@ -311,16 +319,15 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
             </div>
           </div>
 
-          {/* Right */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {statusMsg && (
-              <span className={`text-xs font-medium ${statusMsg.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+              <span className={`text-xs font-medium hidden sm:inline ${statusMsg.ok ? 'text-emerald-600' : 'text-red-500'}`}>
                 {statusMsg.text}
               </span>
             )}
             <button
               onClick={() => { setShowLinksDrawer(v => !v); setShowCaptureEditor(false) }}
-              className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              className="hidden sm:flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -330,7 +337,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
             </button>
             <button
               onClick={() => { setShowCaptureEditor(v => !v); setShowLinksDrawer(false) }}
-              className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              className="hidden sm:flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
                 <circle cx="12" cy="12" r="10" />
@@ -342,7 +349,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
             <button
               onClick={handleSave}
               disabled={isPending}
-              className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 font-medium"
+              className="flex items-center gap-1 sm:gap-1.5 text-sm px-2.5 sm:px-3.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 font-medium"
             >
               {isPending ? (
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -360,7 +367,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
             <button
               onClick={handlePublish}
               disabled={isPending || funnelStatus === 'published'}
-              className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 font-medium"
+              className="flex items-center gap-1 sm:gap-1.5 text-sm px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 font-medium"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
                 <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
@@ -373,7 +380,6 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
           </div>
         </header>
 
-        {/* Canvas + Config Panel */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1">
             <ReactFlow
@@ -434,6 +440,31 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
             />
           )}
         </div>
+      </div>
+
+      {/* Mobile: FAB + block bottom sheet */}
+      <div className="md:hidden">
+        <button
+          onClick={() => setShowMobilePalette(true)}
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl font-light hover:bg-indigo-700"
+          aria-label="Adicionar bloco"
+        >
+          +
+        </button>
+
+        {showMobilePalette && (
+          <>
+            <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setShowMobilePalette(false)} />
+            <div className="fixed bottom-0 inset-x-0 z-50 bg-white rounded-t-2xl shadow-xl max-h-[80vh] overflow-y-auto">
+              <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-1" />
+              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
+                <p className="font-semibold text-gray-900 text-sm">Adicionar bloco</p>
+                <button onClick={() => setShowMobilePalette(false)} className="text-gray-400 hover:text-gray-700 p-1">✕</button>
+              </div>
+              <BlockPalette mode="sheet" onBlockClick={handleAddBlockMobile} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
