@@ -65,17 +65,17 @@ Pixel Meta:           disparado nas páginas e eventos do funil
 | Motor de execução | BullMQ processa blocos em fila, dispara ações | ✅ concluído |
 | WhatsApp | Evolution API, instâncias por tenant, envio/recebimento | ✅ concluído |
 | E-mail | Resend, sequências, broadcasts | 🔴 não iniciado |
-| Rastreamento UTM | Captura parâmetros na entrada, grava lead_source | 🔴 não iniciado |
+| Rastreamento UTM | Captura parâmetros na entrada, grava lead_source | ✅ concluído |
 | Integração Meta API | Puxa ad_spend, calcula CPL e ROAS | 🔴 não iniciado |
 | Webhooks pagamento | Hotmart, Kiwify, Eduzz, Yampi | ✅ concluído |
-| Painel de métricas | CPL, ROAS, drop-off por etapa, timeline do lead | 🔴 não iniciado |
+| Painel de métricas | CPL, ROAS, drop-off por etapa, timeline do lead | ✅ concluído |
 | Templates de funil | Exportar/importar JSON, marketplace | 🔴 não iniciado |
 | Planos + billing | Starter/Pro/Scale + add-ons, Asaas ou Stripe | 🔴 não iniciado |
 
 ### FASE 2 — após core pronto
 
 | Módulo | Descrição |
-|--------|-----------|
+|--------|----------|
 | Editor de páginas | VSL com botão temporizado, carta de vendas, upsell, rastreamento de clique e tempo assistido |
 | Formulário interativo | Estilo Typeform, respostas alimentam condições do funil |
 | Agente de IA por funil | Opcional, só plano Scale, desativado por padrão |
@@ -87,7 +87,7 @@ Pixel Meta:           disparado nas páginas e eventos do funil
 ### Planos
 
 | Plano | Preço | Instâncias WA | E-mails/mês | Diferenciais |
-|-------|-------|----------------|-------------|--------------|
+|-------|-------|----------------|-------------|-------------- |
 | Starter | R$ 97/mês | 1 | 1.000 | Funis ilimitados, WA + email, métricas básicas |
 | Pro | R$ 197/mês | 1 | 10.000 | + ROI Meta, + 1 add-on incluso (formulário OU páginas), templates |
 | Scale | R$ 397/mês | 3 | 50.000 | + tudo incluso, + agente IA opcional por funil |
@@ -176,7 +176,7 @@ funnel_edges
   funnel_id uuid FK funnels
   source_block_id uuid FK funnel_blocks
   target_block_id uuid FK funnel_blocks
-  condition text                -- opened | not_opened | clicked | not_clicked | replied | purchased | default
+  condition text                -- opened | not_opened | clicked | not_clicked | replied | purchased | yes | no | default
   condition_value text          -- valor da condição quando necessário
   created_at timestamptz
 
@@ -346,7 +346,7 @@ funnel_agents
 ## 📡 Webhooks recebidos
 
 | Plataforma | URL | Evento principal |
-|------------|-----|-----------------|
+|------------|-----|------------------|
 | Evolution API | `/api/webhooks/evolution/:instanceId` | mensagem recebida |
 | Hotmart | `/api/webhooks/hotmart/:tenantId` | compra aprovada |
 | Kiwify | `/api/webhooks/kiwify/:tenantId` | compra aprovada |
@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-30 — Etapas 1–5 + 7–8 + 10 + 12A concluídas
+**Última atualização:** 2026-05-31 — Etapas 1–5 + 7–8 + 10 + 12A concluídas + correções críticas do motor de execução
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -523,7 +523,6 @@ APP_SECRET=
   - Sub-navegação com tabs nas 3 páginas de métricas
   - `/leads/[id]` aprimorado — card de receita com total, lista de produtos comprados com plataforma, % de contribuição na receita do anúncio
   - Componentes client: `LeadsChart` (recharts LineChart), `FunnelChart` (barras horizontais de drop-off), `FunnelFilter` (select com router navigation)
-
 - Etapa 12A: Painel Admin Master completo:
   - Migration: `users_tenants.role` (owner/admin/member) + `platform_settings` table
   - `/admin` — visão geral com 5 KPIs (clientes, MRR, ativos 30d, funis, leads) + tabela recentes
@@ -535,6 +534,17 @@ APP_SECRET=
   - `src/app/actions/admin.ts` — 6 server actions com verificação de admin
   - Dashboard sidebar atualizado: link "Admin" com ícone Shield só visível para admins
   - Usuário inicial setado como admin no banco
+- Correções críticas motor de execução (sessão 2026-05-31):
+  - **Evolution API v2**: corpo da requisição corrigido de `{ textMessage: { text } }` para `{ number, text }` — mensagens WA passaram a funcionar
+  - **Middleware bloqueando cron**: `src/proxy.ts` adicionado `/api/queue/process` em PUBLIC_PREFIXES — cron da VPS parou de receber 307 e passou a processar jobs
+  - **Delay não respeitando agendamento**: `src/app/api/queue/process/route.ts` adicionado filtro `.lte('scheduled_for', now)` — delay blocks agora aguardam o tempo correto antes de avançar
+  - **Condition block travando funil**: `enqueueNext()` em `processor.ts` adicionou fallback para edge `'default'` quando `'yes'`/`'no'` não encontrado — funis com edges Padrão continuam funcionando
+  - **Opções yes/no nas conexões**: `custom-edge.tsx` agora exibe ✅ Sim e ❌ Não no dropdown de condições das edges
+  - **Upload de arquivo**: `src/app/api/upload/route.ts` + botão de upload no config-panel — suporte a anexos nos blocos de mensagem via Supabase Storage (bucket `funnel-media`)
+  - **Sistema de triggers por produto**: `src/app/actions/triggers.ts`, `src/components/builder/trigger-selector.tsx`, `src/lib/webhooks/purchase-handler.ts` — funil pode ser ativado automaticamente por compra ou carrinho abandonado de produto específico
+  - **Sync de produtos**: endpoints de sync para Kiwify, Hotmart, Eduzz, Yampi + botão na página de integrações
+  - **NOTA TÉCNICA**: WhatsApp NÃO envia recibos de leitura via API — condição "Abriu mensagem" não funciona; usar "Respondeu" em vez disso
+  - **Nota de deploy**: GitHub Actions só deploya branch `main` — todas as correções devem ir direto para `main` via `mcp__github__push_files`
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
@@ -557,3 +567,6 @@ APP_SECRET=
 | Webhook por tenant | URL única por tenant + plataforma, facilita debugging e isolamento |
 | Agente só no Scale | Protege o sistema de bugs em produção, vira diferencial de upgrade |
 | Resend para email | Zero configuração, integração nativa Next.js, custo praticamente zero na escala inicial |
+| Evolution API v2 body format | `{ number, text }` — NÃO usar `{ textMessage: { text } }` que é formato v1 |
+| Cron via VPS + Vercel crons | VPS tem `* * * * *` no crontab chamando `/api/queue/process`; Vercel também tem cron no vercel.json como backup |
+| Middleware whitelist | `/api/queue/process` deve estar em PUBLIC_PREFIXES no proxy.ts para cron funcionar sem sessão |
