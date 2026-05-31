@@ -1,11 +1,23 @@
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL!
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY!
 
+// Normaliza telefone para o formato esperado pela Evolution API: 5511999999999
+function normalizePhone(phone: string): string {
+  // Remove tudo que não é dígito
+  let digits = phone.replace(/\D/g, '')
+  // Remove o 0 inicial se houver
+  if (digits.startsWith('0')) digits = digits.slice(1)
+  // Adiciona código do Brasil se não tiver
+  if (!digits.startsWith('55')) digits = '55' + digits
+  return digits
+}
+
 export async function sendTextMessage(instanceName: string, phone: string, message: string) {
+  const normalizedPhone = normalizePhone(phone)
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-    body: JSON.stringify({ number: phone, textMessage: { text: message } }),
+    body: JSON.stringify({ number: normalizedPhone, textMessage: { text: message } }),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -21,11 +33,12 @@ export async function sendMediaMessage(
   mediaType: 'image' | 'video' | 'document',
   caption: string
 ) {
+  const normalizedPhone = normalizePhone(phone)
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
     body: JSON.stringify({
-      number: phone,
+      number: normalizedPhone,
       mediatype: mediaType,
       media: mediaUrl,
       caption,
