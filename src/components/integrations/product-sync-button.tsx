@@ -7,17 +7,21 @@ interface Props {
   platformLabel: string
 }
 
-const CREDENTIAL_FIELDS: Record<string, { key: string; label: string; placeholder: string }[]> = {
-  kiwify: [{ key: 'apiKey', label: 'API Key', placeholder: 'kw_...' }],
-  hotmart: [{ key: 'token', label: 'Bearer Token', placeholder: 'seu token hotmart' }],
+const CREDENTIAL_FIELDS: Record<string, { key: string; label: string; placeholder: string; type?: string }[]> = {
+  kiwify: [
+    { key: 'client_id', label: 'client_id', placeholder: 'afba9f53-c188-...' },
+    { key: 'client_secret', label: 'client_secret', placeholder: '78f6c495...', type: 'password' },
+    { key: 'account_id', label: 'account_id', placeholder: 'wE7uqDNTjNm6zbK' },
+  ],
+  hotmart: [{ key: 'token', label: 'Bearer Token', placeholder: 'seu token hotmart', type: 'password' }],
   eduzz: [
-    { key: 'apiKey', label: 'Public Key', placeholder: 'sua public key' },
+    { key: 'apiKey', label: 'Public Key', placeholder: 'sua public key', type: 'password' },
     { key: 'email', label: 'E-mail da conta', placeholder: 'email@exemplo.com' },
   ],
   yampi: [
     { key: 'alias', label: 'Alias da loja', placeholder: 'minha-loja' },
-    { key: 'token', label: 'User Token', placeholder: 'seu user token' },
-    { key: 'secretKey', label: 'Secret Key', placeholder: 'sua secret key' },
+    { key: 'token', label: 'User Token', placeholder: 'seu user token', type: 'password' },
+    { key: 'secretKey', label: 'Secret Key', placeholder: 'sua secret key', type: 'password' },
   ],
 }
 
@@ -64,7 +68,7 @@ export default function ProductSyncButton({ platform, platformLabel }: Props) {
             <div key={f.key} className="mb-2">
               <label className="text-xs text-gray-500 block mb-0.5">{f.label}</label>
               <input
-                type="password"
+                type={f.type ?? 'text'}
                 placeholder={f.placeholder}
                 value={credentials[f.key] ?? ''}
                 onChange={(e) => setCredentials((c) => ({ ...c, [f.key]: e.target.value }))}
