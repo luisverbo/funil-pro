@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { handlePurchaseWebhook, handleAbandonedCart } from '@/lib/webhooks/purchase-handler'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = await params
   try {
     const body = await req.json()
+
+    // Kiwify sends token in x-kiwify-token header
+    const admin = createAdminClient()
+    const { data: tenant } = await admin.from('tenants').select('webhook_tokens').eq('id', tenantId).single()
+    const expectedToken = (tenant?.webhook_tokens as Record<string, string> | null)?.kiwify
+    if (expectedToken) {
+      const token = req.headers.get('x-kiwify-token')
+      if (!token || token !== expectedToken) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+    }
+
     const status = body?.order_status ?? body?.status
 
-    // Handle abandoned cart
     if (status === 'abandoned_checkout' || status === 'abandoned' || body?.event === 'abandoned_checkout') {
       const customer = body?.Customer ?? body?.customer ?? {}
       const product = body?.Product ?? body?.product ?? {}

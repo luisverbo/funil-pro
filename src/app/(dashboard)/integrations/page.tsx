@@ -6,6 +6,8 @@ import InstanceCard from '@/components/whatsapp/instance-card'
 import CreateInstanceButton from '@/components/whatsapp/create-instance-button'
 import CopyUrlButton from '@/components/funnels/copy-url-button'
 import MetaSection from '@/components/integrations/meta-section'
+import ProductSyncButton from '@/components/integrations/product-sync-button'
+import WebhookTokenField from '@/components/integrations/webhook-token-field'
 import type { WhatsappInstance } from '@/types'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
@@ -15,33 +17,41 @@ const PAYMENT_PLATFORMS = [
     id: 'hotmart',
     name: 'Hotmart',
     color: 'bg-orange-100 text-orange-700',
-    badgeColor: 'bg-orange-500',
-    instruction: 'Cole esta URL no painel da Hotmart em: Ferramentas → Webhooks',
     icon: 'HM',
+    urlInstruction: 'Cole esta URL em: Hotmart → Ferramentas → Webhooks',
+    tokenLabel: 'Chave de segurança (hottok)',
+    tokenFieldLabel: 'Campo na Hotmart',
+    tokenInstruction: 'Cole este valor no campo "Chave de segurança (hottok)" ao criar o webhook',
   },
   {
     id: 'kiwify',
     name: 'Kiwify',
     color: 'bg-purple-100 text-purple-700',
-    badgeColor: 'bg-purple-500',
-    instruction: 'Cole esta URL no painel da Kiwify em: Configurações → Webhooks',
     icon: 'KW',
+    urlInstruction: 'Cole esta URL em: Kiwify → Configurações → Webhooks',
+    tokenLabel: 'Token de verificação',
+    tokenFieldLabel: 'Campo na Kiwify',
+    tokenInstruction: 'Cole este valor no campo "Token" ao configurar o webhook na Kiwify',
   },
   {
     id: 'eduzz',
     name: 'Eduzz',
     color: 'bg-blue-100 text-blue-700',
-    badgeColor: 'bg-blue-500',
-    instruction: 'Cole esta URL no painel da Eduzz em: Configurações → Postback URL',
     icon: 'ED',
+    urlInstruction: 'Cole esta URL em: Eduzz → Configurações → Postback URL',
+    tokenLabel: null,
+    tokenFieldLabel: null,
+    tokenInstruction: null,
   },
   {
     id: 'yampi',
     name: 'Yampi',
     color: 'bg-green-100 text-green-700',
-    badgeColor: 'bg-green-500',
-    instruction: 'Cole esta URL no painel da Yampi em: Configurações → Webhooks',
     icon: 'YP',
+    urlInstruction: 'Cole esta URL em: Yampi → Configurações → Webhooks',
+    tokenLabel: 'Secret do webhook',
+    tokenFieldLabel: 'Campo na Yampi',
+    tokenInstruction: 'Cole este valor no campo "Secret" ao configurar o webhook na Yampi',
   },
 ]
 
@@ -74,12 +84,13 @@ export default async function IntegrationsPage() {
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
     admin
       .from('tenants')
-      .select('meta_access_token, meta_ad_account_id, meta_pixel_id')
+      .select('meta_access_token, meta_ad_account_id, meta_pixel_id, webhook_tokens')
       .eq('id', ut.tenant_id)
       .single(),
   ])
 
   const activePlatforms = new Set((recentEvents ?? []).map((e: { platform: string }) => e.platform))
+  const webhookTokens = (tenantData?.webhook_tokens as Record<string, string>) ?? {}
 
   return (
     <div>
@@ -174,8 +185,28 @@ export default async function IntegrationsPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-gray-500 flex-1">{platform.instruction}</p>
+                  <p className="text-xs text-gray-500 flex-1">{platform.urlInstruction}</p>
                   <CopyUrlButton url={webhookUrl} />
+                </div>
+
+                {platform.tokenLabel ? (
+                  <WebhookTokenField
+                    platform={platform.id}
+                    currentToken={webhookTokens[platform.id] ?? null}
+                    label={platform.tokenLabel}
+                    fieldLabel={platform.tokenFieldLabel!}
+                    instruction={platform.tokenInstruction!}
+                  />
+                ) : (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-xs text-gray-400">
+                      A {platform.name} não suporta verificação por token. Sua URL já é única e segura por conter seu ID exclusivo.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <ProductSyncButton platform={platform.id} platformLabel={platform.name} />
                 </div>
               </div>
             )

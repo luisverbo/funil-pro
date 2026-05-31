@@ -5,9 +5,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ten
   const { tenantId } = await params
   try {
     const body = await req.json()
+
+    // Eduzz has no official token verification — validate payload structure instead
+    if (!body?.key && !body?.trans_status) {
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+    }
+
     const status = body?.key ?? body?.trans_status
 
-    // Handle abandoned cart
     if (status === 'abandoned_cart' || body?.key === 'abandoned_cart') {
       await handleAbandonedCart({
         tenantId,

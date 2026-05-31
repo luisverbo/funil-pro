@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { handlePurchaseWebhook, handleAbandonedCart } from '@/lib/webhooks/purchase-handler'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = await params
   try {
     const body = await req.json()
+
+    // Hotmart uses 'hottok' field inside the payload for auth
+    const admin = createAdminClient()
+    const { data: tenant } = await admin.from('tenants').select('webhook_tokens').eq('id', tenantId).single()
+    const expectedHottok = (tenant?.webhook_tokens as Record<string, string> | null)?.hotmart
+    if (expectedHottok) {
+      const hottok = body?.hottok
+      if (!hottok || hottok !== expectedHottok) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+    }
+
     const event = body?.event ?? body?.data?.event
 
-    // Handle abandoned cart separately
     if (event === 'ABANDONED_CART') {
       const buyer = body?.data?.buyer ?? body?.buyer ?? {}
       await handleAbandonedCart({
@@ -22,7 +34,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ten
       return NextResponse.json({ ok: true })
     }
 
-    // Map Hotmart events
     const eventMap: Record<string, 'purchased' | 'refunded' | 'chargeback' | 'canceled'> = {
       PURCHASE_APPROVED: 'purchased',
       PURCHASE_REFUNDED: 'refunded',

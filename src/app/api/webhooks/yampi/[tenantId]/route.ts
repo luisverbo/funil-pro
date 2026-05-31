@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { handlePurchaseWebhook, handleAbandonedCart } from '@/lib/webhooks/purchase-handler'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   const { tenantId } = await params
   try {
     const body = await req.json()
+
+    // Yampi sends secret in X-Yampi-Webhook-Secret header
+    const admin = createAdminClient()
+    const { data: tenant } = await admin.from('tenants').select('webhook_tokens').eq('id', tenantId).single()
+    const expectedSecret = (tenant?.webhook_tokens as Record<string, string> | null)?.yampi
+    if (expectedSecret) {
+      const secret = req.headers.get('x-yampi-webhook-secret')
+      if (!secret || secret !== expectedSecret) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+    }
+
     const event = body?.event ?? body?.type
 
-    // Handle abandoned cart
     if (event === 'cart.abandoned') {
       const order = body?.resource ?? body?.order ?? body
       const customer = order?.customer ?? {}
