@@ -14,7 +14,7 @@ export async function sendTextMessage(instanceName: string, phone: string, messa
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-    body: JSON.stringify({ number: normalizedPhone, textMessage: { text: message } }),
+    body: JSON.stringify({ number: normalizedPhone, text: message }),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
