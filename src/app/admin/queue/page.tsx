@@ -151,6 +151,18 @@ export default function AdminQueuePage() {
     await load()
   }
 
+  async function clearLeadNotFound() {
+    const supabase = createClient()
+    const { error, count } = await supabase
+      .from('queue_jobs')
+      .delete({ count: 'exact' })
+      .eq('status', 'failed')
+      .ilike('error', '%Lead not found%')
+    if (error) addLog(`Erro ao limpar: ${error.message}`)
+    else addLog(`${count ?? 0} jobs "Lead not found" removidos.`)
+    await load()
+  }
+
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
@@ -159,7 +171,7 @@ export default function AdminQueuePage() {
         <p className="text-sm text-gray-500 mt-1">Monitor e controle do motor de execução</p>
       </div>
 
-      {/* Action buttons — stack on mobile */}
+      {/* Action buttons */}
       <div className="flex flex-col sm:flex-row gap-2 mb-6">
         <button
           onClick={() => load()}
@@ -176,6 +188,13 @@ export default function AdminQueuePage() {
         >
           {retrying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           Reprocessar falhos ({stats.failed})
+        </button>
+        <button
+          onClick={clearLeadNotFound}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors min-h-[44px]"
+        >
+          <XCircle className="w-4 h-4" />
+          Limpar &quot;Lead not found&quot;
         </button>
         <button
           onClick={processNow}
@@ -228,7 +247,7 @@ export default function AdminQueuePage() {
         </div>
       )}
 
-      {/* Jobs — cards on mobile, table on desktop */}
+      {/* Jobs */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden mb-6">
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">Últimos 50 jobs</h2>
