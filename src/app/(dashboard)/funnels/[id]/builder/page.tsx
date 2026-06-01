@@ -41,7 +41,7 @@ export default async function BuilderPage({ params }: { params: Promise<{ id: st
 
   const { data: funnel } = await supabase
     .from('funnels')
-    .select('*')
+    .select('*, funnel_product_triggers(id, platform, product_name, trigger_event)')
     .eq('id', id)
     .eq('tenant_id', userTenant.tenant_id)
     .single()
