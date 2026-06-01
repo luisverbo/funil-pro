@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { useReactFlow, type Node } from '@xyflow/react'
 import type { FunnelNodeData, WhatsappInstance } from '@/types'
 
@@ -90,12 +90,10 @@ const TYPE_META: Record<string, { label: string; color: string; icon: React.Reac
 }
 
 const CONDITIONS = [
-  { value: 'opened', label: 'Abriu mensagem' },
-  { value: 'not_opened', label: 'Não abriu' },
-  { value: 'clicked', label: 'Clicou no link' },
-  { value: 'not_clicked', label: 'Não clicou' },
-  { value: 'replied', label: 'Respondeu' },
-  { value: 'purchased', label: 'Comprou' },
+  { value: 'replied', label: 'Respondeu ✓' },
+  { value: 'purchased', label: 'Comprou ✓' },
+  { value: 'clicked', label: 'Clicou no link ✓' },
+  { value: 'opened', label: 'Abriu mensagem ⚠️ (não funciona no WhatsApp)' },
   { value: 'tag', label: 'Tem tag' },
 ]
 
@@ -128,6 +126,8 @@ const selectClass =
 
 export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, onOpenCaptureEditor, waInstances = [], waInstanceId }: Props) {
   const { setNodes } = useReactFlow()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   const node = nodes.find((n) => n.id === selectedNodeId)
   if (!node) return null
@@ -150,6 +150,25 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
   const handleDelete = () => {
     setNodes((nds) => nds.filter((n) => n.id !== selectedNodeId))
     onClose()
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.url) update({ media_url: json.url })
+      else alert(json.error ?? 'Erro ao fazer upload')
+    } catch {
+      alert('Erro ao fazer upload')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
@@ -315,15 +334,35 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 </FieldWrap>
                 {(config.media_type as string) && config.media_type !== 'none' && (
                   <FieldWrap>
-                    <Label>URL da mídia</Label>
+                    <Label>Arquivo / URL da mídia</Label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={(config.media_url as string) ?? ''}
+                        onChange={(e) => update({ media_url: e.target.value })}
+                        placeholder="https://..."
+                        className={`${inputClass} flex-1`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg whitespace-nowrap"
+                      >
+                        {uploading ? 'Enviando…' : '📎 Upload'}
+                      </button>
+                    </div>
                     <input
-                      type="url"
-                      value={(config.media_url as string) ?? ''}
-                      onChange={(e) => update({ media_url: e.target.value })}
-                      placeholder="https://..."
-                      className={inputClass}
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept="image/*,video/mp4,video/quicktime,application/pdf,.doc,.docx,.zip"
+                      onChange={handleFileUpload}
                     />
-                    <p className="text-xs text-gray-400 mt-1">Use um link público direto para o arquivo.</p>
+                    {(config.media_url as string) && (
+                      <p className="text-xs text-green-400 mt-1 truncate">✓ {(config.media_url as string)}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">Faça upload ou cole um link público. Máx 50MB.</p>
                   </FieldWrap>
                 )}
                 {/* WhatsApp instance info + override */}
@@ -381,22 +420,39 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
         )}
 
         {blockType === 'condition' && (
-          <FieldWrap>
-            <Label>Verificar se o lead</Label>
-            <select
-              value={(config.condition as string) ?? 'opened'}
-              onChange={(e) => update({ condition: e.target.value })}
-              className={selectClass}
-            >
-              {CONDITIONS.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-              Saída <span className="text-emerald-600 font-semibold">Sim</span> = condição verdadeira.
-              Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
-            </p>
-          </FieldWrap>
+          <>
+            <FieldWrap>
+              <Label>Verificar se o lead</Label>
+              <select
+                value={(config.condition as string) ?? 'opened'}
+                onChange={(e) => update({ condition: e.target.value, purchased_product: '' })}
+                className={selectClass}
+              >
+                {CONDITIONS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                Saída <span className="text-emerald-600 font-semibold">Sim</span> = condição verdadeira.
+                Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
+              </p>
+            </FieldWrap>
+            {(config.condition as string) === 'purchased' && (
+              <FieldWrap>
+                <Label>Produto específico (opcional)</Label>
+                <input
+                  type="text"
+                  value={(config.purchased_product as string) ?? ''}
+                  onChange={(e) => update({ purchased_product: e.target.value })}
+                  placeholder="Ex: Produto B — deixe vazio para qualquer compra"
+                  className={inputClass}
+                />
+                <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                  Se preenchido, só passa para <span className="text-emerald-600 font-semibold">Sim</span> se o lead comprou <strong>este produto específico</strong>.
+                </p>
+              </FieldWrap>
+            )}
+          </>
         )}
 
         {blockType === 'delay' && (

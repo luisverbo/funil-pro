@@ -14,19 +14,25 @@ const CONDITION_EVENT_MAP: Record<string, string> = {
 }
 
 export async function handleCondition({ lead, block, supabase }: HandlerCtx): Promise<{ nextBlockId?: string }> {
-  const config = block.config as { condition?: string }
+  const config = block.config as { condition?: string; purchased_product?: string }
   const condition = config.condition ?? 'opened'
 
   let conditionMet = false
 
   const eventType = CONDITION_EVENT_MAP[condition]
   if (eventType) {
-    const { data: events } = await supabase
+    let query = supabase
       .from('lead_events')
       .select('id')
       .eq('lead_id', lead.id)
       .eq('event_type', eventType)
-      .limit(1)
+
+    // Filter by specific product name if configured
+    if (condition === 'purchased' && config.purchased_product?.trim()) {
+      query = query.ilike('product_name', `%${config.purchased_product.trim()}%`)
+    }
+
+    const { data: events } = await query.limit(1)
     conditionMet = (events?.length ?? 0) > 0
   }
 
