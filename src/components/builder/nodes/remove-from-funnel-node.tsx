@@ -1,29 +1,27 @@
 'use client'
 
 import React from 'react'
-import { type NodeProps } from '@xyflow/react'
-import BaseNode from './base-node'
+import { Handle, Position } from '@xyflow/react'
+import type { NodeProps } from '@xyflow/react'
 
-const ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-    <circle cx="8.5" cy="7" r="4" />
-    <line x1="18" y1="8" x2="23" y2="13" />
-    <line x1="23" y1="8" x2="18" y2="13" />
-  </svg>
-)
-
-export default function RemoveFromFunnelNode({ id, data, selected }: NodeProps) {
-  void data
+export default function RemoveFromFunnelNode({ selected }: NodeProps) {
   return (
-    <BaseNode
-      id={id}
-      selected={selected}
-      borderColor="#ef4444"
-      icon={ICON}
-      typeLabel="Remover do funil"
-      preview="Encerra a jornada do lead"
-      hideSourceHandle
-    />
+    <div
+      className="rounded-xl border-2 bg-white shadow-sm min-w-[180px] max-w-[220px]"
+      style={{ borderColor: selected ? '#ef4444' : '#fca5a5' }}
+    >
+      <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-red-400 !border-white !border-2" />
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: '#fef2f2' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth={2} className="w-3.5 h-3.5">
+              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          </div>
+          <span className="text-xs font-semibold text-gray-700">Remover do funil</span>
+        </div>
+        <p className="text-xs text-red-500">Encerra a jornada do lead</p>
+      </div>
+    </div>
   )
 }
