@@ -143,95 +143,6 @@ export async function publishFunnel(funnelId: string): Promise<{ success: boolea
   }
 }
 
-export async function pauseFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const supabase = await getSupabase()
-    const tenantId = await getTenantId(supabase)
-    const admin = createAdminClient()
-    const { error } = await admin.from('funnels').update({ status: 'paused' }).eq('id', funnelId).eq('tenant_id', tenantId)
-    if (error) return { success: false, error: error.message }
-    revalidatePath('/funnels')
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
-}
-
-export async function resumeFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const supabase = await getSupabase()
-    const tenantId = await getTenantId(supabase)
-    const admin = createAdminClient()
-    const { error } = await admin.from('funnels').update({ status: 'published' }).eq('id', funnelId).eq('tenant_id', tenantId)
-    if (error) return { success: false, error: error.message }
-    revalidatePath('/funnels')
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
-}
-
-export async function duplicateFunnel(funnelId: string): Promise<void> {
-  const supabase = await getSupabase()
-  const tenantId = await getTenantId(supabase)
-  const admin = createAdminClient()
-
-  const { data: original } = await admin.from('funnels').select('*').eq('id', funnelId).eq('tenant_id', tenantId).single()
-  if (!original) throw new Error('Funil não encontrado')
-
-  const { data: originalBlocks } = await admin.from('funnel_blocks').select('*').eq('funnel_id', funnelId)
-  const { data: originalEdges } = await admin.from('funnel_edges').select('*').eq('funnel_id', funnelId)
-
-  const { data: newFunnel, error } = await admin.from('funnels').insert({
-    name: `Cópia de ${original.name}`,
-    tenant_id: tenantId,
-    status: 'draft',
-    whatsapp_instance_id: original.whatsapp_instance_id,
-    description: original.description,
-    folder: original.folder,
-  }).select('id').single()
-
-  if (error || !newFunnel) throw new Error('Erro ao duplicar funil')
-
-  // Map old block IDs to new block IDs
-  const idMap: Record<string, string> = {}
-
-  if (originalBlocks && originalBlocks.length > 0) {
-    const newBlocks = originalBlocks.map((b) => {
-      const newId = crypto.randomUUID()
-      idMap[b.id] = newId
-      return { id: newId, funnel_id: newFunnel.id, block_type: b.block_type, label: b.label, config: b.config, position_x: b.position_x, position_y: b.position_y }
-    })
-    await admin.from('funnel_blocks').insert(newBlocks)
-  }
-
-  if (originalEdges && originalEdges.length > 0) {
-    const newEdges = originalEdges.map((e) => ({
-      funnel_id: newFunnel.id,
-      source_block_id: idMap[e.source_block_id] ?? e.source_block_id,
-      target_block_id: idMap[e.target_block_id] ?? e.target_block_id,
-      condition: e.condition,
-    }))
-    await admin.from('funnel_edges').insert(newEdges)
-  }
-
-  redirect(`/funnels/${newFunnel.id}/builder`)
-}
-
-export async function updateFunnelFolder(funnelId: string, folder: string | null): Promise<{ success: boolean; error?: string }> {
-  try {
-    const supabase = await getSupabase()
-    const tenantId = await getTenantId(supabase)
-    const admin = createAdminClient()
-    const { error } = await admin.from('funnels').update({ folder }).eq('id', funnelId).eq('tenant_id', tenantId)
-    if (error) return { success: false, error: error.message }
-    revalidatePath('/funnels')
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
-}
-
 export async function saveCapturePageConfig(
   funnelId: string,
   config: { template: string; page_config: Record<string, unknown> }
@@ -313,6 +224,107 @@ export async function updateFunnelWhatsapp(funnelId: string, instanceId: string 
     await admin.from('funnels').update({ whatsapp_instance_id: instanceId }).eq('id', funnelId)
     revalidatePath('/funnels')
     revalidatePath(`/funnels/${funnelId}/builder`)
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
+
+export async function pauseFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+    const admin = createAdminClient()
+    const { data: funnel } = await admin.from('funnels').select('id').eq('id', funnelId).eq('tenant_id', tenantId).single()
+    if (!funnel) return { success: false, error: 'Funil não encontrado' }
+    const { error } = await admin.from('funnels').update({ status: 'paused' }).eq('id', funnelId)
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/funnels')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
+
+export async function resumeFunnel(funnelId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+    const admin = createAdminClient()
+    const { data: funnel } = await admin.from('funnels').select('id').eq('id', funnelId).eq('tenant_id', tenantId).single()
+    if (!funnel) return { success: false, error: 'Funil não encontrado' }
+    const { error } = await admin.from('funnels').update({ status: 'published' }).eq('id', funnelId)
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/funnels')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
+
+export async function duplicateFunnel(funnelId: string): Promise<{ success: boolean; newId?: string; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+    const admin = createAdminClient()
+
+    const { data: original } = await admin.from('funnels').select('*').eq('id', funnelId).eq('tenant_id', tenantId).single()
+    if (!original) return { success: false, error: 'Funil não encontrado' }
+
+    const { data: newFunnel, error: funnelErr } = await admin.from('funnels').insert({
+      tenant_id: tenantId,
+      name: `Cópia de ${original.name}`,
+      description: original.description,
+      status: 'draft',
+      whatsapp_instance_id: original.whatsapp_instance_id,
+      folder: original.folder,
+    }).select('id').single()
+
+    if (funnelErr || !newFunnel) return { success: false, error: funnelErr?.message ?? 'Erro ao duplicar' }
+
+    const { data: blocks } = await admin.from('funnel_blocks').select('*').eq('funnel_id', funnelId)
+    const { data: edges } = await admin.from('funnel_edges').select('*').eq('funnel_id', funnelId)
+
+    const idMap: Record<string, string> = {}
+    if (blocks && blocks.length > 0) {
+      const newBlocks = blocks.map((b) => {
+        const newId = crypto.randomUUID()
+        idMap[b.id] = newId
+        return { ...b, id: newId, funnel_id: newFunnel.id, created_at: undefined }
+      })
+      await admin.from('funnel_blocks').insert(newBlocks)
+    }
+
+    if (edges && edges.length > 0) {
+      const newEdges = edges
+        .filter((e) => idMap[e.source_block_id] && idMap[e.target_block_id])
+        .map((e) => ({
+          ...e,
+          id: crypto.randomUUID(),
+          funnel_id: newFunnel.id,
+          source_block_id: idMap[e.source_block_id],
+          target_block_id: idMap[e.target_block_id],
+          created_at: undefined,
+        }))
+      if (newEdges.length > 0) await admin.from('funnel_edges').insert(newEdges)
+    }
+
+    revalidatePath('/funnels')
+    return { success: true, newId: newFunnel.id }
+  } catch (e) {
+    return { success: false, error: String(e) }
+  }
+}
+
+export async function updateFunnelFolder(funnelId: string, folder: string | null): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await getSupabase()
+    const tenantId = await getTenantId(supabase)
+    const admin = createAdminClient()
+    const { data: funnel } = await admin.from('funnels').select('id').eq('id', funnelId).eq('tenant_id', tenantId).single()
+    if (!funnel) return { success: false, error: 'Funil não encontrado' }
+    await admin.from('funnels').update({ folder: folder || null }).eq('id', funnelId)
+    revalidatePath('/funnels')
     return { success: true }
   } catch (e) {
     return { success: false, error: String(e) }
