@@ -1,4 +1,4 @@
-// Kiwify product sync — uses client_secret directly as Bearer token
+// Kiwify product sync — OAuth2 client_credentials via public-api.kiwify.com
 export interface KiwifyProduct {
   id: string
   name: string
@@ -7,18 +7,34 @@ export interface KiwifyProduct {
   status: string
 }
 
+async function getKiwifyToken(clientId: string, clientSecret: string): Promise<string> {
+  // Try JSON body (some Kiwify endpoints prefer JSON over form-encoded)
+  const res = await fetch('https://public-api.kiwify.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Kiwify OAuth error: ${res.status} ${text}`)
+  }
+  const json = await res.json()
+  return (json.access_token ?? json.token) as string
+}
+
 export async function fetchKiwifyProducts(
   clientId: string,
   clientSecret: string,
   accountId: string,
 ): Promise<KiwifyProduct[]> {
-  // Kiwify Public API: client_secret is used as Bearer token
-  // account_id passed as query param
-  const url = `https://public-api.kiwify.com/v1/products?account_id=${accountId}`
-  const res = await fetch(url, {
+  const token = await getKiwifyToken(clientId, clientSecret)
+  const res = await fetch(`https://public-api.kiwify.com/v1/products?account_id=${accountId}`, {
     headers: {
-      Authorization: `Bearer ${clientSecret}`,
-      'x-client-id': clientId,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
   })
