@@ -70,43 +70,81 @@ export default async function FunnelsPage() {
   let activeLeadsMap: Record<string, number> = {}
 
   if (funnelIds.length > 0) {
-    const [
-      { data: leadCounts },
-      { data: purchaseEvents },
-      { data: recentEvents },
-      { data: activeLeads },
-    ] = await Promise.all([
-      admin.from('leads').select('funnel_id').in('funnel_id', funnelIds).eq('tenant_id', userTenant.tenant_id),
-      admin.from('lead_events').select('funnel_id, lead_id, revenue_cents, created_at').in('funnel_id', funnelIds).eq('event_type', 'purchased'),
-      admin.from('lead_events').select('funnel_id, created_at').order('created_at', { ascending: false }).limit(funnelIds.length * 2),
-      admin.from('leads').select('funnel_id').in('funnel_id', funnelIds).eq('status', 'active'),
-    ])
-
-    for (const row of leadCounts ?? []) {
-      leadsCountMap[row.funnel_id] = (leadsCountMap[row.funnel_id] ?? 0) + 1
-    }
-
-    const salesLeads: Record<string, Set<string>> = {}
-    for (const ev of purchaseEvents ?? []) {
-      if (!salesLeads[ev.funnel_id]) salesLeads[ev.funnel_id] = new Set()
-      salesLeads[ev.funnel_id].add(ev.lead_id)
-      revenueMap[ev.funnel_id] = (revenueMap[ev.funnel_id] ?? 0) + (ev.revenue_cents ?? 0)
-      if (!lastActivityMap[ev.funnel_id] || ev.created_at > lastActivityMap[ev.funnel_id]) {
-        lastActivityMap[ev.funnel_id] = ev.created_at
+    const { data: leadCounts } = await admin
+      .from('leads')
+      .select('funnel_id')
+      .in('funnel_id', funnelIds)
+      .eq('tenant_id', userTenant.tenant_id)
+    if (leadCounts) {
+      for (const row of leadCounts) {
+        leadsCountMap[row.funnel_id] = (leadsCountMap[row.funnel_id] ?? 0) + 1
       }
     }
-    for (const [fid, leads] of Object.entries(salesLeads)) {
-      salesCountMap[fid] = leads.size
+
+    const { data: purchaseEvents } = await admin
+      .from('lead_events')
+      .select('funnel_id, lead_id, created_at')
+      .in('funnel_id', funnelIds)
+      .eq('event_type', 'purchased')
+    if (purchaseEvents) {
+      const salesLeads: Record<string, Set<string>> = {}
+      for (const ev of purchaseEvents) {
+        if (!salesLeads[ev.funnel_id]) salesLeads[ev.funnel_id] = new Set()
+        salesLeads[ev.funnel_id].add(ev.lead_id)
+        if (!lastActivityMap[ev.funnel_id] || ev.created_at > lastActivityMap[ev.funnel_id]) {
+          lastActivityMap[ev.funnel_id] = ev.created_at
+        }
+      }
+      for (const [fid, leads] of Object.entries(salesLeads)) {
+        salesCountMap[fid] = leads.size
+      }
     }
 
-    for (const ev of recentEvents ?? []) {
-      if (!lastActivityMap[ev.funnel_id]) lastActivityMap[ev.funnel_id] = ev.created_at
+    const { data: revenueEvents } = await admin
+      .from('lead_events')
+      .select('funnel_id, revenue_cents')
+      .in('funnel_id', funnelIds)
+      .eq('event_type', 'purchased')
+      .not('revenue_cents', 'is', null)
+    if (revenueEvents) {
+      for (const ev of revenueEvents) {
+        revenueMap[ev.funnel_id] = (revenueMap[ev.funnel_id] ?? 0) + (ev.revenue_cents ?? 0)
+      }
     }
 
-    for (const l of activeLeads ?? []) {
-      activeLeadsMap[l.funnel_id] = (activeLeadsMap[l.funnel_id] ?? 0) + 1
+    const { data: activeLeads } = await admin
+      .from('leads')
+      .select('funnel_id')
+      .in('funnel_id', funnelIds)
+      .eq('tenant_id', userTenant.tenant_id)
+      .eq('status', 'active')
+    if (activeLeads) {
+      for (const row of activeLeads) {
+        activeLeadsMap[row.funnel_id] = (activeLeadsMap[row.funnel_id] ?? 0) + 1
+      }
+    }
+
+    const { data: recentEvents } = await admin
+      .from('lead_events')
+      .select('funnel_id, created_at')
+      .in('funnel_id', funnelIds)
+      .order('created_at', { ascending: false })
+      .limit(funnelIds.length * 2)
+    if (recentEvents) {
+      for (const ev of recentEvents) {
+        if (!lastActivityMap[ev.funnel_id]) {
+          lastActivityMap[ev.funnel_id] = ev.created_at
+        }
+      }
     }
   }
+
+  const list = funnelList.map((f) => ({
+    ...f,
+    _leadsCount: leadsCountMap[f.id] ?? 0,
+    _salesCount: salesCountMap[f.id] ?? 0,
+    _lastActivity: lastActivityMap[f.id] ?? null,
+  }))
 
   const { data: tplData } = await admin
     .from('funnel_templates')
@@ -129,7 +167,7 @@ export default async function FunnelsPage() {
       </div>
 
       <FunnelsGrid
-        initialFunnels={funnelList}
+        initialFunnels={list as unknown as Funnel[]}
         waMap={waMap}
         leadsCountMap={leadsCountMap}
         salesCountMap={salesCountMap}
