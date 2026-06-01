@@ -1,17 +1,10 @@
 import type { Node } from '@xyflow/react'
 
 export type Plan = 'starter' | 'pro' | 'scale'
-export type LeadStatus = 'active' | 'converted' | 'unsubscribed' | 'lost'
-export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page' | 'entry' | 'cart_abandoned'
+export type LeadStatus = 'active' | 'converted' | 'unsubscribed' | 'lost' | 'completed'
+export type BlockType = 'message' | 'condition' | 'delay' | 'tag' | 'sale' | 'form' | 'page' | 'entry' | 'cart_abandoned' | 'goto' | 'ab_test' | 'remove_from_funnel'
 export type FunnelStatus = 'draft' | 'published' | 'paused'
-export type EdgeCondition =
-  | 'opened'
-  | 'not_opened'
-  | 'clicked'
-  | 'not_clicked'
-  | 'replied'
-  | 'purchased'
-  | 'default'
+export type EdgeCondition = 'opened' | 'not_opened' | 'clicked' | 'not_clicked' | 'replied' | 'purchased' | 'default' | 'yes' | 'no' | 'a' | 'b'
 export type WhatsappStatus = 'connected' | 'disconnected' | 'connecting'
 
 export interface Tenant {
@@ -68,10 +61,13 @@ export interface Funnel {
   agent_enabled: boolean
   agent_prompt: string | null
   utm_source: string | null
+  folder: string | null
   created_at: string
   published_at: string | null
   page_config?: Record<string, unknown> | null
   page_template?: string | null
+  trigger_type?: string | null
+  trigger_products?: unknown[]
 }
 
 export interface FunnelBlock {
