@@ -11,8 +11,8 @@ import {
 
 const CONDITION_META: Record<string, { label: string; color: string; bg: string }> = {
   default:     { label: 'Padrão',     color: '#3b82f6', bg: '#eff6ff' },
-  yes:         { label: '✅ Sim',      color: '#10b981', bg: '#ecfdf5' },
-  no:          { label: '❌ Não',      color: '#ef4444', bg: '#fef2f2' },
+  yes:         { label: '✓ Verdadeiro', color: '#10b981', bg: '#ecfdf5' },
+  no:          { label: '✗ Falso',     color: '#ef4444', bg: '#fef2f2' },
   replied:     { label: 'Respondeu',  color: '#8b5cf6', bg: '#f5f3ff' },
   purchased:   { label: 'Comprou',    color: '#f59e0b', bg: '#fffbeb' },
   clicked:     { label: 'Clicou',     color: '#6366f1', bg: '#eef2ff' },
