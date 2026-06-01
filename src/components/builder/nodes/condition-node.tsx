@@ -43,8 +43,8 @@ export default function ConditionNode({ id, data, selected }: NodeProps) {
   const extraHandles = (
     <div className="group relative border-t border-gray-100 bg-gray-50 rounded-b-xl">
       <div className="flex justify-between items-center px-4 py-1.5">
-        <span className="text-xs font-semibold text-emerald-600">Sim</span>
-        <span className="text-xs font-semibold text-red-500">Não</span>
+        <span className="text-xs font-semibold text-emerald-600">✓ Verdadeiro</span>
+        <span className="text-xs font-semibold text-red-500">✗ Falso</span>
       </div>
       <Handle
         type="source"
