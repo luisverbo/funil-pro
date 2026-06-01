@@ -6,7 +6,6 @@ import InstanceCard from '@/components/whatsapp/instance-card'
 import CreateInstanceButton from '@/components/whatsapp/create-instance-button'
 import CopyUrlButton from '@/components/funnels/copy-url-button'
 import MetaSection from '@/components/integrations/meta-section'
-import ProductSyncButton from '@/components/integrations/product-sync-button'
 import WebhookTokenField from '@/components/integrations/webhook-token-field'
 import type { WhatsappInstance } from '@/types'
 
@@ -205,8 +204,13 @@ export default async function IntegrationsPage() {
                   </div>
                 )}
 
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <ProductSyncButton platform={platform.id} platformLabel={platform.name} />
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-start gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <p className="text-xs text-gray-500">
+                    Para vincular produtos a funis, abra o funil desejado e clique no botão <span className="font-semibold text-gray-700">📝 Gatilhos</span> no topo do builder.
+                  </p>
                 </div>
               </div>
             )
