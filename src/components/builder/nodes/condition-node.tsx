@@ -15,21 +15,30 @@ const ICON = (
 
 const CONDITION_LABELS: Record<string, string> = {
   opened: 'Abriu mensagem',
-  not_opened: 'Não abriu',
+  not_opened: 'Não abriu mensagem',
   clicked: 'Clicou no link',
-  not_clicked: 'Não clicou',
-  replied: 'Respondeu',
+  not_clicked: 'Não clicou no link',
+  replied: 'Respondeu (qualquer coisa)',
+  replied_with: 'Respondeu com',
   purchased: 'Comprou',
   tag: 'Tem tag',
 }
 
 export default function ConditionNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as FunnelNodeData
-  const config = (nodeData.config ?? {}) as { condition?: string }
+  const config = (nodeData.config ?? {}) as { condition?: string; replied_with?: string; purchased_product?: string; tag_name?: string }
 
-  const preview = config.condition
+  let preview = config.condition
     ? CONDITION_LABELS[config.condition] ?? config.condition
     : ''
+
+  if (config.condition === 'replied_with' && config.replied_with) {
+    preview = `Respondeu com "${config.replied_with.toUpperCase()}"`
+  } else if (config.condition === 'purchased' && config.purchased_product) {
+    preview = `Comprou "${config.purchased_product}"`
+  } else if (config.condition === 'tag' && config.tag_name) {
+    preview = `Tem tag "${config.tag_name}"`
+  }
 
   const extraHandles = (
     <div className="group relative border-t border-gray-100 bg-gray-50 rounded-b-xl">
