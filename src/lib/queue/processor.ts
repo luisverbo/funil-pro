@@ -13,12 +13,38 @@ export interface QueueJob {
   attempts: number
 }
 
+function interpolate(
+  text: string,
+  lead: { name?: string | null; phone?: string | null; email?: string | null }
+): string {
+  const now = new Date()
+  const firstName = lead.name?.split(' ')[0] ?? ''
+  return text
+    .replace(/{nome}/g, lead.name ?? '')
+    .replace(/{primeiro_nome}/g, firstName)
+    .replace(/{telefone}/g, lead.phone ?? '')
+    .replace(/{email}/g, lead.email ?? '')
+    .replace(/{data}/g, now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }))
+    .replace(/{hora}/g, now.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }))
+}
+
 export async function processJob(job: QueueJob): Promise<void> {
   const admin = createAdminClient()
 
   const { data: lead } = await admin.from('leads').select('id, name, phone, email, tenant_id').eq('id', job.lead_id).single()
   if (!lead) {
     console.warn(`[processor] Lead ${job.lead_id} não encontrado — pulando job ${job.id}`)
+    return
+  }
+
+  // Check if funnel is paused
+  const { data: funnelData } = await admin.from('funnels').select('status, whatsapp_instance_id').eq('id', job.funnel_id).single()
+  if (funnelData?.status === 'paused') {
+    // Reschedule 30 minutes later
+    await admin.from('queue_jobs').update({
+      status: 'pending',
+      scheduled_for: new Date(Date.now() + 1_800_000).toISOString(),
+    }).eq('id', job.id)
     return
   }
 
@@ -30,24 +56,26 @@ export async function processJob(job: QueueJob): Promise<void> {
 
   const config = (block.config ?? {}) as Record<string, unknown>
 
+  const logEvent = (eventType: string, eventData: Record<string, unknown> = {}) =>
+    admin.from('lead_events').insert({
+      tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
+      block_id: job.block_id, event_type: eventType, event_data: eventData,
+    })
+
   if (block.block_type === 'message') {
     const channel = (config.channel as string) ?? 'whatsapp'
-    const body = ((config.body as string) ?? '').trim()
+    const rawBody = ((config.body as string) ?? '').trim()
+    const body = interpolate(rawBody, lead)
 
     if (!body) {
-      console.warn(`[processor] Job ${job.id}: bloco message sem texto — avançando sem enviar`)
-      await admin.from('lead_events').insert({
-        tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
-        block_id: job.block_id, event_type: 'message_skipped', event_data: { reason: 'empty_body', channel }
-      })
+      await logEvent('message_skipped', { reason: 'empty_body', channel })
       await enqueueNext(job, 'default', admin)
       return
     }
 
     if (channel === 'whatsapp' && lead.phone) {
       const overrideInstanceId = (config.override_whatsapp_instance_id as string) || null
-      const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', job.funnel_id).single()
-      const instanceId = overrideInstanceId ?? funnel?.whatsapp_instance_id ?? null
+      const instanceId = overrideInstanceId ?? funnelData?.whatsapp_instance_id ?? null
       if (instanceId) {
         const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', instanceId).single()
         if (instance?.instance_name) {
@@ -56,14 +84,15 @@ export async function processJob(job: QueueJob): Promise<void> {
       }
     } else if (channel === 'email' && lead.email) {
       const subject = (config.subject as string) ?? 'Nova mensagem'
-      await sendEmail({ from: 'FunilPro <noreply@funil.pro>', to: lead.email, subject, html: `<p>${body}</p>` })
+      await sendEmail({
+        from: 'FunilPro <noreply@funil.pro>',
+        to: lead.email,
+        subject,
+        html: `<p>${body.replace(/\n/g, '<br>')}</p>`,
+      })
     }
 
-    await admin.from('lead_events').insert({
-      tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
-      block_id: job.block_id, event_type: 'message_sent', event_data: { channel }
-    })
-
+    await logEvent('message_sent', { channel })
     await enqueueNext(job, 'default', admin)
   }
 
@@ -75,27 +104,52 @@ export async function processJob(job: QueueJob): Promise<void> {
       unit === 'horas'   || unit === 'hours'   ? amount * 3_600_000 :
       amount * 86_400_000
     const scheduledFor = new Date(Date.now() + ms).toISOString()
-
-    await admin.from('lead_events').insert({
-      tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
-      block_id: job.block_id, event_type: 'delay_scheduled', event_data: { scheduled_for: scheduledFor, amount, unit }
-    })
-
+    await logEvent('delay_scheduled', { scheduled_for: scheduledFor, amount, unit })
     await enqueueNext(job, 'default', admin, scheduledFor)
   }
 
   else if (block.block_type === 'condition') {
     const conditionType = (config.condition as string) ?? 'default'
-
-    const { data: events } = await admin.from('lead_events').select('event_type').eq('lead_id', job.lead_id)
-    const eventTypes = (events ?? []).map((e: { event_type: string }) => e.event_type)
-
     let matched = false
-    if (conditionType === 'opened') matched = eventTypes.includes('message_opened')
-    else if (conditionType === 'clicked') matched = eventTypes.includes('message_clicked')
-    else if (conditionType === 'replied') matched = eventTypes.includes('replied')
-    else if (conditionType === 'purchased') matched = eventTypes.includes('purchased')
-    else matched = true
+
+    if (conditionType === 'replied_with') {
+      const keyword = ((config.replied_with as string) ?? '').trim().toLowerCase()
+      if (keyword) {
+        const { data: events } = await admin.from('lead_events')
+          .select('event_data').eq('lead_id', job.lead_id).eq('event_type', 'replied')
+          .order('created_at', { ascending: false }).limit(10)
+        matched = (events ?? []).some((ev) => {
+          const text = ((ev.event_data as Record<string, unknown>)?.text as string ?? '').toLowerCase()
+          return text.includes(keyword)
+        })
+      }
+    } else if (conditionType === 'purchased') {
+      let query = admin.from('lead_events').select('id').eq('lead_id', job.lead_id).eq('event_type', 'purchased')
+      if ((config.purchased_product as string)?.trim()) {
+        query = query.ilike('product_name', `%${(config.purchased_product as string).trim()}%`)
+      }
+      const { data: events } = await query.limit(1)
+      matched = (events?.length ?? 0) > 0
+    } else if (conditionType === 'not_opened') {
+      const { data: events } = await admin.from('lead_events').select('id').eq('lead_id', job.lead_id).eq('event_type', 'message_opened').limit(1)
+      matched = (events?.length ?? 0) === 0
+    } else if (conditionType === 'not_clicked') {
+      const { data: events } = await admin.from('lead_events').select('id').eq('lead_id', job.lead_id).eq('event_type', 'message_clicked').limit(1)
+      matched = (events?.length ?? 0) === 0
+    } else if (conditionType === 'tag') {
+      const tagName = ((config.tag_name as string) ?? '').trim()
+      const { data: currentLead } = await admin.from('leads').select('tags').eq('id', job.lead_id).single()
+      matched = tagName ? ((currentLead?.tags ?? []) as string[]).includes(tagName) : false
+    } else {
+      const eventMap: Record<string, string> = { opened: 'message_opened', clicked: 'message_clicked', replied: 'replied' }
+      const eventType = eventMap[conditionType]
+      if (eventType) {
+        const { data: events } = await admin.from('lead_events').select('id').eq('lead_id', job.lead_id).eq('event_type', eventType).limit(1)
+        matched = (events?.length ?? 0) > 0
+      } else {
+        matched = true
+      }
+    }
 
     await enqueueNext(job, matched ? 'yes' : 'no', admin)
   }
@@ -110,27 +164,64 @@ export async function processJob(job: QueueJob): Promise<void> {
         ? tags.filter((t: string) => t !== tagName)
         : [...new Set([...tags, tagName])]
       await admin.from('leads').update({ tags: newTags }).eq('id', job.lead_id)
-      await admin.from('lead_events').insert({
-        tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
-        block_id: job.block_id, event_type: 'tag_added', event_data: { tag: tagName, action: tagAction }
-      })
+      await logEvent('tag_added', { tag: tagName, action: tagAction })
     }
     await enqueueNext(job, 'default', admin)
   }
 
   else if (block.block_type === 'sale') {
     const paymentLink = (config.payment_link as string) ?? ''
-    const message = ((config.sale_message as string) ?? (config.message as string) ?? paymentLink).trim()
+    const rawMessage = ((config.sale_message as string) ?? (config.message as string) ?? paymentLink).trim()
+    const message = interpolate(rawMessage, lead)
     if (lead.phone && message) {
-      const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', job.funnel_id).single()
-      if (funnel?.whatsapp_instance_id) {
-        const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', funnel.whatsapp_instance_id).single()
+      const instanceId = funnelData?.whatsapp_instance_id
+      if (instanceId) {
+        const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', instanceId).single()
         if (instance?.instance_name) {
           await sendTextMessage(instance.instance_name, lead.phone, message)
         }
       }
     }
+    await logEvent('message_sent', { channel: 'whatsapp', type: 'sale' })
     await enqueueNext(job, 'default', admin)
+  }
+
+  else if (block.block_type === 'goto') {
+    const targetBlockId = (config.target_block_id as string) ?? ''
+    if (!targetBlockId) return
+
+    // Loop protection: max 10 gotos per hour
+    const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString()
+    const { count } = await admin.from('lead_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('lead_id', job.lead_id)
+      .eq('event_type', 'goto_redirect')
+      .gte('created_at', oneHourAgo)
+
+    if ((count ?? 0) >= 10) {
+      await logEvent('loop_detected', { block_id: job.block_id })
+      return
+    }
+
+    await logEvent('goto_redirect', { target_block_id: targetBlockId })
+    await admin.from('queue_jobs').insert({
+      tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
+      block_id: targetBlockId, status: 'pending', scheduled_for: new Date().toISOString(),
+    })
+  }
+
+  else if (block.block_type === 'ab_test') {
+    const percentA = (config.percent_a as number) ?? 50
+    const rand = Math.random() * 100
+    const variant = rand < percentA ? 'a' : 'b'
+    await logEvent('ab_variant', { variant, percent_a: percentA })
+    await enqueueNext(job, variant, admin)
+  }
+
+  else if (block.block_type === 'remove_from_funnel') {
+    await admin.from('leads').update({ status: 'completed' }).eq('id', job.lead_id)
+    await logEvent('funnel_completed', { reason: 'removed_by_block' })
+    // No next block — funnel ends here
   }
 }
 
@@ -140,7 +231,6 @@ async function enqueueNext(
   admin: ReturnType<typeof createAdminClient>,
   scheduledFor?: string
 ) {
-  // Try exact condition first, then fall back to 'default'
   let edge: { target_block_id: string } | null = null
   const { data: exact } = await admin
     .from('funnel_edges')
