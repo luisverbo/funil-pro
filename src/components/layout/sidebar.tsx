@@ -4,25 +4,36 @@ import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/app/actions/auth'
-import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, PanelLeftClose, PanelLeftOpen, LayoutTemplate, Shield, Globe } from 'lucide-react'
+import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, LayoutTemplate, Globe, Shield } from 'lucide-react'
 
 const NAV = [
-  { href: '/funnels',         label: 'Funis',               Icon: LayoutGrid },
-  { href: '/integrations',    label: 'Integrações',          Icon: Plug },
-  { href: '/leads',           label: 'Leads',                Icon: Users },
-  { href: '/templates',       label: 'Templates',            Icon: LayoutTemplate },
-  { href: '/capture-pages',   label: 'Páginas de Captura',   Icon: Globe },
-  { href: '/metrics',         label: 'Métricas',             Icon: BarChart2 },
-  { href: '/settings',        label: 'Configurações',        Icon: Settings },
+  { href: '/funnels',       label: 'Funis',              Icon: LayoutGrid },
+  { href: '/integrations',  label: 'Integrações',         Icon: Plug },
+  { href: '/leads',         label: 'Leads',               Icon: Users },
+  { href: '/templates',     label: 'Templates',           Icon: LayoutTemplate },
+  { href: '/capture-pages', label: 'Páginas de Captura',  Icon: Globe },
+  { href: '/metrics',       label: 'Métricas',            Icon: BarChart2 },
+  { href: '/settings',      label: 'Configurações',       Icon: Settings },
 ]
 
 const STORAGE_KEY = 'funilpro:sidebar-collapsed'
+const EXPANDED_W = 240
+const COLLAPSED_W = 64
 
 interface Props {
   displayName: string
   isAdmin?: boolean
   mobileOpen?: boolean
   onMobileClose?: () => void
+}
+
+function FunnelLogo({ size = 24 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
+      <rect width="28" height="28" rx="7" fill="#6366F1" />
+      <path d="M6 7h16l-6.2 7.44V19.5l-3.6-1.8V14.44L6 7z" fill="white" opacity="0.9" />
+    </svg>
+  )
 }
 
 export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMobileClose }: Props) {
@@ -49,9 +60,7 @@ export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMo
     })
   }
 
-  const initials = displayName
-    .split(' ').slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '').join('')
+  const initials = displayName.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -62,62 +71,69 @@ export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMo
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Close mobile drawer when route changes
-  useEffect(() => {
-    onMobileClose?.()
-  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onMobileClose?.() }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const w = collapsed ? COLLAPSED_W : EXPANDED_W
 
   return (
     <>
-      {/* Mobile overlay */}
       {mobileOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-40 bg-black/50"
-          onClick={onMobileClose}
-        />
+        <div className="md:hidden fixed inset-0 z-40 bg-black/60" onClick={onMobileClose} />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 flex flex-col z-50 border-r border-white/5 ${
+        className={`fixed inset-y-0 left-0 flex flex-col z-50 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
         style={{
-          backgroundColor: '#18181B',
-          width: collapsed ? 60 : 220,
+          width: w,
+          backgroundColor: '#0C0C0C',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
           transition: 'width 200ms ease, transform 200ms ease',
         }}
       >
-        {/* Logo + toggle */}
-        <div className="flex items-center justify-between px-3 py-4 shrink-0 overflow-hidden">
-          {!collapsed && (
-            <span className="font-bold text-white text-lg tracking-tight whitespace-nowrap">FunilPro</span>
+        {/* Logo */}
+        <div
+          className="shrink-0 overflow-hidden flex items-center"
+          style={{
+            height: 60,
+            padding: collapsed ? '0' : '0 16px',
+            justifyContent: collapsed ? 'center' : 'space-between',
+          }}
+        >
+          {collapsed ? (
+            <button onClick={toggle} title="Expandir sidebar" className="flex items-center justify-center transition-opacity hover:opacity-80">
+              <FunnelLogo size={28} />
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2.5">
+                <FunnelLogo size={26} />
+                <span
+                  className="text-white font-semibold text-[15px] whitespace-nowrap"
+                  style={{ letterSpacing: '-0.5px' }}
+                >
+                  FunilPro
+                </span>
+              </div>
+              <button
+                onClick={toggle}
+                title="Recolher sidebar"
+                className="text-white/30 hover:text-white/60 transition-colors p-1 rounded-md"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <polyline points="15,18 9,12 15,6" />
+                </svg>
+              </button>
+            </>
           )}
-          {collapsed && (
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center mx-auto">
-              <span className="text-white font-bold text-xs">F</span>
-            </div>
-          )}
-          <button
-            onClick={toggle}
-            title={collapsed ? 'Expandir sidebar' : 'Recolher sidebar'}
-            className={`text-gray-500 hover:text-white transition-colors shrink-0 ${collapsed ? 'hidden' : 'ml-auto'}`}
-          >
-            <PanelLeftClose size={16} />
-          </button>
         </div>
 
-        {collapsed && (
-          <button
-            onClick={toggle}
-            title="Expandir sidebar"
-            className="mx-auto mb-2 text-gray-500 hover:text-white transition-colors"
-          >
-            <PanelLeftOpen size={16} />
-          </button>
-        )}
+        {/* Separator */}
+        <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-1 space-y-0.5 overflow-y-auto overflow-x-hidden">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {NAV.map(({ href, label, Icon }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
             return (
@@ -125,20 +141,42 @@ export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMo
                 key={href}
                 href={href}
                 title={collapsed ? label : undefined}
-                className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap overflow-hidden min-h-[44px] ${
-                  collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
-                } ${
-                  active
-                    ? 'bg-white/10 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
-                style={active && !collapsed ? { borderLeft: '2px solid white', paddingLeft: 10 } : {}}
+                className="group relative flex items-center rounded-lg transition-all duration-150 whitespace-nowrap overflow-hidden"
+                style={{
+                  gap: collapsed ? 0 : 10,
+                  padding: collapsed ? '10px 0' : '8px 10px 8px 12px',
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  minHeight: 40,
+                  backgroundColor: active ? 'rgba(255,255,255,0.08)' : undefined,
+                  borderLeft: active ? '2px solid #6366F1' : '2px solid transparent',
+                  paddingLeft: active && !collapsed ? 10 : undefined,
+                }}
               >
-                <Icon size={17} strokeWidth={active ? 2.5 : 2} className="shrink-0" />
-                {!collapsed && label}
-
+                <Icon
+                  size={18}
+                  strokeWidth={active ? 2.5 : 2}
+                  className={`shrink-0 transition-colors ${active ? 'text-white' : 'text-white/40 group-hover:text-white/90'}`}
+                />
+                {!collapsed && (
+                  <span
+                    className={`text-[13.5px] transition-colors ${
+                      active ? 'text-white font-medium' : 'text-white/60 group-hover:text-white/90'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                )}
+                {!active && (
+                  <span
+                    className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+                  />
+                )}
                 {collapsed && (
-                  <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-zinc-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+                  <span
+                    className="pointer-events-none absolute left-full ml-2 px-2.5 py-1.5 rounded-lg text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl"
+                    style={{ backgroundColor: '#1F1F1F', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
                     {label}
                   </span>
                 )}
@@ -147,20 +185,42 @@ export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMo
           })}
         </nav>
 
-        {/* Admin link */}
+        {/* Admin */}
         {isAdmin && (
-          <div className="px-2 pb-1">
+          <div style={{ padding: '4px 8px' }}>
+            <div style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginBottom: 6 }} />
             <Link
               href="/admin"
               title={collapsed ? 'Admin' : undefined}
-              className={`group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-colors whitespace-nowrap overflow-hidden min-h-[44px] ${
-                collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
-              } text-red-400 hover:text-red-300 hover:bg-white/5`}
+              className="group relative flex items-center rounded-lg transition-all duration-150 overflow-hidden"
+              style={{
+                gap: collapsed ? 0 : 10,
+                padding: collapsed ? '10px 0' : '8px 12px',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                minHeight: 40,
+              }}
             >
-              <Shield size={17} strokeWidth={2} className="shrink-0" />
-              {!collapsed && 'Admin'}
+              <Shield size={18} strokeWidth={2} className="shrink-0 text-red-400" />
+              {!collapsed && (
+                <>
+                  <span className="text-[13.5px] text-red-400 font-medium">Admin</span>
+                  <span
+                    className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#f87171', letterSpacing: '0.5px' }}
+                  >
+                    ADMIN
+                  </span>
+                </>
+              )}
+              <span
+                className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                style={{ backgroundColor: 'rgba(239,68,68,0.06)' }}
+              />
               {collapsed && (
-                <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-zinc-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+                <span
+                  className="pointer-events-none absolute left-full ml-2 px-2.5 py-1.5 rounded-lg text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl"
+                  style={{ backgroundColor: '#1F1F1F', border: '1px solid rgba(255,255,255,0.1)' }}
+                >
                   Admin
                 </span>
               )}
@@ -169,39 +229,68 @@ export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMo
         )}
 
         {/* User footer */}
-        <div className={`py-3 border-t border-white/5 shrink-0 ${collapsed ? 'px-2' : 'px-2'}`} ref={dropdownRef}>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '10px 8px' }} ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen((v) => !v)}
             title={collapsed ? displayName : undefined}
-            className={`group relative w-full flex items-center rounded-lg hover:bg-white/5 transition-colors text-left overflow-hidden min-h-[44px] ${
-              collapsed ? 'justify-center py-2' : 'gap-3 px-2.5 py-2'
-            }`}
+            className="group relative w-full flex items-center rounded-lg transition-colors text-left overflow-hidden"
+            style={{
+              gap: collapsed ? 0 : 10,
+              padding: collapsed ? '8px 0' : '8px 10px',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              minHeight: 44,
+            }}
           >
-            <div className="w-7 h-7 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-bold shrink-0">
-              {initials || <User size={14} />}
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+              style={{ backgroundColor: '#6366F1', color: 'white' }}
+            >
+              {initials || <User size={13} />}
             </div>
             {!collapsed && (
-              <span className="flex-1 text-sm font-medium text-white truncate">{displayName}</span>
+              <>
+                <span className="flex-1 text-[13.5px] font-medium text-white/90 truncate">{displayName}</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0 text-white/30">
+                  <polyline points="6,9 12,15 18,9" />
+                </svg>
+              </>
             )}
+            <span
+              className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}
+            />
             {collapsed && (
-              <span className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-zinc-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+              <span
+                className="pointer-events-none absolute left-full ml-2 px-2.5 py-1.5 rounded-lg text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl"
+                style={{ backgroundColor: '#1F1F1F', border: '1px solid rgba(255,255,255,0.1)' }}
+              >
                 {displayName}
               </span>
             )}
           </button>
 
           {dropdownOpen && (
-            <div className={`mt-1 bg-zinc-800 border border-white/10 rounded-xl shadow-lg overflow-hidden ${collapsed ? 'absolute left-16 bottom-4 w-40' : ''}`}>
+            <div
+              className="animate-modal-in mt-1 overflow-hidden rounded-xl shadow-xl"
+              style={{
+                ...(collapsed ? { position: 'absolute', left: 76, bottom: 16, width: 160 } : {}),
+                backgroundColor: '#1A1A1A',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}
+            >
               <Link
                 href="/settings"
                 onClick={() => setDropdownOpen(false)}
-                className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors"
+                className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-white/70 hover:text-white hover:bg-white/5 transition-colors"
               >
-                <User size={14} className="text-gray-400" />
+                <User size={14} className="text-white/40" />
                 Perfil
               </Link>
               <form action={logout}>
-                <button type="submit" className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors">
+                <button
+                  type="submit"
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-red-400 hover:bg-red-500/10 transition-colors"
+                >
                   <LogOut size={14} />
                   Sair
                 </button>

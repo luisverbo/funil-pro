@@ -11,9 +11,8 @@ const GROUPS = [
         label: 'Entrada',
         desc: 'Ponto de início do funil',
         color: '#6366f1',
-        bg: '#eef2ff',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
             <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
             <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
@@ -26,9 +25,8 @@ const GROUPS = [
         label: 'Carr. Abandonado',
         desc: 'Gatilho de carrinho abandonado',
         color: '#6366f1',
-        bg: '#eef2ff',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <circle cx="9" cy="21" r="1" />
             <circle cx="20" cy="21" r="1" />
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
@@ -45,9 +43,8 @@ const GROUPS = [
         label: 'Mensagem',
         desc: 'Envia WA ou e-mail',
         color: '#0ea5e9',
-        bg: '#f0f9ff',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
         ),
@@ -62,9 +59,8 @@ const GROUPS = [
         label: 'Condição',
         desc: 'Bifurca o fluxo (Sim / Não)',
         color: '#f59e0b',
-        bg: '#fffbeb',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" />
             <path d="M13 6h3a2 2 0 0 1 2 2v7" /><path d="M11 6H8a2 2 0 0 0-2 2v7" />
             <circle cx="6" cy="18" r="3" />
@@ -76,9 +72,8 @@ const GROUPS = [
         label: 'Atraso',
         desc: 'Aguarda antes de continuar',
         color: '#8b5cf6',
-        bg: '#f5f3ff',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" />
           </svg>
         ),
@@ -88,9 +83,8 @@ const GROUPS = [
         label: 'Ir para etapa',
         desc: 'Redireciona para outro bloco',
         color: '#8b5cf6',
-        bg: '#f5f3ff',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <polyline points="9,18 15,12 9,6" />
           </svg>
         ),
@@ -99,10 +93,9 @@ const GROUPS = [
         type: 'ab_test',
         label: 'Divisão A/B',
         desc: 'Divide leads em variantes',
-        color: '#a855f7',
-        bg: '#faf5ff',
+        color: '#ec4899',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" />
           </svg>
         ),
@@ -117,9 +110,8 @@ const GROUPS = [
         label: 'Tag',
         desc: 'Marca o lead com uma tag',
         color: '#10b981',
-        bg: '#ecfdf5',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
             <line x1="7" y1="7" x2="7.01" y2="7" />
           </svg>
@@ -129,10 +121,9 @@ const GROUPS = [
         type: 'sale',
         label: 'Venda',
         desc: 'Envia link de pagamento',
-        color: '#f97316',
-        bg: '#fff7ed',
+        color: '#ef4444',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <line x1="12" y1="1" x2="12" y2="23" />
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
           </svg>
@@ -143,9 +134,8 @@ const GROUPS = [
         label: 'Remover do funil',
         desc: 'Encerra jornada do lead',
         color: '#ef4444',
-        bg: '#fef2f2',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
           </svg>
         ),
@@ -160,9 +150,8 @@ const GROUPS = [
         label: 'Nota',
         desc: 'Anotação no canvas (não executa)',
         color: '#ca8a04',
-        bg: '#fefce8',
         icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14,2 14,8 20,8" />
           </svg>
@@ -185,10 +174,10 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
 
   if (mode === 'sheet') {
     return (
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-5">
         {GROUPS.map((group) => (
           <div key={group.title}>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">
+            <p className="text-[11px] font-semibold uppercase mb-2 px-1" style={{ letterSpacing: '1px', color: '#94A3B8' }}>
               {group.title}
             </p>
             <div className="grid grid-cols-2 gap-2">
@@ -196,17 +185,13 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
                 <button
                   key={block.type}
                   onClick={() => onBlockClick?.(block.type)}
-                  className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-white text-left active:bg-gray-50 transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-lg border text-left transition-colors active:scale-[0.98]"
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0' }}
                 >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: block.bg, color: block.color }}
-                  >
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${block.color}14`, color: block.color }}>
                     {block.icon}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{block.label}</p>
-                  </div>
+                  <p className="text-[13px] font-medium" style={{ color: '#1E293B' }}>{block.label}</p>
                 </button>
               ))}
             </div>
@@ -217,43 +202,50 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
   }
 
   return (
-    <aside className="w-56 bg-white border-r border-gray-200 flex flex-col overflow-hidden shrink-0">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Blocos</p>
+    <aside className="flex flex-col overflow-hidden shrink-0" style={{ width: 220, backgroundColor: '#FFFFFF', borderRight: '1px solid #E2E8F0' }}>
+      <div className="shrink-0 px-4 py-3.5" style={{ borderBottom: '1px solid #F1F5F9' }}>
+        <p className="text-[11px] font-semibold uppercase" style={{ letterSpacing: '1px', color: '#94A3B8' }}>Blocos</p>
       </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+      <div className="flex-1 overflow-y-auto" style={{ padding: '12px 8px' }}>
         {GROUPS.map((group) => (
-          <div key={group.title}>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">
+          <div key={group.title} className="mb-5">
+            <p className="text-[11px] font-semibold uppercase px-2 mb-2" style={{ letterSpacing: '1px', color: '#94A3B8' }}>
               {group.title}
             </p>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {group.blocks.map((block) => (
                 <div
                   key={block.type}
                   draggable
                   onDragStart={(e) => onDragStart(e, block.type)}
-                  className="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 bg-white cursor-grab active:cursor-grabbing select-none hover:border-gray-200 hover:shadow-sm transition-all duration-150"
+                  className="flex items-center gap-3 rounded-lg cursor-grab active:cursor-grabbing select-none transition-colors"
+                  style={{ padding: '8px 10px' }}
+                  onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = '#F8FAFC'}
+                  onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
                 >
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: block.bg, color: block.color }}
+                    className="rounded-lg flex items-center justify-center shrink-0"
+                    style={{ width: 34, height: 34, backgroundColor: `${block.color}14`, color: block.color }}
                   >
                     {block.icon}
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{block.label}</p>
-                    <p className="text-xs text-gray-400 truncate">{block.desc}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium truncate" style={{ color: '#1E293B' }}>{block.label}</p>
+                    <p className="text-[12px] truncate mt-0.5" style={{ color: '#94A3B8' }}>{block.desc}</p>
                   </div>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0 opacity-20">
+                    <circle cx="9" cy="5" r="1" fill="currentColor" /><circle cx="9" cy="12" r="1" fill="currentColor" /><circle cx="9" cy="19" r="1" fill="currentColor" />
+                    <circle cx="15" cy="5" r="1" fill="currentColor" /><circle cx="15" cy="12" r="1" fill="currentColor" /><circle cx="15" cy="19" r="1" fill="currentColor" />
+                  </svg>
                 </div>
               ))}
             </div>
           </div>
         ))}
       </div>
-      <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Arraste um bloco para o canvas.
+      <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid #F1F5F9', backgroundColor: '#FAFAFA' }}>
+        <p className="text-[12px] leading-relaxed" style={{ color: '#94A3B8' }}>
+          Arraste para o canvas.
         </p>
       </div>
     </aside>

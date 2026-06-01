@@ -3,22 +3,20 @@
 import { useState, useEffect } from 'react'
 
 const STORAGE_KEY = 'funilpro:sidebar-collapsed'
+const EXPANDED_W = 240
+const COLLAPSED_W = 64
 
 export default function MainContent({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
-    // Read initial state
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored !== null) setCollapsed(stored === 'true')
     } catch {}
-
-    // Listen for storage changes (when sidebar toggles)
     function onStorage(e: StorageEvent) {
       if (e.key === STORAGE_KEY) setCollapsed(e.newValue === 'true')
     }
-    // Also poll via custom event since same-tab localStorage doesn't fire storage event
     function onToggle() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY)
@@ -35,9 +33,9 @@ export default function MainContent({ children }: { children: React.ReactNode })
 
   return (
     <main
-      className="min-h-screen p-6"
+      className="min-h-screen p-6 animate-page-in"
       style={{
-        marginLeft: collapsed ? 60 : 220,
+        marginLeft: collapsed ? COLLAPSED_W : EXPANDED_W,
         transition: 'margin-left 200ms ease',
       }}
     >

@@ -9,9 +9,10 @@ interface Props {
   funnelName: string
   isPublished: boolean
   onDeleted: () => void
+  inline?: boolean
 }
 
-export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, onDeleted }: Props) {
+export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, onDeleted, inline }: Props) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -31,18 +32,34 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-        title="Excluir funil"
-      >
-        <Trash2 size={16} />
-      </button>
+      {inline ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full text-left flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] transition-colors"
+          style={{ color: '#ef4444' }}
+          onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = '#FEF2F2'}
+          onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
+        >
+          <Trash2 size={15} />
+          Excluir
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="p-2 rounded-lg transition-colors"
+          style={{ border: '1px solid #E2E8F0', color: '#ef4444' }}
+          title="Excluir funil"
+          onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = '#FEF2F2'}
+          onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
+        >
+          <Trash2 size={15} />
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => !isPending && setOpen(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 animate-modal-in">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
                 <AlertTriangle size={18} className="text-red-500" />
@@ -66,9 +83,7 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
               </div>
             )}
 
-            {error && (
-              <p className="text-sm text-red-500 mb-3">{error}</p>
-            )}
+            {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
 
             <div className="flex gap-3">
               <button
