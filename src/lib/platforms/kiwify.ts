@@ -1,4 +1,4 @@
-// Kiwify product sync — OAuth2 client_credentials via public-api.kiwify.com
+// Kiwify product sync — OAuth2 client_credentials
 export interface KiwifyProduct {
   id: string
   name: string
@@ -8,8 +8,7 @@ export interface KiwifyProduct {
 }
 
 async function getKiwifyToken(clientId: string, clientSecret: string): Promise<string> {
-  // Try JSON body (some Kiwify endpoints prefer JSON over form-encoded)
-  const res = await fetch('https://public-api.kiwify.com/oauth/token', {
+  const res = await fetch('https://api.kiwify.com.br/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -32,7 +31,7 @@ export async function fetchKiwifyProducts(
   accountId: string,
 ): Promise<KiwifyProduct[]> {
   const token = await getKiwifyToken(clientId, clientSecret)
-  const res = await fetch(`https://public-api.kiwify.com/v1/products?account_id=${accountId}`, {
+  const res = await fetch(`https://api.kiwify.com.br/v1/products?account_id=${accountId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
