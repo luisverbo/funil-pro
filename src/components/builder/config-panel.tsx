@@ -90,7 +90,8 @@ const TYPE_META: Record<string, { label: string; color: string; icon: React.Reac
 }
 
 const CONDITIONS = [
-  { value: 'replied', label: 'Respondeu ✓' },
+  { value: 'replied', label: 'Respondeu (qualquer coisa) ✓' },
+  { value: 'replied_with', label: 'Respondeu com palavra específica ✓' },
   { value: 'purchased', label: 'Comprou ✓' },
   { value: 'clicked', label: 'Clicou no link ✓' },
   { value: 'opened', label: 'Abriu mensagem ⚠️ (não funciona no WhatsApp)' },
@@ -365,7 +366,6 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                     <p className="text-xs text-gray-400 mt-1">Faça upload ou cole um link público. Máx 50MB.</p>
                   </FieldWrap>
                 )}
-                {/* WhatsApp instance info + override */}
                 <FieldWrap>
                   <Label>Instância WhatsApp</Label>
                   {(() => {
@@ -425,7 +425,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
               <Label>Verificar se o lead</Label>
               <select
                 value={(config.condition as string) ?? 'opened'}
-                onChange={(e) => update({ condition: e.target.value, purchased_product: '' })}
+                onChange={(e) => update({ condition: e.target.value, purchased_product: '', replied_with: '' })}
                 className={selectClass}
               >
                 {CONDITIONS.map((c) => (
@@ -437,6 +437,21 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
               </p>
             </FieldWrap>
+            {(config.condition as string) === 'replied_with' && (
+              <FieldWrap>
+                <Label>Palavra-chave na resposta</Label>
+                <input
+                  type="text"
+                  value={(config.replied_with as string) ?? ''}
+                  onChange={(e) => update({ replied_with: e.target.value })}
+                  placeholder="Ex: SIM"
+                  className={inputClass}
+                />
+                <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                  Passa para <span className="text-emerald-600 font-semibold">Sim</span> se a resposta do lead <strong>contiver esta palavra</strong> (não diferencia maiúsculas/minúsculas).
+                </p>
+              </FieldWrap>
+            )}
             {(config.condition as string) === 'purchased' && (
               <FieldWrap>
                 <Label>Produto específico (opcional)</Label>
