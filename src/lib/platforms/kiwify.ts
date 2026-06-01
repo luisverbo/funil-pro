@@ -1,4 +1,4 @@
-// Kiwify product sync — OAuth2 client_credentials
+// Kiwify product sync — OAuth2 client_credentials com Basic Auth
 export interface KiwifyProduct {
   id: string
   name: string
@@ -8,14 +8,14 @@ export interface KiwifyProduct {
 }
 
 async function getKiwifyToken(clientId: string, clientSecret: string): Promise<string> {
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
   const res = await fetch('https://api.kiwify.com.br/oauth/token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basic}`,
+    },
+    body: new URLSearchParams({ grant_type: 'client_credentials' }),
   })
   if (!res.ok) {
     const text = await res.text()
