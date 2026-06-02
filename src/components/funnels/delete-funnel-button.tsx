@@ -25,9 +25,7 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
     startTransition(async () => {
       const result = await deleteFunnel(funnelId)
       if (result.success) {
-        setOpen(false)
-        onDeleted()
-        router.refresh()
+        window.location.href = '/funnels'
       } else {
         setError(result.error ?? 'Erro ao excluir')
       }
