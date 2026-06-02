@@ -204,46 +204,13 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
 
   if (!funnel) return { success: false, error: 'Funil não encontrado' }
 
-  // Delete in correct FK order — deepest dependents first
-  // 1. Get page IDs and lead IDs for sub-deletions
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: pageRows } = await (admin as any).from('pages').select('id').eq('funnel_id', funnelId)
-  const pageIds = (pageRows ?? []).map((r: { id: string }) => r.id)
+  // Use stored procedure that handles all FK dependencies in one transaction
+  const { error } = await admin.rpc('delete_funnel_safe', {
+    p_funnel_id: funnelId,
+    p_tenant_id: tenantId,
+  })
 
-  const { data: leadRows } = await admin.from('leads').select('id').eq('funnel_id', funnelId)
-  const leadIds = (leadRows ?? []).map((r: { id: string }) => r.id)
-
-  // 2. page_events references both pages.id and leads.id
-  if (pageIds.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin as any).from('page_events').delete().in('page_id', pageIds)
-  }
-  if (leadIds.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin as any).from('page_events').delete().in('lead_id', leadIds)
-    await admin.from('lead_sources').delete().in('lead_id', leadIds)
-    await admin.from('queue_jobs').delete().in('lead_id', leadIds)
-  }
-
-  // 3. Now delete everything referencing funnels
-  await admin.from('queue_jobs').delete().eq('funnel_id', funnelId)
-  await admin.from('lead_events').delete().eq('funnel_id', funnelId)
-  await admin.from('leads').delete().eq('funnel_id', funnelId)
-  await admin.from('funnel_product_triggers').delete().eq('funnel_id', funnelId)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any).from('funnel_agents').delete().eq('funnel_id', funnelId)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any).from('pages').delete().eq('funnel_id', funnelId)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any).from('funnel_versions').delete().eq('funnel_id', funnelId)
-  await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
-  await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)
-  const { error } = await admin.from('funnels').delete().eq('id', funnelId)
   if (error) return { success: false, error: error.message }
-
-  // Confirm deletion
-  const { data: still } = await admin.from('funnels').select('id').eq('id', funnelId).maybeSingle()
-  if (still) return { success: false, error: 'Funil ainda existe após tentativa de exclusão — verifique constraints no banco' }
 
   revalidatePath('/funnels')
   return { success: true }
