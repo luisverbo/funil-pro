@@ -22,6 +22,17 @@ export async function sendTextMessage(instanceName: string, phone: string, messa
   return res.json()
 }
 
+const MIMETYPE_MAP: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
+  mp4: 'video/mp4', mov: 'video/quicktime', avi: 'video/avi',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  zip: 'application/zip',
+}
+
 export async function sendMediaMessage(
   instanceName: string,
   phone: string,
@@ -30,17 +41,30 @@ export async function sendMediaMessage(
   caption: string
 ) {
   const normalizedPhone = normalizePhone(phone)
+  const rawFileName = mediaUrl.split('/').pop()?.split('?')[0] ?? 'arquivo'
+  const ext = rawFileName.split('.').pop()?.toLowerCase() ?? ''
+  const mimetype = MIMETYPE_MAP[ext] ?? (
+    mediaType === 'image' ? 'image/jpeg' :
+    mediaType === 'video' ? 'video/mp4' :
+    'application/octet-stream'
+  )
+
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
     body: JSON.stringify({
       number: normalizedPhone,
       mediatype: mediaType,
+      mimetype,
       media: mediaUrl,
       caption,
+      fileName: rawFileName,
     }),
   })
-  if (!res.ok) throw new Error(`Evolution API error: ${res.status}`)
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    throw new Error(`Evolution API sendMedia error: ${res.status} — ${errBody}`)
+  }
   return res.json()
 }
 
