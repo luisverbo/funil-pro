@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getFunnelQueue } from '@/lib/queue'
 
 interface EvolutionMessageEvent {
   event: string
@@ -15,7 +14,6 @@ interface EvolutionMessageEvent {
 }
 
 function extractPhone(remoteJid: string): string {
-  // remoteJid format: "5511999999999@s.whatsapp.net"
   return remoteJid.replace(/@.*$/, '').replace(/\D/g, '')
 }
 
@@ -34,7 +32,6 @@ export async function POST(
 
   const admin = createAdminClient()
 
-  // Handle CONNECTION_UPDATE event — sync status to DB
   if (body.event === 'CONNECTION_UPDATE' || body.state) {
     const state = body.state ?? ((body as unknown as Record<string, unknown>)?.['data.state'] as string | undefined)
     if (state) {
@@ -44,12 +41,10 @@ export async function POST(
     return NextResponse.json({ received: true })
   }
 
-  // Handle QRCODE_UPDATED — just acknowledge
   if (body.event === 'QRCODE_UPDATED') {
     return NextResponse.json({ received: true })
   }
 
-  // Handle MESSAGES_UPSERT — incoming message
   if (body.event !== 'MESSAGES_UPSERT' && body.event !== 'messages.upsert') {
     return NextResponse.json({ received: true })
   }
@@ -64,7 +59,6 @@ export async function POST(
 
   if (!senderPhone) return NextResponse.json({ received: true })
 
-  // Find the whatsapp instance to get tenant_id
   const { data: waInstance } = await admin
     .from('whatsapp_instances')
     .select('id, tenant_id')
@@ -75,23 +69,26 @@ export async function POST(
 
   const tenantId = waInstance.tenant_id
 
-  // Find active lead matching this phone number in any active funnel
+  // Evolution delivers phone with country code (e.g. 5511999999999)
+  // but leads may be stored without it (11999999999) — try both
+  const phoneWithoutCode = senderPhone.startsWith('55') ? senderPhone.slice(2) : senderPhone
+
   const { data: lead } = await admin
     .from('leads')
     .select('id, funnel_id, current_block_id, status, name')
     .eq('tenant_id', tenantId)
-    .eq('phone', senderPhone)
+    .or(`phone.eq.${senderPhone},phone.eq.${phoneWithoutCode}`)
     .eq('status', 'active')
     .order('created_at', { ascending: false })
     .limit(1)
     .single()
 
   if (!lead) {
-    console.log(`[webhook/evolution] Mensagem de número desconhecido: ${senderPhone}`)
+    console.log(`[webhook/evolution] Mensagem de número desconhecido: ${senderPhone} / ${phoneWithoutCode}`)
     return NextResponse.json({ received: true })
   }
 
-  // Record 'replied' event
+  // Record replied event
   await admin.from('lead_events').insert({
     tenant_id: tenantId,
     lead_id: lead.id,
@@ -101,22 +98,28 @@ export async function POST(
     event_data: { text: messageText, phone: senderPhone },
   })
 
-  // If lead is paused on a condition block, evaluate and advance
+  // If lead is paused on a condition block, re-enqueue via queue_jobs (cron picks it up)
   if (lead.current_block_id) {
     const { data: currentBlock } = await admin
       .from('funnel_blocks')
-      .select('id, block_type, funnel_id')
+      .select('id, block_type, funnel_id, config')
       .eq('id', lead.current_block_id)
       .single()
 
     if (currentBlock?.block_type === 'condition') {
-      // Re-queue the condition block so it gets evaluated now that replied event exists
-      await getFunnelQueue().add('execute-block', {
-        funnelId: lead.funnel_id,
-        blockId: currentBlock.id,
-        leadId: lead.id,
-        tenantId,
-      })
+      const conditionType = ((currentBlock.config as Record<string, unknown>)?.condition as string) ?? ''
+      const isReplyCondition = conditionType === 'replied' || conditionType === 'replied_with' || conditionType === 'replied_number'
+
+      if (isReplyCondition) {
+        await admin.from('queue_jobs').insert({
+          tenant_id: tenantId,
+          lead_id: lead.id,
+          funnel_id: lead.funnel_id,
+          block_id: currentBlock.id,
+          status: 'pending',
+          scheduled_for: new Date().toISOString(),
+        })
+      }
     }
   }
 

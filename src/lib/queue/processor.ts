@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendTextMessage } from '@/lib/evolution'
+import { sendTextMessage, sendMediaMessage } from '@/lib/evolution'
 import { sendEmail } from '@/lib/resend'
 
 export interface QueueJob {
@@ -30,13 +30,18 @@ export async function processJob(job: QueueJob): Promise<void> {
 
   const config = (block.config ?? {}) as Record<string, unknown>
 
+  // Always update current_block_id so webhook can find the right block
+  await admin.from('leads').update({ current_block_id: job.block_id }).eq('id', job.lead_id)
+
   if (block.block_type === 'message') {
     const channel = (config.channel as string) ?? 'whatsapp'
     const rawBody = ((config.body as string) ?? '').trim()
     const body = interpolateMessage(rawBody, lead)
+    const mediaType = (config.media_type as string) ?? 'none'
+    const mediaUrl = (config.media_url as string) ?? ''
 
-    if (!body) {
-      console.warn(`[processor] Job ${job.id}: bloco message sem texto — avançando sem enviar`)
+    if (!body && mediaType === 'none') {
+      console.warn(`[processor] Job ${job.id}: bloco message sem conteúdo — avançando sem enviar`)
       await admin.from('lead_events').insert({
         tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
         block_id: job.block_id, event_type: 'message_skipped', event_data: { reason: 'empty_body', channel }
@@ -52,17 +57,30 @@ export async function processJob(job: QueueJob): Promise<void> {
       if (instanceId) {
         const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', instanceId).single()
         if (instance?.instance_name) {
-          await sendTextMessage(instance.instance_name, lead.phone, body)
+          if (mediaType !== 'none' && mediaUrl) {
+            await sendMediaMessage(
+              instance.instance_name,
+              lead.phone,
+              mediaUrl,
+              mediaType as 'image' | 'video' | 'document',
+              body
+            )
+          } else {
+            await sendTextMessage(instance.instance_name, lead.phone, body)
+          }
         }
       }
     } else if (channel === 'email' && lead.email) {
       const subject = (config.subject as string) ?? 'Nova mensagem'
-      await sendEmail({ from: 'FunilPro <noreply@funil.pro>', to: lead.email, subject, html: `<p>${body}</p>` })
+      const htmlBody = mediaUrl && mediaType !== 'none'
+        ? `<p>${body}</p><p><a href="${mediaUrl}" target="_blank">📎 Clique aqui para acessar o anexo</a></p>`
+        : `<p>${body}</p>`
+      await sendEmail({ from: 'FunilPro <noreply@funil.pro>', to: lead.email, subject, html: htmlBody })
     }
 
     await admin.from('lead_events').insert({
       tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
-      block_id: job.block_id, event_type: 'message_sent', event_data: { channel }
+      block_id: job.block_id, event_type: 'message_sent', event_data: { channel, media_type: mediaType }
     })
 
     await enqueueNext(job, 'default', admin)
@@ -98,6 +116,8 @@ export async function processJob(job: QueueJob): Promise<void> {
         .limit(20)
 
       if (!replyEvents || replyEvents.length === 0) {
+        // current_block_id already updated above — webhook will re-enqueue when reply arrives
+        console.log(`[processor] Condition block ${job.block_id}: aguardando resposta do lead ${job.lead_id}`)
         return
       }
 
@@ -122,8 +142,12 @@ export async function processJob(job: QueueJob): Promise<void> {
         const latestText = (((replyEvents[0].event_data as Record<string, unknown>)?.text) as string ?? '')
         const t = latestText.trim().toLowerCase()
         const isYes = t === '1' || t === 'sim' || t === 's' || t.startsWith('1')
-        const isNo = t === '2' || t === 'não' || t === 'nao' || t === 'n' || t.startsWith('2')
-        if (!isYes && !isNo) return
+        const isNo  = t === '2' || t === 'não' || t === 'nao' || t === 'n' || t.startsWith('2')
+        if (!isYes && !isNo) {
+          // Unrecognized — wait for next reply
+          console.log(`[processor] Condition replied_number: resposta "${latestText}" não reconhecida — aguardando`)
+          return
+        }
         await enqueueNext(job, isYes ? 'yes' : 'no', admin)
         return
       }
@@ -161,16 +185,37 @@ export async function processJob(job: QueueJob): Promise<void> {
 
   else if (block.block_type === 'sale') {
     const paymentLink = (config.payment_link as string) ?? ''
-    const message = ((config.sale_message as string) ?? (config.message as string) ?? paymentLink).trim()
-    if (lead.phone && message) {
-      const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', job.funnel_id).single()
-      if (funnel?.whatsapp_instance_id) {
-        const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', funnel.whatsapp_instance_id).single()
-        if (instance?.instance_name) {
-          await sendTextMessage(instance.instance_name, lead.phone, message)
+    const productName = (config.product_name as string) ?? 'nosso produto'
+    const saleMessage = (config.sale_message as string) ?? ''
+    const firstName = lead.name?.split(' ')[0] ?? 'Olá'
+
+    const message = saleMessage.trim()
+      || (paymentLink ? `Olá ${firstName}! Aqui está o link para adquirir ${productName}: ${paymentLink}` : '')
+
+    if (message) {
+      if (lead.phone) {
+        const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', job.funnel_id).single()
+        if (funnel?.whatsapp_instance_id) {
+          const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', funnel.whatsapp_instance_id).single()
+          if (instance?.instance_name) {
+            await sendTextMessage(instance.instance_name, lead.phone, interpolateMessage(message, lead))
+          }
         }
+      } else if (lead.email) {
+        await sendEmail({
+          from: 'FunilPro <noreply@funil.pro>',
+          to: lead.email,
+          subject: `Seu link para ${productName}`,
+          html: `<p>${interpolateMessage(message, lead)}</p>`,
+        })
       }
     }
+
+    await admin.from('lead_events').insert({
+      tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
+      block_id: job.block_id, event_type: 'sale_link_sent', event_data: { payment_link: paymentLink }
+    })
+
     await enqueueNext(job, 'default', admin)
   }
 }
