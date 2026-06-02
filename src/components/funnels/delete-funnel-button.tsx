@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import { deleteFunnel } from '@/app/actions/funnels'
 import { Trash2, AlertTriangle } from 'lucide-react'
 
@@ -56,8 +57,8 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
         </button>
       )}
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {open && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => !isPending && setOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 animate-modal-in">
             <div className="flex items-center gap-3 mb-4">
@@ -109,7 +110,8 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )
