@@ -189,8 +189,16 @@ export async function processJob(job: QueueJob): Promise<void> {
     const saleMessage = (config.sale_message as string) ?? ''
     const firstName = lead.name?.split(' ')[0] ?? 'Olá'
 
-    const message = saleMessage.trim()
+    let message = saleMessage.trim()
       || (paymentLink ? `Olá ${firstName}! Aqui está o link para adquirir ${productName}: ${paymentLink}` : '')
+    // If custom message exists and has {link} placeholder, replace it; otherwise append link at end
+    if (message && paymentLink) {
+      if (message.includes('{link}')) {
+        message = message.replace(/{link}/g, paymentLink)
+      } else if (!message.includes(paymentLink)) {
+        message = `${message}\n\n🔗 ${paymentLink}`
+      }
+    }
 
     if (message) {
       if (lead.phone) {
