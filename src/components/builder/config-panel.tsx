@@ -151,6 +151,7 @@ const CONDITIONS = [
   { value: 'replied_with', label: 'Respondeu com palavra específica ✓' },
   { value: 'purchased', label: 'Comprou ✓' },
   { value: 'clicked', label: 'Clicou no link ✓' },
+  { value: 'opened', label: 'Abriu mensagem ⚠️ (não funciona no WhatsApp)' },
   { value: 'tag', label: 'Tem tag' },
 ]
 

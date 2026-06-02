@@ -14,7 +14,10 @@ const ICON = (
 )
 
 const CONDITION_LABELS: Record<string, string> = {
+  opened: 'Abriu mensagem',
+  not_opened: 'Não abriu mensagem',
   clicked: 'Clicou no link',
+  not_clicked: 'Não clicou no link',
   replied: 'Respondeu (qualquer coisa)',
   replied_with: 'Respondeu com',
   purchased: 'Comprou',
