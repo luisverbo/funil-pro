@@ -217,6 +217,10 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
   await admin.from('leads').delete().eq('funnel_id', funnelId)
   await admin.from('funnel_product_triggers').delete().eq('funnel_id', funnelId)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin as any).from('funnel_agents').delete().eq('funnel_id', funnelId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin as any).from('pages').delete().eq('funnel_id', funnelId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (admin as any).from('funnel_versions').delete().eq('funnel_id', funnelId)
   await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
   await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)

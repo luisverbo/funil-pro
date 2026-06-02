@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/navigation'
 import { deleteFunnel } from '@/app/actions/funnels'
 import { Trash2, AlertTriangle } from 'lucide-react'
 
@@ -17,6 +18,7 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   const handleDelete = () => {
     setError(null)
@@ -25,6 +27,7 @@ export default function DeleteFunnelButton({ funnelId, funnelName, isPublished, 
       if (result.success) {
         setOpen(false)
         onDeleted()
+        router.refresh()
       } else {
         setError(result.error ?? 'Erro ao excluir')
       }
