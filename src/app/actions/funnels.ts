@@ -205,6 +205,13 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
   if (!funnel) return { success: false, error: 'Funil não encontrado' }
 
   // Delete in FK-safe order: dependents first
+  // Get lead IDs so we can delete lead_sources (FK on lead_id, not funnel_id)
+  const { data: leadRows } = await admin.from('leads').select('id').eq('funnel_id', funnelId)
+  const leadIds = (leadRows ?? []).map((r: { id: string }) => r.id)
+  if (leadIds.length > 0) {
+    await admin.from('lead_sources').delete().in('lead_id', leadIds)
+    await admin.from('queue_jobs').delete().in('lead_id', leadIds)
+  }
   await admin.from('queue_jobs').delete().eq('funnel_id', funnelId)
   await admin.from('lead_events').delete().eq('funnel_id', funnelId)
   await admin.from('leads').delete().eq('funnel_id', funnelId)
@@ -214,8 +221,11 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
   await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
   await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)
   const { error } = await admin.from('funnels').delete().eq('id', funnelId)
-
   if (error) return { success: false, error: error.message }
+
+  // Confirm deletion
+  const { data: still } = await admin.from('funnels').select('id').eq('id', funnelId).maybeSingle()
+  if (still) return { success: false, error: 'Funil ainda existe após tentativa de exclusão — verifique constraints no banco' }
 
   revalidatePath('/funnels')
   return { success: true }
