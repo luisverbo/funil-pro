@@ -204,6 +204,13 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
 
   if (!funnel) return { success: false, error: 'Funil não encontrado' }
 
+  // Delete in FK-safe order: dependents first
+  await admin.from('queue_jobs').delete().eq('funnel_id', funnelId)
+  await admin.from('lead_events').delete().eq('funnel_id', funnelId)
+  await admin.from('leads').delete().eq('funnel_id', funnelId)
+  await admin.from('funnel_product_triggers').delete().eq('funnel_id', funnelId)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin as any).from('funnel_versions').delete().eq('funnel_id', funnelId)
   await admin.from('funnel_edges').delete().eq('funnel_id', funnelId)
   await admin.from('funnel_blocks').delete().eq('funnel_id', funnelId)
   const { error } = await admin.from('funnels').delete().eq('id', funnelId)
