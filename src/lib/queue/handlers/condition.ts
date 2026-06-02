@@ -19,21 +19,31 @@ export async function handleCondition({ lead, block, supabase }: HandlerCtx): Pr
 
   let conditionMet = false
 
-  if (condition === 'replied_with') {
-    const keyword = (config.replied_with ?? '').trim().toLowerCase()
-    if (keyword) {
-      const { data: events } = await supabase
-        .from('lead_events')
-        .select('event_data')
-        .eq('lead_id', lead.id)
-        .eq('event_type', 'replied')
-        .order('created_at', { ascending: false })
-        .limit(10)
+  if (condition === 'replied' || condition === 'replied_with') {
+    // Fetch all reply events for this lead
+    const { data: replyEvents } = await supabase
+      .from('lead_events')
+      .select('event_data')
+      .eq('lead_id', lead.id)
+      .eq('event_type', 'replied')
+      .order('created_at', { ascending: false })
+      .limit(20)
 
-      conditionMet = (events ?? []).some((ev) => {
-        const text = ((ev.event_data as Record<string, unknown>)?.text as string ?? '').toLowerCase()
-        return text.includes(keyword)
-      })
+    if (!replyEvents || replyEvents.length === 0) {
+      // No reply yet — pause execution and wait for webhook to re-trigger
+      return {}
+    }
+
+    if (condition === 'replied') {
+      conditionMet = true
+    } else {
+      const keyword = (config.replied_with ?? '').trim().toLowerCase()
+      conditionMet = keyword
+        ? replyEvents.some((ev) => {
+            const text = ((ev.event_data as Record<string, unknown>)?.text as string ?? '').toLowerCase()
+            return text.includes(keyword)
+          })
+        : true
     }
   } else {
     const eventType = CONDITION_EVENT_MAP[condition]
