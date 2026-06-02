@@ -32,7 +32,8 @@ export async function processJob(job: QueueJob): Promise<void> {
 
   if (block.block_type === 'message') {
     const channel = (config.channel as string) ?? 'whatsapp'
-    const body = ((config.body as string) ?? '').trim()
+    const rawBody = ((config.body as string) ?? '').trim()
+    const body = interpolateMessage(rawBody, lead)
 
     if (!body) {
       console.warn(`[processor] Job ${job.id}: bloco message sem texto — avançando sem enviar`)
@@ -87,8 +88,7 @@ export async function processJob(job: QueueJob): Promise<void> {
   else if (block.block_type === 'condition') {
     const conditionType = (config.condition as string) ?? 'default'
 
-    // For reply-based conditions: pause and wait — webhook will re-trigger when lead replies
-    if (conditionType === 'replied' || conditionType === 'replied_with') {
+    if (conditionType === 'replied' || conditionType === 'replied_with' || conditionType === 'replied_number') {
       const { data: replyEvents } = await admin
         .from('lead_events')
         .select('event_data')
@@ -98,24 +98,35 @@ export async function processJob(job: QueueJob): Promise<void> {
         .limit(20)
 
       if (!replyEvents || replyEvents.length === 0) {
-        // No reply yet — leave job as pending; webhook will re-enqueue when reply arrives
         return
       }
 
-      let matched = false
       if (conditionType === 'replied') {
-        matched = true
-      } else {
+        await enqueueNext(job, 'yes', admin)
+        return
+      }
+
+      if (conditionType === 'replied_with') {
         const keyword = ((config.replied_with as string) ?? '').trim().toLowerCase()
-        matched = keyword
+        const matched = keyword
           ? replyEvents.some((ev) => {
               const text = (((ev.event_data as Record<string, unknown>)?.text) as string ?? '').toLowerCase()
-              return text.includes(keyword)              
+              return text.includes(keyword)
             })
           : true
+        await enqueueNext(job, matched ? 'yes' : 'no', admin)
+        return
       }
-      await enqueueNext(job, matched ? 'yes' : 'no', admin)
-      return
+
+      if (conditionType === 'replied_number') {
+        const latestText = (((replyEvents[0].event_data as Record<string, unknown>)?.text) as string ?? '')
+        const t = latestText.trim().toLowerCase()
+        const isYes = t === '1' || t === 'sim' || t === 's' || t.startsWith('1')
+        const isNo = t === '2' || t === 'não' || t === 'nao' || t === 'n' || t.startsWith('2')
+        if (!isYes && !isNo) return
+        await enqueueNext(job, isYes ? 'yes' : 'no', admin)
+        return
+      }
     }
 
     const { data: events } = await admin.from('lead_events').select('event_type').eq('lead_id', job.lead_id)
@@ -162,6 +173,21 @@ export async function processJob(job: QueueJob): Promise<void> {
     }
     await enqueueNext(job, 'default', admin)
   }
+}
+
+function interpolateMessage(
+  text: string,
+  lead: { name?: string | null; phone?: string | null; email?: string | null }
+): string {
+  const firstName = lead.name?.split(' ')[0] ?? ''
+  const now = new Date()
+  return text
+    .replace(/{nome}/g, lead.name ?? '')
+    .replace(/{primeiro_nome}/g, firstName)
+    .replace(/{email}/g, lead.email ?? '')
+    .replace(/{telefone}/g, lead.phone ?? '')
+    .replace(/{data}/g, now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }))
+    .replace(/{hora}/g, now.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }))
 }
 
 async function enqueueNext(

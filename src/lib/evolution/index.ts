@@ -29,11 +29,12 @@ export async function sendMediaMessage(
   mediaType: 'image' | 'video' | 'document',
   caption: string
 ) {
+  const normalizedPhone = normalizePhone(phone)
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
     body: JSON.stringify({
-      number: phone,
+      number: normalizedPhone,
       mediatype: mediaType,
       media: mediaUrl,
       caption,

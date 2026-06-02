@@ -9,18 +9,24 @@ interface HandlerCtx {
 const CONDITION_EVENT_MAP: Record<string, string> = {
   opened: 'message_opened',
   clicked: 'message_clicked',
-  replied: 'replied',
   purchased: 'purchased',
+}
+
+function matchesNumber(text: string): 'yes' | 'no' | null {
+  const t = text.trim().toLowerCase()
+  if (t === '1' || t === 'sim' || t === 's') return 'yes'
+  if (t === '2' || t === 'não' || t === 'nao' || t === 'n') return 'no'
+  if (t.startsWith('1')) return 'yes'
+  if (t.startsWith('2')) return 'no'
+  return null
 }
 
 export async function handleCondition({ lead, block, supabase }: HandlerCtx): Promise<{ nextBlockId?: string }> {
   const config = block.config as { condition?: string; purchased_product?: string; replied_with?: string }
   const condition = config.condition ?? 'opened'
 
-  let conditionMet = false
-
-  if (condition === 'replied' || condition === 'replied_with') {
-    // Fetch all reply events for this lead
+  // Reply-based conditions: pause if no reply yet, evaluate once reply arrives
+  if (condition === 'replied' || condition === 'replied_with' || condition === 'replied_number') {
     const { data: replyEvents } = await supabase
       .from('lead_events')
       .select('event_data')
@@ -30,13 +36,15 @@ export async function handleCondition({ lead, block, supabase }: HandlerCtx): Pr
       .limit(20)
 
     if (!replyEvents || replyEvents.length === 0) {
-      // No reply yet — pause execution and wait for webhook to re-trigger
       return {}
     }
 
+    let conditionMet = false
+    let forceRoute: 'yes' | 'no' | null = null
+
     if (condition === 'replied') {
       conditionMet = true
-    } else {
+    } else if (condition === 'replied_with') {
       const keyword = (config.replied_with ?? '').trim().toLowerCase()
       conditionMet = keyword
         ? replyEvents.some((ev) => {
@@ -44,42 +52,71 @@ export async function handleCondition({ lead, block, supabase }: HandlerCtx): Pr
             return text.includes(keyword)
           })
         : true
-    }
-  } else {
-    const eventType = CONDITION_EVENT_MAP[condition]
-    if (eventType) {
-      let query = supabase
-        .from('lead_events')
-        .select('id')
-        .eq('lead_id', lead.id)
-        .eq('event_type', eventType)
-
-      if (condition === 'purchased' && config.purchased_product?.trim()) {
-        query = query.ilike('product_name', `%${config.purchased_product.trim()}%`)
+    } else if (condition === 'replied_number') {
+      const latestText = ((replyEvents[0].event_data as Record<string, unknown>)?.text as string ?? '')
+      const match = matchesNumber(latestText)
+      if (match === null) {
+        // Unrecognized response — wait for another reply
+        return {}
       }
-
-      const { data: events } = await query.limit(1)
-      conditionMet = (events?.length ?? 0) > 0
+      forceRoute = match
+      conditionMet = match === 'yes'
     }
 
-    if (condition === 'not_opened') {
-      const { data: events } = await supabase
-        .from('lead_events')
-        .select('id')
-        .eq('lead_id', lead.id)
-        .eq('event_type', 'message_opened')
-        .limit(1)
-      conditionMet = (events?.length ?? 0) === 0
+    const { data: edges } = await supabase
+      .from('funnel_edges')
+      .select('target_block_id, condition')
+      .eq('funnel_id', block.funnel_id)
+      .eq('source_block_id', block.id)
+
+    const yesEdge = edges?.find((e) => e.condition === 'yes' || e.condition === 'default')
+    const noEdge = edges?.find((e) => e.condition === 'no')
+
+    if (forceRoute === 'yes') return { nextBlockId: yesEdge?.target_block_id ?? undefined }
+    if (forceRoute === 'no') return { nextBlockId: noEdge?.target_block_id ?? undefined }
+
+    const nextBlockId = conditionMet
+      ? (yesEdge?.target_block_id ?? noEdge?.target_block_id)
+      : (noEdge?.target_block_id ?? yesEdge?.target_block_id)
+
+    return { nextBlockId: nextBlockId ?? undefined }
+  }
+
+  let conditionMet = false
+
+  const eventType = CONDITION_EVENT_MAP[condition]
+  if (eventType) {
+    let query = supabase
+      .from('lead_events')
+      .select('id')
+      .eq('lead_id', lead.id)
+      .eq('event_type', eventType)
+
+    if (condition === 'purchased' && config.purchased_product?.trim()) {
+      query = query.ilike('product_name', `%${config.purchased_product.trim()}%`)
     }
-    if (condition === 'not_clicked') {
-      const { data: events } = await supabase
-        .from('lead_events')
-        .select('id')
-        .eq('lead_id', lead.id)
-        .eq('event_type', 'message_clicked')
-        .limit(1)
-      conditionMet = (events?.length ?? 0) === 0
-    }
+
+    const { data: events } = await query.limit(1)
+    conditionMet = (events?.length ?? 0) > 0
+  }
+
+  if (condition === 'not_opened') {
+    const { data: events } = await supabase
+      .from('lead_events')
+      .select('id')
+      .eq('lead_id', lead.id)
+      .eq('event_type', 'message_opened')
+      .limit(1)
+    conditionMet = (events?.length ?? 0) === 0
+  }
+  if (condition === 'not_clicked') {
+    const { data: events } = await supabase
+      .from('lead_events')
+      .select('id')
+      .eq('lead_id', lead.id)
+      .eq('event_type', 'message_clicked')
+      .limit(1)
+    conditionMet = (events?.length ?? 0) === 0
   }
 
   const { data: edges } = await supabase

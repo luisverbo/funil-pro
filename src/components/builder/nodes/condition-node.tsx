@@ -20,6 +20,7 @@ const CONDITION_LABELS: Record<string, string> = {
   not_clicked: 'Não clicou no link',
   replied: 'Respondeu (qualquer coisa)',
   replied_with: 'Respondeu com',
+  replied_number: 'Resposta numérica',
   purchased: 'Comprou',
   tag: 'Tem tag',
 }
@@ -34,6 +35,8 @@ export default function ConditionNode({ id, data, selected }: NodeProps) {
 
   if (config.condition === 'replied_with' && config.replied_with) {
     preview = `Respondeu com "${config.replied_with.toUpperCase()}"`
+  } else if (config.condition === 'replied_number') {
+    preview = '1 = Sim  /  2 = Não'
   } else if (config.condition === 'purchased' && config.purchased_product) {
     preview = `Comprou "${config.purchased_product}"`
   } else if (config.condition === 'tag' && config.tag_name) {
@@ -43,8 +46,8 @@ export default function ConditionNode({ id, data, selected }: NodeProps) {
   const extraHandles = (
     <div className="group relative border-t border-gray-100 bg-gray-50 rounded-b-xl">
       <div className="flex justify-between items-center px-4 py-1.5">
-        <span className="text-xs font-semibold text-emerald-600">✓ Verdadeiro</span>
-        <span className="text-xs font-semibold text-red-500">✗ Falso</span>
+        <span className="text-xs font-semibold text-emerald-600">✓ {config.condition === 'replied_number' ? 'Opção 1' : 'Verdadeiro'}</span>
+        <span className="text-xs font-semibold text-red-500">✗ {config.condition === 'replied_number' ? 'Opção 2' : 'Falso'}</span>
       </div>
       <Handle
         type="source"

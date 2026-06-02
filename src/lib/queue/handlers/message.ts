@@ -10,6 +10,21 @@ interface HandlerCtx {
 
 type MediaType = 'none' | 'image' | 'video' | 'document'
 
+function interpolate(
+  text: string,
+  lead: { name: string | null; phone: string | null; email: string | null }
+): string {
+  const firstName = lead.name?.split(' ')[0] ?? ''
+  const now = new Date()
+  return text
+    .replace(/{nome}/g, lead.name ?? '')
+    .replace(/{primeiro_nome}/g, firstName)
+    .replace(/{email}/g, lead.email ?? '')
+    .replace(/{telefone}/g, lead.phone ?? '')
+    .replace(/{data}/g, now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }))
+    .replace(/{hora}/g, now.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }))
+}
+
 export async function handleMessage({ lead, block, supabase }: HandlerCtx): Promise<{ nextBlockId?: string }> {
   const config = block.config as {
     channel?: string
@@ -17,7 +32,8 @@ export async function handleMessage({ lead, block, supabase }: HandlerCtx): Prom
     media_type?: MediaType
     media_url?: string
   }
-  const body = config.body ?? ''
+  const rawBody = config.body ?? ''
+  const body = interpolate(rawBody, lead)
   const channel = config.channel ?? 'whatsapp'
   const mediaType = config.media_type ?? 'none'
   const mediaUrl = config.media_url ?? ''
