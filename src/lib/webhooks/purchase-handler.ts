@@ -1,5 +1,4 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getFunnelQueue } from '@/lib/queue'
 
 interface AbandonedCartData {
   tenantId: string
@@ -14,7 +13,6 @@ interface AbandonedCartData {
 export async function handleAbandonedCart(data: AbandonedCartData): Promise<{ leadId: string; isNew: boolean }> {
   const admin = createAdminClient()
 
-  // Try to find existing lead by email
   let lead: { id: string; funnel_id: string; current_block_id: string | null } | null = null
   if (data.buyerEmail) {
     const { data: found } = await admin
@@ -31,7 +29,6 @@ export async function handleAbandonedCart(data: AbandonedCartData): Promise<{ le
   let isNew = false
 
   if (!lead) {
-    // Find a cart_abandoned block for this platform
     const { data: cartBlocks } = await admin
       .from('funnel_blocks')
       .select('id, funnel_id, config')
@@ -46,7 +43,6 @@ export async function handleAbandonedCart(data: AbandonedCartData): Promise<{ le
     const funnelId = matchingBlock?.funnel_id ?? null
 
     if (!funnelId) {
-      // No cart funnel configured — save as orphan
       await admin.from('orphan_purchases').insert({
         tenant_id: data.tenantId,
         platform: data.platform,
@@ -79,15 +75,11 @@ export async function handleAbandonedCart(data: AbandonedCartData): Promise<{ le
     lead = newLead
     isNew = true
 
-    // Record minimal lead_source (ignore errors)
     try {
-      await admin.from('lead_sources').insert({
-        lead_id: newLead.id,
-        utm_source: data.platform,
-      })
+      await admin.from('lead_sources').insert({ lead_id: newLead.id, utm_source: data.platform })
     } catch (_) { /* ignore */ }
 
-    // Enqueue first block after cart_abandoned trigger
+    // Enqueue first block via queue_jobs (picked up by cron /api/queue/process)
     if (matchingBlock?.id) {
       const { data: nextEdge } = await admin
         .from('funnel_edges')
@@ -97,22 +89,18 @@ export async function handleAbandonedCart(data: AbandonedCartData): Promise<{ le
         .single()
 
       if (nextEdge?.target_block_id) {
-        try {
-          const queue = getFunnelQueue()
-          await queue.add('process-block', {
-            leadId: newLead.id,
-            blockId: nextEdge.target_block_id,
-            funnelId,
-            tenantId: data.tenantId,
-          }, { delay: 2000 })
-        } catch (err) {
-          console.warn('[cart-abandoned] Failed to enqueue:', err)
-        }
+        await admin.from('queue_jobs').insert({
+          tenant_id: data.tenantId,
+          lead_id: newLead.id,
+          funnel_id: funnelId,
+          block_id: nextEdge.target_block_id,
+          status: 'pending',
+          scheduled_for: new Date().toISOString(),
+        })
       }
     }
   }
 
-  // Record event
   await admin.from('lead_events').insert({
     tenant_id: data.tenantId,
     lead_id: lead.id,
@@ -133,6 +121,7 @@ interface PurchaseData {
   buyerPhone: string | null
   buyerName: string | null
   productName: string | null
+  productIdExternal?: string | null
   revenueCents: number
   eventType: 'purchased' | 'refunded' | 'chargeback' | 'canceled'
   rawPayload: unknown
@@ -141,10 +130,8 @@ interface PurchaseData {
 export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handled: boolean; leadId?: string }> {
   const admin = createAdminClient()
 
-  // Normalize phone: strip non-digits
   const phoneNorm = data.buyerPhone?.replace(/\D/g, '') ?? null
 
-  // Find lead by email OR phone within this tenant
   let lead: { id: string; funnel_id: string; current_block_id: string | null } | null = null
 
   if (data.buyerEmail) {
@@ -160,7 +147,6 @@ export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handl
   }
 
   if (!lead && phoneNorm) {
-    // Try matching phone with or without country code
     const { data: rows } = await admin
       .from('leads')
       .select('id, funnel_id, current_block_id, phone')
@@ -173,7 +159,23 @@ export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handl
   }
 
   if (!lead) {
-    // Save as orphan purchase for manual reconciliation
+    if (data.eventType === 'purchased' && data.productIdExternal) {
+      await activateProductTriggerFunnel({
+        admin,
+        tenantId: data.tenantId,
+        platform: data.platform,
+        productIdExternal: data.productIdExternal,
+        triggerEvent: 'purchase',
+        buyerEmail: data.buyerEmail,
+        buyerPhone: data.buyerPhone,
+        buyerName: data.buyerName,
+        productName: data.productName,
+        revenueCents: data.revenueCents,
+        rawPayload: data.rawPayload,
+      })
+      return { handled: true }
+    }
+
     await admin.from('orphan_purchases').insert({
       tenant_id: data.tenantId,
       platform: data.platform,
@@ -187,7 +189,6 @@ export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handl
     return { handled: false }
   }
 
-  // Record lead event
   await admin.from('lead_events').insert({
     tenant_id: data.tenantId,
     lead_id: lead.id,
@@ -200,25 +201,124 @@ export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handl
     product_name: data.productName,
   })
 
-  // If purchased, update lead status and advance funnel
   if (data.eventType === 'purchased') {
     await admin.from('leads').update({ status: 'converted' }).eq('id', lead.id)
 
-    // Advance funnel: enqueue current block again so worker processes condition
     if (lead.current_block_id) {
-      try {
-        const queue = getFunnelQueue()
-        await queue.add('process-block', {
-          leadId: lead.id,
-          blockId: lead.current_block_id,
-          funnelId: lead.funnel_id,
-          tenantId: data.tenantId,
-        }, { delay: 1000 })
-      } catch (err) {
-        console.warn('[purchase-handler] Failed to enqueue:', err)
-      }
+      await admin.from('queue_jobs').insert({
+        tenant_id: data.tenantId,
+        lead_id: lead.id,
+        funnel_id: lead.funnel_id,
+        block_id: lead.current_block_id,
+        status: 'pending',
+        scheduled_for: new Date().toISOString(),
+      })
     }
   }
 
   return { handled: true, leadId: lead.id }
+}
+
+interface TriggerCtx {
+  admin: ReturnType<typeof createAdminClient>
+  tenantId: string
+  platform: string
+  productIdExternal: string
+  triggerEvent: 'purchase' | 'abandoned_cart'
+  buyerEmail: string | null
+  buyerPhone: string | null
+  buyerName: string | null
+  productName: string | null
+  revenueCents: number
+  rawPayload: unknown
+}
+
+async function activateProductTriggerFunnel(ctx: TriggerCtx) {
+  const { admin } = ctx
+
+  const { data: product } = await admin
+    .from('products')
+    .select('id')
+    .eq('tenant_id', ctx.tenantId)
+    .eq('platform', ctx.platform)
+    .eq('product_id_external', ctx.productIdExternal)
+    .single()
+
+  if (!product) return
+
+  const { data: triggers } = await admin
+    .from('funnel_product_triggers')
+    .select('funnel_id, funnel:funnels(id, status, whatsapp_instance_id)')
+    .eq('tenant_id', ctx.tenantId)
+    .eq('product_id', product.id)
+    .eq('trigger_event', ctx.triggerEvent)
+    .eq('is_active', true)
+
+  if (!triggers || triggers.length === 0) return
+
+  for (const trigger of triggers) {
+    const funnelData = (trigger.funnel as unknown) as { id: string; status: string } | null
+    if (!funnelData || funnelData.status !== 'published') continue
+
+    const funnelId = trigger.funnel_id as string
+
+    const { data: firstBlock } = await admin
+      .from('funnel_blocks')
+      .select('id')
+      .eq('funnel_id', funnelId)
+      .eq('block_type', 'entry')
+      .single()
+
+    const { data: startEdge } = await admin
+      .from('funnel_edges')
+      .select('target_block_id')
+      .eq('funnel_id', funnelId)
+      .eq('source_block_id', firstBlock?.id ?? '')
+      .eq('condition', 'default')
+      .single()
+
+    const startBlockId = startEdge?.target_block_id ?? firstBlock?.id
+    if (!startBlockId) continue
+
+    const { data: newLead } = await admin
+      .from('leads')
+      .insert({
+        tenant_id: ctx.tenantId,
+        funnel_id: funnelId,
+        name: ctx.buyerName ?? 'Comprador',
+        email: ctx.buyerEmail,
+        phone: ctx.buyerPhone,
+        status: 'active',
+        current_block_id: startBlockId,
+      })
+      .select('id')
+      .single()
+
+    if (!newLead) continue
+
+    if (ctx.buyerEmail) {
+      try { await admin.from('lead_sources').insert({ lead_id: newLead.id, utm_source: ctx.platform }) } catch { /* ignore */ }
+    }
+
+    await admin.from('lead_events').insert({
+      tenant_id: ctx.tenantId,
+      lead_id: newLead.id,
+      funnel_id: funnelId,
+      block_id: startBlockId,
+      event_type: ctx.triggerEvent === 'purchase' ? 'purchased' : 'cart_abandoned',
+      event_data: { product_name: ctx.productName, revenue_cents: ctx.revenueCents },
+      platform: ctx.platform,
+      revenue_cents: ctx.triggerEvent === 'purchase' ? ctx.revenueCents : 0,
+      product_name: ctx.productName,
+    })
+
+    await admin.from('queue_jobs').insert({
+      tenant_id: ctx.tenantId,
+      lead_id: newLead.id,
+      funnel_id: funnelId,
+      block_id: startBlockId,
+      status: 'pending',
+      scheduled_for: new Date().toISOString(),
+    })
+  }
 }
