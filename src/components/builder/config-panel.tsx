@@ -147,12 +147,10 @@ function previewInterpolate(text: string): string {
 }
 
 const CONDITIONS = [
-  { value: 'replied_number', label: 'Respondeu com número (1 = Sim / 2 = Não) ✓' },
   { value: 'replied', label: 'Respondeu (qualquer coisa) ✓' },
   { value: 'replied_with', label: 'Respondeu com palavra específica ✓' },
   { value: 'purchased', label: 'Comprou ✓' },
   { value: 'clicked', label: 'Clicou no link ✓' },
-  { value: 'opened', label: 'Abriu mensagem ⚠️ (não funciona no WhatsApp)' },
   { value: 'tag', label: 'Tem tag' },
 ]
 
@@ -517,7 +515,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
             <FieldWrap>
               <Label>Verificar se o lead</Label>
               <select
-                value={(config.condition as string) ?? 'replied_number'}
+                value={(config.condition as string) ?? 'replied'}
                 onChange={(e) => update({ condition: e.target.value, purchased_product: '', replied_with: '' })}
                 className={selectClass}
               >
@@ -526,33 +524,10 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 ))}
               </select>
               <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                Saída <span className="text-emerald-600 font-semibold">{(config.condition as string) === 'replied_number' ? 'Opção 1' : 'Sim'}</span> = condição verdadeira.{' '}
-                Saída <span className="text-red-500 font-semibold">{(config.condition as string) === 'replied_number' ? 'Opção 2' : 'Não'}</span> = condição falsa.
+                Saída <span className="text-emerald-600 font-semibold">Sim</span> = condição verdadeira.{' '}
+                Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
               </p>
             </FieldWrap>
-
-            {(config.condition as string) === 'replied_number' && (
-              <FieldWrap>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                  <p className="text-xs font-semibold text-amber-800">Como funciona</p>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center shrink-0">1</span>
-                      <span className="text-xs text-gray-700">Lead digita <strong>1</strong> → vai para saída <span className="text-emerald-600 font-semibold">✓ Opção 1</span></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-red-100 text-red-700 text-xs font-bold flex items-center justify-center shrink-0">2</span>
-                      <span className="text-xs text-gray-700">Lead digita <strong>2</strong> → vai para saída <span className="text-red-500 font-semibold">✗ Opção 2</span></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center shrink-0">?</span>
-                      <span className="text-xs text-gray-500">Resposta inválida → aguarda nova resposta</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-amber-700 mt-1">Também aceita: <strong>sim/s</strong> como 1 e <strong>não/n</strong> como 2.</p>
-                </div>
-              </FieldWrap>
-            )}
 
             {(config.condition as string) === 'replied_with' && (
               <FieldWrap>
