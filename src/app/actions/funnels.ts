@@ -204,14 +204,28 @@ export async function deleteFunnel(funnelId: string): Promise<{ success: boolean
 
   if (!funnel) return { success: false, error: 'Funil não encontrado' }
 
-  // Delete in FK-safe order: dependents first
-  // Get lead IDs so we can delete lead_sources (FK on lead_id, not funnel_id)
+  // Delete in correct FK order — deepest dependents first
+  // 1. Get page IDs and lead IDs for sub-deletions
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: pageRows } = await (admin as any).from('pages').select('id').eq('funnel_id', funnelId)
+  const pageIds = (pageRows ?? []).map((r: { id: string }) => r.id)
+
   const { data: leadRows } = await admin.from('leads').select('id').eq('funnel_id', funnelId)
   const leadIds = (leadRows ?? []).map((r: { id: string }) => r.id)
+
+  // 2. page_events references both pages.id and leads.id
+  if (pageIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any).from('page_events').delete().in('page_id', pageIds)
+  }
   if (leadIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any).from('page_events').delete().in('lead_id', leadIds)
     await admin.from('lead_sources').delete().in('lead_id', leadIds)
     await admin.from('queue_jobs').delete().in('lead_id', leadIds)
   }
+
+  // 3. Now delete everything referencing funnels
   await admin.from('queue_jobs').delete().eq('funnel_id', funnelId)
   await admin.from('lead_events').delete().eq('funnel_id', funnelId)
   await admin.from('leads').delete().eq('funnel_id', funnelId)
