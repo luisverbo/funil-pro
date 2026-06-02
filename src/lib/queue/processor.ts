@@ -226,6 +226,19 @@ export async function processJob(job: QueueJob): Promise<void> {
 
     await enqueueNext(job, 'default', admin)
   }
+
+  else if (block.block_type === 'ab_test') {
+    const percentA = (config.percent_a as number) ?? 50
+    const rand = Math.random() * 100
+    const variant = rand < percentA ? 'a' : 'b'
+
+    await admin.from('lead_events').insert({
+      tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
+      block_id: job.block_id, event_type: 'ab_test_assigned', event_data: { variant, percent_a: percentA }
+    })
+
+    await enqueueNext(job, variant, admin)
+  }
 }
 
 function interpolateMessage(
