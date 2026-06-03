@@ -62,6 +62,12 @@ export default async function LeadsPage() {
     .eq('tenant_id', tenantId)
     .order('name', { ascending: true })
 
+  const { data: waInstances } = await supabase
+    .from('whatsapp_instances')
+    .select('id, instance_name, display_name, status')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'connected')
+
   const leads = (leadsRaw ?? []).map((lead: Record<string, unknown>) => ({
     id: lead.id as string,
     name: lead.name as string | null,
@@ -75,11 +81,17 @@ export default async function LeadsPage() {
     isPurchaser: purchaserIds.has(lead.id as string),
   }))
 
+  const instances = (waInstances ?? []).map((i: Record<string, unknown>) => ({
+    id: i.id as string,
+    name: ((i.display_name as string | null) || (i.instance_name as string)) ?? '',
+  }))
+
   return (
     <LeadsClient
       leads={leads}
       funnels={(funnels ?? []) as { id: string; name: string }[]}
       tenantId={tenantId}
+      waInstances={instances}
     />
   )
 }

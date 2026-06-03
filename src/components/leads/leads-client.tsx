@@ -4,7 +4,7 @@ import { useState, useTransition, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, User, ChevronDown, X, Users } from 'lucide-react'
-import { enrollLeadsInFunnel } from '@/app/actions/leads'
+import { enrollLeadsInFunnel, sendBulkWhatsapp } from '@/app/actions/leads'
 import DeleteLeadButton from '@/components/leads/delete-lead-button'
 
 interface Lead {
@@ -24,6 +24,7 @@ interface Props {
   leads: Lead[]
   funnels: { id: string; name: string }[]
   tenantId: string
+  waInstances?: { id: string; name: string }[]
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -41,7 +42,7 @@ function getInitials(name: string | null): string {
     : parts[0].slice(0, 2).toUpperCase()
 }
 
-export default function LeadsClient({ leads, funnels, tenantId }: Props) {
+export default function LeadsClient({ leads, funnels, tenantId, waInstances = [] }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -55,6 +56,11 @@ export default function LeadsClient({ leads, funnels, tenantId }: Props) {
   const [enrollDelayUnit, setEnrollDelayUnit] = useState<'seconds' | 'minutes'>('seconds')
   const [enrollResult, setEnrollResult] = useState<{ success?: boolean; error?: string } | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [showMessageModal, setShowMessageModal] = useState(false)
+  const [messageText, setMessageText] = useState('')
+  const [messageInstanceId, setMessageInstanceId] = useState('')
+  const [messagePending, setMessagePending] = useState(false)
+  const [messageResult, setMessageResult] = useState<{ success?: boolean; sent?: number; failed?: number; error?: string } | null>(null)
 
   const allTags = useMemo(() => {
     const s = new Set<string>()
@@ -92,6 +98,31 @@ export default function LeadsClient({ leads, funnels, tenantId }: Props) {
       setSelected(new Set())
     } else {
       setSelected(new Set(filtered.map(l => l.id)))
+    }
+  }
+
+  function openMessageModal() {
+    setMessageInstanceId(waInstances[0]?.id ?? '')
+    setMessageText('')
+    setMessageResult(null)
+    setShowMessageModal(true)
+  }
+
+  async function handleSendMessage() {
+    if (!messageText.trim() || !messageInstanceId) return
+    setMessagePending(true)
+    setMessageResult(null)
+    try {
+      const result = await sendBulkWhatsapp(Array.from(selected), messageText, messageInstanceId)
+      setMessageResult(result)
+      if (result.success) {
+        setTimeout(() => {
+          setShowMessageModal(false)
+          setMessageResult(null)
+        }, 2000)
+      }
+    } finally {
+      setMessagePending(false)
     }
   }
 
@@ -411,6 +442,14 @@ export default function LeadsClient({ leads, funnels, tenantId }: Props) {
             {selected.size} lead{selected.size !== 1 ? 's' : ''} selecionado{selected.size !== 1 ? 's' : ''}
           </span>
           <div className="flex items-center gap-3">
+            {waInstances.length > 0 && (
+              <button
+                onClick={openMessageModal}
+                className="px-4 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 rounded-lg transition"
+              >
+                📱 Enviar WhatsApp
+              </button>
+            )}
             <button
               onClick={openEnrollModal}
               className="px-4 py-2 text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 rounded-lg transition"
@@ -423,6 +462,95 @@ export default function LeadsClient({ leads, funnels, tenantId }: Props) {
             >
               Desselecionar tudo
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Send WhatsApp modal */}
+      {showMessageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-bold text-gray-900">Enviar WhatsApp</h2>
+              <button onClick={() => setShowMessageModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {messageResult?.success ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-emerald-600 text-xl">✓</span>
+                </div>
+                <p className="font-semibold text-gray-900">Mensagens enviadas!</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {messageResult.sent} enviadas · {messageResult.failed} falhas
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {waInstances.length > 1 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Instância WhatsApp</label>
+                      <div className="relative">
+                        <select
+                          value={messageInstanceId}
+                          onChange={e => setMessageInstanceId(e.target.value)}
+                          className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                        >
+                          {waInstances.map(i => (
+                            <option key={i.id} value={i.id}>{i.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mensagem</label>
+                    <textarea
+                      value={messageText}
+                      onChange={e => setMessageText(e.target.value)}
+                      rows={5}
+                      placeholder="Olá {primeiro_nome}! Temos uma oferta especial para você…"
+                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Variáveis: <code className="bg-gray-100 px-1 rounded">{'{nome}'}</code> <code className="bg-gray-100 px-1 rounded">{'{primeiro_nome}'}</code> <code className="bg-gray-100 px-1 rounded">{'{telefone}'}</code> <code className="bg-gray-100 px-1 rounded">{'{email}'}</code>
+                    </p>
+                  </div>
+
+                  <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                    Será enviado para <strong>{selected.size} lead{selected.size !== 1 ? 's' : ''}</strong> com telefone cadastrado.
+                  </p>
+
+                  {messageResult?.error && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                      Erro: {messageResult.error}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowMessageModal(false)}
+                    disabled={messagePending}
+                    className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={messagePending || !messageText.trim() || !messageInstanceId}
+                    className="flex-1 px-4 py-2.5 text-sm font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition disabled:opacity-50"
+                  >
+                    {messagePending ? 'Enviando…' : 'Enviar'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

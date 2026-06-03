@@ -69,7 +69,7 @@ export async function enrollLeadsInFunnel(
     const targetIds = new Set((allEdges ?? []).map((e: { target_block_id: string }) => e.target_block_id))
     const entryBlocks = allBlocks.filter((b: { id: string; block_type: string }) => !targetIds.has(b.id))
 
-    let firstBlock = entryBlocks.find((b: { id: string; block_type: string }) => b.block_type === 'entry' || b.block_type === 'cart_abandoned')
+    const firstBlock = entryBlocks.find((b: { id: string; block_type: string }) => b.block_type === 'entry' || b.block_type === 'cart_abandoned')
       ?? entryBlocks[0]
       ?? allBlocks[0]
 
@@ -101,5 +101,58 @@ export async function enrollLeadsInFunnel(
   } catch (err) {
     console.error('enrollLeadsInFunnel error:', err)
     return { success: false, error: String(err) }
+  }
+}
+
+export async function sendBulkWhatsapp(
+  leadIds: string[],
+  message: string,
+  instanceId: string
+): Promise<{ success: boolean; sent: number; failed: number; error?: string }> {
+  try {
+    if (!leadIds.length || !message.trim() || !instanceId) {
+      return { success: false, sent: 0, failed: 0, error: 'Parâmetros inválidos' }
+    }
+
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+
+    const { data: instance } = await admin
+      .from('whatsapp_instances')
+      .select('instance_name')
+      .eq('id', instanceId)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    if (!instance?.instance_name) return { success: false, sent: 0, failed: 0, error: 'Instância não encontrada' }
+
+    const { data: leadsData } = await admin
+      .from('leads')
+      .select('id, name, phone, email')
+      .in('id', leadIds)
+      .eq('tenant_id', tenantId)
+
+    const { sendTextMessage } = await import('@/lib/evolution')
+
+    let sent = 0
+    let failed = 0
+
+    for (const lead of leadsData ?? []) {
+      if (!lead.phone) { failed++; continue }
+      const firstName = (lead.name as string | null)?.split(' ')[0] ?? ''
+      const interpolated = message
+        .replace(/{nome}/g, (lead.name as string) ?? '')
+        .replace(/{primeiro_nome}/g, firstName)
+        .replace(/{email}/g, (lead.email as string) ?? '')
+        .replace(/{telefone}/g, (lead.phone as string) ?? '')
+      try {
+        await sendTextMessage(instance.instance_name, lead.phone as string, interpolated)
+        sent++
+      } catch { failed++ }
+    }
+
+    return { success: true, sent, failed }
+  } catch (err) {
+    return { success: false, sent: 0, failed: 0, error: String(err) }
   }
 }
