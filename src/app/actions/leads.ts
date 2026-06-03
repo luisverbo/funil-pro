@@ -1,0 +1,105 @@
+'use server'
+
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+async function getSupabase() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        },
+      },
+    }
+  )
+}
+
+async function getTenantId(): Promise<string> {
+  const supabase = await getSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data, error } = await supabase
+    .from('users_tenants')
+    .select('tenant_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (error || !data) redirect('/login')
+  return data.tenant_id
+}
+
+export async function enrollLeadsInFunnel(
+  leadIds: string[],
+  funnelId: string,
+  delayBetweenSeconds: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+
+    // Find the first block: one with no incoming edges
+    const { data: allBlocks } = await admin
+      .from('funnel_blocks')
+      .select('id, block_type')
+      .eq('funnel_id', funnelId)
+      .eq('tenant_id', tenantId)
+
+    if (!allBlocks || allBlocks.length === 0) {
+      return { success: false, error: 'Funil sem blocos' }
+    }
+
+    const { data: allEdges } = await admin
+      .from('funnel_edges')
+      .select('target_block_id')
+      .eq('funnel_id', funnelId)
+
+    const targetIds = new Set((allEdges ?? []).map((e: { target_block_id: string }) => e.target_block_id))
+    const entryBlocks = allBlocks.filter((b: { id: string; block_type: string }) => !targetIds.has(b.id))
+
+    let firstBlock = entryBlocks.find((b: { id: string; block_type: string }) => b.block_type === 'entry' || b.block_type === 'cart_abandoned')
+      ?? entryBlocks[0]
+      ?? allBlocks[0]
+
+    const now = Date.now()
+
+    // Update leads and enqueue jobs
+    for (let i = 0; i < leadIds.length; i++) {
+      const leadId = leadIds[i]
+      const scheduledFor = new Date(now + i * delayBetweenSeconds * 1000).toISOString()
+
+      await admin
+        .from('leads')
+        .update({ funnel_id: funnelId, status: 'active' })
+        .eq('id', leadId)
+        .eq('tenant_id', tenantId)
+
+      await admin.from('queue_jobs').insert({
+        tenant_id: tenantId,
+        lead_id: leadId,
+        funnel_id: funnelId,
+        block_id: firstBlock.id,
+        status: 'pending',
+        scheduled_for: scheduledFor,
+      })
+    }
+
+    revalidatePath('/leads')
+    return { success: true }
+  } catch (err) {
+    console.error('enrollLeadsInFunnel error:', err)
+    return { success: false, error: String(err) }
+  }
+}
