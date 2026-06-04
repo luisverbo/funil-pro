@@ -30,9 +30,16 @@ const PageRoot = PageRootNode
 
 export default function CraftViewer({ craftJson }: { craftJson: object }) {
   const resolver = {
-    HeroSimple, CaptureForm, VideoPlayer, VslTimed,
-    BenefitsList, Testimonial, CtaButton, DeliveryCard,
-    PageRootNode, PageRoot,
+    HeroSimple,
+    CaptureForm,
+    VideoPlayer,
+    VslTimed,
+    BenefitsList,
+    Testimonial,
+    CtaButton,
+    DeliveryCard,
+    PageRootNode,
+    PageRoot,
   }
 
   const hasContent = craftJson && Object.keys(craftJson).length > 0
