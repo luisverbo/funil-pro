@@ -1,0 +1,201 @@
+export interface PageTemplate {
+  id: string
+  name: string
+  page_type: string
+  description: string
+  craft_json: object
+}
+
+const captureTemplate = {
+  ROOT: {
+    type: { resolvedName: 'PageRoot' },
+    isCanvas: true,
+    props: { backgroundColor: '#f8fafc' },
+    displayName: 'Root',
+    custom: {},
+    hidden: false,
+    nodes: ['hero1', 'form1'],
+    linkedNodes: {},
+  },
+  hero1: {
+    type: { resolvedName: 'HeroSimple' },
+    isCanvas: false,
+    props: {
+      headline: 'Transforme sua vida em 30 dias',
+      subheadline: 'Descubra o método que já ajudou mais de 10.000 pessoas a alcançar seus objetivos',
+      ctaText: 'Quero Começar Agora →',
+      ctaColor: '#6366F1',
+      ctaLink: '#form',
+      align: 'center',
+      bgColor: '#ffffff',
+      paddingY: 80,
+    },
+    displayName: 'Hero Simples',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+  form1: {
+    type: { resolvedName: 'CaptureForm' },
+    isCanvas: false,
+    props: {
+      title: 'Cadastre-se gratuitamente',
+      subtitle: 'Preencha seus dados e receba o acesso imediatamente',
+      showName: true,
+      showEmail: true,
+      showPhone: true,
+      buttonText: 'Quero Acesso Agora',
+      buttonColor: '#6366F1',
+      bgColor: '#f8fafc',
+      paddingY: 60,
+    },
+    displayName: 'Formulário de Captura',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+}
+
+const vslTemplate = {
+  ROOT: {
+    type: { resolvedName: 'PageRoot' },
+    isCanvas: true,
+    props: { backgroundColor: '#0f172a' },
+    displayName: 'Root',
+    custom: {},
+    hidden: false,
+    nodes: ['hero1', 'video1', 'cta1'],
+    linkedNodes: {},
+  },
+  hero1: {
+    type: { resolvedName: 'HeroSimple' },
+    isCanvas: false,
+    props: {
+      headline: 'Assista ao vídeo completo antes de fechar esta página',
+      subheadline: 'Esta apresentação gratuita revela o segredo que ninguém está te contando',
+      ctaText: '',
+      ctaColor: '#6366F1',
+      ctaLink: '',
+      align: 'center',
+      bgColor: '#0f172a',
+      paddingY: 40,
+    },
+    displayName: 'Hero Simples',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+  video1: {
+    type: { resolvedName: 'VideoPlayer' },
+    isCanvas: false,
+    props: {
+      videoUrl: '',
+      title: 'Assista agora',
+      bgColor: '#0f172a',
+      paddingY: 20,
+      autoPlay: false,
+      muted: false,
+    },
+    displayName: 'Vídeo',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+  cta1: {
+    type: { resolvedName: 'CtaButton' },
+    isCanvas: false,
+    props: {
+      text: '✅ Sim! Quero Aproveitar Esta Oportunidade →',
+      url: '#',
+      color: '#22c55e',
+      textColor: '#ffffff',
+      size: 'xl',
+      align: 'center',
+      bgColor: '#0f172a',
+      paddingY: 40,
+      subtext: 'Garantia incondicional de 7 dias',
+    },
+    displayName: 'Botão CTA',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+}
+
+const deliveryTemplate = {
+  ROOT: {
+    type: { resolvedName: 'PageRoot' },
+    isCanvas: true,
+    props: { backgroundColor: '#f0fdf4' },
+    displayName: 'Root',
+    custom: {},
+    hidden: false,
+    nodes: ['hero1', 'delivery1'],
+    linkedNodes: {},
+  },
+  hero1: {
+    type: { resolvedName: 'HeroSimple' },
+    isCanvas: false,
+    props: {
+      headline: '🎉 Parabéns! Seu acesso está pronto',
+      subheadline: 'Clique no botão abaixo para acessar o produto que você adquiriu',
+      ctaText: '',
+      ctaColor: '#22c55e',
+      ctaLink: '',
+      align: 'center',
+      bgColor: '#f0fdf4',
+      paddingY: 60,
+    },
+    displayName: 'Hero Simples',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+  delivery1: {
+    type: { resolvedName: 'DeliveryCard' },
+    isCanvas: false,
+    props: {
+      productName: 'Nome do Produto',
+      description: 'Clique no botão abaixo para acessar seu produto.',
+      accessUrl: '#',
+      accessButtonText: '🚀 Acessar Agora',
+      accessButtonColor: '#22c55e',
+      supportText: 'Dúvidas? Entre em contato pelo WhatsApp',
+      supportUrl: '#',
+      bgColor: '#f0fdf4',
+      paddingY: 40,
+    },
+    displayName: 'Card de Entrega',
+    custom: {},
+    parent: 'ROOT',
+    hidden: false,
+    nodes: [],
+    linkedNodes: {},
+  },
+}
+
+export const PAGE_TEMPLATES: PageTemplate[] = [
+  { id: 'capture-minimal', name: 'Captura Minimalista', page_type: 'capture', description: 'Hero + formulário de captura simples', craft_json: captureTemplate },
+  { id: 'vsl-classic', name: 'VSL Clássica', page_type: 'vsl', description: 'Hero + vídeo de vendas + botão de ação', craft_json: vslTemplate },
+  { id: 'delivery-simple', name: 'Entrega Simples', page_type: 'delivery', description: 'Hero + card de entrega do produto', craft_json: deliveryTemplate },
+]
+
+export const BLANK_TEMPLATES: Record<string, object> = {
+  capture: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#ffffff' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
+  vsl: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#0f172a' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
+  delivery: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#f0fdf4' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
+  thankyou: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#f8fafc' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
+  sales: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#ffffff' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
+}

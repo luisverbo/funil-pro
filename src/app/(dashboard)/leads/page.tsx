@@ -38,7 +38,6 @@ export default async function LeadsPage() {
 
   const tenantId = userTenant.tenant_id
 
-  // Fetch leads joined with funnel name
   const { data: leadsRaw } = await supabase
     .from('leads')
     .select('*, funnels(name)')
@@ -46,7 +45,6 @@ export default async function LeadsPage() {
     .order('created_at', { ascending: false })
     .limit(500)
 
-  // Fetch purchaser lead IDs
   const { data: purchaseEvents } = await supabase
     .from('lead_events')
     .select('lead_id')
@@ -55,7 +53,6 @@ export default async function LeadsPage() {
 
   const purchaserIds = new Set((purchaseEvents ?? []).map((e: { lead_id: string }) => e.lead_id))
 
-  // Fetch all funnels for the enrollment dropdown
   const { data: funnels } = await supabase
     .from('funnels')
     .select('id, name')

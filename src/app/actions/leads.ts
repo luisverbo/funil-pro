@@ -50,7 +50,6 @@ export async function enrollLeadsInFunnel(
     const tenantId = await getTenantId()
     const admin = createAdminClient()
 
-    // Find the first block: one with no incoming edges
     const { data: allBlocks } = await admin
       .from('funnel_blocks')
       .select('id, block_type')
@@ -75,7 +74,6 @@ export async function enrollLeadsInFunnel(
 
     const now = Date.now()
 
-    // Update leads and enqueue jobs
     for (let i = 0; i < leadIds.length; i++) {
       const leadId = leadIds[i]
       const scheduledFor = new Date(now + i * delayBetweenSeconds * 1000).toISOString()
