@@ -6,17 +6,19 @@ export interface PageTemplate {
   craft_json: object
 }
 
-const captureTemplate = {
-  ROOT: {
-    type: { resolvedName: 'PageRoot' },
-    isCanvas: true,
-    props: { backgroundColor: '#f8fafc' },
-    displayName: 'Root',
-    custom: {},
-    hidden: false,
-    nodes: ['hero1', 'form1'],
-    linkedNodes: {},
-  },
+const makeRoot = (bgColor: string, nodes: string[]) => ({
+  type: { resolvedName: 'PageRootNode' },
+  isCanvas: true,
+  props: { backgroundColor: bgColor },
+  displayName: 'Página',
+  custom: {},
+  hidden: false,
+  nodes,
+  linkedNodes: {},
+})
+
+export const captureTemplate = {
+  ROOT: makeRoot('#f8fafc', ['hero1', 'form1']),
   hero1: {
     type: { resolvedName: 'HeroSimple' },
     isCanvas: false,
@@ -41,13 +43,13 @@ const captureTemplate = {
     type: { resolvedName: 'CaptureForm' },
     isCanvas: false,
     props: {
-      title: 'Cadastre-se gratuitamente',
-      subtitle: 'Preencha seus dados e receba o acesso imediatamente',
-      showName: true,
-      showEmail: true,
+      title: 'Garanta sua vaga gratuita',
+      namePlaceholder: 'Seu nome completo',
+      emailPlaceholder: 'Seu melhor e-mail',
+      phonePlaceholder: 'Seu WhatsApp',
       showPhone: true,
-      buttonText: 'Quero Acesso Agora',
-      buttonColor: '#6366F1',
+      btnText: 'Quero Participar Agora →',
+      btnColor: '#6366F1',
       bgColor: '#f8fafc',
       paddingY: 60,
     },
@@ -60,17 +62,8 @@ const captureTemplate = {
   },
 }
 
-const vslTemplate = {
-  ROOT: {
-    type: { resolvedName: 'PageRoot' },
-    isCanvas: true,
-    props: { backgroundColor: '#0f172a' },
-    displayName: 'Root',
-    custom: {},
-    hidden: false,
-    nodes: ['hero1', 'video1', 'cta1'],
-    linkedNodes: {},
-  },
+export const vslTemplate = {
+  ROOT: makeRoot('#0f172a', ['hero1', 'video1', 'cta1']),
   hero1: {
     type: { resolvedName: 'HeroSimple' },
     isCanvas: false,
@@ -96,13 +89,12 @@ const vslTemplate = {
     isCanvas: false,
     props: {
       videoUrl: '',
-      title: 'Assista agora',
+      caption: '',
       bgColor: '#0f172a',
       paddingY: 20,
-      autoPlay: false,
-      muted: false,
+      aspectRatio: '16/9',
     },
-    displayName: 'Vídeo',
+    displayName: 'Player de Vídeo',
     custom: {},
     parent: 'ROOT',
     hidden: false,
@@ -114,14 +106,14 @@ const vslTemplate = {
     isCanvas: false,
     props: {
       text: '✅ Sim! Quero Aproveitar Esta Oportunidade →',
-      url: '#',
-      color: '#22c55e',
+      subtext: 'Garantia incondicional de 7 dias',
+      btnColor: '#16A34A',
       textColor: '#ffffff',
+      link: '#',
       size: 'xl',
       align: 'center',
       bgColor: '#0f172a',
       paddingY: 40,
-      subtext: 'Garantia incondicional de 7 dias',
     },
     displayName: 'Botão CTA',
     custom: {},
@@ -132,17 +124,8 @@ const vslTemplate = {
   },
 }
 
-const deliveryTemplate = {
-  ROOT: {
-    type: { resolvedName: 'PageRoot' },
-    isCanvas: true,
-    props: { backgroundColor: '#f0fdf4' },
-    displayName: 'Root',
-    custom: {},
-    hidden: false,
-    nodes: ['hero1', 'delivery1'],
-    linkedNodes: {},
-  },
+export const deliveryTemplate = {
+  ROOT: makeRoot('#f0fdf4', ['hero1', 'delivery1']),
   hero1: {
     type: { resolvedName: 'HeroSimple' },
     isCanvas: false,
@@ -150,7 +133,7 @@ const deliveryTemplate = {
       headline: '🎉 Parabéns! Seu acesso está pronto',
       subheadline: 'Clique no botão abaixo para acessar o produto que você adquiriu',
       ctaText: '',
-      ctaColor: '#22c55e',
+      ctaColor: '#16A34A',
       ctaLink: '',
       align: 'center',
       bgColor: '#f0fdf4',
@@ -167,14 +150,15 @@ const deliveryTemplate = {
     type: { resolvedName: 'DeliveryCard' },
     isCanvas: false,
     props: {
-      productName: 'Nome do Produto',
-      description: 'Clique no botão abaixo para acessar seu produto.',
-      accessUrl: '#',
-      accessButtonText: '🚀 Acessar Agora',
-      accessButtonColor: '#22c55e',
-      supportText: 'Dúvidas? Entre em contato pelo WhatsApp',
-      supportUrl: '#',
+      headline: 'Seu acesso está liberado! 🎉',
+      description: 'Parabéns pela sua decisão! Clique abaixo para acessar todo o conteúdo que você adquiriu.',
+      accessLink: '#',
+      accessLinkText: 'Acessar meu conteúdo agora →',
+      supportEmail: 'suporte@seudominio.com.br',
+      items: ['Acesso à área de membros por 12 meses', 'Suporte por e-mail em até 24h úteis', 'Bônus exclusivos liberados agora'],
       bgColor: '#f0fdf4',
+      cardColor: '#ffffff',
+      accentColor: '#16A34A',
       paddingY: 40,
     },
     displayName: 'Card de Entrega',
@@ -187,15 +171,7 @@ const deliveryTemplate = {
 }
 
 export const PAGE_TEMPLATES: PageTemplate[] = [
-  { id: 'capture-minimal', name: 'Captura Minimalista', page_type: 'capture', description: 'Hero + formulário de captura simples', craft_json: captureTemplate },
-  { id: 'vsl-classic', name: 'VSL Clássica', page_type: 'vsl', description: 'Hero + vídeo de vendas + botão de ação', craft_json: vslTemplate },
-  { id: 'delivery-simple', name: 'Entrega Simples', page_type: 'delivery', description: 'Hero + card de entrega do produto', craft_json: deliveryTemplate },
+  { id: 'capture', name: 'Captura Minimalista', page_type: 'capture', description: 'Hero + formulário de captura simples', craft_json: captureTemplate },
+  { id: 'vsl', name: 'VSL Clássica', page_type: 'vsl', description: 'Hero + vídeo de vendas + botão de ação', craft_json: vslTemplate },
+  { id: 'delivery', name: 'Entrega Simples', page_type: 'delivery', description: 'Hero + card de entrega do produto', craft_json: deliveryTemplate },
 ]
-
-export const BLANK_TEMPLATES: Record<string, object> = {
-  capture: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#ffffff' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
-  vsl: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#0f172a' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
-  delivery: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#f0fdf4' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
-  thankyou: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#f8fafc' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
-  sales: { ROOT: { type: { resolvedName: 'PageRoot' }, isCanvas: true, props: { backgroundColor: '#ffffff' }, displayName: 'Root', custom: {}, hidden: false, nodes: [], linkedNodes: {} } },
-}

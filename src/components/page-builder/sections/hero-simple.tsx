@@ -50,38 +50,75 @@ export const HeroSimpleSettings = () => {
     <div className="space-y-3">
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Headline</label>
-        <textarea className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none" rows={3} value={props.headline} onChange={(e) => setProp((p: HeroSimpleProps) => { p.headline = e.target.value })} />
+        <textarea
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none"
+          rows={3}
+          value={props.headline}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.headline = e.target.value })}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Subtítulo</label>
-        <textarea className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none" rows={2} value={props.subheadline} onChange={(e) => setProp((p: HeroSimpleProps) => { p.subheadline = e.target.value })} />
+        <textarea
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none"
+          rows={2}
+          value={props.subheadline}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.subheadline = e.target.value })}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Texto do Botão</label>
-        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.ctaText} onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaText = e.target.value })} />
+        <input
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm"
+          value={props.ctaText}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaText = e.target.value })}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Link do Botão</label>
-        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.ctaLink} onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaLink = e.target.value })} />
+        <input
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm"
+          value={props.ctaLink}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaLink = e.target.value })}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Cor do Botão</label>
-        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.ctaColor} onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaColor = e.target.value })} />
+        <input
+          type="color"
+          className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer"
+          value={props.ctaColor}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaColor = e.target.value })}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Cor de Fundo</label>
-        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: HeroSimpleProps) => { p.bgColor = e.target.value })} />
+        <input
+          type="color"
+          className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer"
+          value={props.bgColor}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.bgColor = e.target.value })}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Alinhamento</label>
-        <select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.align} onChange={(e) => setProp((p: HeroSimpleProps) => { p.align = e.target.value as 'center' | 'left' })}>
+        <select
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm"
+          value={props.align}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.align = e.target.value as 'center' | 'left' })}
+        >
           <option value="center">Centralizado</option>
           <option value="left">Esquerda</option>
         </select>
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Espaçamento vertical (px)</label>
-        <input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.paddingY} onChange={(e) => setProp((p: HeroSimpleProps) => { p.paddingY = Number(e.target.value) })} />
+        <input
+          type="number"
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm"
+          value={props.paddingY}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.paddingY = Number(e.target.value) })}
+        />
       </div>
     </div>
   )
