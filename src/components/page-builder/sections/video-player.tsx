@@ -85,7 +85,7 @@ export const VideoPlayerSettings = () => {
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Espaçamento vertical (px)</label>
-        <input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.paddingY} onChange={(e) => setProp((p: VideoPlayerProps) => { p.paddingY = Number(e.target.value })} />
+        <input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.paddingY} onChange={(e) => setProp((p: VideoPlayerProps) => { p.paddingY = Number(e.target.value) })} />
       </div>
     </div>
   )
