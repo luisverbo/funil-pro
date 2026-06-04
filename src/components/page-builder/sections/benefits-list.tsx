@@ -55,10 +55,27 @@ export const BenefitsListSettings = () => {
   const items = props.items ?? defaultItems
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Título</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.title} onChange={(e) => setProp((p: BenefitsListProps) => { p.title = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Benefícios (um por linha)</label><textarea className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none" rows={6} value={items.join('\n')} onChange={(e) => setProp((p: BenefitsListProps) => { p.items = e.target.value.split('\n') })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor do ícone</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.iconColor} onChange={(e) => setProp((p: BenefitsListProps) => { p.iconColor = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: BenefitsListProps) => { p.bgColor = e.target.value })} /></div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Título</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.title} onChange={(e) => setProp((p: BenefitsListProps) => { p.title = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Benefícios (um por linha)</label>
+        <textarea
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none"
+          rows={6}
+          value={items.join('\n')}
+          onChange={(e) => setProp((p: BenefitsListProps) => { p.items = e.target.value.split('\n') })}
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor do ícone</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.iconColor} onChange={(e) => setProp((p: BenefitsListProps) => { p.iconColor = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: BenefitsListProps) => { p.bgColor = e.target.value })} />
+      </div>
     </div>
   )
 }

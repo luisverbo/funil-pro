@@ -56,7 +56,9 @@ export const VslTimed = ({
         )}
         <div className="text-center">
           <p className="text-gray-400 text-sm mb-4">Botão aparece após {showAfterSeconds}s de vídeo</p>
-          <a href={btnLink} style={{ backgroundColor: btnColor }} className="inline-block px-10 py-5 text-white font-bold rounded-xl text-xl shadow-xl">{btnText}</a>
+          <a href={btnLink} style={{ backgroundColor: btnColor }} className="inline-block px-10 py-5 text-white font-bold rounded-xl text-xl shadow-xl">
+            {btnText}
+          </a>
         </div>
       </div>
     </div>
@@ -67,13 +69,34 @@ export const VslTimedSettings = () => {
   const { actions: { setProp }, props } = useNode((node) => ({ props: node.data.props as VslTimedProps }))
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">URL do vídeo</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://youtube.com/watch?v=..." value={props.videoUrl} onChange={(e) => setProp((p: VslTimedProps) => { p.videoUrl = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Headline</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.headline} onChange={(e) => setProp((p: VslTimedProps) => { p.headline = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Texto do botão CTA</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.btnText} onChange={(e) => setProp((p: VslTimedProps) => { p.btnText = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Link do botão</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.btnLink} onChange={(e) => setProp((p: VslTimedProps) => { p.btnLink = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor do botão</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.btnColor} onChange={(e) => setProp((p: VslTimedProps) => { p.btnColor = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Mostrar botão após (segundos)</label><input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.showAfterSeconds} onChange={(e) => setProp((p: VslTimedProps) => { p.showAfterSeconds = Number(e.target.value) })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: VslTimedProps) => { p.bgColor = e.target.value })} /></div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">URL do vídeo</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://youtube.com/watch?v=..." value={props.videoUrl} onChange={(e) => setProp((p: VslTimedProps) => { p.videoUrl = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Headline</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.headline} onChange={(e) => setProp((p: VslTimedProps) => { p.headline = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Texto do botão CTA</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.btnText} onChange={(e) => setProp((p: VslTimedProps) => { p.btnText = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Link do botão</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.btnLink} onChange={(e) => setProp((p: VslTimedProps) => { p.btnLink = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor do botão</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.btnColor} onChange={(e) => setProp((p: VslTimedProps) => { p.btnColor = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Mostrar botão após (segundos)</label>
+        <input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.showAfterSeconds} onChange={(e) => setProp((p: VslTimedProps) => { p.showAfterSeconds = Number(e.target.value) })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: VslTimedProps) => { p.bgColor = e.target.value })} />
+      </div>
     </div>
   )
 }

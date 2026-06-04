@@ -42,7 +42,12 @@ export const Testimonial = ({
           </div>
           <blockquote className="text-gray-700 text-lg leading-relaxed mb-6 italic">"{quote}"</blockquote>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: avatarColor }}>{avatarInitials}</div>
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm"
+              style={{ backgroundColor: avatarColor }}
+            >
+              {avatarInitials}
+            </div>
             <div>
               <p className="font-semibold text-gray-900">{name}</p>
               {role && <p className="text-sm text-gray-500">{role}</p>}
@@ -58,19 +63,40 @@ export const TestimonialSettings = () => {
   const { actions: { setProp }, props } = useNode((node) => ({ props: node.data.props as TestimonialProps }))
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Depoimento</label><textarea className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none" rows={4} value={props.quote} onChange={(e) => setProp((p: TestimonialProps) => { p.quote = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Nome</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.name} onChange={(e) => setProp((p: TestimonialProps) => { p.name = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cargo / Descrição</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.role} onChange={(e) => setProp((p: TestimonialProps) => { p.role = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Iniciais do avatar</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" maxLength={2} value={props.avatarInitials} onChange={(e) => setProp((p: TestimonialProps) => { p.avatarInitials = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor do avatar</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.avatarColor} onChange={(e) => setProp((p: TestimonialProps) => { p.avatarColor = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Estrelas (1-5)</label><input type="number" min={1} max={5} className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.stars} onChange={(e) => setProp((p: TestimonialProps) => { p.stars = Number(e.target.value) })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: TestimonialProps) => { p.bgColor = e.target.value })} /></div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Depoimento</label>
+        <textarea className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none" rows={4} value={props.quote} onChange={(e) => setProp((p: TestimonialProps) => { p.quote = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Nome</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.name} onChange={(e) => setProp((p: TestimonialProps) => { p.name = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cargo / Descrição</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.role} onChange={(e) => setProp((p: TestimonialProps) => { p.role = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Iniciais do avatar</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" maxLength={2} value={props.avatarInitials} onChange={(e) => setProp((p: TestimonialProps) => { p.avatarInitials = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor do avatar</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.avatarColor} onChange={(e) => setProp((p: TestimonialProps) => { p.avatarColor = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Estrelas (1-5)</label>
+        <input type="number" min={1} max={5} className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.stars} onChange={(e) => setProp((p: TestimonialProps) => { p.stars = Number(e.target.value) })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: TestimonialProps) => { p.bgColor = e.target.value })} />
+      </div>
     </div>
   )
 }
 
 Testimonial.craft = {
   displayName: 'Depoimento',
-  props: { quote: 'Este produto mudou completamente minha vida.', name: 'Maria Silva', role: 'Empreendedora Digital', avatarInitials: 'MS', avatarColor: '#6366F1', bgColor: '#ffffff', paddingY: 60, stars: 5 },
+  props: { quote: 'Este produto mudou completamente minha vida. Em apenas 30 dias consegui resultados que nunca imaginei serem possíveis.', name: 'Maria Silva', role: 'Empreendedora Digital', avatarInitials: 'MS', avatarColor: '#6366F1', bgColor: '#ffffff', paddingY: 60, stars: 5 },
   related: { toolbar: TestimonialSettings },
 }

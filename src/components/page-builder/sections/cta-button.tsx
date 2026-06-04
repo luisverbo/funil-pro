@@ -41,7 +41,13 @@ export const CtaButton = ({
       style={{ backgroundColor: bgColor, paddingTop: paddingY, paddingBottom: paddingY }}
       className={`w-full px-6 ${alignMap[align]}`}
     >
-      <a href={link} style={{ backgroundColor: btnColor, color: textColor }} className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity`}>{text}</a>
+      <a
+        href={link}
+        style={{ backgroundColor: btnColor, color: textColor }}
+        className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity`}
+      >
+        {text}
+      </a>
       {subtext && <p className="text-gray-500 text-sm mt-3">{subtext}</p>}
     </div>
   )
@@ -51,13 +57,43 @@ export const CtaButtonSettings = () => {
   const { actions: { setProp }, props } = useNode((node) => ({ props: node.data.props as CtaButtonProps }))
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Texto do botão</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.text} onChange={(e) => setProp((p: CtaButtonProps) => { p.text = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Subtexto</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.subtext} onChange={(e) => setProp((p: CtaButtonProps) => { p.subtext = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Link</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.link} onChange={(e) => setProp((p: CtaButtonProps) => { p.link = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Tamanho</label><select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.size} onChange={(e) => setProp((p: CtaButtonProps) => { p.size = e.target.value as CtaButtonProps['size'] })}><option value="sm">Pequeno</option><option value="md">Médio</option><option value="lg">Grande</option><option value="xl">Extra Grande</option></select></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Alinhamento</label><select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.align} onChange={(e) => setProp((p: CtaButtonProps) => { p.align = e.target.value as CtaButtonProps['align'] })}><option value="center">Centro</option><option value="left">Esquerda</option><option value="right">Direita</option></select></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor do botão</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.btnColor} onChange={(e) => setProp((p: CtaButtonProps) => { p.btnColor = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: CtaButtonProps) => { p.bgColor = e.target.value })} /></div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Texto do botão</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.text} onChange={(e) => setProp((p: CtaButtonProps) => { p.text = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Subtexto (abaixo do botão)</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.subtext} onChange={(e) => setProp((p: CtaButtonProps) => { p.subtext = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Link</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.link} onChange={(e) => setProp((p: CtaButtonProps) => { p.link = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Tamanho</label>
+        <select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.size} onChange={(e) => setProp((p: CtaButtonProps) => { p.size = e.target.value as CtaButtonProps['size'] })}>
+          <option value="sm">Pequeno</option>
+          <option value="md">Médio</option>
+          <option value="lg">Grande</option>
+          <option value="xl">Extra Grande</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Alinhamento</label>
+        <select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.align} onChange={(e) => setProp((p: CtaButtonProps) => { p.align = e.target.value as CtaButtonProps['align'] })}>
+          <option value="center">Centro</option>
+          <option value="left">Esquerda</option>
+          <option value="right">Direita</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor do botão</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.btnColor} onChange={(e) => setProp((p: CtaButtonProps) => { p.btnColor = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: CtaButtonProps) => { p.bgColor = e.target.value })} />
+      </div>
     </div>
   )
 }

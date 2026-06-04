@@ -63,11 +63,30 @@ export const VideoPlayerSettings = () => {
   const { actions: { setProp }, props } = useNode((node) => ({ props: node.data.props as VideoPlayerProps }))
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">URL do vídeo (YouTube ou Vimeo)</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://youtube.com/watch?v=..." value={props.videoUrl} onChange={(e) => setProp((p: VideoPlayerProps) => { p.videoUrl = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Legenda (opcional)</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.caption} onChange={(e) => setProp((p: VideoPlayerProps) => { p.caption = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Proporção</label><select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.aspectRatio} onChange={(e) => setProp((p: VideoPlayerProps) => { p.aspectRatio = e.target.value as VideoPlayerProps['aspectRatio'] })}><option value="16/9">16:9 (Padrão)</option><option value="9/16">9:16 (Vertical)</option><option value="4/3">4:3 (Clássico)</option></select></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: VideoPlayerProps) => { p.bgColor = e.target.value })} /></div>
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">Espaçamento vertical (px)</label><input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.paddingY} onChange={(e) => setProp((p: VideoPlayerProps) => { p.paddingY = Number(e.target.value) })} /></div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">URL do vídeo (YouTube ou Vimeo)</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://youtube.com/watch?v=..." value={props.videoUrl} onChange={(e) => setProp((p: VideoPlayerProps) => { p.videoUrl = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Legenda (opcional)</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.caption} onChange={(e) => setProp((p: VideoPlayerProps) => { p.caption = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Proporção</label>
+        <select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.aspectRatio} onChange={(e) => setProp((p: VideoPlayerProps) => { p.aspectRatio = e.target.value as VideoPlayerProps['aspectRatio'] })}>
+          <option value="16/9">16:9 (Padrão)</option>
+          <option value="9/16">9:16 (Vertical)</option>
+          <option value="4/3">4:3 (Clássico)</option>
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgColor} onChange={(e) => setProp((p: VideoPlayerProps) => { p.bgColor = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Espaçamento vertical (px)</label>
+        <input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.paddingY} onChange={(e) => setProp((p: VideoPlayerProps) => { p.paddingY = Number(e.target.value })} />
+      </div>
     </div>
   )
 }
