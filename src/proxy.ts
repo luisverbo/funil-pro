@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding'])
-const PUBLIC_PREFIXES = ['/api/webhooks', '/api/funnels', '/api/queue/process', '/p/', '/f/', '/pg/', '/_next', '/favicon.ico']
+const PUBLIC_PREFIXES = ['/api/webhooks', '/api/funnels', '/api/queue/process', '/api/track', '/p/', '/f/', '/pg/', '/_next', '/favicon.ico']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

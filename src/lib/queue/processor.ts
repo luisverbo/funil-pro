@@ -153,13 +153,22 @@ export async function processJob(job: QueueJob): Promise<void> {
       }
     }
 
-    const { data: events } = await admin.from('lead_events').select('event_type').eq('lead_id', job.lead_id)
-    const eventTypes = (events ?? []).map((e: { event_type: string }) => e.event_type)
+    const { data: events } = await admin.from('lead_events').select('event_type, event_data').eq('lead_id', job.lead_id)
+    const eventList = events ?? []
+    const eventTypes = eventList.map((e: { event_type: string }) => e.event_type)
 
     let matched = false
     if (conditionType === 'opened') matched = eventTypes.includes('message_opened')
     else if (conditionType === 'clicked') matched = eventTypes.includes('message_clicked')
     else if (conditionType === 'purchased') matched = eventTypes.includes('purchased')
+    else if (conditionType === 'page_visited') matched = eventTypes.includes('page_viewed')
+    else if (conditionType === 'form_submitted') matched = eventTypes.includes('form_submitted')
+    else if (conditionType === 'button_clicked') matched = eventTypes.includes('button_clicked')
+    else if (conditionType === 'video_watched') {
+      matched = eventList.some((e: { event_type: string; event_data: unknown }) =>
+        e.event_type === 'video_progress' && ((e.event_data as Record<string, unknown>)?.percent as number ?? 0) >= 50
+      )
+    }
     else matched = true
 
     await enqueueNext(job, matched ? 'yes' : 'no', admin)
@@ -222,6 +231,52 @@ export async function processJob(job: QueueJob): Promise<void> {
     await admin.from('lead_events').insert({
       tenant_id: job.tenant_id, lead_id: job.lead_id, funnel_id: job.funnel_id,
       block_id: job.block_id, event_type: 'sale_link_sent', event_data: { payment_link: paymentLink }
+    })
+
+    await enqueueNext(job, 'default', admin)
+  }
+
+  else if (block.block_type === 'page') {
+    const pageConfig = config as { page_id?: string; message?: string }
+    const pageId = pageConfig.page_id
+    if (!pageId) {
+      await enqueueNext(job, 'default', admin)
+      return
+    }
+
+    const { data: page } = await admin.from('pages').select('slug, title').eq('id', pageId).single()
+    if (!page?.slug) {
+      console.warn(`[processor] Page block ${job.block_id}: página ${pageId} não encontrada ou sem slug`)
+      await enqueueNext(job, 'default', admin)
+      return
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
+    const pageUrl = `${appUrl}/pg/${page.slug}?lid=${job.lead_id}`
+
+    const firstName = lead.name?.split(' ')[0] ?? ''
+    let msg = (pageConfig.message ?? `Acesse sua página exclusiva: {link}`).trim()
+    msg = msg
+      .replace(/{nome}/g, lead.name ?? '')
+      .replace(/{primeiro_nome}/g, firstName)
+      .replace(/{email}/g, lead.email ?? '')
+      .replace(/{telefone}/g, lead.phone ?? '')
+      .replace(/{link}/g, pageUrl)
+    if (!msg.includes(pageUrl)) msg = `${msg}\n\n${pageUrl}`
+
+    const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', job.funnel_id).single()
+    const instanceId = funnel?.whatsapp_instance_id ?? null
+    if (instanceId) {
+      const { data: waInstance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', instanceId).single()
+      if (lead.phone && waInstance?.instance_name) {
+        await sendTextMessage(waInstance.instance_name, lead.phone, msg).catch(console.error)
+      }
+    }
+
+    await admin.from('lead_events').insert({
+      tenant_id: job.tenant_id, lead_id: job.lead_id,
+      funnel_id: job.funnel_id, block_id: job.block_id,
+      event_type: 'page_link_sent', event_data: { page_id: pageId, page_url: pageUrl, page_title: page.title }
     })
 
     await enqueueNext(job, 'default', admin)
