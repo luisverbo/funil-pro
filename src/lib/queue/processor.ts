@@ -236,7 +236,7 @@ export async function processJob(job: QueueJob): Promise<void> {
     await enqueueNext(job, 'default', admin)
   }
 
-  else if (block.block_type === 'page') {
+  else if (block.block_type === 'page' || block.block_type === 'funnel_page') {
     const pageConfig = config as { page_id?: string; message?: string }
     const pageId = pageConfig.page_id
     if (!pageId) {
