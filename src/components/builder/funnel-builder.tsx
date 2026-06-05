@@ -75,6 +75,11 @@ const BLOCK_LABELS: Record<string, string> = {
   funnel_page: 'Página',
 }
 
+// React Flow uses 'funnel_page' internally; DB stores it as 'page'
+function toDbBlockType(reactType: string): string {
+  return reactType === 'funnel_page' ? 'page' : reactType
+}
+
 interface ActiveTrigger { product_id: string; trigger_event: 'purchase' | 'abandoned_cart' }
 
 interface Props {
@@ -89,7 +94,7 @@ function blockToNode(block: FunnelBlock, funnelId: string, metrics?: Record<stri
   const config = block.block_type === 'entry'
     ? { entry_type: 'link_utm', funnel_id: funnelId, ...block.config }
     : block.config
-  // map old 'page' type to 'funnel_page'
+  // map DB 'page' to React Flow 'funnel_page'
   const reactType = block.block_type === 'page' ? 'funnel_page' : block.block_type
   return {
     id: block.id,
@@ -97,7 +102,7 @@ function blockToNode(block: FunnelBlock, funnelId: string, metrics?: Record<stri
     position: { x: block.position_x, y: block.position_y },
     data: {
       label: block.label,
-      blockType: block.block_type,
+      blockType: reactType,
       config,
       metrics: metrics?.[block.id] ?? null,
     } as FunnelNodeData,
@@ -272,14 +277,17 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
   )
 
   const getSnapshot = useCallback((): VersionSnapshot => {
-    const blocks: BlockDTO[] = nodes.map((n) => ({
-      id: n.id,
-      block_type: ((n.data as FunnelNodeData).blockType as string) ?? (n.type === 'funnel_page' ? 'funnel_page' : n.type) ?? 'message',
-      label: (n.data as FunnelNodeData).label ?? '',
-      config: (n.data as FunnelNodeData).config ?? {},
-      position_x: n.position.x,
-      position_y: n.position.y,
-    }))
+    const blocks: BlockDTO[] = nodes.map((n) => {
+      const rawType = ((n.data as FunnelNodeData).blockType as string) ?? n.type ?? 'message'
+      return {
+        id: n.id,
+        block_type: toDbBlockType(rawType),
+        label: (n.data as FunnelNodeData).label ?? '',
+        config: (n.data as FunnelNodeData).config ?? {},
+        position_x: n.position.x,
+        position_y: n.position.y,
+      }
+    })
     const flowEdges: EdgeDTO[] = edges.map((e) => ({
       id: e.id,
       source_block_id: e.source,
@@ -322,7 +330,7 @@ function BuilderCanvas({ funnel, initialBlocks, initialEdges, blockMetrics, waIn
       id: b.id,
       type: b.block_type === 'page' ? 'funnel_page' : b.block_type,
       position: { x: b.position_x, y: b.position_y },
-      data: { label: b.label, blockType: b.block_type, config: b.config } as FunnelNodeData,
+      data: { label: b.label, blockType: b.block_type === 'page' ? 'funnel_page' : b.block_type, config: b.config } as FunnelNodeData,
     }))
     const restoredEdges = (snapshot.edges as EdgeDTO[]).map((e) => ({
       id: e.id,
