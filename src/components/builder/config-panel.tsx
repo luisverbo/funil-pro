@@ -1,8 +1,77 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useReactFlow, type Node } from '@xyflow/react'
 import type { FunnelNodeData, WhatsappInstance } from '@/types'
+
+const EMOJI_GROUPS = [
+  { label: '😀 Rostos', emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤧','🥵','🥶','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿'] },
+  { label: '👍 Gestos', emojis: ['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁️','👅','👄'] },
+  { label: '❤️ Corações', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☯️','🕉️','🔯','🪬','✡️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫'] },
+  { label: '🎉 Celebração', emojis: ['🎉','🎊','🎈','🎁','🎀','🏆','🥇','🥈','🥉','🏅','🎖️','🎗️','🎟️','🎫','🎪','🤹','🎭','🎨','🎬','🎤','🎧','🎼','🎵','🎶','🎷','🎸','🎹','🎺','🎻','🪕','🥁','🪘','🎯','🎱','🎮','🕹️','🎲','♟️','🧩','🪅','🪆','🃏','🀄','🎴'] },
+  { label: '💼 Negócios', emojis: ['💰','💵','💴','💶','💷','💸','💳','🪙','💹','📈','📉','📊','💼','🗂️','📁','📂','🗃️','🗄️','📋','📌','📍','📎','🖇️','📏','📐','✂️','🗑️','🔒','🔓','🔏','🔑','🗝️','🔨','🪓','⛏️','🔧','🔩','🪛','🔫','🪤','🧲','💡','🔦','🕯️','💡','🪔','🧯','🛢️','💊','🩺','📡','🔭','🔬','🧪','🧫','🧬'] },
+  { label: '📱 Tecnologia', emojis: ['📱','💻','🖥️','🖨️','⌨️','🖱️','💾','💿','📀','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🎙️','🎚️','🎛️','🧭','⏱️','⏲️','⏰','🕰️','⌚','📡','🔋','🪫','🔌','💡','🔦','🕯️','🧱','🪞','🪟','🛒','🛍️','🎒','🧳','👑','💎','💍','👓','🕶️','🥽','🦺','👔','👕','👖','🧣','🧤','🧥','👗','👘','🥻','🩱','🩲','🩳','👙','👚'] },
+  { label: '🌟 Símbolos', emojis: ['⭐','🌟','✨','💫','⚡','🔥','💥','🌈','☀️','🌤️','⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','💧','💦','🌊','🫧','🌀','🌁','🌫️','🌂','☂️','☔','⛱️','⚡','🌟','🌠','🌌','🪐','🌍','🌎','🌏','🗺️','🗾','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🪨','🪵','🛖','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰'] },
+  { label: '✅ Úteis WA', emojis: ['✅','❎','☑️','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔶','🔷','🔸','🔹','🔺','🔻','💠','🔘','🔲','🔳','⬛','⬜','◼️','◻️','◾','◽','▪️','▫️','🔈','🔉','🔊','🔔','🔕','📢','📣','💬','💭','🗯️','📝','✏️','🖊️','📌','📍','🚨','⚠️','🆕','🆓','🆒','🆙','🆗','🆖','🅰️','🅱️','🆎','🆑','🅾️','🆘','🔜','🔛','🔝','🔙','🔚','🈴','🈵','🈸','🈺','🈷️'] },
+]
+
+function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [activeGroup, setActiveGroup] = useState(0)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Inserir emoji"
+        className="text-lg px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors leading-none"
+      >
+        😊
+      </button>
+      {open && (
+        <div className="absolute bottom-full mb-1 left-0 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+          {/* Group tabs */}
+          <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50">
+            {EMOJI_GROUPS.map((g, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setActiveGroup(i)}
+                className={`shrink-0 px-2 py-1.5 text-base hover:bg-gray-100 transition-colors ${activeGroup === i ? 'bg-white border-b-2 border-indigo-500' : ''}`}
+                title={g.label}
+              >
+                {g.emojis[0]}
+              </button>
+            ))}
+          </div>
+          {/* Emoji grid */}
+          <div className="p-2 grid grid-cols-8 gap-0.5 max-h-48 overflow-y-auto">
+            {EMOJI_GROUPS[activeGroup].emojis.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => { onSelect(emoji); setOpen(false) }}
+                className="text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   selectedNodeId: string | null
@@ -114,7 +183,7 @@ const TYPE_META: Record<string, { label: string; color: string; icon: React.Reac
       </svg>
     ),
   },
-  funnel_page: {
+  page: {
     label: 'Página',
     color: '#8b5cf6',
     icon: (
@@ -205,11 +274,12 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
   const [pages, setPages] = useState<{ id: string; title: string; slug: string; published?: boolean }[]>([])
   const [pagesLoaded, setPagesLoaded] = useState(false)
 
+  // Load pages list when a 'page' block is selected
   const node = nodes.find((n) => n.id === selectedNodeId)
   const nodeBlockType = node ? (((node.data as unknown as FunnelNodeData).blockType as string) ?? node.type ?? '') : ''
 
   useEffect(() => {
-    if (nodeBlockType !== 'funnel_page' || pagesLoaded) return
+    if (nodeBlockType !== 'page' || pagesLoaded) return
     fetch('/api/pages/list')
       .then((r) => r.json())
       .then((d) => {
@@ -274,6 +344,23 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
     }, 0)
   }
 
+  const insertEmoji = (emoji: string) => {
+    const ta = textareaRef.current
+    if (!ta) {
+      update({ body: ((config.body as string) ?? '') + emoji })
+      return
+    }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const current = (config.body as string) ?? ''
+    const next = current.slice(0, start) + emoji + current.slice(end)
+    update({ body: next })
+    setTimeout(() => {
+      ta.focus()
+      ta.setSelectionRange(start + emoji.length, start + emoji.length)
+    }, 0)
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
   const activateUrl = funnelId
     ? `${appUrl}/api/funnels/${funnelId}/activate`
@@ -281,6 +368,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
 
   return (
     <div className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
+      {/* Header */}
       <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-gray-100">
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -311,6 +399,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
         </button>
       </div>
 
+      {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {blockType === 'entry' && (
           <>
@@ -408,9 +497,12 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
               </select>
             </FieldWrap>
             <FieldWrap>
-              <Label>
-                {(config.media_type ?? 'none') !== 'none' ? 'Legenda / Texto' : 'Mensagem'}
-              </Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label>
+                  {(config.media_type ?? 'none') !== 'none' ? 'Legenda / Texto' : 'Mensagem'}
+                </Label>
+                <EmojiPicker onSelect={insertEmoji} />
+              </div>
               <textarea
                 ref={textareaRef}
                 value={(config.body as string) ?? ''}
@@ -557,6 +649,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
               </p>
             </FieldWrap>
+
             {(config.condition as string) === 'replied_with' && (
               <FieldWrap>
                 <Label>Palavra-chave na resposta</Label>
@@ -572,6 +665,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 </p>
               </FieldWrap>
             )}
+
             {(config.condition as string) === 'purchased' && (
               <FieldWrap>
                 <Label>Produto específico (opcional)</Label>
@@ -582,6 +676,9 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                   placeholder="Ex: Produto B — deixe vazio para qualquer compra"
                   className={inputClass}
                 />
+                <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                  Se preenchido, só passa para <span className="text-emerald-600 font-semibold">Sim</span> se o lead comprou <strong>este produto específico</strong>.
+                </p>
               </FieldWrap>
             )}
           </>
@@ -649,23 +746,25 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
         )}
 
         {blockType === 'cart_abandoned' && (
-          <FieldWrap>
-            <Label>Plataforma de origem</Label>
-            <select
-              value={(config.platform as string) ?? 'all'}
-              onChange={(e) => update({ platform: e.target.value })}
-              className={selectClass}
-            >
-              <option value="all">Todas as plataformas</option>
-              <option value="hotmart">Hotmart</option>
-              <option value="kiwify">Kiwify</option>
-              <option value="eduzz">Eduzz</option>
-              <option value="yampi">Yampi</option>
-            </select>
-            <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-              Este bloco é ativado automaticamente quando a plataforma envia um evento de carrinho abandonado.
-            </p>
-          </FieldWrap>
+          <>
+            <FieldWrap>
+              <Label>Plataforma de origem</Label>
+              <select
+                value={(config.platform as string) ?? 'all'}
+                onChange={(e) => update({ platform: e.target.value })}
+                className={selectClass}
+              >
+                <option value="all">Todas as plataformas</option>
+                <option value="hotmart">Hotmart</option>
+                <option value="kiwify">Kiwify</option>
+                <option value="eduzz">Eduzz</option>
+                <option value="yampi">Yampi</option>
+              </select>
+              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                Este bloco é ativado automaticamente quando a plataforma envia um evento de carrinho abandonado.
+              </p>
+            </FieldWrap>
+          </>
         )}
 
         {blockType === 'goto' && (
@@ -715,24 +814,44 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
             </FieldWrap>
             <FieldWrap>
               <Label>Rótulo da Variante A</Label>
-              <input type="text" value={(config.label_a as string) ?? ''} onChange={(e) => update({ label_a: e.target.value })} placeholder="Variante A" className={inputClass} />
+              <input
+                type="text"
+                value={(config.label_a as string) ?? ''}
+                onChange={(e) => update({ label_a: e.target.value })}
+                placeholder="Variante A"
+                className={inputClass}
+              />
             </FieldWrap>
             <FieldWrap>
               <Label>Rótulo da Variante B</Label>
-              <input type="text" value={(config.label_b as string) ?? ''} onChange={(e) => update({ label_b: e.target.value })} placeholder="Variante B" className={inputClass} />
+              <input
+                type="text"
+                value={(config.label_b as string) ?? ''}
+                onChange={(e) => update({ label_b: e.target.value })}
+                placeholder="Variante B"
+                className={inputClass}
+              />
             </FieldWrap>
           </>
         )}
 
         {blockType === 'remove_from_funnel' && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-xs text-red-600 leading-relaxed">
-              Quando o lead chega neste bloco, ele é marcado como <strong>concluído</strong> e removido do fluxo. Não receberá mais mensagens automáticas.
-            </p>
+            <div className="flex items-start gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-red-500 shrink-0 mt-0.5">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <div>
+                <p className="text-xs font-semibold text-red-700 mb-1">Encerra a jornada</p>
+                <p className="text-xs text-red-600 leading-relaxed">
+                  Quando o lead chega neste bloco, ele é marcado como <strong>concluído</strong> e removido do fluxo de execução. Não receberá mais mensagens automáticas.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
-        {(blockType === 'funnel_page' || blockType === 'page') && (
+        {blockType === 'page' && (
           <>
             <FieldWrap>
               <Label>Página a enviar</Label>
@@ -771,7 +890,10 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                   <button
                     key={v}
                     type="button"
-                    onClick={() => { const current = (config.message as string) ?? ''; update({ message: current + v }) }}
+                    onClick={() => {
+                      const current = (config.message as string) ?? ''
+                      update({ message: current + v })
+                    }}
                     className="text-xs px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 font-mono transition-colors"
                   >
                     {v}
@@ -779,13 +901,13 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 ))}
               </div>
               <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-                Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link. Se omitido, o link é adicionado ao final.
+                Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link da página. Se omitido, o link é adicionado ao final automaticamente.
               </p>
             </FieldWrap>
             {(config.page_id as string) && (
               <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
                 <p className="text-xs text-violet-700 leading-relaxed">
-                  O lead receberá o link via WhatsApp com <code className="bg-violet-100 px-1 rounded">?lid=ID</code> para rastreamento automático.
+                  O lead receberá o link via WhatsApp com <code className="bg-violet-100 px-1 rounded">?lid=ID_DO_LEAD</code> para rastreamento automático.
                 </p>
               </div>
             )}
@@ -795,7 +917,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
         {blockType === 'note' && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
             <p className="text-xs text-yellow-700 leading-relaxed">
-              Notas são anotações visuais no canvas. <strong>Não são executadas</strong> e não afetam o fluxo do funil.
+              Notas são anotações visuais no canvas. <strong>Não são executadas</strong> e não afetam o fluxo do funil. Edite o texto diretamente no bloco. Você pode redimensioná-lo arrastando as bordas.
             </p>
           </div>
         )}
@@ -804,11 +926,23 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
           <>
             <FieldWrap>
               <Label>Nome do produto</Label>
-              <input type="text" value={(config.product_name as string) ?? ''} onChange={(e) => update({ product_name: e.target.value })} placeholder="Nome do produto" className={inputClass} />
+              <input
+                type="text"
+                value={(config.product_name as string) ?? ''}
+                onChange={(e) => update({ product_name: e.target.value })}
+                placeholder="Nome do produto"
+                className={inputClass}
+              />
             </FieldWrap>
             <FieldWrap>
               <Label>URL de pagamento</Label>
-              <input type="url" value={(config.payment_link as string) ?? ''} onChange={(e) => update({ payment_link: e.target.value })} placeholder="https://..." className={inputClass} />
+              <input
+                type="url"
+                value={(config.payment_link as string) ?? ''}
+                onChange={(e) => update({ payment_link: e.target.value })}
+                placeholder="https://..."
+                className={inputClass}
+              />
             </FieldWrap>
             <FieldWrap>
               <Label>Mensagem de venda</Label>
@@ -819,7 +953,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 rows={3}
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none transition-shadow"
               />
-              <p className="text-xs text-gray-400 mt-1">Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link na posição desejada.</p>
+              <p className="text-xs text-gray-400 mt-1">Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link na posição desejada. Se omitido, o link é adicionado automaticamente ao final.</p>
             </FieldWrap>
           </>
         )}
