@@ -1,7 +1,8 @@
 'use client'
 
-import { useNode } from '@craftjs/core'
+import { useNode, useEditor } from '@craftjs/core'
 import React from 'react'
+import { usePageTracking } from '@/app/pg/[slug]/craft-viewer'
 
 interface CtaButtonProps {
   text?: string
@@ -34,7 +35,19 @@ export const CtaButton = ({
   paddingY = 40,
 }: CtaButtonProps) => {
   const { connectors: { connect, drag } } = useNode()
+  const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
+  const { track } = usePageTracking()
+
   const alignMap: Record<string, string> = { center: 'text-center', left: 'text-left', right: 'text-right' }
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (editorEnabled) {
+      e.preventDefault()
+      return
+    }
+    track('button_clicked', { link })
+  }
+
   return (
     <div
       ref={(ref) => { connect(drag(ref!)) }}
@@ -43,6 +56,7 @@ export const CtaButton = ({
     >
       <a
         href={link}
+        onClick={handleClick}
         style={{ backgroundColor: btnColor, color: textColor }}
         className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity`}
       >

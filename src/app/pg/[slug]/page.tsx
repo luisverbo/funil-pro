@@ -29,7 +29,7 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
       <title>{page.meta_title || page.title || 'Página'}</title>
       {page.meta_description && <meta name="description" content={page.meta_description} />}
       {page.og_image_url && <meta property="og:image" content={page.og_image_url} />}
-      <PageRenderer craftJson={page.craft_json} />
+      <PageRenderer craftJson={page.craft_json} pageId={page.id} />
     </>
   )
 }

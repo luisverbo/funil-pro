@@ -22,6 +22,10 @@ const CONDITION_LABELS: Record<string, string> = {
   replied_with: 'Respondeu com',
   purchased: 'Comprou',
   tag: 'Tem tag',
+  page_visited: 'Visitou a página',
+  form_submitted: 'Preencheu o formulário',
+  button_clicked: 'Clicou no botão da página',
+  video_watched: 'Assistiu o vídeo (50%+)',
 }
 
 export default function ConditionNode({ id, data, selected }: NodeProps) {

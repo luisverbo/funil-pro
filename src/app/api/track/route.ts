@@ -35,40 +35,31 @@ export async function POST(req: NextRequest) {
 
     // Also insert into page_events if page_id provided
     if (page_id) {
-      await admin.from('page_events').insert({
-        tenant_id: lead.tenant_id,
-        page_id,
-        lead_id,
-        event_type,
-      }).catch(() => {})
+      try {
+        await admin.from('page_events').insert({
+          tenant_id: lead.tenant_id,
+          page_id,
+          lead_id,
+          event_type,
+        })
+      } catch { /* ignore */ }
 
       // Increment counters
       if (event_type === 'page_viewed') {
-        await admin
-          .from('pages')
-          .update({ views_count: admin.rpc('coalesce', {}) as never })
-          .eq('id', page_id)
-          .select('views_count')
-          .single()
-          .then(async ({ data: p }) => {
-            if (p) {
-              await admin.from('pages').update({ views_count: (p.views_count ?? 0) + 1 }).eq('id', page_id)
-            }
-          })
-          .catch(() => {})
+        try {
+          const { data: p } = await admin.from('pages').select('views_count').eq('id', page_id).single()
+          if (p) {
+            await admin.from('pages').update({ views_count: (p.views_count ?? 0) + 1 }).eq('id', page_id)
+          }
+        } catch { /* ignore */ }
       }
       if (event_type === 'button_clicked') {
-        await admin
-          .from('pages')
-          .select('clicks_count')
-          .eq('id', page_id)
-          .single()
-          .then(async ({ data: p }) => {
-            if (p) {
-              await admin.from('pages').update({ clicks_count: (p.clicks_count ?? 0) + 1 }).eq('id', page_id)
-            }
-          })
-          .catch(() => {})
+        try {
+          const { data: p } = await admin.from('pages').select('clicks_count').eq('id', page_id).single()
+          if (p) {
+            await admin.from('pages').update({ clicks_count: (p.clicks_count ?? 0) + 1 }).eq('id', page_id)
+          }
+        } catch { /* ignore */ }
       }
     }
 

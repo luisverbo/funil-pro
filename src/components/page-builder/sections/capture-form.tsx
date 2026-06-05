@@ -1,7 +1,8 @@
 'use client'
 
-import { useNode } from '@craftjs/core'
-import React from 'react'
+import { useNode, useEditor } from '@craftjs/core'
+import React, { useState } from 'react'
+import { usePageTracking } from '@/app/pg/[slug]/craft-viewer'
 
 interface CaptureFormProps {
   title?: string
@@ -27,6 +28,32 @@ export const CaptureForm = ({
   paddingY = 60,
 }: CaptureFormProps) => {
   const { connectors: { connect, drag } } = useNode()
+  const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
+  const { track } = usePageTracking()
+
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editorEnabled) return
+    setSubmitting(true)
+    try {
+      track('form_submitted', { name, email, phone })
+      // Also fire Meta Pixel if available
+      if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).fbq) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(window as any).fbq('track', 'Lead', { name, email, phone })
+      }
+      setSubmitted(true)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div
       ref={(ref) => { connect(drag(ref!)) }}
@@ -35,34 +62,50 @@ export const CaptureForm = ({
     >
       <div className="max-w-md mx-auto">
         {title && <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">{title}</h2>}
-        <div className="space-y-3">
-          <input
-            type="text"
-            placeholder={namePlaceholder}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none"
-            readOnly
-          />
-          <input
-            type="email"
-            placeholder={emailPlaceholder}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none"
-            readOnly
-          />
-          {showPhone && (
+        {submitted && !editorEnabled ? (
+          <div className="text-center py-8">
+            <div className="text-5xl mb-4">✅</div>
+            <p className="text-lg font-semibold text-gray-800">Recebemos seus dados!</p>
+            <p className="text-sm text-gray-500 mt-2">Em breve entraremos em contato.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
             <input
-              type="tel"
-              placeholder={phonePlaceholder}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none"
-              readOnly
+              type="text"
+              placeholder={namePlaceholder}
+              value={editorEnabled ? '' : name}
+              onChange={(e) => { if (!editorEnabled) setName(e.target.value) }}
+              readOnly={editorEnabled}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
-          )}
-          <button
-            style={{ backgroundColor: btnColor }}
-            className="w-full py-4 text-white font-bold rounded-xl text-lg shadow-lg"
-          >
-            {btnText}
-          </button>
-        </div>
+            <input
+              type="email"
+              placeholder={emailPlaceholder}
+              value={editorEnabled ? '' : email}
+              onChange={(e) => { if (!editorEnabled) setEmail(e.target.value) }}
+              readOnly={editorEnabled}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+            {showPhone && (
+              <input
+                type="tel"
+                placeholder={phonePlaceholder}
+                value={editorEnabled ? '' : phone}
+                onChange={(e) => { if (!editorEnabled) setPhone(e.target.value) }}
+                readOnly={editorEnabled}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+            )}
+            <button
+              type={editorEnabled ? 'button' : 'submit'}
+              disabled={submitting}
+              style={{ backgroundColor: btnColor }}
+              className="w-full py-4 text-white font-bold rounded-xl text-lg shadow-lg disabled:opacity-70 transition-opacity"
+            >
+              {submitting ? 'Enviando...' : btnText}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   )
