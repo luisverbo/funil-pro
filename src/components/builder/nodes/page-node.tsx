@@ -18,7 +18,7 @@ interface PageConfig {
   message?: string
 }
 
-export default function PageNode({ id, data, selected }: NodeProps) {
+export default function FunnelPageNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as FunnelNodeData
   const config = (nodeData.config ?? {}) as PageConfig
   const metrics = nodeData.metrics as BlockMetrics | null | undefined

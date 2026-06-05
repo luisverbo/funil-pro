@@ -50,7 +50,7 @@ const GROUPS = [
         ),
       },
       {
-        type: 'page',
+        type: 'funnel_page',
         label: 'Página',
         desc: 'Envia link de página',
         color: '#8b5cf6',

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useReactFlow, type Node } from '@xyflow/react'
 import type { FunnelNodeData, WhatsappInstance } from '@/types'
 
@@ -114,6 +114,17 @@ const TYPE_META: Record<string, { label: string; color: string; icon: React.Reac
       </svg>
     ),
   },
+  funnel_page: {
+    label: 'Página',
+    color: '#8b5cf6',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <line x1="3" y1="9" x2="21" y2="9" />
+        <line x1="9" y1="21" x2="9" y2="9" />
+      </svg>
+    ),
+  },
   note: {
     label: 'Nota',
     color: '#ca8a04',
@@ -153,6 +164,10 @@ const CONDITIONS = [
   { value: 'clicked', label: 'Clicou no link ✓' },
   { value: 'opened', label: 'Abriu mensagem ⚠️ (não funciona no WhatsApp)' },
   { value: 'tag', label: 'Tem tag' },
+  { value: 'page_visited', label: 'Visitou a página ✓' },
+  { value: 'form_submitted', label: 'Preencheu o formulário ✓' },
+  { value: 'button_clicked', label: 'Clicou no botão da página ✓' },
+  { value: 'video_watched', label: 'Assistiu o vídeo (50%+) ✓' },
 ]
 
 const ENTRY_TYPES = [
@@ -187,8 +202,23 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [pages, setPages] = useState<{ id: string; title: string; slug: string; published?: boolean }[]>([])
+  const [pagesLoaded, setPagesLoaded] = useState(false)
 
   const node = nodes.find((n) => n.id === selectedNodeId)
+  const nodeBlockType = node ? (((node.data as unknown as FunnelNodeData).blockType as string) ?? node.type ?? '') : ''
+
+  useEffect(() => {
+    if (nodeBlockType !== 'funnel_page' || pagesLoaded) return
+    fetch('/api/pages/list')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.pages)) setPages(d.pages)
+        setPagesLoaded(true)
+      })
+      .catch(() => setPagesLoaded(true))
+  }, [nodeBlockType, pagesLoaded])
+
   if (!node) return null
 
   const nodeData = node.data as unknown as FunnelNodeData
@@ -251,7 +281,6 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
 
   return (
     <div className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
-      {/* Header */}
       <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-gray-100">
         <div
           className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -282,7 +311,6 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
         </button>
       </div>
 
-      {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {blockType === 'entry' && (
           <>
@@ -529,7 +557,6 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
               </p>
             </FieldWrap>
-
             {(config.condition as string) === 'replied_with' && (
               <FieldWrap>
                 <Label>Palavra-chave na resposta</Label>
@@ -545,7 +572,6 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 </p>
               </FieldWrap>
             )}
-
             {(config.condition as string) === 'purchased' && (
               <FieldWrap>
                 <Label>Produto específico (opcional)</Label>
@@ -556,9 +582,6 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                   placeholder="Ex: Produto B — deixe vazio para qualquer compra"
                   className={inputClass}
                 />
-                <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
-                  Se preenchido, só passa para <span className="text-emerald-600 font-semibold">Sim</span> se o lead comprou <strong>este produto específico</strong>.
-                </p>
               </FieldWrap>
             )}
           </>
@@ -626,25 +649,23 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
         )}
 
         {blockType === 'cart_abandoned' && (
-          <>
-            <FieldWrap>
-              <Label>Plataforma de origem</Label>
-              <select
-                value={(config.platform as string) ?? 'all'}
-                onChange={(e) => update({ platform: e.target.value })}
-                className={selectClass}
-              >
-                <option value="all">Todas as plataformas</option>
-                <option value="hotmart">Hotmart</option>
-                <option value="kiwify">Kiwify</option>
-                <option value="eduzz">Eduzz</option>
-                <option value="yampi">Yampi</option>
-              </select>
-              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                Este bloco é ativado automaticamente quando a plataforma envia um evento de carrinho abandonado.
-              </p>
-            </FieldWrap>
-          </>
+          <FieldWrap>
+            <Label>Plataforma de origem</Label>
+            <select
+              value={(config.platform as string) ?? 'all'}
+              onChange={(e) => update({ platform: e.target.value })}
+              className={selectClass}
+            >
+              <option value="all">Todas as plataformas</option>
+              <option value="hotmart">Hotmart</option>
+              <option value="kiwify">Kiwify</option>
+              <option value="eduzz">Eduzz</option>
+              <option value="yampi">Yampi</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+              Este bloco é ativado automaticamente quando a plataforma envia um evento de carrinho abandonado.
+            </p>
+          </FieldWrap>
         )}
 
         {blockType === 'goto' && (
@@ -694,47 +715,87 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
             </FieldWrap>
             <FieldWrap>
               <Label>Rótulo da Variante A</Label>
-              <input
-                type="text"
-                value={(config.label_a as string) ?? ''}
-                onChange={(e) => update({ label_a: e.target.value })}
-                placeholder="Variante A"
-                className={inputClass}
-              />
+              <input type="text" value={(config.label_a as string) ?? ''} onChange={(e) => update({ label_a: e.target.value })} placeholder="Variante A" className={inputClass} />
             </FieldWrap>
             <FieldWrap>
               <Label>Rótulo da Variante B</Label>
-              <input
-                type="text"
-                value={(config.label_b as string) ?? ''}
-                onChange={(e) => update({ label_b: e.target.value })}
-                placeholder="Variante B"
-                className={inputClass}
-              />
+              <input type="text" value={(config.label_b as string) ?? ''} onChange={(e) => update({ label_b: e.target.value })} placeholder="Variante B" className={inputClass} />
             </FieldWrap>
           </>
         )}
 
         {blockType === 'remove_from_funnel' && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex items-start gap-2">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-red-500 shrink-0 mt-0.5">
-                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              <div>
-                <p className="text-xs font-semibold text-red-700 mb-1">Encerra a jornada</p>
-                <p className="text-xs text-red-600 leading-relaxed">
-                  Quando o lead chega neste bloco, ele é marcado como <strong>concluído</strong> e removido do fluxo de execução. Não receberá mais mensagens automáticas.
+            <p className="text-xs text-red-600 leading-relaxed">
+              Quando o lead chega neste bloco, ele é marcado como <strong>concluído</strong> e removido do fluxo. Não receberá mais mensagens automáticas.
+            </p>
+          </div>
+        )}
+
+        {(blockType === 'funnel_page' || blockType === 'page') && (
+          <>
+            <FieldWrap>
+              <Label>Página a enviar</Label>
+              {!pagesLoaded ? (
+                <div className="text-xs text-gray-400 py-2">Carregando páginas...</div>
+              ) : pages.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="text-xs text-amber-700">Nenhuma página encontrada. Crie uma em <strong>Páginas</strong> primeiro.</p>
+                </div>
+              ) : (
+                <select
+                  value={(config.page_id as string) ?? ''}
+                  onChange={(e) => update({ page_id: e.target.value })}
+                  className={selectClass}
+                >
+                  <option value="">Selecione uma página...</option>
+                  {pages.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}{p.published ? '' : ' (rascunho)'}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </FieldWrap>
+            <FieldWrap>
+              <Label>Mensagem (antes do link)</Label>
+              <textarea
+                value={(config.message as string) ?? ''}
+                onChange={(e) => update({ message: e.target.value })}
+                placeholder="Ex: Olá {primeiro_nome}! Acesse sua página exclusiva: {link}"
+                rows={4}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none transition-shadow"
+              />
+              <div className="flex flex-wrap gap-1 mt-2">
+                {['{nome}', '{primeiro_nome}', '{link}'].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => { const current = (config.message as string) ?? ''; update({ message: current + v }) }}
+                    className="text-xs px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 font-mono transition-colors"
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link. Se omitido, o link é adicionado ao final.
+              </p>
+            </FieldWrap>
+            {(config.page_id as string) && (
+              <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+                <p className="text-xs text-violet-700 leading-relaxed">
+                  O lead receberá o link via WhatsApp com <code className="bg-violet-100 px-1 rounded">?lid=ID</code> para rastreamento automático.
                 </p>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
 
         {blockType === 'note' && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
             <p className="text-xs text-yellow-700 leading-relaxed">
-              Notas são anotações visuais no canvas. <strong>Não são executadas</strong> e não afetam o fluxo do funil. Edite o texto diretamente no bloco. Você pode redimensioná-lo arrastando as bordas.
+              Notas são anotações visuais no canvas. <strong>Não são executadas</strong> e não afetam o fluxo do funil.
             </p>
           </div>
         )}
@@ -743,23 +804,11 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
           <>
             <FieldWrap>
               <Label>Nome do produto</Label>
-              <input
-                type="text"
-                value={(config.product_name as string) ?? ''}
-                onChange={(e) => update({ product_name: e.target.value })}
-                placeholder="Nome do produto"
-                className={inputClass}
-              />
+              <input type="text" value={(config.product_name as string) ?? ''} onChange={(e) => update({ product_name: e.target.value })} placeholder="Nome do produto" className={inputClass} />
             </FieldWrap>
             <FieldWrap>
               <Label>URL de pagamento</Label>
-              <input
-                type="url"
-                value={(config.payment_link as string) ?? ''}
-                onChange={(e) => update({ payment_link: e.target.value })}
-                placeholder="https://..."
-                className={inputClass}
-              />
+              <input type="url" value={(config.payment_link as string) ?? ''} onChange={(e) => update({ payment_link: e.target.value })} placeholder="https://..." className={inputClass} />
             </FieldWrap>
             <FieldWrap>
               <Label>Mensagem de venda</Label>
@@ -770,7 +819,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 rows={3}
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none transition-shadow"
               />
-              <p className="text-xs text-gray-400 mt-1">Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link na posição desejada. Se omitido, o link é adicionado automaticamente ao final.</p>
+              <p className="text-xs text-gray-400 mt-1">Use <code className="bg-gray-100 px-1 rounded">{'{link}'}</code> para inserir o link na posição desejada.</p>
             </FieldWrap>
           </>
         )}
