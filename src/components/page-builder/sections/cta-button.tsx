@@ -45,7 +45,16 @@ export const CtaButton = ({
       e.preventDefault()
       return
     }
+    // Prevent immediate navigation so the tracking request can complete
+    e.preventDefault()
+    const destination = link && link !== '#' ? link : null
     track('button_clicked', { link })
+    // Navigate after a short delay to allow the fetch to fire
+    setTimeout(() => {
+      if (destination) {
+        window.open(destination, '_blank')
+      }
+    }, 300)
   }
 
   return (
@@ -58,7 +67,7 @@ export const CtaButton = ({
         href={link}
         onClick={handleClick}
         style={{ backgroundColor: btnColor, color: textColor }}
-        className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity`}
+        className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity cursor-pointer`}
       >
         {text}
       </a>
