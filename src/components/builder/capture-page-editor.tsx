@@ -11,8 +11,6 @@ interface Props {
   onSaved?: (template: string) => void
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://funil-pro.vercel.app'
-
 const TEMPLATES = [
   { key: 'minimal', label: 'Minimal' },
   { key: 'dark', label: 'Dark' },
@@ -36,7 +34,9 @@ export default function CapturePageEditor({ funnelId, onClose, entryType, onSave
   const [isExisting, setIsExisting] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const pageUrl = `${APP_URL}/p/${funnelId}`
+  // Use window.location.origin so the link always reflects the current domain
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL ?? '')
+  const pageUrl = `${appUrl}/p/${funnelId}`
 
   useEffect(() => {
     async function loadConfig() {
