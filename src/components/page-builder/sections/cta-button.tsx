@@ -2,7 +2,6 @@
 
 import { useNode, useEditor } from '@craftjs/core'
 import React from 'react'
-import { usePageTracking } from '@/app/pg/[slug]/craft-viewer'
 
 interface CtaButtonProps {
   text?: string
@@ -23,6 +22,24 @@ const sizeClasses: Record<string, string> = {
   xl: 'px-12 py-6 text-2xl',
 }
 
+function trackButtonClick(link: string) {
+  if (typeof window === 'undefined') return
+  const params = new URLSearchParams(window.location.search)
+  const leadId = params.get('lid') || localStorage.getItem('funil_lid')
+  if (!leadId) return
+  const pageId = window.__funilPageId
+  fetch('/api/track', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      lead_id: leadId,
+      page_id: pageId,
+      event_type: 'button_clicked',
+      event_data: { link },
+    }),
+  }).catch(() => {})
+}
+
 export const CtaButton = ({
   text = 'Quero Garantir Minha Vaga Agora →',
   subtext = '✓ Acesso imediato  ✓ Garantia de 7 dias',
@@ -36,7 +53,6 @@ export const CtaButton = ({
 }: CtaButtonProps) => {
   const { connectors: { connect, drag } } = useNode()
   const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
-  const { track } = usePageTracking()
 
   const alignMap: Record<string, string> = { center: 'text-center', left: 'text-left', right: 'text-right' }
 
@@ -45,15 +61,11 @@ export const CtaButton = ({
       e.preventDefault()
       return
     }
-    // Prevent immediate navigation so the tracking request can complete
     e.preventDefault()
+    trackButtonClick(link ?? '#')
     const destination = link && link !== '#' ? link : null
-    track('button_clicked', { link })
-    // Navigate after a short delay to allow the fetch to fire
     setTimeout(() => {
-      if (destination) {
-        window.open(destination, '_blank')
-      }
+      if (destination) window.open(destination, '_blank')
     }, 300)
   }
 
