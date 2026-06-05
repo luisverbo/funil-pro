@@ -14,6 +14,7 @@ interface CaptureFormProps {
   btnColor?: string
   bgColor?: string
   paddingY?: number
+  textAlign?: 'center' | 'left'
 }
 
 export const CaptureForm = ({
@@ -26,6 +27,7 @@ export const CaptureForm = ({
   btnColor = '#6366F1',
   bgColor = '#F8FAFC',
   paddingY = 60,
+  textAlign = 'center',
 }: CaptureFormProps) => {
   const { connectors: { connect, drag } } = useNode()
   const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
@@ -43,7 +45,6 @@ export const CaptureForm = ({
     setSubmitting(true)
     try {
       track('form_submitted', { name, email, phone })
-      // Also fire Meta Pixel if available
       if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).fbq) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ;(window as any).fbq('track', 'Lead', { name, email, phone })
@@ -54,6 +55,8 @@ export const CaptureForm = ({
     }
   }
 
+  const titleAlign = textAlign === 'left' ? 'text-left' : 'text-center'
+
   return (
     <div
       ref={(ref) => { connect(drag(ref!)) }}
@@ -61,7 +64,7 @@ export const CaptureForm = ({
       className="w-full px-6"
     >
       <div className="max-w-md mx-auto">
-        {title && <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">{title}</h2>}
+        {title && <h2 className={`text-2xl font-bold text-gray-900 ${titleAlign} mb-6`}>{title}</h2>}
         {submitted && !editorEnabled ? (
           <div className="text-center py-8">
             <div className="text-5xl mb-4">✅</div>
@@ -120,6 +123,13 @@ export const CaptureFormSettings = () => {
         <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.title} onChange={(e) => setProp((p: CaptureFormProps) => { p.title = e.target.value })} />
       </div>
       <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Alinhamento do título</label>
+        <select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.textAlign ?? 'center'} onChange={(e) => setProp((p: CaptureFormProps) => { p.textAlign = e.target.value as 'center' | 'left' })}>
+          <option value="center">Centro</option>
+          <option value="left">Esquerda</option>
+        </select>
+      </div>
+      <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Placeholder nome</label>
         <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.namePlaceholder} onChange={(e) => setProp((p: CaptureFormProps) => { p.namePlaceholder = e.target.value })} />
       </div>
@@ -167,6 +177,7 @@ CaptureForm.craft = {
     btnColor: '#6366F1',
     bgColor: '#F8FAFC',
     paddingY: 60,
+    textAlign: 'center',
   },
   related: { toolbar: CaptureFormSettings },
 }
