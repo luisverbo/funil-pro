@@ -25,7 +25,7 @@ export default function PageNode({ id, data, selected }: NodeProps) {
 
   const preview = config.message
     ? config.message.slice(0, 40) + (config.message.length > 40 ? '…' : '')
-    : 'Envia link da página via WA'
+    : 'Página — envia link via WA'
 
   return (
     <BaseNode
