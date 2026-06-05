@@ -40,7 +40,6 @@ function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
       </button>
       {open && (
         <div className="absolute bottom-full mb-1 left-0 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-          {/* Group tabs */}
           <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50">
             {EMOJI_GROUPS.map((g, i) => (
               <button
@@ -54,7 +53,6 @@ function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
               </button>
             ))}
           </div>
-          {/* Emoji grid */}
           <div className="p-2 grid grid-cols-8 gap-0.5 max-h-48 overflow-y-auto">
             {EMOJI_GROUPS[activeGroup].emojis.map((emoji) => (
               <button
@@ -274,9 +272,10 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
   const [pages, setPages] = useState<{ id: string; title: string; slug: string; published?: boolean }[]>([])
   const [pagesLoaded, setPagesLoaded] = useState(false)
 
-  // Load pages list when a 'page' block is selected
   const node = nodes.find((n) => n.id === selectedNodeId)
-  const nodeBlockType = node ? (((node.data as unknown as FunnelNodeData).blockType as string) ?? node.type ?? '') : ''
+  const rawNodeBlockType = node ? (((node.data as unknown as FunnelNodeData).blockType as string) ?? node.type ?? '') : ''
+  // Normalize funnel_page -> page (React Flow uses funnel_page internally to avoid Next.js page.tsx conflicts)
+  const nodeBlockType = rawNodeBlockType === 'funnel_page' ? 'page' : rawNodeBlockType
 
   useEffect(() => {
     if (nodeBlockType !== 'page' || pagesLoaded) return
@@ -292,7 +291,9 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
   if (!node) return null
 
   const nodeData = node.data as unknown as FunnelNodeData
-  const blockType = (nodeData.blockType as string) ?? node.type ?? 'message'
+  const rawBlockType = (nodeData.blockType as string) ?? node.type ?? 'message'
+  // Normalize funnel_page -> page
+  const blockType = rawBlockType === 'funnel_page' ? 'page' : rawBlockType
   const config = (nodeData.config ?? {}) as Record<string, unknown>
   const meta = TYPE_META[blockType] ?? TYPE_META.message
 
