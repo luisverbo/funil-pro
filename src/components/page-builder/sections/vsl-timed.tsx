@@ -33,13 +33,16 @@ export const VslTimed = ({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
+    // No editor, sempre mostra o botão (para poder configurar)
     if (editorEnabled) {
       setVisible(true)
       return
     }
+    // Na página pública: esconde e inicia contagem
     const secs = showAfterSeconds ?? 30
     setVisible(false)
     setRemaining(secs)
+    if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       setRemaining((prev) => {
         if (prev <= 1) {
@@ -100,12 +103,12 @@ export const VslTimed = ({
           </div>
         )}
         <div className="text-center">
-          {!visible && showCountdown && (
+          {!visible && showCountdown && remaining > 0 && (
             <p className="text-gray-400 text-sm mb-4">
               Botão disponível em <span className="font-bold text-white">{remaining}s</span>
             </p>
           )}
-          {visible ? (
+          {visible && (
             <a
               href={btnLink}
               onClick={handleBtnClick}
@@ -114,13 +117,6 @@ export const VslTimed = ({
             >
               {btnText}
             </a>
-          ) : (
-            <div
-              style={{ backgroundColor: btnColor }}
-              className="inline-block px-10 py-5 text-white font-bold rounded-xl text-xl shadow-xl opacity-30 cursor-not-allowed select-none"
-            >
-              {btnText}
-            </div>
           )}
         </div>
       </div>
