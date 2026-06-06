@@ -2,6 +2,7 @@
 
 import { useNode, useEditor } from '@craftjs/core'
 import React from 'react'
+import { usePageTracking } from '@/app/pg/[slug]/craft-viewer'
 
 interface CtaButtonProps {
   text?: string
@@ -22,24 +23,6 @@ const sizeClasses: Record<string, string> = {
   xl: 'px-12 py-6 text-2xl',
 }
 
-function trackButtonClick(link: string) {
-  if (typeof window === 'undefined') return
-  const params = new URLSearchParams(window.location.search)
-  const leadId = params.get('lid') || localStorage.getItem('funil_lid')
-  if (!leadId) return
-  const pageId = window.__funilPageId
-  fetch('/api/track', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      lead_id: leadId,
-      page_id: pageId,
-      event_type: 'button_clicked',
-      event_data: { link },
-    }),
-  }).catch(() => {})
-}
-
 export const CtaButton = ({
   text = 'Quero Garantir Minha Vaga Agora →',
   subtext = '✓ Acesso imediato  ✓ Garantia de 7 dias',
@@ -53,6 +36,7 @@ export const CtaButton = ({
 }: CtaButtonProps) => {
   const { connectors: { connect, drag } } = useNode()
   const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
+  const { track } = usePageTracking()
 
   const alignMap: Record<string, string> = { center: 'text-center', left: 'text-left', right: 'text-right' }
 
@@ -61,12 +45,7 @@ export const CtaButton = ({
       e.preventDefault()
       return
     }
-    e.preventDefault()
-    trackButtonClick(link ?? '#')
-    const destination = link && link !== '#' ? link : null
-    setTimeout(() => {
-      if (destination) window.open(destination, '_blank')
-    }, 300)
+    track('button_clicked', { link })
   }
 
   return (
@@ -79,7 +58,7 @@ export const CtaButton = ({
         href={link}
         onClick={handleClick}
         style={{ backgroundColor: btnColor, color: textColor }}
-        className={`block w-full md:w-auto md:inline-block text-center font-bold rounded-xl shadow-xl min-h-[52px] ${sizeClasses[size]} hover:opacity-90 transition-opacity cursor-pointer`}
+        className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity`}
       >
         {text}
       </a>
