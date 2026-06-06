@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useState } from 'react'
-import { Editor, Frame, Element, useEditor } from '@craftjs/core'
+import { Editor, Frame, Element, useEditor, useNode } from '@craftjs/core'
 import { HeroSimple, HeroSimpleSettings } from './sections/hero-simple'
 import { CaptureForm, CaptureFormSettings } from './sections/capture-form'
 import { VideoPlayer, VideoPlayerSettings } from './sections/video-player'
@@ -19,8 +19,8 @@ interface PageRootProps {
   backgroundColor?: string
 }
 
+// Legacy component kept for backwards-compat when loading old JSON
 const PageRoot = ({ children, backgroundColor = '#ffffff' }: PageRootProps) => {
-  const { connectors: { connect } } = useEditor((state) => ({ selected: state.events.selected }))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { connectors } = useEditor() as any
   return (
@@ -34,12 +34,14 @@ const PageRoot = ({ children, backgroundColor = '#ffffff' }: PageRootProps) => {
   )
 }
 
-// We need useNode for PageRoot
 const PageRootNode = ({ children, backgroundColor = '#ffffff' }: PageRootProps) => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { connectors: { connect } } = useEditor((state) => ({ enabled: state.options.enabled }))
+  const { connectors: { connect } } = useNode()
   return (
-    <div style={{ backgroundColor, minHeight: '100vh' }} className="w-full">
+    <div
+      ref={(ref) => { if (ref) connect(ref) }}
+      style={{ backgroundColor, minHeight: '100vh' }}
+      className="w-full"
+    >
       {children}
     </div>
   )
@@ -294,14 +296,7 @@ function Canvas({ initialJson }: { initialJson?: object }) {
   )
 }
 
-// ---------- Main Editor ----------
-
-interface CraftEditorProps {
-  pageId: string
-  published: boolean
-  slug?: string | null
-  initialJson?: object
-}
+// ---------- Clean corrupt JSON (strips non-component nodes like old placeholder divs) ----------
 
 const KNOWN_COMPONENTS = new Set([
   'PageRootNode', 'PageRoot',
@@ -329,6 +324,15 @@ function cleanCraftJson(json: object): object {
   return cleaned
 }
 
+// ---------- Main Editor ----------
+
+interface CraftEditorProps {
+  pageId: string
+  published: boolean
+  slug?: string | null
+  initialJson?: object
+}
+
 export default function CraftEditor({ pageId, published, slug, initialJson }: CraftEditorProps) {
   const cleanedInitialJson = initialJson ? cleanCraftJson(initialJson) : undefined
   const resolver = {
@@ -341,7 +345,6 @@ export default function CraftEditor({ pageId, published, slug, initialJson }: Cr
     CtaButton,
     DeliveryCard,
     PageRootNode,
-    // Legacy name support
     PageRoot,
   }
 
