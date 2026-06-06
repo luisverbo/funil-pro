@@ -11,6 +11,7 @@ interface HeroSimpleProps {
   ctaLink?: string
   align?: 'center' | 'left'
   bgColor?: string
+  textColor?: string
   paddingY?: number
 }
 
@@ -22,20 +23,36 @@ export const HeroSimple = ({
   ctaLink = '#form',
   align = 'center',
   bgColor = '#ffffff',
+  textColor = '',
   paddingY = 80,
 }: HeroSimpleProps) => {
   const { connectors: { connect, drag } } = useNode()
+
+  // Auto-detect light/dark background to set text color when not explicitly set
+  const resolvedTextColor = textColor || (() => {
+    const hex = bgColor.replace('#', '')
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return luminance > 0.5 ? '#111827' : '#ffffff'
+  })()
+
+  const subColor = textColor
+    ? textColor + 'cc'
+    : resolvedTextColor === '#ffffff' ? 'rgba(255,255,255,0.75)' : '#4b5563'
+
   return (
     <div
       ref={(ref) => { connect(drag(ref!)) }}
       style={{ backgroundColor: bgColor, paddingTop: paddingY, paddingBottom: paddingY }}
-      className={`w-full px-4 md:px-8 ${align === 'center' ? 'text-center' : 'text-left'}`}
+      className={`w-full px-6 ${align === 'center' ? 'text-center' : 'text-left'}`}
     >
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">{headline}</h1>
-        <p className="text-base md:text-xl text-gray-600 mb-8">{subheadline}</p>
+        <h1 className="text-4xl md:text-5xl font-bold mb-4 leading-tight" style={{ color: resolvedTextColor }}>{headline}</h1>
+        <p className="text-xl mb-8" style={{ color: subColor }}>{subheadline}</p>
         {ctaText && (
-          <a href={ctaLink} style={{ backgroundColor: ctaColor }} className="inline-block w-full md:w-auto min-h-[52px] px-8 py-4 text-white font-bold rounded-xl text-lg shadow-lg hover:opacity-90 transition-opacity text-center">
+          <a href={ctaLink} style={{ backgroundColor: ctaColor }} className="inline-block px-8 py-4 text-white font-bold rounded-xl text-lg shadow-lg hover:opacity-90 transition-opacity">
             {ctaText}
           </a>
         )}
@@ -101,6 +118,23 @@ export const HeroSimpleSettings = () => {
         />
       </div>
       <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor do Texto (deixe em branco para automático)</label>
+        <div className="flex gap-2 items-center">
+          <input
+            type="color"
+            className="h-9 w-16 border border-gray-200 rounded-lg cursor-pointer"
+            value={props.textColor || '#111827'}
+            onChange={(e) => setProp((p: HeroSimpleProps) => { p.textColor = e.target.value })}
+          />
+          <button
+            className="text-xs text-gray-500 underline"
+            onClick={() => setProp((p: HeroSimpleProps) => { p.textColor = '' })}
+          >
+            Automático
+          </button>
+        </div>
+      </div>
+      <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Alinhamento</label>
         <select
           className="w-full border border-gray-200 rounded-lg p-2 text-sm"
@@ -134,6 +168,7 @@ HeroSimple.craft = {
     ctaLink: '#form',
     align: 'center',
     bgColor: '#ffffff',
+    textColor: '',
     paddingY: 80,
   },
   related: {
