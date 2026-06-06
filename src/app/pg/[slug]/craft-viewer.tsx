@@ -28,6 +28,7 @@ PageRootNode.craft = {
 
 const PageRoot = PageRootNode
 
+// Context so page sections can access page_id and lead_id
 export interface PageTrackingContext {
   pageId?: string
   getLeadId: () => string | null
@@ -41,14 +42,6 @@ export const PageTrackingCtx = createContext<PageTrackingContext>({
 
 export function usePageTracking() {
   return useContext(PageTrackingCtx)
-}
-
-// Global so Craft.js components can access tracking without React context issues
-declare global {
-  interface Window {
-    __funilPageId?: string
-    __funilTrack?: (eventType: string, eventData?: Record<string, unknown>) => void
-  }
 }
 
 function TrackingProvider({ pageId, children }: { pageId?: string; children: React.ReactNode }) {
@@ -73,14 +66,12 @@ function TrackingProvider({ pageId, children }: { pageId?: string; children: Rea
     }).catch(() => {})
   }
 
+  // Fire page_viewed on mount
   useEffect(() => {
+    // Capture lid from URL into localStorage
     const params = new URLSearchParams(window.location.search)
     const lid = params.get('lid')
     if (lid) localStorage.setItem('funil_lid', lid)
-
-    // Expose globally so Craft.js components (outside React context) can use it
-    window.__funilPageId = pageId
-    window.__funilTrack = track
 
     track('page_viewed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,6 +82,32 @@ function TrackingProvider({ pageId, children }: { pageId?: string; children: Rea
       {children}
     </PageTrackingCtx.Provider>
   )
+}
+
+const KNOWN_COMPONENTS = new Set([
+  'PageRootNode', 'PageRoot',
+  'HeroSimple', 'CaptureForm', 'VideoPlayer', 'VslTimed',
+  'BenefitsList', 'Testimonial', 'CtaButton', 'DeliveryCard',
+])
+
+function cleanCraftJson(json: object): object {
+  const data = json as Record<string, { type: { resolvedName?: string } | string; nodes?: string[] }>
+  const badIds = new Set<string>()
+  for (const [id, node] of Object.entries(data)) {
+    if (id === 'ROOT') continue
+    const typeName = typeof node.type === 'string' ? node.type : (node.type?.resolvedName ?? '')
+    if (!KNOWN_COMPONENTS.has(typeName)) badIds.add(id)
+  }
+  if (badIds.size === 0) return json
+  const cleaned: Record<string, unknown> = {}
+  for (const [id, node] of Object.entries(data)) {
+    if (badIds.has(id)) continue
+    const n = node as Record<string, unknown>
+    cleaned[id] = Array.isArray(n.nodes)
+      ? { ...n, nodes: (n.nodes as string[]).filter(nid => !badIds.has(nid)) }
+      : n
+  }
+  return cleaned
 }
 
 export default function CraftViewer({ craftJson, pageId }: { craftJson: object; pageId?: string }) {
@@ -107,13 +124,14 @@ export default function CraftViewer({ craftJson, pageId }: { craftJson: object; 
     PageRoot,
   }
 
-  const hasContent = craftJson && Object.keys(craftJson).length > 0
+  const cleanJson = cleanCraftJson(craftJson)
+  const hasContent = cleanJson && Object.keys(cleanJson).length > 0
 
   return (
     <TrackingProvider pageId={pageId}>
       <Editor resolver={resolver} enabled={false}>
         {hasContent ? (
-          <Frame data={JSON.stringify(craftJson)}>
+          <Frame data={JSON.stringify(cleanJson)}>
             <PageRootNode />
           </Frame>
         ) : (

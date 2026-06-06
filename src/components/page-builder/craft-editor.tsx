@@ -303,7 +303,34 @@ interface CraftEditorProps {
   initialJson?: object
 }
 
+const KNOWN_COMPONENTS = new Set([
+  'PageRootNode', 'PageRoot',
+  'HeroSimple', 'CaptureForm', 'VideoPlayer', 'VslTimed',
+  'BenefitsList', 'Testimonial', 'CtaButton', 'DeliveryCard',
+])
+
+function cleanCraftJson(json: object): object {
+  const data = json as Record<string, { type: { resolvedName?: string } | string; nodes?: string[] }>
+  const badIds = new Set<string>()
+  for (const [id, node] of Object.entries(data)) {
+    if (id === 'ROOT') continue
+    const typeName = typeof node.type === 'string' ? node.type : (node.type?.resolvedName ?? '')
+    if (!KNOWN_COMPONENTS.has(typeName)) badIds.add(id)
+  }
+  if (badIds.size === 0) return json
+  const cleaned: Record<string, unknown> = {}
+  for (const [id, node] of Object.entries(data)) {
+    if (badIds.has(id)) continue
+    const n = node as Record<string, unknown>
+    cleaned[id] = Array.isArray(n.nodes)
+      ? { ...n, nodes: (n.nodes as string[]).filter(nid => !badIds.has(nid)) }
+      : n
+  }
+  return cleaned
+}
+
 export default function CraftEditor({ pageId, published, slug, initialJson }: CraftEditorProps) {
+  const cleanedInitialJson = initialJson ? cleanCraftJson(initialJson) : undefined
   const resolver = {
     HeroSimple,
     CaptureForm,
@@ -324,7 +351,7 @@ export default function CraftEditor({ pageId, published, slug, initialJson }: Cr
         <EditorToolbar pageId={pageId} published={published} slug={slug} />
         <div className="flex-1 flex overflow-hidden">
           <Sidebar />
-          <Canvas initialJson={initialJson} />
+          <Canvas initialJson={cleanedInitialJson} />
           <PropertiesPanel />
         </div>
       </Editor>
