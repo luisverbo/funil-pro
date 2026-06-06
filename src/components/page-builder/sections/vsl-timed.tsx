@@ -2,6 +2,7 @@
 
 import { useNode, useEditor } from '@craftjs/core'
 import React, { useEffect, useRef, useState } from 'react'
+import { usePageTracking } from '@/app/pg/[slug]/craft-viewer'
 
 interface VslTimedProps {
   videoUrl?: string
@@ -28,17 +29,16 @@ export const VslTimed = ({
 }: VslTimedProps) => {
   const { connectors: { connect, drag } } = useNode()
   const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
+  const { track } = usePageTracking()
   const [visible, setVisible] = useState(false)
   const [remaining, setRemaining] = useState(showAfterSeconds ?? 30)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    // No editor, sempre mostra o botão (para poder configurar)
     if (editorEnabled) {
       setVisible(true)
       return
     }
-    // Na página pública: esconde e inicia contagem
     const secs = showAfterSeconds ?? 30
     setVisible(false)
     setRemaining(secs)
@@ -71,18 +71,8 @@ export const VslTimed = ({
   const handleBtnClick = (e: React.MouseEvent) => {
     if (!btnLink || btnLink === '#comprar') return
     e.preventDefault()
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      const leadId = params.get('lid') || localStorage.getItem('funil_lid')
-      if (leadId) {
-        fetch('/api/track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lead_id: leadId, page_id: window.__funilPageId, event_type: 'button_clicked', event_data: { link: btnLink } }),
-        }).catch(() => {})
-      }
-      setTimeout(() => { window.open(btnLink, '_blank') }, 300)
-    }
+    track('button_clicked', { link: btnLink })
+    setTimeout(() => { window.open(btnLink, '_blank') }, 300)
   }
 
   return (
@@ -113,7 +103,7 @@ export const VslTimed = ({
               href={btnLink}
               onClick={handleBtnClick}
               style={{ backgroundColor: btnColor }}
-              className="block w-full md:w-auto md:inline-block text-center px-10 py-5 text-white font-bold rounded-xl text-lg font-bold py-4 px-8 min-h-[52px] shadow-xl hover:opacity-90 transition-opacity"
+              className="block w-full md:w-auto md:inline-block text-center px-10 py-5 text-white font-bold rounded-xl text-lg min-h-[52px] shadow-xl hover:opacity-90 transition-opacity"
             >
               {btnText}
             </a>
