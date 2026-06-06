@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-05-31 — Etapas 1–5 + 7–8 + 10 + 12A concluídas + correções críticas do motor de execução
+**Última atualização:** 2026-06-06 — Etapa 13 + Fase 2 (expansão do construtor de páginas) concluídas
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -545,12 +545,30 @@ APP_SECRET=
   - **Sync de produtos**: endpoints de sync para Kiwify, Hotmart, Eduzz, Yampi + botão na página de integrações
   - **NOTA TÉCNICA**: WhatsApp NÃO envia recibos de leitura via API — condição "Abriu mensagem" não funciona; usar "Respondeu" em vez disso
   - **Nota de deploy**: GitHub Actions só deploya branch `main` — todas as correções devem ir direto para `main` via `mcp__github__push_files`
+- Etapa 13: Editor de Páginas com Craft.js completo:
+  - 8 seções drag-and-drop originais: HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial, CtaButton, DeliveryCard
+  - Editor full-screen em `/page-editor/[id]` com auto-save a cada 45s
+  - Lista de páginas em `/pages` com filtros por tipo, grid de cards, modal de criação em 3 passos
+  - Renderer público em `/pg/[slug]` (sem autenticação, via Craft.js com `enabled={false}`)
+  - 5 templates: Captura, VSL, Entrega, Obrigado, Carta de Vendas
+  - Migration Supabase: colunas craft_json, page_type, slug, meta_title, meta_description, og_image_url, views_count, clicks_count, conversions_count + tabela page_themes + tabela page_versions
+- Fase 2 — Expansão do construtor de páginas (sessão 2026-06-06):
+  - **12 novas seções**: CountdownTimer, ScarcityBar, Guarantee, AuthorBio, FaqAccordion, PartnerLogos, BonusSection, BeforeAfter, RichText, PriceSection, FullwidthBanner, ThankYouHero
+  - **Preview desktop/mobile**: toggle no toolbar do editor, canvas alterna entre `max-w-3xl` e `max-w-sm`
+  - **Variáveis dinâmicas**: URL params (`?nome=João`) substituem `{primeiro_nome}` nos templates públicos via `applyVariables()` em `craft-viewer.tsx`
+  - **Histórico de versões**: tabela `page_versions` (até 15 versões), drawer lateral com lista de versões e botão Restaurar
+  - **Auto-save**: hook `useAutoSave()` salva a cada 45s, exibe "salvo às HH:MM" no toolbar
+  - **Busca na sidebar**: campo de busca filtra seções por nome/descrição
+  - **2 novos tipos de página + templates**: `thankyou` (ThankYouHero + countdown + redirect automático), `sales` (carta de vendas completa com 9 seções)
+  - **cleanCraftJson()**: filtra nós desconhecidos do craft_json antes de renderizar para evitar erros
+  - Todos os arquivos commitados e pusheados para branch `main` no GitHub
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
 - Etapa 11: Templates + marketplace
 - Etapa 12B: Planos + billing (Asaas) — falta implementar
+- Fase 2 restante: popup exit-intent, métricas avançadas de página, vinculação funil→página no builder
 
 
 ---
