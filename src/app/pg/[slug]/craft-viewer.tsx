@@ -10,6 +10,18 @@ import { BenefitsList } from '@/components/page-builder/sections/benefits-list'
 import { Testimonial } from '@/components/page-builder/sections/testimonial'
 import { CtaButton } from '@/components/page-builder/sections/cta-button'
 import { DeliveryCard } from '@/components/page-builder/sections/delivery-card'
+import { CountdownTimer } from '@/components/page-builder/sections/countdown-timer'
+import { Guarantee } from '@/components/page-builder/sections/guarantee'
+import { FaqAccordion } from '@/components/page-builder/sections/faq-accordion'
+import { AuthorBio } from '@/components/page-builder/sections/author-bio'
+import { ScarcityBar } from '@/components/page-builder/sections/scarcity-bar'
+import { BeforeAfter } from '@/components/page-builder/sections/before-after'
+import { BonusSection } from '@/components/page-builder/sections/bonus-section'
+import { PartnerLogos } from '@/components/page-builder/sections/partner-logos'
+import { RichText } from '@/components/page-builder/sections/rich-text'
+import { PriceSection } from '@/components/page-builder/sections/price-section'
+import { FullwidthBanner } from '@/components/page-builder/sections/fullwidth-banner'
+import { ThankYouHero } from '@/components/page-builder/sections/thank-you-hero'
 
 interface PageRootProps {
   children?: React.ReactNode
@@ -28,7 +40,6 @@ PageRootNode.craft = {
 
 const PageRoot = PageRootNode
 
-// Context so page sections can access page_id and lead_id
 export interface PageTrackingContext {
   pageId?: string
   getLeadId: () => string | null
@@ -49,30 +60,20 @@ function TrackingProvider({ pageId, children }: { pageId?: string; children: Rea
     if (typeof window === 'undefined') return null
     const params = new URLSearchParams(window.location.search)
     const lid = params.get('lid')
-    if (lid) {
-      localStorage.setItem('funil_lid', lid)
-      return lid
-    }
+    if (lid) { localStorage.setItem('funil_lid', lid); return lid }
     return localStorage.getItem('funil_lid')
   }
 
   const track = (eventType: string, eventData?: Record<string, unknown>) => {
     const leadId = getLeadId()
     if (!leadId) return
-    fetch('/api/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lead_id: leadId, page_id: pageId, event_type: eventType, event_data: eventData }),
-    }).catch(() => {})
+    fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lead_id: leadId, page_id: pageId, event_type: eventType, event_data: eventData }) }).catch(() => {})
   }
 
-  // Fire page_viewed on mount
   useEffect(() => {
-    // Capture lid from URL into localStorage
     const params = new URLSearchParams(window.location.search)
     const lid = params.get('lid')
     if (lid) localStorage.setItem('funil_lid', lid)
-
     track('page_viewed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -86,52 +87,53 @@ function TrackingProvider({ pageId, children }: { pageId?: string; children: Rea
 
 const KNOWN_COMPONENTS = new Set([
   'PageRootNode', 'PageRoot',
-  'HeroSimple', 'CaptureForm', 'VideoPlayer', 'VslTimed',
-  'BenefitsList', 'Testimonial', 'CtaButton', 'DeliveryCard',
+  'HeroSimple', 'CaptureForm', 'VideoPlayer', 'VslTimed', 'BenefitsList',
+  'Testimonial', 'CtaButton', 'DeliveryCard', 'CountdownTimer', 'Guarantee',
+  'FaqAccordion', 'AuthorBio', 'ScarcityBar', 'BeforeAfter', 'BonusSection',
+  'PartnerLogos', 'RichText', 'PriceSection', 'FullwidthBanner', 'ThankYouHero',
 ])
 
 function cleanCraftJson(json: object): object {
-  const data = json as Record<string, { type: { resolvedName?: string } | string; nodes?: string[] }>
-  const badIds = new Set<string>()
-  for (const [id, node] of Object.entries(data)) {
-    if (id === 'ROOT') continue
-    const typeName = typeof node.type === 'string' ? node.type : (node.type?.resolvedName ?? '')
-    if (!KNOWN_COMPONENTS.has(typeName)) badIds.add(id)
+  const nodes = json as Record<string, { type?: { resolvedName?: string }; nodes?: string[]; linkedNodes?: Record<string, string> }>
+  const cleaned: typeof nodes = {}
+  for (const [id, node] of Object.entries(nodes)) {
+    if (id === 'ROOT') { cleaned[id] = node; continue }
+    const name = node?.type?.resolvedName
+    if (name && KNOWN_COMPONENTS.has(name)) cleaned[id] = node
   }
-  if (badIds.size === 0) return json
-  const cleaned: Record<string, unknown> = {}
-  for (const [id, node] of Object.entries(data)) {
-    if (badIds.has(id)) continue
-    const n = node as Record<string, unknown>
-    cleaned[id] = Array.isArray(n.nodes)
-      ? { ...n, nodes: (n.nodes as string[]).filter(nid => !badIds.has(nid)) }
-      : n
+  if (cleaned.ROOT) {
+    const rootNodes = cleaned.ROOT.nodes ?? []
+    cleaned.ROOT.nodes = rootNodes.filter((id) => id in cleaned)
   }
   return cleaned
 }
 
-export default function CraftViewer({ craftJson, pageId }: { craftJson: object; pageId?: string }) {
+function applyVariables(craftJson: object, variables: Record<string, string>): object {
+  if (!variables || Object.keys(variables).length === 0) return craftJson
+  let str = JSON.stringify(craftJson)
+  for (const [key, value] of Object.entries(variables)) {
+    str = str.replaceAll(`{${key}}`, value)
+  }
+  return JSON.parse(str)
+}
+
+export default function CraftViewer({ craftJson, pageId, variables }: { craftJson: object; pageId?: string; variables?: Record<string, string> }) {
   const resolver = {
-    HeroSimple,
-    CaptureForm,
-    VideoPlayer,
-    VslTimed,
-    BenefitsList,
-    Testimonial,
-    CtaButton,
-    DeliveryCard,
-    PageRootNode,
-    PageRoot,
+    HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial,
+    CtaButton, DeliveryCard, CountdownTimer, Guarantee, FaqAccordion, AuthorBio,
+    ScarcityBar, BeforeAfter, BonusSection, PartnerLogos, RichText, PriceSection,
+    FullwidthBanner, ThankYouHero, PageRootNode, PageRoot,
   }
 
-  const cleanJson = cleanCraftJson(craftJson)
-  const hasContent = cleanJson && Object.keys(cleanJson).length > 0
+  const hasContent = craftJson && Object.keys(craftJson).length > 0
+  const cleanedJson = hasContent ? cleanCraftJson(craftJson) : craftJson
+  const finalJson = variables ? applyVariables(cleanedJson, variables) : cleanedJson
 
   return (
     <TrackingProvider pageId={pageId}>
       <Editor resolver={resolver} enabled={false}>
         {hasContent ? (
-          <Frame data={JSON.stringify(cleanJson)}>
+          <Frame data={JSON.stringify(finalJson)}>
             <PageRootNode />
           </Frame>
         ) : (
