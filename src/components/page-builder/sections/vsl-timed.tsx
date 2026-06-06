@@ -89,10 +89,10 @@ export const VslTimed = ({
     <div
       ref={(ref) => { connect(drag(ref!)) }}
       style={{ backgroundColor: bgColor, paddingTop: paddingY, paddingBottom: paddingY }}
-      className="w-full px-4 md:px-6"
+      className="w-full px-4 md:px-8"
     >
       <div className="max-w-3xl mx-auto">
-        {headline && <h2 className="text-xl md:text-2xl font-bold text-white text-center mb-6">{headline}</h2>}
+        {headline && <h2 className="text-2xl md:text-4xl font-bold text-white text-center mb-6">{headline}</h2>}
         {embedUrl ? (
           <div className="aspect-video w-full rounded-xl overflow-hidden shadow-2xl mb-6">
             <iframe src={embedUrl} className="w-full h-full" allowFullScreen title="VSL" />
@@ -113,7 +113,7 @@ export const VslTimed = ({
               href={btnLink}
               onClick={handleBtnClick}
               style={{ backgroundColor: btnColor }}
-              className="block w-full md:w-auto md:inline-block text-center px-10 py-5 text-white font-bold rounded-xl text-xl shadow-xl hover:opacity-90 transition-opacity"
+              className="block w-full md:w-auto md:inline-block text-center px-10 py-5 text-white font-bold rounded-xl text-lg font-bold py-4 px-8 min-h-[52px] shadow-xl hover:opacity-90 transition-opacity"
             >
               {btnText}
             </a>
