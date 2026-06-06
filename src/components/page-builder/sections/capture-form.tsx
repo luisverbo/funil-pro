@@ -61,7 +61,7 @@ export const CaptureForm = ({
     <div
       ref={(ref) => { connect(drag(ref!)) }}
       style={{ backgroundColor: bgColor, paddingTop: paddingY, paddingBottom: paddingY }}
-      className="w-full px-6"
+      className="w-full px-5 md:px-6"
     >
       <div className="max-w-md mx-auto">
         {title && <h2 className={`text-2xl font-bold text-gray-900 ${titleAlign} mb-6`}>{title}</h2>}
@@ -79,7 +79,7 @@ export const CaptureForm = ({
               value={editorEnabled ? '' : name}
               onChange={(e) => { if (!editorEnabled) setName(e.target.value) }}
               readOnly={editorEnabled}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-base text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
             <input
               type="email"
@@ -87,7 +87,7 @@ export const CaptureForm = ({
               value={editorEnabled ? '' : email}
               onChange={(e) => { if (!editorEnabled) setEmail(e.target.value) }}
               readOnly={editorEnabled}
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-base text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
             {showPhone && (
               <input
@@ -96,14 +96,14 @@ export const CaptureForm = ({
                 value={editorEnabled ? '' : phone}
                 onChange={(e) => { if (!editorEnabled) setPhone(e.target.value) }}
                 readOnly={editorEnabled}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-base text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
             )}
             <button
               type={editorEnabled ? 'button' : 'submit'}
               disabled={submitting}
               style={{ backgroundColor: btnColor }}
-              className="w-full py-4 text-white font-bold rounded-xl text-lg shadow-lg disabled:opacity-70 transition-opacity"
+              className="w-full min-h-[52px] py-4 text-white font-bold rounded-xl text-lg shadow-lg disabled:opacity-70 transition-opacity"
             >
               {submitting ? 'Enviando...' : btnText}
             </button>

@@ -39,11 +39,11 @@ export const DeliveryCard = ({
     <div
       ref={(ref) => { connect(drag(ref!)) }}
       style={{ backgroundColor: bgColor, paddingTop: paddingY, paddingBottom: paddingY }}
-      className="w-full px-6"
+      className="w-full px-4 md:px-6"
     >
       <div className="max-w-lg mx-auto">
         <div style={{ backgroundColor: cardColor }} className="rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div style={{ backgroundColor: accentColor }} className="p-6 text-center">
+          <div style={{ backgroundColor: accentColor }} className="p-4 md:p-6 text-center">
             <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
               <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-8 h-8">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
@@ -52,7 +52,7 @@ export const DeliveryCard = ({
             </div>
             <h2 className="text-2xl font-bold text-white">{headline}</h2>
           </div>
-          <div className="p-6">
+          <div className="p-4 md:p-6">
             <p className="text-gray-600 text-center mb-6">{description}</p>
             <ul className="space-y-3 mb-6">
               {items.map((item, i) => (

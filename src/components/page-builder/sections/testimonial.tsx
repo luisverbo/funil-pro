@@ -41,14 +41,14 @@ export const Testimonial = ({
             ))}
           </div>
           <blockquote className="text-gray-700 text-lg leading-relaxed mb-6 italic">"{quote}"</blockquote>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-3">
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm"
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
               style={{ backgroundColor: avatarColor }}
             >
               {avatarInitials}
             </div>
-            <div>
+            <div className="text-center md:text-left">
               <p className="font-semibold text-gray-900">{name}</p>
               {role && <p className="text-sm text-gray-500">{role}</p>}
             </div>

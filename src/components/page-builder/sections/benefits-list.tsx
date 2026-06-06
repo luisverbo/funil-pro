@@ -34,7 +34,7 @@ export const BenefitsList = ({
     >
       <div className="max-w-2xl mx-auto">
         {title && <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">{title}</h2>}
-        <ul className="space-y-4">
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {items.map((item, i) => (
             <li key={i} className="flex items-start gap-3">
               <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6 shrink-0 mt-0.5" style={{ color: iconColor }}>

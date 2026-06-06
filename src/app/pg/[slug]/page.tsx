@@ -25,11 +25,11 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
   supabase.from('pages').update({ views_count: (page.views_count ?? 0) + 1 }).eq('id', page.id).then(() => {})
 
   return (
-    <>
+    <div className="max-w-full overflow-x-hidden">
       <title>{page.meta_title || page.title || 'Página'}</title>
       {page.meta_description && <meta name="description" content={page.meta_description} />}
       {page.og_image_url && <meta property="og:image" content={page.og_image_url} />}
       <PageRenderer craftJson={page.craft_json} pageId={page.id} />
-    </>
+    </div>
   )
 }

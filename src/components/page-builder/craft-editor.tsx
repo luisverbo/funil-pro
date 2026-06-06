@@ -67,7 +67,19 @@ const SECTIONS = [
 
 // ---------- Toolbar ----------
 
-function EditorToolbar({ pageId, published, slug }: { pageId: string; published: boolean; slug?: string | null }) {
+function EditorToolbar({
+  pageId,
+  published,
+  slug,
+  previewMode,
+  onPreviewModeChange,
+}: {
+  pageId: string
+  published: boolean
+  slug?: string | null
+  previewMode: 'desktop' | 'mobile'
+  onPreviewModeChange: (mode: 'desktop' | 'mobile') => void
+}) {
   const { query, actions } = useEditor()
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -143,6 +155,40 @@ function EditorToolbar({ pageId, published, slug }: { pageId: string; published:
       <button onClick={handleRedo} className="p-2 text-gray-400 hover:text-white" title="Refazer">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/></svg>
       </button>
+
+      {/* Preview mode toggle */}
+      <div className="flex items-center bg-gray-800 rounded-lg p-0.5 gap-0.5">
+        <button
+          onClick={() => onPreviewModeChange('desktop')}
+          title="Visualização Desktop"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            previewMode === 'desktop'
+              ? 'bg-indigo-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+          </svg>
+          Desktop
+        </button>
+        <button
+          onClick={() => onPreviewModeChange('mobile')}
+          title="Visualização Mobile"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            previewMode === 'mobile'
+              ? 'bg-indigo-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+            <rect x="5" y="2" width="14" height="20" rx="2" />
+            <path d="M12 18h.01" />
+          </svg>
+          Mobile
+        </button>
+      </div>
 
       <button
         onClick={handleSave}
@@ -254,12 +300,16 @@ function PropertiesPanel() {
 
 // ---------- Canvas ----------
 
-function Canvas({ initialJson }: { initialJson?: object }) {
+function Canvas({ initialJson, previewMode }: { initialJson?: object; previewMode: 'desktop' | 'mobile' }) {
   const isEmpty = !initialJson || Object.keys(initialJson).length === 0
 
   return (
     <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <div className="bg-white shadow-xl min-h-screen w-full max-w-3xl mx-auto rounded-lg overflow-hidden">
+      <div
+        className={`bg-white shadow-xl min-h-screen rounded-lg overflow-hidden transition-all duration-300 ${
+          previewMode === 'mobile' ? 'w-[390px] mx-auto' : 'w-full max-w-3xl mx-auto'
+        }`}
+      >
         {isEmpty ? (
           <Frame>
             <Element is={PageRootNode} canvas>
@@ -293,6 +343,8 @@ interface CraftEditorProps {
 }
 
 export default function CraftEditor({ pageId, published, slug, initialJson }: CraftEditorProps) {
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop')
+
   const resolver = {
     HeroSimple,
     CaptureForm,
@@ -310,10 +362,16 @@ export default function CraftEditor({ pageId, published, slug, initialJson }: Cr
   return (
     <div className="h-screen flex flex-col">
       <Editor resolver={resolver} enabled>
-        <EditorToolbar pageId={pageId} published={published} slug={slug} />
+        <EditorToolbar
+          pageId={pageId}
+          published={published}
+          slug={slug}
+          previewMode={previewMode}
+          onPreviewModeChange={setPreviewMode}
+        />
         <div className="flex-1 flex overflow-hidden">
           <Sidebar />
-          <Canvas initialJson={initialJson} />
+          <Canvas initialJson={initialJson} previewMode={previewMode} />
           <PropertiesPanel />
         </div>
       </Editor>

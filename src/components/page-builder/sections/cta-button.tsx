@@ -79,7 +79,7 @@ export const CtaButton = ({
         href={link}
         onClick={handleClick}
         style={{ backgroundColor: btnColor, color: textColor }}
-        className={`inline-block font-bold rounded-xl shadow-xl ${sizeClasses[size]} hover:opacity-90 transition-opacity cursor-pointer`}
+        className={`block w-full md:w-auto md:inline-block text-center font-bold rounded-xl shadow-xl min-h-[52px] ${sizeClasses[size]} hover:opacity-90 transition-opacity cursor-pointer`}
       >
         {text}
       </a>

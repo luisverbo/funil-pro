@@ -29,13 +29,13 @@ export const HeroSimple = ({
     <div
       ref={(ref) => { connect(drag(ref!)) }}
       style={{ backgroundColor: bgColor, paddingTop: paddingY, paddingBottom: paddingY }}
-      className={`w-full px-6 ${align === 'center' ? 'text-center' : 'text-left'}`}
+      className={`w-full px-6 md:px-8 ${align === 'center' ? 'text-center' : 'text-left'}`}
     >
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">{headline}</h1>
-        <p className="text-xl text-gray-600 mb-8">{subheadline}</p>
+        <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">{headline}</h1>
+        <p className="text-base md:text-xl text-gray-600 mb-8">{subheadline}</p>
         {ctaText && (
-          <a href={ctaLink} style={{ backgroundColor: ctaColor }} className="inline-block px-8 py-4 text-white font-bold rounded-xl text-lg shadow-lg hover:opacity-90 transition-opacity">
+          <a href={ctaLink} style={{ backgroundColor: ctaColor }} className="inline-block w-full md:w-auto px-8 py-4 text-white font-bold rounded-xl text-lg shadow-lg hover:opacity-90 transition-opacity text-center">
             {ctaText}
           </a>
         )}
