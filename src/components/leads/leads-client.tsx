@@ -71,11 +71,13 @@ function TagDropdown({ allTags, selectedTags, onChange }: {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => allTags.length > 0 && setOpen(v => !v)}
         className={`flex items-center gap-1.5 pl-3 pr-2.5 py-1.5 text-xs font-medium border rounded-full transition ${
           selectedTags.size > 0
             ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+            : allTags.length === 0
+              ? 'border-gray-200 bg-white text-gray-400 cursor-default'
+              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
         }`}
       >
         {label}
@@ -90,7 +92,7 @@ function TagDropdown({ allTags, selectedTags, onChange }: {
           <ChevronDown className="w-3 h-3 text-gray-400" />
         )}
       </button>
-      {open && (
+      {open && allTags.length > 0 && (
         <div className="absolute top-full mt-1 left-0 z-30 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 min-w-[160px] max-h-56 overflow-y-auto">
           {allTags.map(tag => (
             <label key={tag} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
@@ -332,10 +334,8 @@ export default function LeadsClient({ leads, funnels, tenantId: _tenantId, waIns
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
             </div>
           )}
-          {/* Tags multi-select */}
-          {allTags.length > 0 && (
-            <TagDropdown allTags={allTags} selectedTags={selectedTags} onChange={setSelectedTags} />
-          )}
+          {/* Tags — always visible */}
+          <TagDropdown allTags={allTags} selectedTags={selectedTags} onChange={setSelectedTags} />
           {/* Compradores */}
           <button
             onClick={() => setPurchaserFilter(v => !v)}
