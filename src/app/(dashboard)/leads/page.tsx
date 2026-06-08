@@ -35,35 +35,59 @@ export default async function LeadsPage() {
     .single()
 
   if (!userTenant) redirect('/login')
-
   const tenantId = userTenant.tenant_id
 
-  const { data: leadsRaw } = await supabase
-    .from('leads')
-    .select('*, funnels(name)')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false })
-    .limit(500)
-
-  const { data: purchaseEvents } = await supabase
-    .from('lead_events')
-    .select('lead_id')
-    .eq('event_type', 'purchased')
-    .eq('tenant_id', tenantId)
+  const [
+    { data: leadsRaw },
+    { data: purchaseEvents },
+    { data: funnels },
+    { data: waInstances },
+  ] = await Promise.all([
+    supabase
+      .from('leads')
+      .select('*, funnels(name)')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabase
+      .from('lead_events')
+      .select('lead_id')
+      .eq('event_type', 'purchased')
+      .eq('tenant_id', tenantId),
+    supabase
+      .from('funnels')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .order('name', { ascending: true }),
+    supabase
+      .from('whatsapp_instances')
+      .select('id, instance_name, display_name, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'connected'),
+  ])
 
   const purchaserIds = new Set((purchaseEvents ?? []).map((e: { lead_id: string }) => e.lead_id))
 
-  const { data: funnels } = await supabase
-    .from('funnels')
-    .select('id, name')
-    .eq('tenant_id', tenantId)
-    .order('name', { ascending: true })
+  const leadIds = (leadsRaw ?? []).map((l: Record<string, unknown>) => l.id as string)
+  const lastEventMap = new Map<string, { event_type: string; created_at: string }>()
 
-  const { data: waInstances } = await supabase
-    .from('whatsapp_instances')
-    .select('id, instance_name, display_name, status')
-    .eq('tenant_id', tenantId)
-    .eq('status', 'connected')
+  if (leadIds.length > 0) {
+    const { data: lastEventsRaw } = await supabase
+      .from('lead_events')
+      .select('lead_id, event_type, created_at')
+      .eq('tenant_id', tenantId)
+      .in('lead_id', leadIds)
+      .order('created_at', { ascending: false })
+      .limit(2000)
+
+    const seen = new Set<string>()
+    for (const ev of (lastEventsRaw ?? []) as Array<{ lead_id: string; event_type: string; created_at: string }>) {
+      if (!seen.has(ev.lead_id)) {
+        seen.add(ev.lead_id)
+        lastEventMap.set(ev.lead_id, { event_type: ev.event_type, created_at: ev.created_at })
+      }
+    }
+  }
 
   const leads = (leadsRaw ?? []).map((lead: Record<string, unknown>) => ({
     id: lead.id as string,
@@ -76,6 +100,7 @@ export default async function LeadsPage() {
     funnel_name: (lead.funnels as { name: string } | null)?.name ?? null,
     created_at: lead.created_at as string,
     isPurchaser: purchaserIds.has(lead.id as string),
+    lastEvent: lastEventMap.get(lead.id as string) ?? null,
   }))
 
   const instances = (waInstances ?? []).map((i: Record<string, unknown>) => ({

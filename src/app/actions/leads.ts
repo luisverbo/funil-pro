@@ -41,6 +41,31 @@ async function getTenantId(): Promise<string> {
   return data.tenant_id
 }
 
+export async function createLeadManual(
+  name: string,
+  phone: string,
+  email: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('leads')
+      .insert({
+        tenant_id: tenantId,
+        name: name.trim() || null,
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        status: 'active',
+      })
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/leads')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
 export async function enrollLeadsInFunnel(
   leadIds: string[],
   funnelId: string,
