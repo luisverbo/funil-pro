@@ -86,11 +86,11 @@ const EVENT_LABELS: Record<string, string> = {
 }
 
 const STATUS_OPTIONS = [
-  { value: 'all',         label: 'Todos os status' },
-  { value: 'active',      label: 'Ativo' },
-  { value: 'converted',   label: 'Convertido' },
-  { value: 'lost',        label: 'Perdido' },
-  { value: 'unsubscribed',label: 'Descadastrado' },
+  { value: 'all',          label: 'Todos os status' },
+  { value: 'active',       label: 'Ativo' },
+  { value: 'converted',    label: 'Convertido' },
+  { value: 'lost',         label: 'Perdido' },
+  { value: 'unsubscribed', label: 'Descadastrado' },
 ]
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -113,12 +113,15 @@ function exportCSV(leads: Lead[]) {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = url; a.download = `leads-${new Date().toISOString().split('T')[0]}.csv`; a.click()
+  a.href = url
+  a.download = `leads-${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
   URL.revokeObjectURL(url)
 }
 
-// Multi-tag dropdown component
-function TagDropdown({ allTags, selectedTags, onChange }: {
+function TagDropdown({
+  allTags, selectedTags, onChange,
+}: {
   allTags: string[]
   selectedTags: Set<string>
   onChange: (tags: Set<string>) => void
@@ -127,15 +130,14 @@ function TagDropdown({ allTags, selectedTags, onChange }: {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    function handler(e: MouseEvent) {
+    function onMouseDown(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
   }, [])
 
   if (allTags.length === 0) return null
-
   const count = selectedTags.size
 
   function toggle(tag: string) {
@@ -147,11 +149,10 @@ function TagDropdown({ allTags, selectedTags, onChange }: {
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen(o => !o)}
         className={`flex items-center gap-1.5 pl-3 pr-2.5 py-1.5 text-xs font-medium border rounded-full transition ${
-          count > 0
-            ? 'bg-violet-600 text-white border-violet-600'
-            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
+          count > 0 ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'
         }`}
       >
         <Tag className="w-3 h-3" />
@@ -175,6 +176,7 @@ function TagDropdown({ allTags, selectedTags, onChange }: {
             <>
               <div className="border-t border-gray-100 my-1" />
               <button
+                type="button"
                 onClick={() => { onChange(new Set()); setOpen(false) }}
                 className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 flex items-center gap-1.5"
               >
@@ -189,9 +191,10 @@ function TagDropdown({ allTags, selectedTags, onChange }: {
 }
 
 export default function LeadsClient({ leads, funnels, tenantId, waInstances = [] }: Props) {
-  const router = useRouter()
   void tenantId
+  const router = useRouter()
 
+  // Filters
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [funnelFilter, setFunnelFilter] = useState('all')
@@ -203,9 +206,10 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
   const [showEnrollModal, setShowEnrollModal] = useState(false)
   const [enrollFunnelId, setEnrollFunnelId] = useState('')
   const [enrollResult, setEnrollResult] = useState<{ success?: boolean; error?: string } | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [enrollPending, startEnrollTransition] = useTransition()
 
   // WA modal
+  const messageTextareaRef = useRef<HTMLTextAreaElement>(null)
   const [showMessageModal, setShowMessageModal] = useState(false)
   const [messageText, setMessageText] = useState('')
   const [messageInstanceId, setMessageInstanceId] = useState('')
@@ -236,30 +240,42 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
     return Array.from(s).sort()
   }, [leads])
 
-  const filtered = useMemo(() => {
-    return leads.filter(lead => {
-      if (search) {
-        const q = search.toLowerCase()
-        if (!(lead.name ?? '').toLowerCase().includes(q) &&
-            !(lead.phone ?? '').toLowerCase().includes(q) &&
-            !(lead.email ?? '').toLowerCase().includes(q)) return false
-      }
-      if (buyersOnly && !lead.isPurchaser) return false
-      if (statusFilter !== 'all' && lead.status !== statusFilter) return false
-      if (funnelFilter !== 'all' && lead.funnel_id !== funnelFilter) return false
-      if (selectedTags.size > 0) {
-        const leadTags = lead.tags ?? []
-        if (!Array.from(selectedTags).some(t => leadTags.includes(t))) return false
-      }
-      return true
-    })
-  }, [leads, search, statusFilter, funnelFilter, selectedTags, buyersOnly])
+  const filtered = useMemo(() => leads.filter(lead => {
+    if (search) {
+      const q = search.toLowerCase()
+      if (!(lead.name ?? '').toLowerCase().includes(q) &&
+          !(lead.phone ?? '').toLowerCase().includes(q) &&
+          !(lead.email ?? '').toLowerCase().includes(q)) return false
+    }
+    if (buyersOnly && !lead.isPurchaser) return false
+    if (statusFilter !== 'all' && lead.status !== statusFilter) return false
+    if (funnelFilter !== 'all' && lead.funnel_id !== funnelFilter) return false
+    if (selectedTags.size > 0) {
+      const lt = lead.tags ?? []
+      if (!Array.from(selectedTags).some(t => lt.includes(t))) return false
+    }
+    return true
+  }), [leads, search, statusFilter, funnelFilter, selectedTags, buyersOnly])
 
   function toggleSelect(id: string) {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   function toggleAll() {
     setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(l => l.id)))
+  }
+
+  function insertVariable(variable: string) {
+    const el = messageTextareaRef.current
+    if (!el) return
+    const start = el.selectionStart ?? messageText.length
+    const end = el.selectionEnd ?? messageText.length
+    const next = messageText.slice(0, start) + variable + messageText.slice(end)
+    setMessageText(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + variable.length
+      el.setSelectionRange(pos, pos)
+    })
   }
 
   function openMessageModal() {
@@ -281,7 +297,7 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
   }
 
   function handleEnroll() {
-    startTransition(async () => {
+    startEnrollTransition(async () => {
       const result = await enrollLeadsInFunnel(Array.from(selected), enrollFunnelId, 2)
       setEnrollResult(result)
       if (result.success) {
@@ -296,9 +312,8 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
     startAddTransition(async () => {
       const result = await createLeadManual(addName, addPhone, addEmail)
       setAddResult(result)
-      if (result.success) {
+      if (result.success)
         setTimeout(() => { setShowAddModal(false); setAddResult(null); setAddName(''); setAddPhone(''); setAddEmail(''); router.refresh() }, 1200)
-      }
     })
   }
 
@@ -307,9 +322,8 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
     startTagTransition(async () => {
       const result = await bulkAddTag(Array.from(selected), tagInput.trim())
       setTagResult(result)
-      if (result.success) {
+      if (result.success)
         setTimeout(() => { setShowTagModal(false); setTagResult(null); setTagInput(''); router.refresh() }, 1200)
-      }
     })
   }
 
@@ -324,13 +338,12 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
 
   const hasActiveFilters = statusFilter !== 'all' || funnelFilter !== 'all' || selectedTags.size > 0 || buyersOnly || !!search
   const allSelected = filtered.length > 0 && selected.size === filtered.length
-
-  // Preview for first lead in selection
   const previewLead = leads.find(l => selected.has(l.id))
   const messagePreview = messageText ? interpolate(messageText, previewLead?.name ?? 'Lead') : ''
 
   return (
     <div className="max-w-6xl mx-auto pb-32">
+
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
@@ -340,14 +353,14 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => exportCSV(filtered)}
+          <button type="button" onClick={() => exportCSV(filtered)}
             className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
             </svg>
             Exportar CSV
           </button>
-          <button
+          <button type="button"
             onClick={() => { setAddName(''); setAddPhone(''); setAddEmail(''); setAddResult(null); setShowAddModal(true) }}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
@@ -358,8 +371,9 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       </div>
 
-      {/* Search + filters */}
+      {/* Filters */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4 space-y-3">
+        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
@@ -370,14 +384,16 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
             className="w-full h-11 pl-10 pr-10 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:bg-white transition"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <button type="button" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
+        {/* Filter row */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Status dropdown */}
+
+          {/* [Todos os status ▾] */}
           <div className="relative">
             <select
               value={statusFilter}
@@ -391,7 +407,7 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
             <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${statusFilter !== 'all' ? 'text-white' : 'text-gray-400'}`} />
           </div>
 
-          {/* Funnel dropdown */}
+          {/* [Todos os funis ▾] */}
           {funnels.length > 0 && (
             <div className="relative">
               <select
@@ -408,11 +424,12 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
             </div>
           )}
 
-          {/* Multi-tag dropdown */}
+          {/* [Todas as tags ▾] — multi-select with checkboxes */}
           <TagDropdown allTags={allTags} selectedTags={selectedTags} onChange={setSelectedTags} />
 
-          {/* Buyers toggle */}
+          {/* [🔥 Compradores] */}
           <button
+            type="button"
             onClick={() => setBuyersOnly(b => !b)}
             className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full border transition ${
               buyersOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
@@ -423,6 +440,7 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
 
           {hasActiveFilters && (
             <button
+              type="button"
               onClick={() => { setSearch(''); setStatusFilter('all'); setFunnelFilter('all'); setSelectedTags(new Set()); setBuyersOnly(false) }}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 rounded-full border border-gray-200 hover:border-gray-300 transition"
             >
@@ -432,7 +450,7 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       </div>
 
-      {/* Table / Empty state */}
+      {/* Empty state */}
       {filtered.length === 0 ? (
         <div className="text-center py-24 bg-white border border-gray-200 rounded-2xl">
           <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -442,7 +460,9 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
             {leads.length === 0 ? 'Nenhum lead ainda' : 'Nenhum lead encontrado'}
           </p>
           <p className="text-gray-400 text-sm">
-            {leads.length === 0 ? 'Os leads aparecerão aqui quando alguém entrar no funil.' : 'Tente ajustar os filtros de busca.'}
+            {leads.length === 0
+              ? 'Os leads aparecerão aqui quando alguém entrar no funil.'
+              : 'Tente ajustar os filtros de busca.'}
           </p>
         </div>
       ) : (
@@ -574,33 +594,32 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </>
       )}
 
-      {/* Bulk action bar */}
+      {/* ── Bulk action bar ── */}
       {selected.size > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-gray-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between shadow-2xl gap-3">
           <span className="text-sm font-medium shrink-0">{selected.size} selecionado{selected.size !== 1 ? 's' : ''}</span>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {waInstances.length > 0 && (
-              <button onClick={openMessageModal}
+              <button type="button" onClick={openMessageModal}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 rounded-lg transition">
-                💬 Enviar WA
+                💬 Enviar mensagem WA
               </button>
             )}
-            <button
+            <button type="button"
               onClick={() => { setEnrollFunnelId(funnels[0]?.id ?? ''); setEnrollResult(null); setShowEnrollModal(true) }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 rounded-lg transition">
               🔀 Adicionar ao funil
             </button>
-            <button
+            <button type="button"
               onClick={() => { setTagInput(''); setTagResult(null); setShowTagModal(true) }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 rounded-lg transition">
               🏷 Adicionar tag
             </button>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
+            <button type="button" onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-500 rounded-lg transition">
               🗑 Deletar
             </button>
-            <button onClick={() => setSelected(new Set())}
+            <button type="button" onClick={() => setSelected(new Set())}
               className="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition">
               Cancelar
             </button>
@@ -608,13 +627,13 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       )}
 
-      {/* Add lead modal */}
+      {/* ── Add lead modal ── */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-gray-900">Adicionar Lead Manual</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+              <button type="button" onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             {addResult?.success ? (
               <div className="text-center py-6">
@@ -624,20 +643,27 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
             ) : (
               <>
                 <div className="space-y-4">
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Nome</label>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Nome</label>
                     <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="Nome completo"
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Telefone</label>
+                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Telefone</label>
                     <input type="tel" value={addPhone} onChange={e => setAddPhone(e.target.value)} placeholder="5511999999999"
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">E-mail</label>
+                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">E-mail</label>
                     <input type="email" value={addEmail} onChange={e => setAddEmail(e.target.value)} placeholder="email@exemplo.com"
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300" /></div>
+                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
                   {addResult?.error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{addResult.error}</p>}
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition">Cancelar</button>
-                  <button onClick={handleAddLead} disabled={addPending || (!addName.trim() && !addPhone.trim())}
+                  <button type="button" onClick={() => setShowAddModal(false)}
+                    className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition">Cancelar</button>
+                  <button type="button" onClick={handleAddLead} disabled={addPending || (!addName.trim() && !addPhone.trim())}
                     className="flex-1 px-4 py-2.5 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition">
                     {addPending ? 'Salvando…' : 'Adicionar'}
                   </button>
@@ -648,13 +674,13 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       )}
 
-      {/* WA modal */}
+      {/* ── WA modal ── */}
       {showMessageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-gray-900">Enviar WhatsApp em massa</h2>
-              <button onClick={() => setShowMessageModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+              <button type="button" onClick={() => setShowMessageModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             {messageResult?.success ? (
               <div className="text-center py-6">
@@ -679,10 +705,27 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
                   )}
                   <div>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mensagem</label>
-                    <textarea value={messageText} onChange={e => setMessageText(e.target.value)} rows={4}
+                    <textarea
+                      ref={messageTextareaRef}
+                      value={messageText}
+                      onChange={e => setMessageText(e.target.value)}
+                      rows={4}
                       placeholder="Olá {primeiro_nome}! Temos uma oferta especial…"
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none" />
-                    <p className="text-xs text-gray-400 mt-1">Variáveis: <code className="bg-gray-100 px-1 rounded">{'{nome}'}</code> <code className="bg-gray-100 px-1 rounded">{'{primeiro_nome}'}</code></p>
+                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                    />
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <span className="text-xs text-gray-400">Inserir variável:</span>
+                      {(['{nome}', '{primeiro_nome}'] as const).map(v => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => insertVariable(v)}
+                          className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-indigo-100 hover:text-indigo-700 transition font-mono"
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {messagePreview && (
                     <div>
@@ -692,19 +735,17 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
                       </div>
                     </div>
                   )}
-                  <div className="flex items-center justify-between text-xs">
-                    <p className="text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                      Enviar para <strong>{selected.size} lead{selected.size !== 1 ? 's' : ''}</strong> · intervalo 2s entre envios
-                    </p>
-                  </div>
+                  <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                    Enviar para <strong>{selected.size} lead{selected.size !== 1 ? 's' : ''}</strong> · intervalo 2s entre envios
+                  </p>
                   {messageResult?.error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">Erro: {messageResult.error}</div>}
                 </div>
                 <div className="flex gap-3 mt-5">
-                  <button onClick={() => setShowMessageModal(false)} disabled={messagePending}
+                  <button type="button" onClick={() => setShowMessageModal(false)} disabled={messagePending}
                     className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition disabled:opacity-50">Cancelar</button>
-                  <button onClick={handleSendMessage} disabled={messagePending || !messageText.trim() || !messageInstanceId}
+                  <button type="button" onClick={handleSendMessage} disabled={messagePending || !messageText.trim() || !messageInstanceId}
                     className="flex-1 px-4 py-2.5 text-sm font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition disabled:opacity-50">
-                    {messagePending ? 'Enviando…' : `Enviar agora`}
+                    {messagePending ? 'Enviando…' : 'Enviar agora'}
                   </button>
                 </div>
               </>
@@ -713,13 +754,13 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       )}
 
-      {/* Enroll modal */}
+      {/* ── Enroll modal ── */}
       {showEnrollModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-gray-900">Adicionar ao Funil</h2>
-              <button onClick={() => setShowEnrollModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+              <button type="button" onClick={() => setShowEnrollModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             {enrollResult?.success ? (
               <div className="text-center py-6">
@@ -741,16 +782,16 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 bg-gray-50 rounded-xl px-4 py-3">
-                    Adicionar <strong>{selected.size} lead{selected.size !== 1 ? 's' : ''}</strong> ao funil{enrollFunnelId ? ` "${funnels.find(f => f.id === enrollFunnelId)?.name ?? ''}"` : ''}?
+                    Adicionar <strong>{selected.size} lead{selected.size !== 1 ? 's' : ''}</strong> ao funil{enrollFunnelId ? ` “${funnels.find(f => f.id === enrollFunnelId)?.name ?? ''}”` : ''}?
                   </p>
                   {enrollResult?.error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">Erro: {enrollResult.error}</div>}
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowEnrollModal(false)} disabled={isPending}
+                  <button type="button" onClick={() => setShowEnrollModal(false)} disabled={enrollPending}
                     className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition disabled:opacity-50">Cancelar</button>
-                  <button onClick={handleEnroll} disabled={isPending || !enrollFunnelId}
+                  <button type="button" onClick={handleEnroll} disabled={enrollPending || !enrollFunnelId}
                     className="flex-1 px-4 py-2.5 text-sm font-semibold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition disabled:opacity-50">
-                    {isPending ? 'Adicionando…' : 'Confirmar'}
+                    {enrollPending ? 'Adicionando…' : 'Confirmar'}
                   </button>
                 </div>
               </>
@@ -759,13 +800,13 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       )}
 
-      {/* Add tag modal */}
+      {/* ── Add tag modal ── */}
       {showTagModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-bold text-gray-900">Adicionar tag</h2>
-              <button onClick={() => setShowTagModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+              <h2 className="text-base font-bold text-gray-900">Adicionar tag em massa</h2>
+              <button type="button" onClick={() => setShowTagModal(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             {tagResult?.success ? (
               <div className="text-center py-6">
@@ -787,7 +828,7 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
                       <p className="text-xs text-gray-500 mb-2">Tags existentes:</p>
                       <div className="flex flex-wrap gap-1.5">
                         {allTags.map(t => (
-                          <button key={t} onClick={() => setTagInput(t)}
+                          <button key={t} type="button" onClick={() => setTagInput(t)}
                             className={`text-xs px-2 py-0.5 rounded-full border transition ${
                               tagInput === t ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-100 hover:border-violet-300'
                             }`}>{t}</button>
@@ -798,8 +839,9 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
                   {tagResult?.error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{tagResult.error}</p>}
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowTagModal(false)} className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition">Cancelar</button>
-                  <button onClick={handleAddTag} disabled={tagPending || !tagInput.trim()}
+                  <button type="button" onClick={() => setShowTagModal(false)}
+                    className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition">Cancelar</button>
+                  <button type="button" onClick={handleAddTag} disabled={tagPending || !tagInput.trim()}
                     className="flex-1 px-4 py-2.5 text-sm font-semibold bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 transition">
                     {tagPending ? 'Salvando…' : 'Adicionar'}
                   </button>
@@ -810,7 +852,7 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
         </div>
       )}
 
-      {/* Delete confirm modal */}
+      {/* ── Delete confirm ── */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -819,11 +861,12 @@ export default function LeadsClient({ leads, funnels, tenantId, waInstances = []
                 <span className="text-red-600 text-xl">🗑</span>
               </div>
               <h2 className="text-base font-bold text-gray-900">Deletar {selected.size} lead{selected.size !== 1 ? 's' : ''}?</h2>
-              <p className="text-sm text-gray-500">Esta ação não pode ser desfeita. Todos os dados e eventos desses leads serão excluídos.</p>
+              <p className="text-sm text-gray-500">Esta ação não pode ser desfeita. Todos os dados e eventos serão excluídos permanentemente.</p>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition">Cancelar</button>
-              <button onClick={handleBulkDelete} disabled={deletePending}
+              <button type="button" onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition">Cancelar</button>
+              <button type="button" onClick={handleBulkDelete} disabled={deletePending}
                 className="flex-1 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-50 transition">
                 {deletePending ? 'Deletando…' : 'Confirmar exclusão'}
               </button>
