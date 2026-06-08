@@ -29,19 +29,15 @@ export default async function MyTemplatesPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Meus Templates</h1>
-          <p className="text-gray-500 text-sm mt-1">Templates que você salvou a partir dos seus funis</p>
+          <p className="text-sm text-gray-500 mt-0.5">Templates que você salvou a partir dos seus funis</p>
         </div>
-        <Link
-          href="/templates"
-          className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition"
-        >
+        <Link href="/templates" className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
           Ver Marketplace
         </Link>
       </div>
-
       <MyTemplatesTable initialTemplates={list} />
     </div>
   )
