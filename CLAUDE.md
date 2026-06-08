@@ -465,7 +465,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-06-06 — Etapa 13 + Fase 2 (expansão do construtor de páginas) concluídas
+**Última atualização:** 2026-06-08 — Etapa 11 (Templates + Marketplace) concluída + redesign seção WhatsApp
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -562,13 +562,27 @@ APP_SECRET=
   - **2 novos tipos de página + templates**: `thankyou` (ThankYouHero + countdown + redirect automático), `sales` (carta de vendas completa com 9 seções)
   - **cleanCraftJson()**: filtra nós desconhecidos do craft_json antes de renderizar para evitar erros
   - Todos os arquivos commitados e pusheados para branch `main` no GitHub
+- Redesign seção WhatsApp em `/integrations` (sessão 2026-06-08):
+  - `instance-card.tsx` — reescrito: avatar #25D366, 3 estados visuais (connected/disconnected/connecting), menu ⋮ com Ver QR Code / Copiar número / Excluir, animações fadeInUp
+  - `create-instance-button.tsx` — reescrito: modal 2 passos (form → QR), polling de status a cada 3s, auto-close após conectar; fix crítico: usa `result.instanceId` (não `result.id`)
+  - `integrations/page.tsx` — botão "Nova Instância" movido para o header da seção WA, empty state sem borda tracejada
+- Etapa 11: Marketplace de Templates completo (sessão 2026-06-08):
+  - `templates-client.tsx` — busca client-side, filtro de categoria (pills), filtro gratuito/pago, ordenação; cards com thumbnail gradiente, badges (Novo/Popular/Oficial), mini-preview de blocos, hover effects, animações stagger
+  - `PreviewModal` — 2 colunas: info+métricas | fluxo visual de blocos
+  - `UseModal` — campo nome + animação 3 passos de loading
+  - `create-template-drawer.tsx` — drawer 4 passos: origin → select-funnel → info → done; progress bar; slideInRight animation; integrado com `saveAsTemplate` server action
+  - `templates-header.tsx` — header com "Meus Templates" + botão "+ Criar Template" que abre drawer
+  - `templates/page.tsx` — wrapper server-side fino, busca templates públicos + funis do usuário em paralelo
+  - `my-templates-table.tsx` — empty state melhorado com CTA; categorias pos_venda e reengajamento adicionadas
+  - Migration `20260608010000_template_reviews.sql` — tabela template_reviews com RLS + índice único por tenant/template (aplicada manualmente no Supabase SQL Editor)
 
 **Próximos passos:**
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
-- Etapa 11: Templates + marketplace
 - Etapa 12B: Planos + billing (Asaas) — falta implementar
-- Fase 2 restante: popup exit-intent, métricas avançadas de página, vinculação funil→página no builder
+- Templates: UI de avaliações (template_reviews já existe no banco)
+- Templates sugeridos em /funnels (quando sem funis + aba "Usar template" no dialog)
+- Fase 2 restante: formulário interativo (Typeform), agente de IA por funil
 
 
 ---
