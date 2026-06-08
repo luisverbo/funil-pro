@@ -230,7 +230,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   {typedSource.utm_source && (
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">Fonte</span>
-                      <span className="text-xs font-semibold text-gray-800 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{typedSource.utm_source}</span>
+                      <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{typedSource.utm_source}</span>
                     </div>
                   )}
                   {typedSource.utm_campaign && (
@@ -325,7 +325,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                     const colorClass = EVENT_COLORS[event.event_type] ?? 'bg-gray-100 text-gray-500'
                     const label = EVENT_LABELS[event.event_type] ?? event.event_type
                     const delayInfo = event.event_type === 'delay_scheduled'
-                      ? (event.event_data as Record<string, unknown> | null)?.scheduled_for
+                      ? ((event.event_data as Record<string, unknown> | null)?.scheduled_for as string | undefined) ?? null
                       : null
                     return (
                       <div key={event.id} className="flex items-start gap-4 relative">
@@ -336,7 +336,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                           <p className="font-medium text-gray-900 text-sm">{label.split(' ').slice(1).join(' ') || label}</p>
                           {delayInfo && (
                             <p className="text-xs text-gray-500 mt-0.5">
-                              Agendado para: {new Date(String(delayInfo)).toLocaleString('pt-BR', {
+                              Agendado para: {new Date(delayInfo).toLocaleString('pt-BR', {
                                 timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
                               })}
                             </p>
