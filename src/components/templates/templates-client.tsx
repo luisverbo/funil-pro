@@ -48,7 +48,6 @@ const USE_STEPS = ['Copiando template…', 'Configurando blocos…', 'Pronto!']
 interface Block { block_type: string }
 interface Props {
   initialTemplates: FunnelTemplate[]
-  onCreateTemplate: () => void
 }
 
 function ThumbnailPreview({ template, blocks }: { template: FunnelTemplate; blocks: Block[] }) {
@@ -258,7 +257,7 @@ function UseModal({ template, onClose }: { template: FunnelTemplate; onClose: ()
   )
 }
 
-export default function TemplatesClient({ initialTemplates, onCreateTemplate }: Props) {
+export default function TemplatesClient({ initialTemplates }: Props) {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [onlyFree, setOnlyFree] = useState(false)

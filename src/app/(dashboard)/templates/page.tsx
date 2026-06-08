@@ -39,7 +39,7 @@ export default async function TemplatesPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <TemplatesHeader userFunnels={funnels} />
-      <TemplatesClient initialTemplates={list} onCreateTemplate={() => {}} />
+      <TemplatesClient initialTemplates={list} />
     </div>
   )
 }
