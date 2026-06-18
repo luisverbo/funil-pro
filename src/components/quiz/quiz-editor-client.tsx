@@ -20,8 +20,6 @@ import {
 } from '@xyflow/react'
 import { saveQuizQuestions, publishQuizPage, type QuizQuestion, type QuizOption } from '@/app/actions/quiz'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type QuestionType = QuizQuestion['question_type']
 
 interface NodeData extends Record<string, unknown> {
@@ -33,8 +31,6 @@ interface NodeData extends Record<string, unknown> {
   next_question_id?: string | null
   config: QuizQuestion['config']
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const QUESTION_TYPE_META: Record<QuestionType, { label: string; icon: string; color: string; hasOptions: boolean }> = {
   single_choice:  { label: 'Escolha única',   icon: '🔘', color: 'indigo',  hasOptions: true  },
@@ -58,8 +54,6 @@ const COLOR_MAP: Record<string, { border: string; badge: string; header: string 
   green:   { border: '#22c55e', badge: 'bg-green-100 text-green-700',    header: 'bg-green-50'   },
 }
 
-// ─── Question Node ─────────────────────────────────────────────────────────
-
 function QuestionNode({ id, data, selected }: NodeProps) {
   const nd = data as NodeData
   const meta = QUESTION_TYPE_META[nd.question_type] ?? QUESTION_TYPE_META.single_choice
@@ -71,6 +65,7 @@ function QuestionNode({ id, data, selected }: NodeProps) {
   const optionRefs = useRef<(HTMLDivElement | null)[]>([])
   const [handleTops, setHandleTops] = useState<number[]>([])
 
+  // Run after mount and when option count changes to position handles
   useLayoutEffect(() => {
     if (!containerRef.current || !isChoice) return
     const containerTop = containerRef.current.getBoundingClientRect().top
@@ -79,14 +74,19 @@ function QuestionNode({ id, data, selected }: NodeProps) {
       const r = el.getBoundingClientRect()
       return r.top - containerTop + r.height / 2
     })
-    setHandleTops(tops)
-  })
+    // Only update state if values actually changed to avoid infinite loop
+    setHandleTops(prev => {
+      if (prev.length === tops.length && prev.every((v, i) => Math.abs(v - tops[i]) < 0.5)) return prev
+      return tops
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChoice, nd.options.length])
 
   return (
     <div
       ref={containerRef}
       style={{ borderColor: selected ? colors.border : '#e5e7eb', width: 260 }}
-      className={`bg-white rounded-xl border-2 shadow-md overflow-hidden select-none`}
+      className="bg-white rounded-xl border-2 shadow-md overflow-hidden select-none"
     >
       {!isResult && (
         <Handle type="target" position={Position.Left} id="in"
@@ -158,8 +158,6 @@ function QuestionNode({ id, data, selected }: NodeProps) {
 
 const nodeTypes = { questionNode: QuestionNode }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function questionsToFlow(questions: QuizQuestion[]): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = questions.map(q => ({
     id: q.id,
@@ -214,12 +212,7 @@ function questionsToFlow(questions: QuizQuestion[]): { nodes: Node[]; edges: Edg
   return { nodes, edges }
 }
 
-function flowToQuestions(
-  nodes: Node[],
-  edges: Edge[],
-  pageId: string,
-  tenantId: string
-): Omit<QuizQuestion, 'tenant_id' | 'page_id'>[] {
+function flowToQuestions(nodes: Node[], edges: Edge[]): Omit<QuizQuestion, 'tenant_id' | 'page_id'>[] {
   return nodes.map((node, idx) => {
     const nd = node.data as NodeData
     const isChoice = QUESTION_TYPE_META[nd.question_type]?.hasOptions
@@ -282,14 +275,8 @@ const DEFAULT_QUESTIONS: Omit<QuizQuestion, 'tenant_id' | 'page_id'>[] = [
   },
 ]
 
-// ─── Right Panel ──────────────────────────────────────────────────────────────
-
 function RightPanel({
-  nodeId,
-  nodes,
-  setNodes,
-  funnels,
-  onClose,
+  nodeId, nodes, setNodes, funnels, onClose,
 }: {
   nodeId: string
   nodes: Node[]
@@ -336,53 +323,36 @@ function RightPanel({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">Tipo</label>
-          <select
-            value={nd.question_type}
-            onChange={e => update({ question_type: e.target.value as QuestionType })}
-            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          >
+          <select value={nd.question_type} onChange={e => update({ question_type: e.target.value as QuestionType })}
+            className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300">
             {Object.entries(QUESTION_TYPE_META).map(([type, m]) => (
               <option key={type} value={type}>{m.icon} {m.label}</option>
             ))}
           </select>
         </div>
-
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">Texto da pergunta</label>
-          <textarea
-            value={nd.question_text}
-            onChange={e => update({ question_text: e.target.value })}
-            rows={3}
+          <textarea value={nd.question_text} onChange={e => update({ question_text: e.target.value })} rows={3}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            placeholder="Digite a pergunta..."
-          />
+            placeholder="Digite a pergunta..." />
         </div>
-
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">Subtítulo (opcional)</label>
-          <input
-            value={nd.subtitle ?? ''}
-            onChange={e => update({ subtitle: e.target.value || null })}
+          <input value={nd.subtitle ?? ''} onChange={e => update({ subtitle: e.target.value || null })}
             className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            placeholder="Ex: Escolha uma opção"
-          />
+            placeholder="Ex: Escolha uma opção" />
         </div>
-
         {!isResult && (
           <label className="flex items-center gap-2 cursor-pointer">
-            <div
-              onClick={() => update({ required: !nd.required })}
-              className={`w-9 h-5 rounded-full transition-colors ${nd.required ? 'bg-indigo-500' : 'bg-gray-200'}`}
-            >
+            <div onClick={() => update({ required: !nd.required })}
+              className={`w-9 h-5 rounded-full transition-colors ${nd.required ? 'bg-indigo-500' : 'bg-gray-200'}`}>
               <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-transform ${nd.required ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
             </div>
             <span className="text-xs text-gray-600">Resposta obrigatória</span>
           </label>
         )}
-
         {isChoice && (
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -393,21 +363,14 @@ function RightPanel({
               {nd.options.map((opt, i) => (
                 <div key={opt.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5">
                   <div className="flex items-center gap-1.5">
-                    <input
-                      value={opt.emoji ?? ''}
-                      onChange={e => updateOption(opt.id, { emoji: e.target.value })}
-                      className="w-10 text-center text-sm border border-gray-200 rounded-lg py-1 focus:outline-none"
-                      placeholder="😀"
-                    />
-                    <input
-                      value={opt.label}
-                      onChange={e => updateOption(opt.id, { label: e.target.value })}
+                    <input value={opt.emoji ?? ''} onChange={e => updateOption(opt.id, { emoji: e.target.value })}
+                      className="w-10 text-center text-sm border border-gray-200 rounded-lg py-1 focus:outline-none" placeholder="😀" />
+                    <input value={opt.label} onChange={e => updateOption(opt.id, { label: e.target.value })}
                       className="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-                      placeholder="Texto da opção"
-                    />
+                      placeholder="Texto da opção" />
                     <div className="flex gap-0.5">
-                      <button onClick={() => moveOption(i, -1)} className="p-0.5 text-gray-400 hover:text-gray-600" title="Subir">↑</button>
-                      <button onClick={() => moveOption(i, 1)}  className="p-0.5 text-gray-400 hover:text-gray-600" title="Descer">↓</button>
+                      <button onClick={() => moveOption(i, -1)} className="p-0.5 text-gray-400 hover:text-gray-600">↑</button>
+                      <button onClick={() => moveOption(i, 1)}  className="p-0.5 text-gray-400 hover:text-gray-600">↓</button>
                       <button onClick={() => removeOption(opt.id)} className="p-0.5 text-red-400 hover:text-red-600">×</button>
                     </div>
                   </div>
@@ -417,7 +380,6 @@ function RightPanel({
             </div>
           </div>
         )}
-
         {nd.question_type === 'scale' && (
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -432,36 +394,31 @@ function RightPanel({
             </div>
           </div>
         )}
-
         {isResult && (
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Identificador do perfil</label>
               <input value={nd.config?.result_profile ?? ''} onChange={e => updateConfig({ result_profile: e.target.value })}
                 className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                placeholder="Ex: qualificado, produto-a..."
-              />
+                placeholder="Ex: qualificado, produto-a..." />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Texto do resultado</label>
-              <textarea value={nd.config?.result_text ?? ''} onChange={e => updateConfig({ result_text: e.target.value })}
-                rows={3} className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                placeholder="Baseado nas suas respostas..."
-              />
+              <textarea value={nd.config?.result_text ?? ''} onChange={e => updateConfig({ result_text: e.target.value })} rows={3}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                placeholder="Baseado nas suas respostas..." />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Texto do botão CTA</label>
               <input value={nd.config?.cta_text ?? ''} onChange={e => updateConfig({ cta_text: e.target.value })}
                 className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                placeholder="Quero acessar agora!"
-              />
+                placeholder="Quero acessar agora!" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">URL do CTA</label>
               <input value={nd.config?.cta_url ?? ''} onChange={e => updateConfig({ cta_url: e.target.value })}
                 className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                placeholder="https://..."
-              />
+                placeholder="https://..." />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Ativar funil (opcional)</label>
@@ -473,15 +430,13 @@ function RightPanel({
             </div>
           </div>
         )}
-
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-2">Cor de fundo</label>
           <div className="flex gap-2">
             {['#ffffff','#f8f7ff','#f0fdf4','#fffbeb','#fdf2f8'].map(c => (
               <button key={c} onClick={() => updateConfig({ bg_color: c })}
                 style={{ background: c, borderColor: nd.config?.bg_color === c ? '#6366f1' : '#e5e7eb' }}
-                className="w-7 h-7 rounded-full border-2 transition"
-              />
+                className="w-7 h-7 rounded-full border-2 transition" />
             ))}
           </div>
         </div>
@@ -489,8 +444,6 @@ function RightPanel({
     </div>
   )
 }
-
-// ─── Main component ───────────────────────────────────────────────────────────
 
 interface Props {
   page: { id: string; title: string; slug: string | null; published: boolean }
@@ -512,12 +465,7 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
   const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
 
   const onConnect = useCallback((params: Connection) => {
-    setEdges(eds => addEdge({
-      ...params,
-      type: 'smoothstep',
-      animated: true,
-      style: { stroke: '#6366f1', strokeWidth: 1.5 },
-    }, eds))
+    setEdges(eds => addEdge({ ...params, type: 'smoothstep', animated: true, style: { stroke: '#6366f1', strokeWidth: 1.5 } }, eds))
   }, [setEdges])
 
   function addNode(type: QuestionType) {
@@ -552,7 +500,7 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
 
   async function handleSave() {
     setSaveStatus('saving')
-    const questions = flowToQuestions(nodes, edges, page.id, tenantId)
+    const questions = flowToQuestions(nodes, edges)
     const result = await saveQuizQuestions(page.id, questions)
     setSaveStatus(result.success ? 'saved' : 'error')
     setTimeout(() => setSaveStatus('idle'), 2500)
@@ -560,7 +508,7 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
 
   async function handlePublish() {
     setSaveStatus('saving')
-    const questions = flowToQuestions(nodes, edges, page.id, tenantId)
+    const questions = flowToQuestions(nodes, edges)
     const saveResult = await saveQuizQuestions(page.id, questions)
     if (!saveResult.success) { setSaveStatus('error'); return }
     const pubResult = await publishQuizPage(page.id)
@@ -571,7 +519,7 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
   const saveLabel = saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? '✓ Salvo!' : saveStatus === 'error' ? 'Erro' : 'Salvar'
 
   return (
-    <div style={{ height: 'calc(100vh - 64px)' }} className="flex flex-col bg-gray-50">
+    <div style={{ height: '100vh' }} className="flex flex-col bg-gray-50">
       <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-4 shrink-0">
         <button onClick={() => router.push('/pages')} className="text-gray-500 hover:text-gray-700">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
