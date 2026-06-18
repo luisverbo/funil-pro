@@ -235,7 +235,7 @@ lead_events
   event_type text               -- clicked_ad | entered_funnel | message_sent | message_opened |
                                 --   message_clicked | replied | purchased | agent_activated |
                                 --   agent_deactivated | page_viewed | page_button_clicked |
-                                --   unsubscribed | funnel_completed
+                                --   unsubscribed | funnel_completed | quiz_completed
   event_data jsonb              -- dados extras do evento
   platform text                 -- hotmart | kiwify | eduzz | yampi | internal
   revenue_cents int             -- receita gerada neste evento (se compra)
@@ -261,45 +261,53 @@ ad_metrics
   date date                     -- dia da métrica
   synced_at timestamptz
 
--- PÁGINAS (Fase 2 — estrutura preparada)
+-- PÁGINAS (Fase 2)
 pages
   id uuid PK
   tenant_id uuid FK tenants
   funnel_id uuid FK funnels
   title text
   slug text
-  content jsonb                 -- blocos da página
-  video_url text
-  button_text text
-  button_show_at_seconds int    -- botão aparece após X segundos
-  button_url text
-  pixel_meta_id text
+  page_type text                -- capture | vsl | delivery | thankyou | sales | interactive
+  craft_json jsonb              -- conteúdo do builder Craft.js
+  meta_title text
+  meta_description text
+  og_image_url text
+  views_count int DEFAULT 0
+  clicks_count int DEFAULT 0
+  conversions_count int DEFAULT 0
   published boolean DEFAULT false
   created_at timestamptz
 
--- EVENTOS DE PÁGINA (Fase 2 — estrutura preparada)
-page_events
+-- PERGUNTAS DO QUIZ INTERATIVO
+interactive_questions
   id uuid PK
-  tenant_id uuid FK tenants
   page_id uuid FK pages
-  lead_id uuid FK leads
-  event_type text               -- viewed | video_started | video_progress | button_clicked | converted
-  video_seconds_watched int
+  tenant_id uuid FK tenants
+  order_index int
+  question_type text            -- single_choice | multi_choice | text_short | text_long |
+                                --   scale | email | phone | final_capture | result
+  question_text text
+  subtitle text
+  options jsonb                 -- [{id, label, emoji, next_question_id}]
+  required boolean DEFAULT true
+  next_question_id uuid         -- para tipos lineares (não-choice)
+  config jsonb                  -- {is_result, result_profile, result_text, cta_text, cta_url,
+                                --  funnel_id, bg_color, scale_min, scale_max}
+  pos_x float
+  pos_y float
   created_at timestamptz
 
--- AGENTES DE IA por funil (Fase 2 — estrutura preparada)
-funnel_agents
+-- RESPOSTAS DO QUIZ
+interactive_responses
   id uuid PK
-  funnel_id uuid FK funnels
+  page_id uuid FK pages
+  lead_id uuid FK leads
   tenant_id uuid FK tenants
-  enabled boolean DEFAULT false
-  model text DEFAULT 'claude-haiku'
-  system_prompt text
-  product_name text
-  product_description text
-  payment_link text
-  max_activations_per_month int DEFAULT 200
-  activations_used int DEFAULT 0
+  answers jsonb                 -- {question_id: answer_value}
+  result_profile text
+  completed boolean DEFAULT false
+  completed_at timestamptz
   created_at timestamptz
 ```
 
@@ -339,6 +347,12 @@ funnel_agents
    → puxa ad_spend por ad_id
    → atualiza tabela ad_metrics
    → recalcula CPL e ROAS
+
+6. Lead completa quiz interativo
+   → respostas salvas em interactive_responses
+   → lead criado/atualizado com dados capturados
+   → evento 'quiz_completed' gravado em lead_events
+   → funil ativado baseado no result_profile configurado
 ```
 
 ---
@@ -382,7 +396,7 @@ Etapa 11: Templates + marketplace
 Etapa 12: Planos + billing (Asaas)
 --- FASE 2 ---
 Etapa 13: Editor de páginas (VSL + botão temporizado)
-Etapa 14: Formulário interativo (Typeform)
+Etapa 14: Formulário interativo (Quiz estilo Typeform) ✅
 Etapa 15: Agente de IA por funil
 ```
 
@@ -406,16 +420,20 @@ funil-pro/
 │   │   │   ├── leads/           ← CRM de leads
 │   │   │   ├── metrics/         ← painel de métricas
 │   │   │   ├── integrations/    ← configurar WA, email, plataformas
+│   │   │   ├── pages/           ← lista de páginas + quiz editor
+│   │   │   │   └── [id]/quiz-editor/ ← editor React Flow do quiz
 │   │   │   └── settings/        ← plano, add-ons, domínio
 │   │   └── api/
 │   │       ├── webhooks/        ← endpoints de webhook
 │   │       ├── funnels/         ← CRUD de funis
 │   │       ├── leads/           ← CRUD de leads
-│   │       └── metrics/         ← endpoints de métricas
+│   │       ├── metrics/         ← endpoints de métricas
+│   │       └── quiz/[pageId]/submit/ ← submissão pública do quiz
 │   │
 │   ├── components/
 │   │   ├── builder/             ← React Flow + nodes customizados
 │   │   ├── metrics/             ← gráficos e dashboards
+│   │   ├── quiz/                ← quiz-editor-client.tsx
 │   │   └── ui/                  ← Shadcn/ui components
 │   │
 │   ├── lib/
@@ -465,111 +483,45 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-06-06 — Etapa 13 + Fase 2 (expansão do construtor de páginas) concluídas
+**Última atualização:** 2026-06-18 — Etapa 14 (Quiz Builder interativo) concluída
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
-- Etapa 3: Builder visual React Flow completo:
-  - `/funnels` — lista de funis com status badge e empty state
-  - `CreateFunnelDialog` — modal nativo Tailwind para criar funil
-  - `/funnels/[id]/builder` — canvas React Flow com palette lateral
-  - 6 node types: message (💬), condition (🔀), delay (⏱️), tag (🏷️), sale (💰), cart_abandoned (🛒)
-  - Custom edge com label de condição clicável
-  - Server actions: createFunnel, saveFunnel (delete edges→blocks→reinsert), publishFunnel
-  - SSR seguro: dynamic import com ssr:false para React Flow
-  - Build passando sem erros TypeScript
-- Etapa 4: Motor de execução BullMQ completo:
-  - `src/lib/queue/handlers/` — 5 handlers: message, condition, delay, tag, sale
-  - `src/lib/queue/worker.ts` — Worker BullMQ com concurrency 10, enfileira próximo bloco automaticamente
-  - `src/server.ts` — processo standalone para rodar o worker em produção
-  - `src/app/api/funnels/[id]/activate/route.ts` — endpoint POST para entrada de lead no funil
-  - Handler condition: avalia eventos do lead (opened/clicked/replied/purchased) e roteia yes/no
-  - Handler delay: calcula delayMs (minutos/horas/dias) e passa para BullMQ
-  - Handler tag: add/remove tags com fallback direto se RPC falhar
-  - docker-compose.yml: serviço worker já configurado com `npx tsx src/server.ts`
-- Etapa 5: Integração WhatsApp Evolution API completa:
-  - `src/lib/evolution/index.ts` — funções: sendTextMessage, sendMediaMessage, createInstance, getInstanceQRCode, getInstanceStatus, deleteInstance, setInstanceWebhook
-  - `src/app/actions/whatsapp.ts` — server actions: createWhatsappInstance, deleteWhatsappInstance
-  - `src/app/api/whatsapp/[instanceId]/qrcode/route.ts` — endpoint GET para QR code
-  - `src/app/api/whatsapp/[instanceId]/status/route.ts` — endpoint GET para status (sincroniza DB)
-  - `src/app/api/webhooks/evolution/[instanceId]/route.ts` — webhook: processa CONNECTION_UPDATE, MESSAGES_UPSERT, grava evento 'replied', re-enfileira condition block
-  - `src/components/whatsapp/instance-card.tsx` — card com QR code, polling de status, badge animado
-  - `src/components/whatsapp/create-instance-button.tsx` — botão client-side com useTransition
-  - `src/app/(dashboard)/integrations/page.tsx` — página completa com lista de instâncias
-- Etapa 7: Rastreamento UTM completo:
-  - `/api/funnels/[id]/activate` atualizado — aceita todos os campos UTM + referrer_url + landing_url, insere lead_sources completo, grava evento entered_funnel com block_id do primeiro bloco
-  - `/funnels/[id]/links` — página de links com URL base, link Meta Ads com macros e página de captura pública
-  - `/f/[id]` — landing page pública com formulário de captura (nome, email, telefone), propagação de UTMs, Meta Pixel opcional
-  - `/f/[id]/obrigado` — página de agradecimento pós-captura
-  - `/leads` — CRM com tabela real de leads, link para detalhe
-  - `/leads/[id]` — timeline vertical de eventos, card de origem UTM, dados do lead
-  - `src/components/funnels/copy-url-button.tsx` — botão copiar com feedback "Copiado!"
-  - `src/components/public/capture-form.tsx` — formulário client-side com loading state e disparo de fbq('track', 'Lead')
-- Etapa 8: Webhooks de pagamento completos + carrinho abandonado:
-  - `supabase/migrations/20260530010000_orphan_purchases.sql` — tabela orphan_purchases para compras sem lead
-  - Migration adicional: `ALTER TABLE orphan_purchases ADD COLUMN IF NOT EXISTS event_type text`
-  - `src/lib/webhooks/purchase-handler.ts` — handlePurchaseWebhook (compras) + handleAbandonedCart (carrinho abandonado): busca lead, cria se não existir usando bloco cart_abandoned do funil, enfileira via BullMQ, salva orphan com event_type='abandoned_cart' se não houver funil configurado
-  - Hotmart: ABANDONED_CART + PURCHASE_PROTEST (chargeback)
-  - Kiwify: abandoned_checkout / order_status=abandoned
-  - Eduzz: key=abandoned_cart
-  - Yampi: cart.abandoned
-  - `/integrations` — nova seção "Plataformas de Pagamento" com URLs de webhook, badge ativo (7 dias), botão copiar e instruções por plataforma
-  - `/integrations/orphans` — tabela de compras não vinculadas com badge por plataforma e valor formatado
-  - Bloco `cart_abandoned` no builder: node visual (indigo/carrinho), palette INÍCIO, config-panel com seletor de plataforma
-- Etapa 10: Painel de métricas completo:
-  - `/metrics` — rebuilt com filtros de período (Hoje/7d/30d), filtro de funil, 6 KPI cards (leads, compradores, receita, ativos, CPL, ROAS), gráfico Leads vs Compras (recharts), drop-off por etapa, tabela de leads recentes com utm_source/último evento/valor/data
-  - `/metrics/funnels` — tabela por funil com leads, taxa de conversão, receita e link para builder
-  - `/metrics/ads` — tabela ordenável de anúncios (ROAS/gasto/leads/CPL/receita) com badges coloridos de ROAS; redireciona para /integrations se Meta não conectado
-  - Sub-navegação com tabs nas 3 páginas de métricas
-  - `/leads/[id]` aprimorado — card de receita com total, lista de produtos comprados com plataforma, % de contribuição na receita do anúncio
-  - Componentes client: `LeadsChart` (recharts LineChart), `FunnelChart` (barras horizontais de drop-off), `FunnelFilter` (select com router navigation)
-- Etapa 12A: Painel Admin Master completo:
-  - Migration: `users_tenants.role` (owner/admin/member) + `platform_settings` table
-  - `/admin` — visão geral com 5 KPIs (clientes, MRR, ativos 30d, funis, leads) + tabela recentes
-  - `/admin/tenants` — lista todos os clientes com contagem de funis/leads, dropdown para alterar plano
-  - `/admin/settings` — configurações globais da plataforma (Meta, Evolution API, Resend) com forms por seção
-  - `/admin/templates` — gerencia templates oficiais (tenant_id=null), publicar/despublicar/excluir/criar
-  - `AdminSidebar` — sidebar escura com badge "Admin" vermelho e link voltar ao App
-  - Guard no layout: só role='admin' acessa /admin, outros redirect para /funnels
-  - `src/app/actions/admin.ts` — 6 server actions com verificação de admin
-  - Dashboard sidebar atualizado: link "Admin" com ícone Shield só visível para admins
-  - Usuário inicial setado como admin no banco
-- Correções críticas motor de execução (sessão 2026-05-31):
-  - **Evolution API v2**: corpo da requisição corrigido de `{ textMessage: { text } }` para `{ number, text }` — mensagens WA passaram a funcionar
-  - **Middleware bloqueando cron**: `src/proxy.ts` adicionado `/api/queue/process` em PUBLIC_PREFIXES — cron da VPS parou de receber 307 e passou a processar jobs
-  - **Delay não respeitando agendamento**: `src/app/api/queue/process/route.ts` adicionado filtro `.lte('scheduled_for', now)` — delay blocks agora aguardam o tempo correto antes de avançar
-  - **Condition block travando funil**: `enqueueNext()` em `processor.ts` adicionou fallback para edge `'default'` quando `'yes'`/`'no'` não encontrado — funis com edges Padrão continuam funcionando
-  - **Opções yes/no nas conexões**: `custom-edge.tsx` agora exibe ✅ Sim e ❌ Não no dropdown de condições das edges
-  - **Upload de arquivo**: `src/app/api/upload/route.ts` + botão de upload no config-panel — suporte a anexos nos blocos de mensagem via Supabase Storage (bucket `funnel-media`)
-  - **Sistema de triggers por produto**: `src/app/actions/triggers.ts`, `src/components/builder/trigger-selector.tsx`, `src/lib/webhooks/purchase-handler.ts` — funil pode ser ativado automaticamente por compra ou carrinho abandonado de produto específico
-  - **Sync de produtos**: endpoints de sync para Kiwify, Hotmart, Eduzz, Yampi + botão na página de integrações
-  - **NOTA TÉCNICA**: WhatsApp NÃO envia recibos de leitura via API — condição "Abriu mensagem" não funciona; usar "Respondeu" em vez disso
-  - **Nota de deploy**: GitHub Actions só deploya branch `main` — todas as correções devem ir direto para `main` via `mcp__github__push_files`
-- Etapa 13: Editor de Páginas com Craft.js completo:
-  - 8 seções drag-and-drop originais: HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial, CtaButton, DeliveryCard
-  - Editor full-screen em `/page-editor/[id]` com auto-save a cada 45s
-  - Lista de páginas em `/pages` com filtros por tipo, grid de cards, modal de criação em 3 passos
-  - Renderer público em `/pg/[slug]` (sem autenticação, via Craft.js com `enabled={false}`)
-  - 5 templates: Captura, VSL, Entrega, Obrigado, Carta de Vendas
-  - Migration Supabase: colunas craft_json, page_type, slug, meta_title, meta_description, og_image_url, views_count, clicks_count, conversions_count + tabela page_themes + tabela page_versions
-- Fase 2 — Expansão do construtor de páginas (sessão 2026-06-06):
-  - **12 novas seções**: CountdownTimer, ScarcityBar, Guarantee, AuthorBio, FaqAccordion, PartnerLogos, BonusSection, BeforeAfter, RichText, PriceSection, FullwidthBanner, ThankYouHero
-  - **Preview desktop/mobile**: toggle no toolbar do editor, canvas alterna entre `max-w-3xl` e `max-w-sm`
-  - **Variáveis dinâmicas**: URL params (`?nome=João`) substituem `{primeiro_nome}` nos templates públicos via `applyVariables()` em `craft-viewer.tsx`
-  - **Histórico de versões**: tabela `page_versions` (até 15 versões), drawer lateral com lista de versões e botão Restaurar
-  - **Auto-save**: hook `useAutoSave()` salva a cada 45s, exibe "salvo às HH:MM" no toolbar
-  - **Busca na sidebar**: campo de busca filtra seções por nome/descrição
-  - **2 novos tipos de página + templates**: `thankyou` (ThankYouHero + countdown + redirect automático), `sales` (carta de vendas completa com 9 seções)
-  - **cleanCraftJson()**: filtra nós desconhecidos do craft_json antes de renderizar para evitar erros
-  - Todos os arquivos commitados e pusheados para branch `main` no GitHub
+- Etapa 3: Builder visual React Flow completo
+- Etapa 4: Motor de execução BullMQ completo
+- Etapa 5: Integração WhatsApp Evolution API completa
+- Etapa 7: Rastreamento UTM completo
+- Etapa 8: Webhooks de pagamento completos + carrinho abandonado
+- Etapa 10: Painel de métricas completo
+- Etapa 12A: Painel Admin Master completo
+- Correções motor (2026-05-31): Evolution API v2, middleware, delay, condition, upload, triggers por produto
+- Etapa 13: Editor de Páginas com Craft.js completo
+- Melhorias /leads (2026-06-18): filtro multi-tag (TagDropdown com checkboxes), bulk actions bar (WA + enroll + add tag + delete), WA modal com chips de variáveis clicáveis, server actions bulkDeleteLeads/bulkAddTag
+- Etapa 14: Formulário interativo tipo quiz (2026-06-18):
+  - Migration: tabelas `interactive_questions` + `interactive_responses`, constraint `pages.page_type` atualizada para incluir 'interactive'
+  - **IMPORTANTE**: migration em `supabase/migrations/20260618000000_interactive_quiz.sql` — aplicar manualmente no Supabase Studio do projeto `hcadyqktfowfkxsbogmj` (MCP não tem acesso a este projeto)
+  - `src/app/actions/quiz.ts` — server actions: `getQuizQuestions`, `saveQuizQuestions`, `publishQuizPage`, `getQuizAnalytics`
+  - `src/app/(dashboard)/pages/[id]/quiz-editor/page.tsx` — server component carrega page + questions + funnels
+  - `src/components/quiz/quiz-editor-client.tsx` — editor React Flow com:
+    - Nodes por tipo de pergunta (9 tipos: single_choice, multi_choice, text_short, text_long, scale, email, phone, final_capture, result)
+    - Handles de saída POR OPÇÃO (usando useLayoutEffect para medir posições reais no DOM)
+    - Painel direito de edição: texto, subtítulo, tipo, opções (emoji+label), toggle required, config de resultado
+    - Nó "Resultado" com: profile identifier, result_text, CTA text/URL, funil ativado
+    - Palette esquerda com todos os tipos de pergunta
+    - Barra superior: voltar, salvar, publicar
+  - `src/app/pg/[slug]/page.tsx` — atualizado: quando `page_type='interactive'` carrega questions e renderiza QuizRenderer
+  - `src/app/pg/[slug]/quiz-renderer.tsx` — renderer público animado completo
+  - `src/app/api/quiz/[pageId]/submit/route.ts` — API pública de submissão com criação de lead + funil
+  - `src/proxy.ts` — `/api/quiz/` adicionado às PUBLIC_PREFIXES
+  - `src/app/(dashboard)/pages/pages-client.tsx` — tipo 'interactive' (🧠 Quiz) no modal de criação
 
 **Próximos passos:**
+- **PENDENTE URGENTE**: Aplicar migration `supabase/migrations/20260618000000_interactive_quiz.sql` no Supabase Studio (projeto hcadyqktfowfkxsbogmj)
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
 - Etapa 11: Templates + marketplace
 - Etapa 12B: Planos + billing (Asaas) — falta implementar
-- Fase 2 restante: popup exit-intent, métricas avançadas de página, vinculação funil→página no builder
-
+- Etapa 15: Agente de IA por funil
 
 ---
 
@@ -587,4 +539,6 @@ APP_SECRET=
 | Resend para email | Zero configuração, integração nativa Next.js, custo praticamente zero na escala inicial |
 | Evolution API v2 body format | `{ number, text }` — NÃO usar `{ textMessage: { text } }` que é formato v1 |
 | Cron via VPS + Vercel crons | VPS tem `* * * * *` no crontab chamando `/api/queue/process`; Vercel também tem cron no vercel.json como backup |
-| Middleware whitelist | `/api/queue/process` deve estar em PUBLIC_PREFIXES no proxy.ts para cron funcionar sem sessão |
+| Middleware whitelist | `/api/queue/process` e `/api/quiz/` devem estar em PUBLIC_PREFIXES no proxy.ts para funcionar sem sessão |
+| Quiz handles por opção | useLayoutEffect mede posição real do DOM para posicionar handles React Flow — mais robusto que cálculo estático |
+| Quiz first question detection | Primeira pergunta = a que NÃO aparece como target em nenhuma opção/next_question_id |
