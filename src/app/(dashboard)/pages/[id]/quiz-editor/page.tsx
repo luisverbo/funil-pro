@@ -1,12 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { redirect, notFound } from 'next/navigation'
-import { getQuizQuestions } from '@/app/actions/quiz'
+import { redirect } from 'next/navigation'
 import QuizEditorWrapper from '@/components/quiz/quiz-editor-wrapper'
 
-async function getSupabase() {
+export default async function QuizEditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const cookieStore = await cookies()
-  return createServerClient(
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -18,42 +18,9 @@ async function getSupabase() {
       },
     }
   )
-}
-
-export default async function QuizEditorPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const supabase = await getSupabase()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: userTenant } = await supabase.from('users_tenants').select('tenant_id').eq('user_id', user.id).single()
-  if (!userTenant) redirect('/login')
-
-  const { data: page } = await supabase
-    .from('pages')
-    .select('*')
-    .eq('id', id)
-    .eq('tenant_id', userTenant.tenant_id)
-    .single()
-
-  if (!page) notFound()
-
-  const { data: funnels } = await supabase
-    .from('funnels')
-    .select('id, name')
-    .eq('tenant_id', userTenant.tenant_id)
-    .eq('status', 'published')
-    .order('name')
-
-  const questions = await getQuizQuestions(id)
-
-  return (
-    <QuizEditorWrapper
-      page={page}
-      initialQuestions={questions}
-      funnels={funnels ?? []}
-      tenantId={userTenant.tenant_id}
-    />
-  )
+  return <QuizEditorWrapper pageId={id} />
 }

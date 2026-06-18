@@ -64,14 +64,64 @@ async function getTenantId(): Promise<string> {
   return data.tenant_id
 }
 
+export async function getQuizPageData(pageId: string): Promise<{
+  page?: { id: string; title: string; slug: string | null; published: boolean }
+  questions?: QuizQuestion[]
+  funnels?: { id: string; name: string }[]
+  tenantId?: string
+  error?: string
+}> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+
+    const { data: page } = await supabase
+      .from('pages')
+      .select('id, title, slug, published')
+      .eq('id', pageId)
+      .eq('tenant_id', tenantId)
+      .single()
+
+    if (!page) return { error: 'page_not_found' }
+
+    const { data: funnels } = await supabase
+      .from('funnels')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'published')
+      .order('name')
+
+    let questions: QuizQuestion[] = []
+    try {
+      const admin = createAdminClient()
+      const { data } = await admin
+        .from('interactive_questions')
+        .select('*')
+        .eq('page_id', pageId)
+        .order('order_index')
+      questions = (data ?? []) as QuizQuestion[]
+    } catch {
+      // table may not exist yet — migration pending
+    }
+
+    return { page, questions, funnels: funnels ?? [], tenantId }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
 export async function getQuizQuestions(pageId: string): Promise<QuizQuestion[]> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('interactive_questions')
-    .select('*')
-    .eq('page_id', pageId)
-    .order('order_index')
-  return (data ?? []) as QuizQuestion[]
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from('interactive_questions')
+      .select('*')
+      .eq('page_id', pageId)
+      .order('order_index')
+    return (data ?? []) as QuizQuestion[]
+  } catch {
+    return []
+  }
 }
 
 export async function saveQuizQuestions(
@@ -82,7 +132,6 @@ export async function saveQuizQuestions(
     const tenantId = await getTenantId()
     const admin = createAdminClient()
 
-    // Verify page belongs to tenant
     const { data: page } = await admin.from('pages').select('id').eq('id', pageId).eq('tenant_id', tenantId).single()
     if (!page) return { success: false, error: 'Página não encontrada' }
 
@@ -142,7 +191,6 @@ export async function getQuizAnalytics(pageId: string) {
       if (r.result_profile) profileCounts[r.result_profile] = (profileCounts[r.result_profile] ?? 0) + 1
     }
 
-    // Drop-off per question: count how many responses contain each question_id in answers
     const questionDropoff: Record<string, number> = {}
     for (const r of responses ?? []) {
       for (const qId of Object.keys(r.answers ?? {})) {
