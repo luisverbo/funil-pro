@@ -38,12 +38,6 @@ const TEMPLATE_OPTIONS = [
   { id: 'delivery',label: 'Entrega Simples',      description: 'Hero + Card de acesso', icon: '🎁' },
 ]
 
-const QUIZ_TEMPLATES = [
-  { id: 'qualification', label: 'Qualificação',   description: '4 perguntas + 2 perfis',  icon: '✅' },
-  { id: 'diagnosis',     label: 'Diagnóstico',    description: '5 perguntas + 3 perfis',  icon: '🔍' },
-  { id: 'product',       label: 'Produto Ideal',  description: '6 perguntas + recomendação', icon: '💰' },
-]
-
 function generateSlug(name: string): string {
   return name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-') + '-' + Math.random().toString(36).slice(2, 7)
 }
@@ -72,7 +66,7 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
       if (isQuiz) {
         const page = await createPage({ name: pageName, page_type: 'interactive', craft_json: {} })
         setShowModal(false)
-        router.push(`/pages/${page.id}/quiz-editor`)
+        router.push(`/quiz-editor/${page.id}`)
       } else {
         const craftJson = selectedTemplate !== 'blank' ? (TEMPLATE_JSON[selectedTemplate] ?? {}) : {}
         const page = await createPage({ name: pageName, page_type: selectedType, craft_json: craftJson })
@@ -95,7 +89,7 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   }
 
   function getEditorPath(page: { id: string; page_type: string }) {
-    return page.page_type === 'interactive' ? `/pages/${page.id}/quiz-editor` : `/page-editor/${page.id}`
+    return page.page_type === 'interactive' ? `/quiz-editor/${page.id}` : `/page-editor/${page.id}`
   }
 
   return (
@@ -204,7 +198,6 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
               </button>
             </div>
 
-            {/* Step 1: Type */}
             {step === 1 && (
               <div className="p-6">
                 <p className="text-sm font-medium text-gray-700 mb-4">Qual tipo de página você quer criar?</p>
@@ -224,7 +217,6 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
               </div>
             )}
 
-            {/* Step 2 for quiz: name directly */}
             {step === 2 && isQuiz && (
               <div className="p-6">
                 <p className="text-sm font-medium text-gray-700 mb-4">Dê um nome para o quiz</p>
@@ -247,7 +239,6 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
               </div>
             )}
 
-            {/* Step 2 for non-quiz: template */}
             {step === 2 && !isQuiz && (
               <div className="p-6">
                 <p className="text-sm font-medium text-gray-700 mb-4">Escolha um template inicial</p>
@@ -270,7 +261,6 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
               </div>
             )}
 
-            {/* Step 3: Name (non-quiz) */}
             {step === 3 && !isQuiz && (
               <div className="p-6">
                 <p className="text-sm font-medium text-gray-700 mb-4">Dê um nome para a página</p>
