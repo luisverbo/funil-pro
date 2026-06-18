@@ -2,19 +2,29 @@
 
 import React, { useState, useCallback, useRef, useLayoutEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import ReactFlow, {
-  Background, Controls, MiniMap,
-  useNodesState, useEdgesState, addEdge,
-  Handle, Position, type NodeProps, type Connection, type Edge, type Node,
-} from 'reactflow'
-import 'reactflow/dist/style.css'
+import '@xyflow/react/dist/style.css'
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Handle,
+  Position,
+  type NodeProps,
+  type Connection,
+  type Edge,
+  type Node,
+} from '@xyflow/react'
 import { saveQuizQuestions, publishQuizPage, type QuizQuestion, type QuizOption } from '@/app/actions/quiz'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type QuestionType = QuizQuestion['question_type']
 
-interface NodeData {
+interface NodeData extends Record<string, unknown> {
   question_text: string
   question_type: QuestionType
   subtitle?: string | null
@@ -57,7 +67,6 @@ function QuestionNode({ id, data, selected }: NodeProps) {
   const isChoice = meta.hasOptions
   const isResult = nd.question_type === 'result'
 
-  // Measure option rows for handle positioning
   const containerRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<(HTMLDivElement | null)[]>([])
   const [handleTops, setHandleTops] = useState<number[]>([])
@@ -79,21 +88,18 @@ function QuestionNode({ id, data, selected }: NodeProps) {
       style={{ borderColor: selected ? colors.border : '#e5e7eb', width: 260 }}
       className={`bg-white rounded-xl border-2 shadow-md overflow-hidden select-none`}
     >
-      {/* Input handle */}
       {!isResult && (
         <Handle type="target" position={Position.Left} id="in"
           style={{ background: colors.border, border: '2px solid white', width: 10, height: 10 }}
         />
       )}
 
-      {/* Header */}
       <div className={`px-3 py-2 flex items-center gap-2 ${colors.header}`}>
         <span className="text-base">{meta.icon}</span>
         <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${colors.badge}`}>{meta.label}</span>
         {nd.required && <span className="ml-auto text-[10px] text-gray-400">obrigatória</span>}
       </div>
 
-      {/* Question text */}
       <div className="px-3 py-2.5 border-b border-gray-100">
         <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">
           {nd.question_text || <span className="text-gray-400 italic">Pergunta sem texto</span>}
@@ -101,7 +107,6 @@ function QuestionNode({ id, data, selected }: NodeProps) {
         {nd.subtitle && <p className="text-xs text-gray-500 mt-0.5 truncate">{nd.subtitle}</p>}
       </div>
 
-      {/* Options for choice types */}
       {isChoice && nd.options.length > 0 && (
         <div className="py-1">
           {nd.options.map((opt, i) => (
@@ -133,7 +138,6 @@ function QuestionNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* Single output for non-choice types */}
       {!isChoice && !isResult && (
         <Handle
           type="source" position={Position.Right} id="out"
@@ -141,7 +145,6 @@ function QuestionNode({ id, data, selected }: NodeProps) {
         />
       )}
 
-      {/* Result node footer */}
       {isResult && nd.config?.result_profile && (
         <div className="px-3 py-2">
           <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
@@ -170,7 +173,7 @@ function questionsToFlow(questions: QuizQuestion[]): { nodes: Node[]; edges: Edg
       required: q.required,
       next_question_id: q.next_question_id,
       config: q.config ?? {},
-    } satisfies NodeData,
+    } as NodeData,
   }))
 
   const edges: Edge[] = []
@@ -334,7 +337,6 @@ function RightPanel({
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-        {/* Type selector */}
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">Tipo</label>
           <select
@@ -348,7 +350,6 @@ function RightPanel({
           </select>
         </div>
 
-        {/* Question text */}
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">Texto da pergunta</label>
           <textarea
@@ -360,7 +361,6 @@ function RightPanel({
           />
         </div>
 
-        {/* Subtitle */}
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">Subtítulo (opcional)</label>
           <input
@@ -371,7 +371,6 @@ function RightPanel({
           />
         </div>
 
-        {/* Required toggle */}
         {!isResult && (
           <label className="flex items-center gap-2 cursor-pointer">
             <div
@@ -384,7 +383,6 @@ function RightPanel({
           </label>
         )}
 
-        {/* Options editor */}
         {isChoice && (
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -420,7 +418,6 @@ function RightPanel({
           </div>
         )}
 
-        {/* Scale config */}
         {nd.question_type === 'scale' && (
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -436,7 +433,6 @@ function RightPanel({
           </div>
         )}
 
-        {/* Result node config */}
         {isResult && (
           <div className="space-y-3">
             <div>
@@ -478,7 +474,6 @@ function RightPanel({
           </div>
         )}
 
-        {/* Background color */}
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-2">Cor de fundo</label>
           <div className="flex gap-2">
@@ -516,7 +511,6 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
   const [nodes, setNodes, onNodesChange] = useNodesState(initNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
 
-  // Keep edges in sync when options change (prune edges for removed options)
   const onConnect = useCallback((params: Connection) => {
     setEdges(eds => addEdge({
       ...params,
@@ -550,7 +544,7 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
         required: type !== 'result',
         next_question_id: null,
         config: type === 'result' ? { is_result: true, result_profile: '', result_text: '', cta_text: 'Continuar', cta_url: '' } : {},
-      } satisfies NodeData,
+      } as NodeData,
     }
     setNodes(nds => [...nds, newNode])
     setSelectedNodeId(id)
@@ -578,7 +572,6 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
 
   return (
     <div style={{ height: 'calc(100vh - 64px)' }} className="flex flex-col bg-gray-50">
-      {/* Top bar */}
       <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-4 shrink-0">
         <button onClick={() => router.push('/pages')} className="text-gray-500 hover:text-gray-700">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -607,9 +600,7 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left palette */}
         <div className="w-48 bg-white border-r border-gray-200 overflow-y-auto shrink-0">
           <div className="px-3 py-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Adicionar</p>
@@ -625,7 +616,6 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
           </div>
         </div>
 
-        {/* Canvas */}
         <div className="flex-1 relative">
           <ReactFlow
             nodes={nodes}
@@ -645,7 +635,6 @@ export default function QuizEditorClient({ page, initialQuestions, funnels, tena
           </ReactFlow>
         </div>
 
-        {/* Right panel */}
         {selectedNodeId && (
           <RightPanel
             nodeId={selectedNodeId}
