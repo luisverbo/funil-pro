@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
 import PageRenderer from './page-renderer'
 import QuizRenderer from './quiz-renderer'
+import QuizRendererV2 from './quiz-renderer-v2'
+import type { QuizData } from '@/app/actions/quiz-v2'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +27,18 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
   supabase.from('pages').update({ views_count: (page.views_count ?? 0) + 1 }).eq('id', page.id).then(() => {})
 
   if (page.page_type === 'interactive') {
+    // v2 format: quiz_data column with pages/blocks structure
+    if (page.quiz_data && (page.quiz_data as QuizData).version === 2) {
+      return (
+        <>
+          <title>{page.meta_title || page.title || 'Quiz'}</title>
+          {page.meta_description && <meta name="description" content={page.meta_description} />}
+          <QuizRendererV2 data={page.quiz_data as QuizData} pageId={page.id} tenantId={page.tenant_id} />
+        </>
+      )
+    }
+
+    // v1 fallback: old interactive_questions table
     const { data: questions } = await supabase
       .from('interactive_questions')
       .select('*')
