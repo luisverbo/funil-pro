@@ -11,6 +11,13 @@ export interface QuizOption {
   label: string
   emoji?: string
   next_question_id?: string | null
+  points?: number
+}
+
+export interface ScoreRange {
+  min: number
+  max: number
+  result_node_id: string
 }
 
 export interface QuizQuestion {
@@ -18,13 +25,14 @@ export interface QuizQuestion {
   page_id: string
   tenant_id: string
   order_index: number
-  question_type: 'single_choice' | 'multi_choice' | 'text_short' | 'text_long' | 'scale' | 'email' | 'phone' | 'final_capture' | 'result'
+  question_type: 'single_choice' | 'multi_choice' | 'text_short' | 'text_long' | 'scale' | 'email' | 'phone' | 'final_capture' | 'result' | 'calc'
   question_text: string
   subtitle?: string | null
   options: QuizOption[]
   required: boolean
   next_question_id?: string | null
   config: {
+    // existing
     is_result?: boolean
     result_profile?: string
     result_text?: string
@@ -34,6 +42,16 @@ export interface QuizQuestion {
     bg_color?: string
     scale_min?: number
     scale_max?: number
+    // scoring
+    score_ranges?: ScoreRange[]
+    show_score?: boolean
+    score_display_text?: string
+    // page grouping
+    starts_new_page?: boolean
+    show_progress?: boolean
+    // calc node
+    formula?: string
+    result_var?: string
   }
   pos_x: number
   pos_y: number
