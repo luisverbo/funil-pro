@@ -1,8 +1,20 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect, notFound } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { getQuizQuestions } from '@/app/actions/quiz'
-import QuizEditorClient from '@/components/quiz/quiz-editor-client'
+
+const QuizEditorClient = dynamic(
+  () => import('@/components/quiz/quiz-editor-client'),
+  { ssr: false, loading: () => (
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500">Carregando editor...</p>
+      </div>
+    </div>
+  )}
+)
 
 async function getSupabase() {
   const cookieStore = await cookies()
