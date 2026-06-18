@@ -146,11 +146,66 @@ export async function sendBulkWhatsapp(
       try {
         await sendTextMessage(instance.instance_name, lead.phone as string, interpolated)
         sent++
+        await new Promise(r => setTimeout(r, 2000))
       } catch { failed++ }
     }
 
     return { success: true, sent, failed }
   } catch (err) {
     return { success: false, sent: 0, failed: 0, error: String(err) }
+  }
+}
+
+export async function bulkDeleteLeads(
+  leadIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!leadIds.length) return { success: false, error: 'Nenhum lead selecionado' }
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+
+    const { error } = await admin
+      .from('leads')
+      .delete()
+      .in('id', leadIds)
+      .eq('tenant_id', tenantId)
+
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/leads')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+export async function bulkAddTag(
+  leadIds: string[],
+  tag: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!leadIds.length || !tag.trim()) return { success: false, error: 'Parâmetros inválidos' }
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+
+    const { data: leadsData } = await admin
+      .from('leads')
+      .select('id, tags')
+      .in('id', leadIds)
+      .eq('tenant_id', tenantId)
+
+    for (const lead of leadsData ?? []) {
+      const existing: string[] = (lead.tags as string[] | null) ?? []
+      if (!existing.includes(tag)) {
+        await admin
+          .from('leads')
+          .update({ tags: [...existing, tag] })
+          .eq('id', lead.id)
+      }
+    }
+
+    revalidatePath('/leads')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
   }
 }

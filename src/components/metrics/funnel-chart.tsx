@@ -9,15 +9,18 @@ interface FunnelStep {
 
 interface Props {
   steps: FunnelStep[]
+  funnelName?: string
 }
 
-export default function FunnelChart({ steps }: Props) {
+export default function FunnelChart({ steps, funnelName }: Props) {
   if (!steps || steps.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">Drop-off por Etapa</h3>
-        <div className="py-10 text-center text-sm text-gray-400">
-          Selecione um funil com leads para ver o drop-off
+        <h3 className="text-sm font-semibold text-gray-800 mb-1">Drop-off por Etapa</h3>
+        <p className="text-xs text-gray-400 mb-6">Selecione um funil acima para ver onde seus leads estão saindo</p>
+        <div className="py-10 flex flex-col items-center justify-center text-center gap-3">
+          <svg className="w-10 h-10 text-gray-200" fill="none" viewBox="0 0 48 48"><path d="M8 10h32l-6 12H14L8 10Z" fill="currentColor" opacity=".4"/><path d="M14 22h20l-5 10H19L14 22Z" fill="currentColor" opacity=".6"/><path d="M19 32h10l-4 8h-2l-4-8Z" fill="currentColor"/></svg>
+          <p className="text-sm text-gray-400">Selecione um funil acima para ver<br/>onde seus leads estão saindo</p>
         </div>
       </div>
     )
@@ -25,7 +28,6 @@ export default function FunnelChart({ steps }: Props) {
 
   const maxCount = steps[0]?.count || 1
 
-  // Find the step with the highest drop-off
   let maxDropIdx = -1
   let maxDrop = 0
   for (let i = 1; i < steps.length; i++) {
@@ -52,7 +54,8 @@ export default function FunnelChart({ steps }: Props) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-      <h3 className="text-sm font-semibold text-gray-800 mb-5">Drop-off por Etapa</h3>
+      <h3 className="text-sm font-semibold text-gray-800 mb-0.5">{funnelName ? `Drop-off — ${funnelName}` : 'Drop-off por Etapa'}</h3>
+      <p className="text-xs text-gray-400 mb-5">Quantos leads passaram por cada etapa do funil</p>
       <div className="space-y-3">
         {steps.map((step, i) => {
           const pct = maxCount > 0 ? (step.count / maxCount) * 100 : 0
