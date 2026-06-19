@@ -78,7 +78,7 @@ Pixel Meta:           disparado nas páginas e eventos do funil
 |--------|----------|
 | Editor de páginas | VSL com botão temporizado, carta de vendas, upsell, rastreamento de clique e tempo assistido |
 | Formulário interativo | Estilo Typeform, respostas alimentam condições do funil |
-| Agente de IA por funil | Opcional, só plano Scale, desativado por padrão |
+| Agente de IA por funil | ✅ Etapa 15 concluída — módulo Agentes IA treináveis (só Scale) |
 
 ---
 
@@ -483,7 +483,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-06-18 — Etapa 14 (Quiz Builder interativo) concluída
+**Última atualização:** 2026-06-19 — Etapa 15 (Agentes IA treináveis) concluída
 **O que foi feito:**
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
@@ -514,14 +514,27 @@ APP_SECRET=
   - `src/app/api/quiz/[pageId]/submit/route.ts` — API pública de submissão com criação de lead + funil
   - `src/proxy.ts` — `/api/quiz/` adicionado às PUBLIC_PREFIXES
   - `src/app/(dashboard)/pages/pages-client.tsx` — tipo 'interactive' (🧠 Quiz) no modal de criação
+- Etapa 15: Agentes IA treináveis (2026-06-19):
+  - Migration: `supabase/migrations/20260619000002_ai_agents.sql` — tabelas `ai_agents`, `agent_documents`, `agent_conversations`, `agent_messages` + RLS via `current_tenant_id()`
+  - **IMPORTANTE**: aplicar migration manualmente no Supabase Studio (projeto hcadyqktfowfkxsbogmj)
+  - `src/app/actions/ai-agents.ts` — CRUD, listAgents/getAgent/createAgent/updateAgent/deleteAgent, activate/pause, listFunnels/listWhatsappInstances, getAgentStats, listConversations, getConversation
+  - `src/app/api/agents/[agentId]/chat/route.ts` — motor de conversação via Claude Haiku (claude-haiku-4-5), system prompt dinâmico, tag de ação `|||ACTION:{...}|||`, business hours, max messages, handoff por palavra-chave, persistência de mensagens, incremento de activations
+  - `src/app/api/agents/[agentId]/documents/route.ts` — upload (PDF via pdf-parse + texto), GET, DELETE
+  - `src/app/(dashboard)/agents/page.tsx` + `agents-client.tsx` — listagem, overlay de upgrade se plano != scale, cards com métricas, modal de teste
+  - `src/components/agents/agent-wizard.tsx` — wizard 5 steps (identidade, produto+docs, personalidade, objetivo, revisão+teste)
+  - `src/components/agents/agent-test-chat.tsx` — chat de teste (testMode)
+  - `src/app/(dashboard)/agents/[id]/conversations/page.tsx` + `conversations-client.tsx` — tabela de conversas + drawer com transcript
+  - Sidebar: item "Agentes IA" (ícone Bot) entre Páginas e Métricas
+  - `ANTHROPIC_API_KEY` necessária no env. Bloco de funil "Agente IA" no builder React Flow ainda não implementado (apenas estrutura/restrição de plano prontas)
 
 **Próximos passos:**
-- **PENDENTE URGENTE**: Aplicar migration `supabase/migrations/20260618000000_interactive_quiz.sql` no Supabase Studio (projeto hcadyqktfowfkxsbogmj)
+- **PENDENTE URGENTE**: Aplicar migrations `20260618000000_interactive_quiz.sql` e `20260619000002_ai_agents.sql` no Supabase Studio (projeto hcadyqktfowfkxsbogmj)
+- Adicionar `ANTHROPIC_API_KEY` no env (Vercel + VPS)
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
 - Etapa 11: Templates + marketplace
 - Etapa 12B: Planos + billing (Asaas) — falta implementar
-- Etapa 15: Agente de IA por funil
+- Etapa 15 (resto): bloco "Agente IA" no builder React Flow
 
 ---
 
