@@ -76,6 +76,17 @@ export interface BlockConfig {
   cta_text?: string
   cta_url?: string
   funnel_id?: string
+
+  // Integrations (button + final_capture)
+  webhook_enabled?: boolean
+  webhook_url?: string
+  webhook_send_name?: boolean
+  webhook_send_email?: boolean
+  webhook_send_phone?: boolean
+  webhook_send_answers?: boolean
+  webhook_send_score?: boolean
+  funnel_enroll_enabled?: boolean
+  funnel_enroll_id?: string
 }
 
 export interface QuizBlock {
