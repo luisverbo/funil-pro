@@ -682,7 +682,7 @@ function OptionList({
 }
 
 function BlockEditor({
-  block, pages, currentPageId, funnels, onChange, onMoveToPage,
+  block, pages, currentPageId, funnels, onChange, onMoveToPage, precedingBlocks,
 }: {
   block: QuizBlock
   pages: QuizPage[]
@@ -690,6 +690,7 @@ function BlockEditor({
   funnels: { id: string; name: string }[]
   onChange: (config: Partial<BlockConfig>) => void
   onMoveToPage: (targetPageId: string) => void
+  precedingBlocks: QuizBlock[]
 }) {
   const { config } = block
   const isChoice = ['single_choice', 'multi_choice', 'yes_no'].includes(block.type)
@@ -956,6 +957,79 @@ function BlockEditor({
         </>
       )}
 
+      {/* Integrations: webhook + funnel enroll for button and final_capture */}
+      {['button', 'final_capture'].includes(block.type) && (() => {
+        const hasPhoneBefore = precedingBlocks.some(b =>
+          b.type === 'field_phone' || (b.type === 'final_capture' && b.config.show_phone)
+        )
+        return (
+          <div className={sectionCls + ' space-y-4'}>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Integrações</p>
+
+            {/* Webhook */}
+            <div className="space-y-2">
+              <Toggle
+                on={!!config.webhook_enabled}
+                onToggle={() => setConfigKey('webhook_enabled', !config.webhook_enabled)}
+                label="Webhook ao avançar"
+              />
+              {config.webhook_enabled && (
+                <div className="space-y-2 pl-1">
+                  <div>
+                    <label className={labelCls}>URL do webhook</label>
+                    <input
+                      value={config.webhook_url ?? ''}
+                      onChange={e => setConfigKey('webhook_url', e.target.value)}
+                      className={inputCls}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase">Campos a enviar</p>
+                  <div className="space-y-1.5">
+                    <Toggle on={!!config.webhook_send_name}    onToggle={() => setConfigKey('webhook_send_name', !config.webhook_send_name)}    label="Nome" />
+                    <Toggle on={!!config.webhook_send_email}   onToggle={() => setConfigKey('webhook_send_email', !config.webhook_send_email)}   label="E-mail" />
+                    <Toggle on={!!config.webhook_send_phone}   onToggle={() => setConfigKey('webhook_send_phone', !config.webhook_send_phone)}   label="Telefone" />
+                    <Toggle on={!!config.webhook_send_answers} onToggle={() => setConfigKey('webhook_send_answers', !config.webhook_send_answers)} label="Respostas do quiz" />
+                    <Toggle on={!!config.webhook_send_score}   onToggle={() => setConfigKey('webhook_send_score', !config.webhook_send_score)}   label="Pontuação" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Funnel enroll */}
+            <div className="space-y-2">
+              <Toggle
+                on={!!config.funnel_enroll_enabled}
+                onToggle={() => setConfigKey('funnel_enroll_enabled', !config.funnel_enroll_enabled)}
+                label="Inscrever em funil"
+              />
+              {config.funnel_enroll_enabled && (
+                <div className="pl-1 space-y-2">
+                  {!hasPhoneBefore && (
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                      <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
+                      <p className="text-xs text-amber-700">Capture um telefone antes deste bloco para inscrever o lead em um funil.</p>
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelCls}>Funil publicado</label>
+                    <select
+                      value={config.funnel_enroll_id ?? ''}
+                      onChange={e => setConfigKey('funnel_enroll_id', e.target.value || undefined)}
+                      disabled={!hasPhoneBefore}
+                      className={inputCls + (!hasPhoneBefore ? ' opacity-50 cursor-not-allowed' : '')}
+                    >
+                      <option value="">Selecionar funil...</option>
+                      {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Background color */}
       {(isChoice || block.type === 'scale') && (
         <div className={sectionCls}>
@@ -1001,10 +1075,11 @@ function RightPanel({
   onMoveBlock: (blockId: string, targetPageId: string) => void
 }) {
   let selectedBlock: QuizBlock | null = null
+  let precedingBlocks: QuizBlock[] = []
   if (selectedBlockId) {
     for (const p of pages) {
-      const b = p.blocks.find(b => b.id === selectedBlockId)
-      if (b) { selectedBlock = b; break }
+      const idx = p.blocks.findIndex(b => b.id === selectedBlockId)
+      if (idx >= 0) { selectedBlock = p.blocks[idx]; precedingBlocks = p.blocks.slice(0, idx); break }
     }
   }
 
@@ -1026,6 +1101,7 @@ function RightPanel({
               funnels={funnels}
               onChange={config => onUpdateBlock(selectedBlock!.id, config)}
               onMoveToPage={targetPageId => onMoveBlock(selectedBlock!.id, targetPageId)}
+              precedingBlocks={precedingBlocks}
             />
           </div>
         </>

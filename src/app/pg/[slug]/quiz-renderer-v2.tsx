@@ -69,7 +69,9 @@ function useTracker(pageId: string) {
     }).catch(() => {})
   }
 
-  return { start, track, trackContact, trackComplete }
+  function getLeadId() { return leadIdRef.current }
+
+  return { start, track, trackContact, trackComplete, getLeadId }
 }
 
 // ─── Renderer ─────────────────────────────────────────────────────────────────
@@ -90,6 +92,41 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const captureRef = useRef<{ name: string; email: string; phone: string }>({ name: '', email: '', phone: '' })
 
   const tracker = useTracker(pageId)
+
+  function fireIntegrations(
+    blockId: string,
+    config: import('@/app/actions/quiz-v2').BlockConfig,
+    context: { answers: Record<string, unknown>; score: number; name?: string; email?: string; phone?: string }
+  ) {
+    const leadId = tracker.getLeadId()
+
+    if (config.webhook_enabled && config.webhook_url) {
+      const payload: Record<string, unknown> = {}
+      if (config.webhook_send_name)    payload.name    = context.name
+      if (config.webhook_send_email)   payload.email   = context.email
+      if (config.webhook_send_phone)   payload.phone   = context.phone
+      if (config.webhook_send_answers) payload.answers = context.answers
+      if (config.webhook_send_score)   payload.score   = context.score
+      fetch(`/api/quiz/${pageId}/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blockId, leadId, url: config.webhook_url, payload }),
+      }).catch(() => {})
+    }
+
+    if (config.funnel_enroll_enabled && config.funnel_enroll_id && context.phone) {
+      fetch(`/api/quiz/${pageId}/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          funnelId: config.funnel_enroll_id,
+          phone: context.phone,
+          name: context.name,
+          email: context.email,
+        }),
+      }).catch(() => {})
+    }
+  }
 
   // Start tracking session on mount
   useEffect(() => {
@@ -200,6 +237,13 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         newLeadData = { ...newLeadData, name: fc.name || newLeadData.name, email: fc.email || newLeadData.email, phone: fc.phone || newLeadData.phone }
         tracker.trackContact(fc.name || undefined, fc.email || undefined, fc.phone || undefined)
         tracker.track('form_submitted', page.id, block.id, { name: fc.name, email: fc.email, phone: fc.phone })
+        fireIntegrations(block.id, block.config, {
+          answers,
+          score: score + pageScore,
+          name: fc.name || newLeadData.name,
+          email: fc.email || newLeadData.email,
+          phone: fc.phone || newLeadData.phone,
+        })
       }
     }
     setLeadData(newLeadData)
@@ -587,7 +631,17 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             return (
               <div key={b.id} className={`flex ${b.config.button_align === 'left' ? 'justify-start' : b.config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
                 <button
-                  onClick={() => { tracker.track('button_clicked', currentPage.id, b.id, {}); handleNext() }}
+                  onClick={() => {
+                    tracker.track('button_clicked', currentPage.id, b.id, {})
+                    fireIntegrations(b.id, b.config, {
+                      answers,
+                      score,
+                      name: captureRef.current.name || leadData.name,
+                      email: captureRef.current.email || leadData.email,
+                      phone: captureRef.current.phone || leadData.phone,
+                    })
+                    handleNext()
+                  }}
                   className={`font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${bSize}`}
                   style={{ background: b.config.button_color || primaryColor }}>
                   {b.config.button_text || 'Próximo →'}
