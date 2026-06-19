@@ -35,9 +35,17 @@ export default function AgentTestChat({ agentId }: { agentId: string }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ message: text, conversationId, testMode: true }),
       })
-      const data = await res.json()
-      if (data.reply) setMessages(m => [...m, { role: 'agent', content: data.reply }])
+      const data = await res.json() as { reply?: string; parts?: string[]; conversationId?: string; action?: { type: string } }
       if (data.conversationId) setConversationId(data.conversationId)
+
+      // Animate parts one by one with typing delay
+      const parts = (data.parts && data.parts.length > 0) ? data.parts : (data.reply ? [data.reply] : [])
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 1000))
+        const part = parts[i]
+        setMessages(m => [...m, { role: 'agent', content: part }])
+      }
+
       if (data.action && data.action.type !== 'continue') {
         setBanner(ACTION_LABELS[data.action.type] ?? data.action.type)
       }
@@ -81,7 +89,11 @@ export default function AgentTestChat({ agentId }: { agentId: string }) {
           </div>
         ))}
         {loading && (
-          <div className="self-start bg-white border text-gray-400 px-3 py-2 rounded-2xl text-sm">digitando…</div>
+          <div className="self-start bg-white border text-gray-400 px-3 py-2 rounded-2xl text-sm flex items-center gap-1">
+            <span className="animate-bounce" style={{ animationDelay: '0ms' }}>·</span>
+            <span className="animate-bounce" style={{ animationDelay: '150ms' }}>·</span>
+            <span className="animate-bounce" style={{ animationDelay: '300ms' }}>·</span>
+          </div>
         )}
       </div>
 

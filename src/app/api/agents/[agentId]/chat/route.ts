@@ -152,7 +152,17 @@ Seu objetivo é: ${objectiveInstructions(a)}
 
 ${a.greeting_message ? `Mensagem de saudação preferida: ${a.greeting_message}` : ''}
 
-Responda de forma natural e conversacional. Quando identificar que atingiu seu objetivo ou precisar executar uma ação, inclua no FINAL da sua resposta (será removido antes de enviar ao lead) exatamente neste formato:
+IMPORTANTE — formato da resposta:
+- Responda como numa conversa real de WhatsApp, não como um texto de e-mail ou artigo
+- Mensagens CURTAS — no máximo 2-3 frases por vez
+- NUNCA use bullets, listas numeradas ou markdown (sem **, sem -, sem #)
+- Se tiver muita informação para passar, divida em várias mensagens menores, uma ideia por vez, como uma pessoa digitando no WhatsApp
+- Para indicar quebra de mensagem, separe os balões com a tag [QUEBRA] entre eles — o sistema vai enviar cada parte como uma mensagem separada
+- Faça perguntas para manter a conversa fluindo, não despeje todas as informações de uma vez
+- Use no máximo 1 emoji por mensagem, não vários
+- Tom: como um vendedor experiente conversando naturalmente, não um catálogo de produto
+
+Quando identificar que atingiu seu objetivo ou precisar executar uma ação, inclua no FINAL da sua resposta (será removido antes de enviar ao lead) exatamente neste formato:
 |||ACTION:{"action":"continue|qualify|route|sell|handoff","data":{}}|||
 Se ainda não atingiu o objetivo, use action "continue".`
 
@@ -196,7 +206,28 @@ Se ainda não atingiu o objetivo, use action "continue".`
         action = { type: parsed.action ?? 'continue', data: parsed.data ?? {} }
       } catch { /* ignore malformed */ }
     }
-    const reply = rawText.replace(ACTION_DELIM_RE, '').trim()
+    const fullReply = rawText.replace(ACTION_DELIM_RE, '').trim()
+    // Split into WhatsApp-style parts
+    const parts = fullReply.split('[QUEBRA]').map(p => p.trim()).filter(Boolean)
+    const reply = parts.join('\n')
+
+    // In real mode: send each part as a separate WA message with typing delay
+    if (!testMode && leadId) {
+      const { data: leadRow } = await admin.from('leads').select('phone, funnel_id').eq('id', leadId).single()
+      if (leadRow?.phone && leadRow.funnel_id) {
+        const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', leadRow.funnel_id).single()
+        if (funnel?.whatsapp_instance_id) {
+          const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', funnel.whatsapp_instance_id).single()
+          if (instance?.instance_name) {
+            const { sendTextMessage } = await import('@/lib/evolution')
+            for (let i = 0; i < parts.length; i++) {
+              if (i > 0) await new Promise(r => setTimeout(r, 1200))
+              await sendTextMessage(instance.instance_name, leadRow.phone, parts[i])
+            }
+          }
+        }
+      }
+    }
 
     // Persist messages
     await admin.from('agent_messages').insert([
@@ -272,7 +303,7 @@ Se ainda não atingiu o objetivo, use action "continue".`
       }
     }
 
-    return NextResponse.json({ reply, action, conversationId })
+    return NextResponse.json({ reply, parts, action, conversationId })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
