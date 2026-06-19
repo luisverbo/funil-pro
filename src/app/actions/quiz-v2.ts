@@ -129,6 +129,87 @@ async function getTenantId(): Promise<string> {
   return data.tenant_id
 }
 
+// ─── v1 → v2 migration ────────────────────────────────────────────────────────
+
+type V1Question = {
+  id: string
+  question_type: string
+  question_text: string
+  subtitle?: string
+  options?: { id: string; label: string; emoji?: string }[]
+  config?: {
+    is_result?: boolean
+    result_text?: string
+    cta_text?: string
+    cta_url?: string
+    funnel_id?: string
+    bg_color?: string
+    scale_min?: number
+    scale_max?: number
+    show_score?: boolean
+  }
+  required?: boolean
+  order_index: number
+}
+
+function migrateV1ToV2(questions: V1Question[]): QuizData {
+  const typeMap: Record<string, BlockType> = {
+    single_choice: 'single_choice',
+    multi_choice: 'multi_choice',
+    text_short: 'field_text',
+    text_long: 'field_textarea',
+    scale: 'scale',
+    email: 'field_email',
+    phone: 'field_phone',
+    final_capture: 'final_capture',
+    result: 'result',
+    yes_no: 'yes_no',
+  }
+
+  const sorted = [...questions].sort((a, b) => a.order_index - b.order_index)
+
+  const pages: QuizPage[] = sorted.map((q, idx) => {
+    const blockType: BlockType = typeMap[q.question_type] ?? 'field_text'
+    const isResult = q.config?.is_result || q.question_type === 'result' || q.question_type === 'final_capture'
+
+    const config: BlockConfig = isResult
+      ? {
+          title: q.question_text || 'Resultado',
+          description: q.config?.result_text,
+          cta_text: q.config?.cta_text,
+          cta_url: q.config?.cta_url,
+          funnel_id: q.config?.funnel_id,
+          show_score: q.config?.show_score,
+          bg_color: q.config?.bg_color,
+        }
+      : {
+          question: q.question_text,
+          subtitle: q.subtitle,
+          required: q.required,
+          bg_color: q.config?.bg_color,
+          options: q.options?.map(o => ({ id: o.id, label: o.label, emoji: o.emoji })),
+          scale_min: q.config?.scale_min,
+          scale_max: q.config?.scale_max,
+        }
+
+    const block: QuizBlock = {
+      id: q.id,
+      type: isResult && q.question_type === 'final_capture' ? 'final_capture' : isResult ? 'result' : blockType,
+      order: 0,
+      config,
+    }
+
+    return {
+      id: `page-${q.id}`,
+      title: `Etapa ${idx + 1}`,
+      order: idx,
+      blocks: [block],
+    }
+  })
+
+  return { version: 2, pages, settings: {} }
+}
+
 // ─── Server actions ───────────────────────────────────────────────────────────
 
 export async function loadQuizV2(pageId: string): Promise<{
@@ -141,27 +222,41 @@ export async function loadQuizV2(pageId: string): Promise<{
   try {
     const tenantId = await getTenantId()
     const supabase = await getSupabase()
+    const admin = createAdminClient()
 
-    const { data: page } = await supabase
+    // Ensure quiz_data column exists (idempotent) — silently ignore if RPC absent
+    try {
+      await admin.rpc('exec_sql' as never, { sql: 'ALTER TABLE pages ADD COLUMN IF NOT EXISTS quiz_data jsonb;' })
+    } catch { /* column already exists or RPC not available */ }
+
+    const { data: page, error: pageError } = await supabase
       .from('pages')
       .select('id, title, slug, published, quiz_data')
       .eq('id', pageId)
       .eq('tenant_id', tenantId)
       .single()
 
-    if (!page) return { error: 'page_not_found' }
+    if (pageError || !page) return { error: 'page_not_found' }
 
-    const { data: funnels } = await supabase
-      .from('funnels')
-      .select('id, name')
-      .eq('tenant_id', tenantId)
-      .eq('status', 'published')
-      .order('name')
+    const [funnelsResult, questionsResult] = await Promise.all([
+      supabase.from('funnels').select('id, name').eq('tenant_id', tenantId).eq('status', 'published').order('name'),
+      // Load v1 questions for potential migration
+      (page.quiz_data as QuizData | null)?.version !== 2
+        ? supabase.from('interactive_questions').select('*').eq('page_id', pageId).order('order_index')
+        : Promise.resolve({ data: null }),
+    ])
+
+    let quizData = (page.quiz_data as QuizData | null) ?? undefined
+
+    // Auto-migrate v1 → v2 if no v2 data but v1 questions exist
+    if (!quizData && questionsResult.data && questionsResult.data.length > 0) {
+      quizData = migrateV1ToV2(questionsResult.data as V1Question[])
+    }
 
     return {
       page: { id: page.id, title: page.title, slug: page.slug, published: page.published },
-      data: (page.quiz_data as QuizData | null) ?? undefined,
-      funnels: funnels ?? [],
+      data: quizData,
+      funnels: funnelsResult.data ?? [],
       tenantId,
     }
   } catch (err) {
