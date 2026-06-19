@@ -106,7 +106,7 @@ function defaultQuiz(pageTitle = 'Quiz'): QuizData {
   }
 }
 
-// ─── Left Panel ───────────────────────────────────────────────────────────────
+// ─── Block Palette (left) ─────────────────────────────────────────────────────
 
 function PaletteItem({ type }: { type: BlockType }) {
   const meta = BLOCK_META[type]
@@ -127,9 +127,9 @@ function PaletteItem({ type }: { type: BlockType }) {
 
 function LeftPanel() {
   return (
-    <div className="w-60 bg-white border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Blocos</p>
+    <div className="w-48 bg-white border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
+      <div className="px-3 py-3 border-b border-gray-100">
+        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Blocos</p>
         <p className="text-[10px] text-gray-400 mt-0.5">Arraste para a página</p>
       </div>
       <div className="flex-1 overflow-y-auto py-2">
@@ -140,12 +140,183 @@ function LeftPanel() {
           return (
             <div key={cat} className="mb-3">
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1">{cat}</p>
-              <div className="px-2 space-y-0.5">
+              <div className="px-1 space-y-0.5">
                 {types.map(type => <PaletteItem key={type} type={type} />)}
               </div>
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Pages Panel (second column) ─────────────────────────────────────────────
+
+function SortablePageItem({
+  page,
+  index,
+  isActive,
+  onSelect,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  page: QuizPage
+  index: number
+  isActive: boolean
+  onSelect: () => void
+  onRename: (title: string) => void
+  onDuplicate: () => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: `sortpage:${page.id}`,
+    data: { type: 'page-item', pageId: page.id },
+  })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [draft, setDraft] = useState(page.title)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { setDraft(page.title) }, [page.title])
+  useEffect(() => { if (renaming) inputRef.current?.select() }, [renaming])
+
+  function commitRename() {
+    onRename(draft.trim() || page.title)
+    setRenaming(false)
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group relative flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer transition select-none ${isDragging ? 'opacity-40' : ''} ${isActive ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50 border border-transparent'}`}
+      onClick={onSelect}
+    >
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        onClick={e => e.stopPropagation()}
+        className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing shrink-0 p-0.5"
+      >
+        <svg viewBox="0 0 8 12" fill="currentColor" className="w-2.5 h-3">
+          <circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/>
+          <circle cx="2" cy="6" r="1.2"/><circle cx="6" cy="6" r="1.2"/>
+          <circle cx="2" cy="10" r="1.2"/><circle cx="6" cy="10" r="1.2"/>
+        </svg>
+      </div>
+
+      {/* Number badge */}
+      <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 ${isActive ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500'}`}>
+        {index + 1}
+      </div>
+
+      {/* Title / rename input */}
+      {renaming ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setDraft(page.title); setRenaming(false) } }}
+          onClick={e => e.stopPropagation()}
+          className="flex-1 text-xs border border-indigo-300 rounded px-1 py-0.5 focus:outline-none min-w-0"
+        />
+      ) : (
+        <span
+          className={`flex-1 text-xs truncate min-w-0 ${isActive ? 'text-indigo-700 font-medium' : 'text-gray-700'}`}
+          onDoubleClick={e => { e.stopPropagation(); setRenaming(true) }}
+        >
+          {page.title}
+        </span>
+      )}
+
+      {/* Menu button */}
+      <div className="relative shrink-0">
+        <button
+          onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }}
+          className={`w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition text-xs ${menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        >⋮</button>
+        {menuOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+            <div className="absolute right-0 top-6 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-32">
+              <button
+                onClick={e => { e.stopPropagation(); setMenuOpen(false); setRenaming(true) }}
+                className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+              >Renomear</button>
+              <button
+                onClick={e => { e.stopPropagation(); setMenuOpen(false); onDuplicate() }}
+                className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+              >Duplicar</button>
+              <div className="border-t border-gray-100 my-1" />
+              <button
+                onClick={e => { e.stopPropagation(); setMenuOpen(false); onDelete() }}
+                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+              >Excluir</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PagesPanel({
+  pages,
+  selectedPageId,
+  onSelectPage,
+  onAddPage,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  pages: QuizPage[]
+  selectedPageId: string
+  onSelectPage: (id: string) => void
+  onAddPage: () => void
+  onRename: (pageId: string, title: string) => void
+  onDuplicate: (pageId: string) => void
+  onDelete: (pageId: string) => void
+}) {
+  return (
+    <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-hidden">
+      <div className="px-3 py-3 border-b border-gray-100 shrink-0">
+        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Páginas</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{pages.length} {pages.length === 1 ? 'página' : 'páginas'}</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-1.5">
+        <SortableContext
+          items={pages.map(p => `sortpage:${p.id}`)}
+          strategy={verticalListSortingStrategy}
+        >
+          {pages.map((page, i) => (
+            <SortablePageItem
+              key={page.id}
+              page={page}
+              index={i}
+              isActive={page.id === selectedPageId}
+              onSelect={() => onSelectPage(page.id)}
+              onRename={title => onRename(page.id, title)}
+              onDuplicate={() => onDuplicate(page.id)}
+              onDelete={() => onDelete(page.id)}
+            />
+          ))}
+        </SortableContext>
+      </div>
+
+      <div className="p-2 border-t border-gray-100 shrink-0">
+        <button
+          onClick={onAddPage}
+          className="w-full py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition border border-dashed border-indigo-200 hover:border-indigo-400"
+        >
+          + Nova página
+        </button>
       </div>
     </div>
   )
@@ -298,7 +469,6 @@ function SortableBlock({
       } ${isDragging ? 'opacity-40 z-50' : ''}`}
       onClick={onSelect}
     >
-      {/* Drag handle */}
       <div
         {...attributes}
         {...listeners}
@@ -311,13 +481,9 @@ function SortableBlock({
           <circle cx="2" cy="12" r="1.5"/><circle cx="6" cy="12" r="1.5"/>
         </svg>
       </div>
-
-      {/* Block content */}
       <div className="pl-8 pr-10 py-3">
         <BlockPreview block={block} pages={pages} />
       </div>
-
-      {/* Delete button */}
       <button
         onClick={e => { e.stopPropagation(); onDelete() }}
         className="absolute right-2 top-2 w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-base leading-none"
@@ -326,119 +492,84 @@ function SortableBlock({
   )
 }
 
-// ─── Page Card ────────────────────────────────────────────────────────────────
+// ─── Center Panel (active page blocks) ───────────────────────────────────────
 
-function PageCard({
-  page, pages, selectedId, onSelectBlock, onDeleteBlock, onDeletePage, onRenamePageTitle,
+function ActivePageView({
+  page, pages, selectedId, onSelectBlock, onDeleteBlock,
 }: {
   page: QuizPage
   pages: QuizPage[]
   selectedId: string | null
   onSelectBlock: (blockId: string) => void
   onDeleteBlock: (blockId: string) => void
-  onDeletePage: () => void
-  onRenamePageTitle: (title: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `page:${page.id}`, data: { type: 'page', pageId: page.id } })
-  const [editingTitle, setEditingTitle] = useState(false)
-  const [titleDraft, setTitleDraft] = useState(page.title)
-  const titleRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { setTitleDraft(page.title) }, [page.title])
-  useEffect(() => { if (editingTitle) titleRef.current?.select() }, [editingTitle])
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border-2 transition-colors ${isOver ? 'border-indigo-300 shadow-md' : 'border-transparent'}`}>
-      {/* Page header */}
-      <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-        <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-          <span className="text-[10px] font-bold text-indigo-600">{page.order + 1}</span>
-        </div>
-        {editingTitle ? (
-          <input
-            ref={titleRef}
-            value={titleDraft}
-            onChange={e => setTitleDraft(e.target.value)}
-            onBlur={() => { onRenamePageTitle(titleDraft || page.title); setEditingTitle(false) }}
-            onKeyDown={e => { if (e.key === 'Enter') { onRenamePageTitle(titleDraft || page.title); setEditingTitle(false) } }}
-            className="flex-1 text-sm font-semibold text-gray-800 bg-transparent border-b border-indigo-300 focus:outline-none"
-          />
+    <div ref={setNodeRef} className={`min-h-40 transition-colors rounded-2xl ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-200' : ''}`}>
+      <SortableContext items={page.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
+        {page.blocks.length > 0 ? (
+          <div className="space-y-2">
+            {page.blocks.map(block => (
+              <SortableBlock
+                key={block.id}
+                block={block}
+                pageId={page.id}
+                pages={pages}
+                isSelected={selectedId === block.id}
+                onSelect={() => onSelectBlock(block.id)}
+                onDelete={() => onDeleteBlock(block.id)}
+              />
+            ))}
+          </div>
         ) : (
-          <button onClick={() => setEditingTitle(true)} className="flex-1 text-sm font-semibold text-gray-800 text-left hover:text-indigo-600 transition">
-            {page.title}
-          </button>
+          <div className={`h-32 rounded-xl border-2 border-dashed flex items-center justify-center transition-colors ${isOver ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
+            <p className={`text-xs ${isOver ? 'text-indigo-500' : 'text-gray-400'}`}>
+              {isOver ? 'Solte aqui' : 'Arraste blocos da paleta à esquerda'}
+            </p>
+          </div>
         )}
-        <button
-          onClick={onDeletePage}
-          className="w-6 h-6 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 flex items-center justify-center text-lg leading-none transition"
-        >×</button>
-      </div>
-
-      {/* Blocks sortable area */}
-      <div ref={setNodeRef} className="px-4 pb-4">
-        <SortableContext items={page.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-          {page.blocks.length > 0 ? (
-            <div className="space-y-2">
-              {page.blocks.map(block => (
-                <SortableBlock
-                  key={block.id}
-                  block={block}
-                  pageId={page.id}
-                  pages={pages}
-                  isSelected={selectedId === block.id}
-                  onSelect={() => onSelectBlock(block.id)}
-                  onDelete={() => onDeleteBlock(block.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className={`h-20 rounded-xl border-2 border-dashed flex items-center justify-center transition-colors ${isOver ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
-              <p className={`text-xs ${isOver ? 'text-indigo-500' : 'text-gray-400'}`}>
-                {isOver ? 'Solte aqui' : 'Arraste blocos da esquerda'}
-              </p>
-            </div>
-          )}
-        </SortableContext>
-      </div>
+      </SortableContext>
     </div>
   )
 }
 
-// ─── Center Panel ─────────────────────────────────────────────────────────────
-
 function CenterPanel({
-  pages, selectedId, onSelectBlock, onDeleteBlock, onDeletePage, onRenamePageTitle, onAddPage,
+  activePage, pages, selectedId, onSelectBlock, onDeleteBlock,
 }: {
+  activePage: QuizPage | null
   pages: QuizPage[]
   selectedId: string | null
   onSelectBlock: (blockId: string) => void
   onDeleteBlock: (blockId: string) => void
-  onDeletePage: (pageId: string) => void
-  onRenamePageTitle: (pageId: string, title: string) => void
-  onAddPage: () => void
 }) {
-  return (
-    <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
-      <div className="max-w-xl mx-auto space-y-4">
-        {pages.map(page => (
-          <PageCard
-            key={page.id}
-            page={page}
-            pages={pages}
-            selectedId={selectedId}
-            onSelectBlock={onSelectBlock}
-            onDeleteBlock={id => onDeleteBlock(id)}
-            onDeletePage={() => onDeletePage(page.id)}
-            onRenamePageTitle={title => onRenamePageTitle(page.id, title)}
-          />
-        ))}
+  if (!activePage) {
+    return (
+      <div className="flex-1 bg-gray-100 flex items-center justify-center">
+        <p className="text-sm text-gray-400">Selecione uma página na lista</p>
+      </div>
+    )
+  }
 
-        <button
-          onClick={onAddPage}
-          className="w-full py-3 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-400 text-sm font-medium hover:border-indigo-400 hover:text-indigo-600 hover:bg-white transition"
-        >
-          + Nova página
-        </button>
+  return (
+    <div className="flex-1 overflow-y-auto bg-gray-100">
+      {/* Page title bar */}
+      <div className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200 px-6 py-3 flex items-center gap-2">
+        <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+          <span className="text-[10px] font-bold text-indigo-600">{activePage.order + 1}</span>
+        </div>
+        <p className="text-sm font-semibold text-gray-800 truncate">{activePage.title}</p>
+        <span className="text-xs text-gray-400 ml-auto">{activePage.blocks.length} {activePage.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
+      </div>
+
+      <div className="max-w-xl mx-auto p-6">
+        <ActivePageView
+          page={activePage}
+          pages={pages}
+          selectedId={selectedId}
+          onSelectBlock={onSelectBlock}
+          onDeleteBlock={onDeleteBlock}
+        />
       </div>
     </div>
   )
@@ -557,12 +688,14 @@ function OptionList({
 }
 
 function BlockEditor({
-  block, pages, funnels, onChange,
+  block, pages, currentPageId, funnels, onChange, onMoveToPage,
 }: {
   block: QuizBlock
   pages: QuizPage[]
+  currentPageId: string
   funnels: { id: string; name: string }[]
   onChange: (config: Partial<BlockConfig>) => void
+  onMoveToPage: (targetPageId: string) => void
 }) {
   const { config } = block
   const isChoice = ['single_choice', 'multi_choice', 'yes_no'].includes(block.type)
@@ -571,6 +704,8 @@ function BlockEditor({
   function setConfigKey<K extends keyof BlockConfig>(key: K, val: BlockConfig[K]) { setConfig({ [key]: val }) }
 
   const sectionCls = 'border-t border-gray-100 pt-3'
+
+  const otherPages = pages.filter(p => p.id !== currentPageId)
 
   return (
     <div className="space-y-4">
@@ -816,7 +951,7 @@ function BlockEditor({
         </>
       )}
 
-      {/* Background color for choice blocks */}
+      {/* Background color */}
       {(isChoice || block.type === 'scale') && (
         <div className={sectionCls}>
           <label className={labelCls}>Cor de fundo</label>
@@ -829,19 +964,36 @@ function BlockEditor({
           </div>
         </div>
       )}
+
+      {/* Move to page */}
+      {otherPages.length > 0 && (
+        <div className="border-t border-gray-100 pt-3">
+          <label className={labelCls}>Mover para página</label>
+          <select
+            defaultValue=""
+            onChange={e => { if (e.target.value) { onMoveToPage(e.target.value); e.target.value = '' } }}
+            className={inputCls}
+          >
+            <option value="" disabled>Selecionar página...</option>
+            {otherPages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+        </div>
+      )}
     </div>
   )
 }
 
 function RightPanel({
-  selectedBlockId, pages, settings, funnels, onUpdateBlock, onUpdateSettings,
+  selectedBlockId, pages, currentPageId, settings, funnels, onUpdateBlock, onUpdateSettings, onMoveBlock,
 }: {
   selectedBlockId: string | null
   pages: QuizPage[]
+  currentPageId: string
   settings: QuizData['settings']
   funnels: { id: string; name: string }[]
   onUpdateBlock: (blockId: string, config: Partial<BlockConfig>) => void
   onUpdateSettings: (patch: Partial<QuizData['settings']>) => void
+  onMoveBlock: (blockId: string, targetPageId: string) => void
 }) {
   let selectedBlock: QuizBlock | null = null
   if (selectedBlockId) {
@@ -854,7 +1006,7 @@ function RightPanel({
   const meta = selectedBlock ? BLOCK_META[selectedBlock.type] : null
 
   return (
-    <div className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
+    <div className="w-72 bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
       {selectedBlock ? (
         <>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
@@ -865,8 +1017,10 @@ function RightPanel({
             <BlockEditor
               block={selectedBlock}
               pages={pages}
+              currentPageId={currentPageId}
               funnels={funnels}
               onChange={config => onUpdateBlock(selectedBlock!.id, config)}
+              onMoveToPage={targetPageId => onMoveBlock(selectedBlock!.id, targetPageId)}
             />
           </div>
         </>
@@ -897,10 +1051,18 @@ interface Props {
 export default function QuizEditorV2({ page, initialData, funnels }: Props) {
   const router = useRouter()
   const [data, setData] = useState<QuizData>(() => initialData ?? defaultQuiz(page.title))
+  const [selectedPageId, setSelectedPageId] = useState<string>(() => initialData?.pages[0]?.id ?? '')
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [activeId, setActiveId] = useState<string | null>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Keep selectedPageId valid when pages change
+  useEffect(() => {
+    if (!data.pages.find(p => p.id === selectedPageId) && data.pages.length > 0) {
+      setSelectedPageId(data.pages[0].id)
+    }
+  }, [data.pages, selectedPageId])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -930,10 +1092,7 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
     setTimeout(() => { setSaveStatus('idle'); router.refresh() }, 1500)
   }
 
-  // State helpers
-  function updateData(fn: (d: QuizData) => QuizData) {
-    setData(prev => fn(prev))
-  }
+  function updateData(fn: (d: QuizData) => QuizData) { setData(prev => fn(prev)) }
   function updatePages(fn: (pages: QuizPage[]) => QuizPage[]) {
     updateData(d => ({ ...d, pages: fn(d.pages) }))
   }
@@ -949,15 +1108,36 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
       blocks: [],
     }
     updatePages(pages => [...pages, newPage])
+    setSelectedPageId(newPage.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.pages.length])
 
   const deletePage = useCallback((pageId: string) => {
-    updatePages(pages => pages.filter(p => p.id !== pageId).map((p, i) => ({ ...p, order: i })))
+    updatePages(pages => {
+      const remaining = pages.filter(p => p.id !== pageId).map((p, i) => ({ ...p, order: i }))
+      return remaining
+    })
     setSelectedBlockId(prev => {
       const inPage = data.pages.find(p => p.id === pageId)
       if (inPage?.blocks.some(b => b.id === prev)) return null
       return prev
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.pages])
+
+  const duplicatePage = useCallback((pageId: string) => {
+    const source = data.pages.find(p => p.id === pageId)
+    if (!source) return
+    const newPage: QuizPage = {
+      ...source,
+      id: newId(),
+      title: `${source.title} (cópia)`,
+      blocks: source.blocks.map(b => ({ ...b, id: newId() })),
+      order: data.pages.length,
+    }
+    updatePages(pages => [...pages, newPage].map((p, i) => ({ ...p, order: i })))
+    setSelectedPageId(newPage.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.pages])
 
   const renamePageTitle = useCallback((pageId: string, title: string) => {
@@ -965,9 +1145,7 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
   }, [])
 
   const addBlock = useCallback((pageId: string, type: BlockType, insertBeforeBlockId?: string | null) => {
-    const newBlock: QuizBlock = {
-      id: newId(), type, order: 0, config: defaultConfig(type),
-    }
+    const newBlock: QuizBlock = { id: newId(), type, order: 0, config: defaultConfig(type) }
     updatePages(pages => pages.map(p => {
       if (p.id !== pageId) return p
       let blocks: QuizBlock[]
@@ -998,7 +1176,25 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
     })))
   }, [])
 
-  // DnD handlers
+  const moveBlock = useCallback((blockId: string, targetPageId: string) => {
+    updatePages(pages => {
+      let block: QuizBlock | undefined
+      const intermediate = pages.map(p => {
+        const found = p.blocks.find(b => b.id === blockId)
+        if (found) { block = found; return { ...p, blocks: p.blocks.filter(b => b.id !== blockId) } }
+        return p
+      })
+      if (!block) return pages
+      const b = block
+      return intermediate.map(p => {
+        if (p.id !== targetPageId) return p
+        return { ...p, blocks: [...p.blocks, b].map((bl, i) => ({ ...bl, order: i })) }
+      })
+    })
+    setSelectedPageId(targetPageId)
+    setSelectedBlockId(blockId)
+  }, [])
+
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id))
   }
@@ -1011,50 +1207,52 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
     const activeStr = String(active.id)
     const overStr = String(over.id)
 
-    // Drop from palette
+    // Page reorder
+    if (activeStr.startsWith('sortpage:') && overStr.startsWith('sortpage:')) {
+      const fromId = activeStr.slice(9)
+      const toId = overStr.slice(9)
+      if (fromId !== toId) {
+        updatePages(pages => {
+          const oldIdx = pages.findIndex(p => p.id === fromId)
+          const newIdx = pages.findIndex(p => p.id === toId)
+          if (oldIdx < 0 || newIdx < 0) return pages
+          return arrayMove(pages, oldIdx, newIdx).map((p, i) => ({ ...p, order: i }))
+        })
+      }
+      return
+    }
+
+    // Drop from palette onto the active page
     if (activeStr.startsWith('palette:')) {
       const type = activeStr.slice(8) as BlockType
-      let targetPageId: string | null = null
+      let targetPageId = selectedPageId
       let insertBeforeId: string | null = null
 
       if (overStr.startsWith('page:')) {
         targetPageId = overStr.slice(5)
       } else {
-        // Over a block
-        for (const page of data.pages) {
-          const block = page.blocks.find(b => b.id === overStr)
-          if (block) {
-            targetPageId = page.id
-            insertBeforeId = block.id
-            break
-          }
-        }
-        // Over droppable page area
-        if (!targetPageId && overStr.startsWith('page:')) {
-          targetPageId = overStr.slice(5)
+        // Over a block — insert before it
+        for (const p of data.pages) {
+          const b = p.blocks.find(b => b.id === overStr)
+          if (b) { targetPageId = p.id; insertBeforeId = b.id; break }
         }
       }
 
       if (!targetPageId && data.pages.length > 0) targetPageId = data.pages[0].id
-
       if (targetPageId) addBlock(targetPageId, type, insertBeforeId)
       return
     }
 
-    // Reorder/move block
+    // Block reorder within page
     const activeData = active.data.current as { pageId?: string } | undefined
-    const overData = over.data.current as { pageId?: string; type?: string } | undefined
-
     if (!activeData?.pageId) return
 
     const sourcePageId = activeData.pageId
-    let targetPageId = overData?.pageId ?? sourcePageId
 
-    // If dropped on page droppable
-    if (overStr.startsWith('page:')) targetPageId = overStr.slice(5)
+    if (overStr.startsWith('sortpage:') || overStr.startsWith('page:')) return
 
-    if (sourcePageId === targetPageId) {
-      // Same page — reorder
+    // Same page reorder
+    if (sourcePageId === selectedPageId) {
       updatePages(pages => pages.map(p => {
         if (p.id !== sourcePageId) return p
         const oldIdx = p.blocks.findIndex(b => b.id === activeStr)
@@ -1062,29 +1260,17 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
         if (oldIdx < 0 || newIdx < 0) return p
         return { ...p, blocks: arrayMove(p.blocks, oldIdx, newIdx).map((b, i) => ({ ...b, order: i })) }
       }))
-    } else {
-      // Different page — move
-      updatePages(pages => {
-        const block = pages.find(p => p.id === sourcePageId)?.blocks.find(b => b.id === activeStr)
-        if (!block) return pages
-        return pages.map(p => {
-          if (p.id === sourcePageId) return { ...p, blocks: p.blocks.filter(b => b.id !== activeStr) }
-          if (p.id === targetPageId) {
-            const insertIdx = p.blocks.findIndex(b => b.id === overStr)
-            const newBlocks = [...p.blocks]
-            newBlocks.splice(insertIdx >= 0 ? insertIdx : newBlocks.length, 0, block)
-            return { ...p, blocks: newBlocks.map((b, i) => ({ ...b, order: i })) }
-          }
-          return p
-        })
-      })
     }
   }
 
-  // Active drag preview
   function getActiveMeta() {
     if (!activeId) return null
     if (activeId.startsWith('palette:')) return BLOCK_META[activeId.slice(8) as BlockType]
+    if (activeId.startsWith('sortpage:')) {
+      const pageId = activeId.slice(9)
+      const p = data.pages.find(pg => pg.id === pageId)
+      return p ? { icon: '📄', label: p.title, category: '' } : null
+    }
     for (const p of data.pages) {
       const b = p.blocks.find(blk => blk.id === activeId)
       if (b) return BLOCK_META[b.type]
@@ -1092,6 +1278,8 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
     return null
   }
   const activeMeta = getActiveMeta()
+
+  const activePage = data.pages.find(p => p.id === selectedPageId) ?? null
 
   const saveLabel = saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? '✓ Salvo!' : saveStatus === 'error' ? 'Erro' : 'Salvar'
 
@@ -1127,30 +1315,38 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
           </div>
         </div>
 
-        {/* 3-column layout */}
+        {/* 4-column layout */}
         <div className="flex flex-1 overflow-hidden">
           <LeftPanel />
+          <PagesPanel
+            pages={data.pages}
+            selectedPageId={selectedPageId}
+            onSelectPage={id => { setSelectedPageId(id); setSelectedBlockId(null) }}
+            onAddPage={addPage}
+            onRename={renamePageTitle}
+            onDuplicate={duplicatePage}
+            onDelete={deletePage}
+          />
           <CenterPanel
+            activePage={activePage}
             pages={data.pages}
             selectedId={selectedBlockId}
             onSelectBlock={setSelectedBlockId}
             onDeleteBlock={deleteBlock}
-            onDeletePage={deletePage}
-            onRenamePageTitle={renamePageTitle}
-            onAddPage={addPage}
           />
           <RightPanel
             selectedBlockId={selectedBlockId}
             pages={data.pages}
+            currentPageId={selectedPageId}
             settings={data.settings}
             funnels={funnels}
             onUpdateBlock={updateBlock}
             onUpdateSettings={updateSettings}
+            onMoveBlock={moveBlock}
           />
         </div>
       </div>
 
-      {/* Drag overlay */}
       <DragOverlay dropAnimation={null}>
         {activeId && activeMeta && (
           <div className="bg-white border-2 border-indigo-400 rounded-xl px-3 py-2 shadow-xl flex items-center gap-2 text-sm font-medium text-gray-700 pointer-events-none">
