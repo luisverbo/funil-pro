@@ -153,6 +153,20 @@ const GROUPS = [
           </svg>
         ),
       },
+      {
+        type: 'agent',
+        label: 'Agente IA',
+        desc: 'Ativa atendimento inteligente',
+        color: '#6366f1',
+        scaleOnly: true,
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+            <rect x="3" y="11" width="18" height="10" rx="2" />
+            <circle cx="12" cy="5" r="2" /><path d="M12 7v4" />
+            <line x1="8" y1="16" x2="8" y2="16" /><line x1="16" y1="16" x2="16" y2="16" />
+          </svg>
+        ),
+      },
     ],
   },
   {
@@ -177,9 +191,11 @@ const GROUPS = [
 interface Props {
   onBlockClick?: (type: string) => void
   mode?: 'sidebar' | 'sheet'
+  tenantPlan?: string
 }
 
-export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) {
+export default function BlockPalette({ onBlockClick, mode = 'sidebar', tenantPlan }: Props) {
+  const isScale = tenantPlan === 'scale'
   const onDragStart = (e: React.DragEvent, type: string) => {
     e.dataTransfer.setData('application/reactflow', type)
     e.dataTransfer.effectAllowed = 'move'
@@ -194,11 +210,15 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
               {group.title}
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {group.blocks.map((block) => (
+              {group.blocks.map((block) => {
+                const locked = !!(block as { scaleOnly?: boolean }).scaleOnly && !isScale
+                return (
                 <button
                   key={block.type}
-                  onClick={() => onBlockClick?.(block.type)}
-                  className="flex items-center gap-3 p-3 rounded-lg border text-left transition-colors active:scale-[0.98]"
+                  onClick={() => { if (!locked) onBlockClick?.(block.type) }}
+                  disabled={locked}
+                  title={locked ? 'Disponível no plano Scale' : undefined}
+                  className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-colors active:scale-[0.98] ${locked ? 'opacity-50 cursor-not-allowed' : ''}`}
                   style={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0' }}
                 >
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${block.color}14`, color: block.color }}>
@@ -206,7 +226,8 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
                   </div>
                   <p className="text-[13px] font-medium" style={{ color: '#1E293B' }}>{block.label}</p>
                 </button>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))}
@@ -226,12 +247,15 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
               {group.title}
             </p>
             <div className="space-y-1">
-              {group.blocks.map((block) => (
+              {group.blocks.map((block) => {
+                const locked = !!(block as { scaleOnly?: boolean }).scaleOnly && !isScale
+                return (
                 <div
                   key={block.type}
-                  draggable
-                  onDragStart={(e) => onDragStart(e, block.type)}
-                  className="flex items-center gap-3 rounded-lg cursor-grab active:cursor-grabbing select-none transition-colors"
+                  draggable={!locked}
+                  onDragStart={(e) => { if (locked) { e.preventDefault(); return } onDragStart(e, block.type) }}
+                  title={locked ? 'Disponível no plano Scale' : undefined}
+                  className={`flex items-center gap-3 rounded-lg select-none transition-colors ${locked ? 'cursor-not-allowed opacity-50' : 'cursor-grab active:cursor-grabbing'}`}
                   style={{ padding: '8px 10px' }}
                   onMouseEnter={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = '#F8FAFC'}
                   onMouseLeave={(e) => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
@@ -246,12 +270,19 @@ export default function BlockPalette({ onBlockClick, mode = 'sidebar' }: Props) 
                     <p className="text-[13px] font-medium truncate" style={{ color: '#1E293B' }}>{block.label}</p>
                     <p className="text-[12px] truncate mt-0.5" style={{ color: '#94A3B8' }}>{block.desc}</p>
                   </div>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0 opacity-20">
-                    <circle cx="9" cy="5" r="1" fill="currentColor" /><circle cx="9" cy="12" r="1" fill="currentColor" /><circle cx="9" cy="19" r="1" fill="currentColor" />
-                    <circle cx="15" cy="5" r="1" fill="currentColor" /><circle cx="15" cy="12" r="1" fill="currentColor" /><circle cx="15" cy="19" r="1" fill="currentColor" />
-                  </svg>
+                  {locked ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0" style={{ color: '#94A3B8' }}>
+                      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 shrink-0 opacity-20">
+                      <circle cx="9" cy="5" r="1" fill="currentColor" /><circle cx="9" cy="12" r="1" fill="currentColor" /><circle cx="9" cy="19" r="1" fill="currentColor" />
+                      <circle cx="15" cy="5" r="1" fill="currentColor" /><circle cx="15" cy="12" r="1" fill="currentColor" /><circle cx="15" cy="19" r="1" fill="currentColor" />
+                    </svg>
+                  )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))}

@@ -225,6 +225,53 @@ Se ainda não atingiu o objetivo, use action "continue".`
       await admin.from('ai_agents').update({ activations_used: (a.activations_used ?? 0) + 1 }).eq('id', agentId)
     }
 
+    // Resume funnel when agent concludes (non-continue, non-test)
+    if (!testMode && newStatus && leadId) {
+      const { data: leadRow } = await admin
+        .from('leads')
+        .select('funnel_id, funnel_resume_block_id, tenant_id')
+        .eq('id', leadId)
+        .single()
+
+      if (leadRow?.funnel_resume_block_id) {
+        await admin.from('leads').update({
+          agent_active: false,
+          funnel_paused_at: null,
+          funnel_resume_block_id: null,
+        }).eq('id', leadId)
+
+        await admin.from('lead_events').insert({
+          tenant_id: leadRow.tenant_id,
+          lead_id: leadId,
+          funnel_id: leadRow.funnel_id,
+          block_id: leadRow.funnel_resume_block_id,
+          event_type: 'agent_deactivated',
+          event_data: { outcome: action.type, agent_id: agentId },
+        })
+
+        // Enqueue next funnel block (edge 'default' from the agent block)
+        const { data: nextEdge } = await admin
+          .from('funnel_edges')
+          .select('target_block_id')
+          .eq('funnel_id', leadRow.funnel_id)
+          .eq('source_block_id', leadRow.funnel_resume_block_id)
+          .eq('condition', 'default')
+          .limit(1)
+          .maybeSingle()
+
+        if (nextEdge?.target_block_id) {
+          await admin.from('queue_jobs').insert({
+            tenant_id: leadRow.tenant_id,
+            lead_id: leadId,
+            funnel_id: leadRow.funnel_id,
+            block_id: nextEdge.target_block_id,
+            status: 'pending',
+            scheduled_for: new Date().toISOString(),
+          })
+        }
+      }
+    }
+
     return NextResponse.json({ reply, action, conversationId })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

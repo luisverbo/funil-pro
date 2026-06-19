@@ -282,6 +282,37 @@ export async function processJob(job: QueueJob): Promise<void> {
     await enqueueNext(job, 'default', admin)
   }
 
+  else if (block.block_type === 'agent') {
+    const agentId = config.agent_id as string | undefined
+
+    if (!agentId) {
+      await enqueueNext(job, 'default', admin)
+      return
+    }
+
+    const { data: tenant } = await admin.from('tenants').select('plan').eq('id', job.tenant_id).single()
+    if (tenant?.plan !== 'scale') {
+      await enqueueNext(job, 'default', admin)
+      return
+    }
+
+    await admin.from('leads').update({
+      agent_active: true,
+      funnel_paused_at: new Date().toISOString(),
+      funnel_resume_block_id: job.block_id,
+    }).eq('id', job.lead_id)
+
+    await admin.from('lead_events').insert({
+      tenant_id: job.tenant_id,
+      lead_id: job.lead_id,
+      funnel_id: job.funnel_id,
+      block_id: job.block_id,
+      event_type: 'agent_activated',
+      event_data: { agent_id: agentId },
+    })
+    // Funil fica pausado — retoma quando agente concluir via webhook Evolution
+  }
+
   else if (block.block_type === 'ab_test') {
     const percentA = (config.percent_a as number) ?? 50
     const rand = Math.random() * 100
