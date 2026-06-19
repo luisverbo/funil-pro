@@ -75,7 +75,7 @@ export async function POST(
 
   const { data: lead } = await admin
     .from('leads')
-    .select('id, funnel_id, current_block_id, status, name')
+    .select('id, funnel_id, current_block_id, status, name, agent_active, funnel_resume_block_id')
     .eq('tenant_id', tenantId)
     .or(`phone.eq.${senderPhone},phone.eq.${phoneWithoutCode}`)
     .eq('status', 'active')
@@ -97,6 +97,28 @@ export async function POST(
     event_type: 'replied',
     event_data: { text: messageText, phone: senderPhone },
   })
+
+  // If lead has an active AI agent, route message to the agent
+  if ((lead as Record<string, unknown>).agent_active && (lead as Record<string, unknown>).funnel_resume_block_id) {
+    const { data: agentBlock } = await admin
+      .from('funnel_blocks')
+      .select('id, config')
+      .eq('id', (lead as Record<string, unknown>).funnel_resume_block_id as string)
+      .single()
+
+    const agentId = (agentBlock?.config as Record<string, unknown>)?.agent_id as string | undefined
+
+    if (agentId && messageText) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      fetch(`${baseUrl}/api/agents/${agentId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageText, leadId: lead.id }),
+      }).catch(() => {})
+    }
+
+    return NextResponse.json({ received: true })
+  }
 
   // If lead is paused on a condition block, re-enqueue via queue_jobs (cron picks it up)
   if (lead.current_block_id) {

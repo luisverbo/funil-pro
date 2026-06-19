@@ -32,6 +32,7 @@ import AbTestNode from './nodes/ab-test-node'
 import RemoveFromFunnelNode from './nodes/remove-from-funnel-node'
 import NoteNode from './nodes/note-node'
 import FunnelPageNode from './nodes/page-node'
+import AgentNode from './nodes/agent-node'
 import CustomEdge from './custom-edge'
 import BlockPalette from './block-palette'
 import ConfigPanel from './config-panel'
@@ -58,6 +59,7 @@ const nodeTypes = {
   remove_from_funnel: RemoveFromFunnelNode,
   note: NoteNode,
   funnel_page: FunnelPageNode,
+  agent: AgentNode,
 }
 
 const edgeTypes = { custom: CustomEdge }
@@ -72,7 +74,7 @@ const BLOCK_LABELS: Record<string, string> = {
   message: 'Mensagem', condition: 'Condição', delay: 'Atraso', tag: 'Tag', sale: 'Venda',
   entry: 'Entrada', cart_abandoned: 'Carr. Abandonado', goto: 'Ir para etapa',
   ab_test: 'Divisão A/B', remove_from_funnel: 'Remover do funil', note: 'Nota',
-  funnel_page: 'Página',
+  funnel_page: 'Página', agent: 'Agente IA',
 }
 
 // React Flow uses 'funnel_page' internally; DB stores it as 'page'
