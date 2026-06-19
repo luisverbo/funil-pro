@@ -436,6 +436,9 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
             </FieldWrap>
             {(config.entry_type as string) === 'form' && (
               <FieldWrap>
+                <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-700 leading-relaxed mb-3">
+                  💡 Esta opção ativa o funil via página de captura simples (<code className="font-mono">/p/[id]</code>). Para usar um quiz interativo, crie a página em <strong>Páginas → Nova Página → Quiz/Formulário</strong> e configure o funil de destino no nó <strong>Resultado</strong> do quiz.
+                </div>
                 <Label>Página de captura</Label>
                 {(config.page_configured as boolean) ? (
                   <div className="space-y-2">

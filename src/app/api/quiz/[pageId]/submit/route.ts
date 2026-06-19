@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { processJob } from '@/lib/queue/processor'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ pageId: string }> }) {
   const { pageId } = await params
@@ -77,14 +78,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
       if (firstBlock) {
         await admin.from('leads').update({ funnel_id, status: 'active' }).eq('id', leadId)
-        await admin.from('queue_jobs').insert({
+        const { data: job } = await admin.from('queue_jobs').insert({
           tenant_id: tenantId,
           lead_id: leadId,
           funnel_id,
           block_id: firstBlock.id,
           status: 'pending',
           scheduled_for: new Date().toISOString(),
-        })
+        }).select('id').single()
+
+        // Fire immediately — no need to wait for cron
+        if (job?.id) {
+          processJob({
+            id: job.id,
+            tenant_id: tenantId,
+            lead_id: leadId,
+            funnel_id,
+            block_id: firstBlock.id,
+            status: 'pending',
+            scheduled_for: new Date().toISOString(),
+            attempts: 0,
+          }).catch(err => console.error('[quiz/submit] processJob error:', err))
+        }
       }
     }
 
