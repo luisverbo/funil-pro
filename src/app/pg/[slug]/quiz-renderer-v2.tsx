@@ -396,16 +396,23 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           ) : null
         })()}
 
-        {block.type === 'button' && config.button_action === 'external_url' && (
-          <div className={`flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
-            <a href={config.button_url || '#'} target="_blank" rel="noopener noreferrer"
-              onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.button_url })}
-              className="px-8 py-4 text-base font-semibold text-white rounded-2xl shadow transition hover:opacity-90"
-              style={{ background: config.button_color || primaryColor }}>
-              {config.button_text || 'Acessar'}
-            </a>
-          </div>
-        )}
+        {block.type === 'button' && config.button_action === 'external_url' && (() => {
+          const btnSize = config.button_size === 'sm'
+            ? 'px-4 py-2 text-sm self-auto'
+            : config.button_size === 'lg'
+            ? 'px-10 py-5 text-lg w-full'
+            : 'px-8 py-4 text-base'
+          return (
+            <div className={`flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
+              <a href={config.button_url || '#'} target="_blank" rel="noopener noreferrer"
+                onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.button_url })}
+                className={`font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${btnSize}`}
+                style={{ background: config.button_color || primaryColor }}>
+                {config.button_text || 'Acessar'}
+              </a>
+            </div>
+          )
+        })()}
 
         {block.type === 'final_capture' && (
           <div className="space-y-3">
@@ -571,16 +578,23 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             </button>
           )}
 
-          {hasExplicitButton && currentPage.blocks.filter(b => b.type === 'button' && b.config.button_action !== 'external_url').map(b => (
-            <div key={b.id} className={`flex ${b.config.button_align === 'left' ? 'justify-start' : b.config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
-              <button
-                onClick={() => { tracker.track('button_clicked', currentPage.id, b.id, {}); handleNext() }}
-                className="px-8 py-4 text-base font-semibold text-white rounded-2xl shadow transition hover:opacity-90"
-                style={{ background: b.config.button_color || primaryColor }}>
-                {b.config.button_text || 'Próximo →'}
-              </button>
-            </div>
-          ))}
+          {hasExplicitButton && currentPage.blocks.filter(b => b.type === 'button' && b.config.button_action !== 'external_url').map(b => {
+            const bSize = b.config.button_size === 'sm'
+              ? 'px-4 py-2 text-sm'
+              : b.config.button_size === 'lg'
+              ? 'px-10 py-5 text-lg w-full'
+              : 'px-8 py-4 text-base'
+            return (
+              <div key={b.id} className={`flex ${b.config.button_align === 'left' ? 'justify-start' : b.config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
+                <button
+                  onClick={() => { tracker.track('button_clicked', currentPage.id, b.id, {}); handleNext() }}
+                  className={`font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${bSize}`}
+                  style={{ background: b.config.button_color || primaryColor }}>
+                  {b.config.button_text || 'Próximo →'}
+                </button>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

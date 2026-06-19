@@ -59,6 +59,7 @@ export interface BlockConfig {
   button_url?: string
   button_color?: string
   button_align?: 'left' | 'center' | 'right'
+  button_size?: 'sm' | 'md' | 'lg'
 
   // Final capture
   show_name?: boolean

@@ -89,20 +89,7 @@ function defaultQuiz(pageTitle = 'Quiz'): QuizData {
       id: firstPageId,
       title: 'Página 1',
       order: 0,
-      blocks: [{
-        id: newId(),
-        type: 'single_choice',
-        order: 0,
-        config: {
-          question: 'Qual é o seu principal objetivo?',
-          subtitle: 'Escolha uma opção',
-          required: true,
-          options: [
-            { id: newId(), label: 'Opção A', emoji: '🎯', points: 10 },
-            { id: newId(), label: 'Opção B', emoji: '💪', points: 5 },
-          ],
-        },
-      }],
+      blocks: [],
     }],
     settings: { title: pageTitle, primary_color: '#6366f1', show_progress: true },
   }
@@ -394,10 +381,15 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
       </div>
     )
   } else if (block.type === 'button') {
+    const sizeCls = config.button_size === 'sm'
+      ? 'px-3 py-1.5 text-xs'
+      : config.button_size === 'lg'
+      ? 'px-8 py-3.5 text-base w-full'
+      : 'px-5 py-2.5 text-sm'
     summary = (
       <div className={`flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
         <div
-          className="px-5 py-2.5 text-sm font-semibold text-white rounded-xl shadow-sm"
+          className={`font-semibold text-white rounded-xl shadow-sm ${sizeCls}`}
           style={{ background: config.button_color || '#6366f1' }}
         >
           {config.button_text || 'Botão'}
@@ -852,6 +844,17 @@ function BlockEditor({
                     className="w-6 h-6 rounded-full outline-2 outline outline-offset-1 transition" />
                 ))}
               </div>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Tamanho</label>
+            <div className="flex gap-2">
+              {(['sm','md','lg'] as const).map(s => (
+                <button key={s} onClick={() => setConfigKey('button_size', s)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.button_size ?? 'md') === s ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-indigo-200'}`}>
+                  {s === 'sm' ? 'Pequeno' : s === 'md' ? 'Médio' : 'Grande'}
+                </button>
+              ))}
             </div>
           </div>
           <div>
