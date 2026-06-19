@@ -1,7 +1,9 @@
 'use client'
 
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
+
+const QuizLeadsView = lazy(() => import('@/components/quiz/quiz-leads-view'))
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDroppable, useDraggable,
@@ -1050,6 +1052,7 @@ interface Props {
 
 export default function QuizEditorV2({ page, initialData, funnels }: Props) {
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'builder' | 'leads'>('builder')
   const [data, setData] = useState<QuizData>(() => initialData ?? defaultQuiz(page.title))
   const [selectedPageId, setSelectedPageId] = useState<string>(() => initialData?.pages[0]?.id ?? '')
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
@@ -1291,8 +1294,20 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
           <button onClick={() => router.push('/pages')} className="text-gray-500 hover:text-gray-700 shrink-0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <h1 className="text-sm font-semibold text-gray-900 truncate flex-1 min-w-0">{page.title}</h1>
-          <span className="text-xs text-gray-400 shrink-0">Editor de Quiz</span>
+          <h1 className="text-sm font-semibold text-gray-900 truncate max-w-[180px]">{page.title}</h1>
+
+          {/* Tabs */}
+          <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium shrink-0">
+            {(['builder','leads'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`px-3 py-1.5 transition ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                {tab === 'builder' ? 'Construtor' : `Leads`}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1" />
+
           <div className="flex items-center gap-2 shrink-0">
             {page.published && page.slug && (
               <a href={`/pg/${page.slug}`} target="_blank" rel="noopener noreferrer"
@@ -1315,8 +1330,17 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
           </div>
         </div>
 
-        {/* 4-column layout */}
-        <div className="flex flex-1 overflow-hidden">
+        {/* Leads tab */}
+        {activeTab === 'leads' && (
+          <div className="flex-1 overflow-hidden">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400 text-sm">Carregando leads…</div>}>
+              <QuizLeadsView quizId={page.id} pages={data.pages} />
+            </Suspense>
+          </div>
+        )}
+
+        {/* 4-column layout (builder tab) */}
+        <div className={`flex flex-1 overflow-hidden ${activeTab !== 'builder' ? 'hidden' : ''}`}>
           <LeftPanel />
           <PagesPanel
             pages={data.pages}

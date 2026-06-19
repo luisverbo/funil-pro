@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { QuizData, QuizPage, QuizBlock, BlockOption } from '@/app/actions/quiz-v2'
 
 interface Props {
@@ -17,6 +17,63 @@ function getYoutubeEmbed(url: string): string | null {
   return url.includes('embed') ? url : null
 }
 
+// ─── Tracking ─────────────────────────────────────────────────────────────────
+
+function useTracker(pageId: string) {
+  const leadIdRef = useRef<string | null>(null)
+  const trackUrl = `/api/quiz/${pageId}/track`
+
+  async function start() {
+    try {
+      const res = await fetch(trackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' }),
+      })
+      const data = await res.json()
+      leadIdRef.current = data.leadId ?? null
+    } catch { /* silent */ }
+  }
+
+  function track(eventType: string, quizPageId: string, blockId: string | null, value: unknown) {
+    if (!leadIdRef.current) return
+    fetch(trackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'event',
+        leadId: leadIdRef.current,
+        pageId: quizPageId,
+        blockId,
+        eventType,
+        value,
+      }),
+    }).catch(() => {})
+  }
+
+  function trackContact(name?: string, email?: string, phone?: string) {
+    if (!leadIdRef.current) return
+    fetch(trackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'contact', leadId: leadIdRef.current, name, email, phone }),
+    }).catch(() => {})
+  }
+
+  function trackComplete(score: number, resultShown: string | null) {
+    if (!leadIdRef.current) return
+    fetch(trackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'complete', leadId: leadIdRef.current, score, resultShown }),
+    }).catch(() => {})
+  }
+
+  return { start, track, trackContact, trackComplete }
+}
+
+// ─── Renderer ─────────────────────────────────────────────────────────────────
+
 export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const primaryColor = data.settings.primary_color || '#6366f1'
   const showProgress = data.settings.show_progress !== false
@@ -32,19 +89,35 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const [transitionKey, setTransitionKey] = useState(0)
   const captureRef = useRef<{ name: string; email: string; phone: string }>({ name: '', email: '', phone: '' })
 
+  const tracker = useTracker(pageId)
+
+  // Start tracking session on mount
+  useEffect(() => {
+    tracker.start()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Track page views
+  useEffect(() => {
+    const currentPage = pages[pageIdx]
+    if (!currentPage) return
+    tracker.track('page_viewed', currentPage.id, null, {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageIdx, pages])
+
   const currentPage = pages[pageIdx]
   const totalPages = pages.length
   const progressPct = Math.round((pageIdx / totalPages) * 100)
 
-  function setAnswer(blockId: string, value: unknown) {
+  function setAnswer(blockId: string, value: unknown, quizPageId: string, eventType = 'choice_selected') {
     setAnswers(a => ({ ...a, [blockId]: value }))
     setErrors(e => { const ne = { ...e }; delete ne[blockId]; return ne })
+    tracker.track(eventType, quizPageId, blockId, { selected: value })
   }
 
   function resolveNextPage(currentPageIdx: number, currentAnswers: Record<string, unknown>, currentScore: number): number | 'result' | 'end' {
     const page = pages[currentPageIdx]
 
-    // Check goto_page_id from choice block answers
     for (const block of page.blocks) {
       if (['single_choice', 'multi_choice', 'yes_no'].includes(block.type)) {
         const ans = currentAnswers[block.id]
@@ -57,17 +130,11 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           }
         }
       }
-      // Button with goto
-      if (block.type === 'button' && block.config.button_action === 'external_url') {
-        // handled elsewhere
-      }
     }
 
-    // Check result blocks
     const resultBlk = page.blocks.find(b => b.type === 'result')
     if (resultBlk) return 'result'
 
-    // Check score ranges on result blocks in subsequent pages
     for (let i = currentPageIdx + 1; i < pages.length; i++) {
       const rb = pages[i].blocks.find(b => b.type === 'result')
       if (rb) {
@@ -78,10 +145,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             const idx = pages.findIndex(p => p.id === match.goto_page_id)
             if (idx >= 0) {
               const targetResult = pages[idx].blocks.find(b => b.type === 'result')
-              if (targetResult) {
-                setResultBlock(targetResult)
-                return 'result'
-              }
+              if (targetResult) { setResultBlock(targetResult); return 'result' }
             }
           }
           setResultBlock(rb)
@@ -97,7 +161,6 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   function handleNext() {
     const page = pages[pageIdx]
 
-    // Validate required fields
     const newErrors: Record<string, string> = {}
     for (const block of page.blocks) {
       if (block.config.required && !['result','text_block','image','video','button'].includes(block.type)) {
@@ -110,8 +173,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return }
     setErrors({})
 
-    // Accumulate score & lead data
     let pageScore = 0
+    let newLeadData = { ...leadData }
     for (const block of page.blocks) {
       if (['single_choice', 'yes_no'].includes(block.type)) {
         const chosen = (block.config.options ?? []).find(o => o.label === answers[block.id])
@@ -124,49 +187,54 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           pageScore += opt?.points ?? 0
         }
       }
-      if (block.type === 'field_email' && answers[block.id]) setLeadData(d => ({ ...d, email: String(answers[block.id]) }))
-      if (block.type === 'field_phone' && answers[block.id]) setLeadData(d => ({ ...d, phone: String(answers[block.id]) }))
+      if (block.type === 'field_email' && answers[block.id]) {
+        newLeadData = { ...newLeadData, email: String(answers[block.id]) }
+        tracker.trackContact(undefined, String(answers[block.id]), undefined)
+      }
+      if (block.type === 'field_phone' && answers[block.id]) {
+        newLeadData = { ...newLeadData, phone: String(answers[block.id]) }
+        tracker.trackContact(undefined, undefined, String(answers[block.id]))
+      }
       if (block.type === 'final_capture') {
         const fc = captureRef.current
-        setLeadData(d => ({ ...d, name: fc.name || d.name, email: fc.email || d.email, phone: fc.phone || d.phone }))
+        newLeadData = { ...newLeadData, name: fc.name || newLeadData.name, email: fc.email || newLeadData.email, phone: fc.phone || newLeadData.phone }
+        tracker.trackContact(fc.name || undefined, fc.email || undefined, fc.phone || undefined)
+        tracker.track('form_submitted', page.id, block.id, { name: fc.name, email: fc.email, phone: fc.phone })
       }
     }
+    setLeadData(newLeadData)
     const newScore = score + pageScore
     setScore(newScore)
 
-    // Check for result on current page
     const resultBlk = page.blocks.find(b => b.type === 'result')
     if (resultBlk) {
       setResultBlock(resultBlk)
-      submitResult(resultBlk, newScore)
+      submitResult(resultBlk, newScore, newLeadData)
       return
     }
 
     const next = resolveNextPage(pageIdx, answers, newScore)
-
     if (next === 'result') {
       const rb = resultBlock ?? pages.flatMap(p => p.blocks).find(b => b.type === 'result')
-      if (rb) {
-        setResultBlock(rb)
-        submitResult(rb, newScore)
-      }
+      if (rb) { setResultBlock(rb); submitResult(rb, newScore, newLeadData) }
       return
     }
-    if (next === 'end') {
-      setPhase('done')
-      return
-    }
+    if (next === 'end') { setPhase('done'); return }
     setTransitionKey(k => k + 1)
     setPageIdx(next as number)
   }
 
-  async function submitResult(rb: QuizBlock, finalScore: number) {
+  async function submitResult(rb: QuizBlock, finalScore: number, ld: typeof leadData) {
     setPhase('submitting')
 
-    const ld = { ...leadData }
-    if (captureRef.current.name)  ld.name  = captureRef.current.name
-    if (captureRef.current.email) ld.email = captureRef.current.email
-    if (captureRef.current.phone) ld.phone = captureRef.current.phone
+    const finalLd = { ...ld }
+    if (captureRef.current.name)  finalLd.name  = captureRef.current.name
+    if (captureRef.current.email) finalLd.email = captureRef.current.email
+    if (captureRef.current.phone) finalLd.phone = captureRef.current.phone
+
+    // Track completion
+    tracker.track('quiz_completed', currentPage?.id ?? '', null, { score: finalScore, result: rb.config.title })
+    tracker.trackComplete(finalScore, rb.config.title ?? null)
 
     try {
       await fetch(`/api/quiz/${pageId}/submit`, {
@@ -174,7 +242,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           answers,
-          leadData: ld,
+          leadData: finalLd,
           result_profile: rb.config.title ?? null,
           funnel_id: rb.config.funnel_id ?? null,
           tenantId,
@@ -191,15 +259,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     const { config } = block
     const val = answers[block.id]
     const err = errors[block.id]
+    const page = pages[pageIdx]
 
-    if (block.type === 'result' || phase !== 'answering') {
-      // result handled separately below
-      return null
-    }
+    if (block.type === 'result' || phase !== 'answering') return null
 
     return (
       <div key={block.id}>
-        {/* Choice types */}
         {['single_choice', 'multi_choice', 'yes_no'].includes(block.type) && (
           <div style={{ background: config.bg_color || undefined }}>
             {config.question && (
@@ -220,9 +285,15 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                     onClick={() => {
                       if (block.type === 'multi_choice') {
                         const cur = (val as string[]) ?? []
-                        setAnswer(block.id, isSelected ? cur.filter(l => l !== opt.label) : [...cur, opt.label])
+                        setAnswer(block.id, isSelected ? cur.filter(l => l !== opt.label) : [...cur, opt.label], page.id, 'choice_selected')
                       } else {
-                        setAnswer(block.id, opt.label)
+                        setAnswer(block.id, opt.label, page.id, 'choice_selected')
+                        // Auto-advance single choice
+                        const nonChoiceInputs = page.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button'].includes(b.type))
+                        const hasFinalCapture = page.blocks.some(b => b.type === 'final_capture')
+                        if (nonChoiceInputs.length === 0 && !hasFinalCapture) {
+                          setTimeout(() => handleNextWithAnswer(block.id, opt.label), 350)
+                        }
                       }
                     }}
                     className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
@@ -252,7 +323,6 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
-        {/* Scale */}
         {block.type === 'scale' && (
           <div className="text-center">
             {config.question && <h2 className="text-2xl font-bold text-gray-900 mb-6">{config.question}</h2>}
@@ -260,7 +330,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               {Array.from({ length: (config.scale_max ?? 10) - (config.scale_min ?? 1) + 1 }, (_, i) => {
                 const v = (config.scale_min ?? 1) + i
                 return (
-                  <button key={v} onClick={() => setAnswer(block.id, v)}
+                  <button key={v} onClick={() => setAnswer(block.id, v, page.id, 'choice_selected')}
                     className={`w-14 h-14 rounded-xl text-lg font-bold border-2 transition-all ${val === v ? 'text-white scale-110' : 'bg-white border-gray-200 text-gray-700 hover:scale-105'}`}
                     style={val === v ? { background: primaryColor, borderColor: primaryColor } : undefined}>
                     {v}
@@ -271,14 +341,13 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
-        {/* Form fields */}
         {['field_text','field_email','field_phone','field_number'].includes(block.type) && (
           <div>
             {config.label && <label className="block text-lg font-semibold text-gray-800 mb-3">{config.label}</label>}
             <input
               type={block.type === 'field_email' ? 'email' : block.type === 'field_phone' ? 'tel' : block.type === 'field_number' ? 'number' : 'text'}
               value={(val as string) ?? ''}
-              onChange={e => setAnswer(block.id, e.target.value)}
+              onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
               placeholder={config.placeholder}
               className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white transition"
               style={{ borderColor: err ? '#ef4444' : undefined }}
@@ -293,7 +362,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             {config.label && <label className="block text-lg font-semibold text-gray-800 mb-3">{config.label}</label>}
             <textarea
               value={(val as string) ?? ''}
-              onChange={e => setAnswer(block.id, e.target.value)}
+              onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
               placeholder={config.placeholder}
               rows={4}
               className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white resize-none"
@@ -301,18 +370,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
-        {/* Text block */}
         {block.type === 'text_block' && config.content && (
           <div className="prose prose-gray max-w-none text-center"
             dangerouslySetInnerHTML={{ __html: config.content }} />
         )}
 
-        {/* Image */}
         {block.type === 'image' && config.image_url && (
           <div className={`flex ${config.image_align === 'left' ? 'justify-start' : config.image_align === 'right' ? 'justify-end' : 'justify-center'}`}>
-            <img
-              src={config.image_url}
-              alt=""
+            <img src={config.image_url} alt=""
               className={`rounded-xl object-cover ${
                 config.image_size === 'small' ? 'max-w-xs' :
                 config.image_size === 'large' ? 'max-w-2xl w-full' :
@@ -322,7 +387,6 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
-        {/* Video */}
         {block.type === 'video' && config.video_url && (() => {
           const embed = getYoutubeEmbed(config.video_url)
           return embed ? (
@@ -332,10 +396,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           ) : null
         })()}
 
-        {/* Button (not next_page — those are handled by global Next button) */}
         {block.type === 'button' && config.button_action === 'external_url' && (
           <div className={`flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
             <a href={config.button_url || '#'} target="_blank" rel="noopener noreferrer"
+              onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.button_url })}
               className="px-8 py-4 text-base font-semibold text-white rounded-2xl shadow transition hover:opacity-90"
               style={{ background: config.button_color || primaryColor }}>
               {config.button_text || 'Acessar'}
@@ -343,7 +407,6 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
-        {/* Final capture */}
         {block.type === 'final_capture' && (
           <div className="space-y-3">
             {config.show_name && (
@@ -369,12 +432,49 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     )
   }
 
+  // Used for auto-advance: ensures answers state has latest value
+  function handleNextWithAnswer(blockId: string, value: unknown) {
+    setAnswers(prev => {
+      const updated = { ...prev, [blockId]: value }
+      // Re-run handleNext logic inline with updated answers
+      const page = pages[pageIdx]
+      const newErrors: Record<string, string> = {}
+      for (const block of page.blocks) {
+        if (block.config.required && !['result','text_block','image','video','button','single_choice','yes_no'].includes(block.type)) {
+          const v = updated[block.id]
+          if (v === undefined || v === null || v === '') newErrors[block.id] = 'Campo obrigatório'
+        }
+      }
+      if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return prev }
+
+      let pageScore = 0
+      if (['single_choice','yes_no'].includes(page.blocks.find(b => b.id === blockId)?.type ?? '')) {
+        const chosen = (page.blocks.find(b => b.id === blockId)?.config.options ?? []).find(o => o.label === value)
+        pageScore += chosen?.points ?? 0
+      }
+      const newScore = score + pageScore
+      setScore(newScore)
+
+      const resultBlk = page.blocks.find(b => b.type === 'result')
+      if (resultBlk) { setResultBlock(resultBlk); submitResult(resultBlk, newScore, leadData); return updated }
+
+      const next = resolveNextPage(pageIdx, updated, newScore)
+      if (next === 'result') {
+        const rb = resultBlock ?? pages.flatMap(p => p.blocks).find(b => b.type === 'result')
+        if (rb) { setResultBlock(rb); submitResult(rb, newScore, leadData) }
+        return updated
+      }
+      if (next === 'end') { setPhase('done'); return updated }
+      setTransitionKey(k => k + 1)
+      setPageIdx(next as number)
+      return updated
+    })
+  }
+
   const hasChoiceAutoAdvance = currentPage?.blocks.some(b => ['single_choice','yes_no'].includes(b.type))
   const hasFinalCapture = currentPage?.blocks.some(b => b.type === 'final_capture')
   const hasExplicitButton = currentPage?.blocks.some(b => b.type === 'button' && b.config.button_action !== 'external_url')
   const hasResultBlock = currentPage?.blocks.some(b => b.type === 'result')
-
-  // For single choice, auto-advance when an option is selected AND there's no other input block
   const nonChoiceInputs = currentPage?.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button'].includes(b.type)) ?? []
   const shouldShowNextButton = !hasResultBlock && (!hasChoiceAutoAdvance || nonChoiceInputs.length > 0 || hasFinalCapture)
 
@@ -431,14 +531,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     <div className="min-h-screen flex flex-col" style={{ background: '#fafafa' }}>
       <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } }`}</style>
 
-      {/* Progress bar */}
       {showProgress && (
         <div className="h-1 shrink-0" style={{ background: primaryColor + '30' }}>
           <div className="h-full transition-all duration-500" style={{ width: `${progressPct}%`, background: primaryColor }} />
         </div>
       )}
 
-      {/* Back button */}
       {pageIdx > 0 && (
         <div className="px-6 pt-4 shrink-0">
           <button onClick={() => { setPageIdx(i => i - 1); setTransitionKey(k => k + 1) }}
@@ -449,17 +547,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         </div>
       )}
 
-      {/* Page content */}
       <div key={transitionKey} className="flex-1 flex items-center justify-center px-4 py-8"
         style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
         <div className="w-full max-w-xl space-y-6">
           {currentPage?.blocks.map(renderBlock)}
 
-          {/* Global "Próximo" button */}
           {shouldShowNextButton && !hasExplicitButton && (
             <button
               onClick={() => {
-                // Auto-advance single choice if answered
                 if (hasChoiceAutoAdvance) {
                   const choiceBlock = currentPage.blocks.find(b => ['single_choice','yes_no'].includes(b.type))
                   if (choiceBlock && !answers[choiceBlock.id]) {
@@ -476,10 +571,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             </button>
           )}
 
-          {/* Button block that acts as Next */}
           {hasExplicitButton && currentPage.blocks.filter(b => b.type === 'button' && b.config.button_action !== 'external_url').map(b => (
             <div key={b.id} className={`flex ${b.config.button_align === 'left' ? 'justify-start' : b.config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
-              <button onClick={handleNext}
+              <button
+                onClick={() => { tracker.track('button_clicked', currentPage.id, b.id, {}); handleNext() }}
                 className="px-8 py-4 text-base font-semibold text-white rounded-2xl shadow transition hover:opacity-90"
                 style={{ background: b.config.button_color || primaryColor }}>
                 {b.config.button_text || 'Próximo →'}
