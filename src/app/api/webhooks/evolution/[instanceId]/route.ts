@@ -72,6 +72,12 @@ export async function POST(
   const pushName = messageData?.pushName ?? null
 
   // Check for standalone agent linked to this WA instance
+  const { data: allAgents } = await admin
+    .from('ai_agents')
+    .select('id, name, mode, status, whatsapp_instance_id')
+    .eq('tenant_id', tenantId)
+  console.log(`[webhook/evolution] instanceId=${instanceId} tenantId=${tenantId} agents=${JSON.stringify(allAgents?.map(a => ({ id: a.id, name: a.name, mode: a.mode, status: a.status, waid: a.whatsapp_instance_id })))}`)
+
   const { data: standaloneAgent } = await admin
     .from('ai_agents')
     .select('id, name, status, max_activations_per_month, activations_used')
