@@ -34,6 +34,9 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
   const [editAgent, setEditAgent] = useState<Agent | null>(null)
   const [editDocs, setEditDocs] = useState<{ id: string; file_name: string; uploaded_at: string }[]>([])
   const [testAgentId, setTestAgentId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   function refresh() { startTransition(() => router.refresh()) }
 
@@ -48,9 +51,17 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
     refresh()
   }
 
-  async function remove(id: string) {
-    if (!confirm('Excluir este agente?')) return
-    await deleteAgent(id)
+  async function confirmRemove() {
+    if (!confirmDelete) return
+    setDeleting(true)
+    setDeleteError(null)
+    const result = await deleteAgent(confirmDelete.id)
+    setDeleting(false)
+    if (!result.success) {
+      setDeleteError(result.error ?? 'Erro desconhecido')
+      return
+    }
+    setConfirmDelete(null)
     refresh()
   }
 
@@ -121,7 +132,7 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
                 <button onClick={() => toggleStatus(agent)} className={`px-3 py-1.5 text-sm rounded-lg ${agent.status === 'active' ? 'border hover:bg-gray-50' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                   {agent.status === 'active' ? 'Pausar' : 'Ativar'}
                 </button>
-                <button onClick={() => remove(agent.id)} className="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100">Excluir</button>
+                <button onClick={() => setConfirmDelete({ id: agent.id, name: agent.name })} className="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100">Excluir</button>
               </div>
             </div>
           ))}
@@ -137,6 +148,39 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
           onClose={() => setWizardOpen(false)}
           onSaved={refresh}
         />
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Excluir agente</h2>
+            <p className="text-sm text-gray-600 mb-1">
+              Tem certeza que deseja excluir o agente <strong>{confirmDelete.name}</strong>?
+            </p>
+            <p className="text-sm text-red-600 mb-4">Esta ação não pode ser desfeita.</p>
+            {deleteError && (
+              <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                Erro: {deleteError}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setConfirmDelete(null); setDeleteError(null) }}
+                disabled={deleting}
+                className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmRemove}
+                disabled={deleting}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {testAgentId && (
