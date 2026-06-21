@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -204,9 +205,23 @@ export async function updateAgent(id: string, data: Partial<AgentInput>): Promis
 export async function deleteAgent(id: string): Promise<{ success: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
-    const supabase = await getSupabase()
-    const { error } = await supabase.from('ai_agents').delete().eq('id', id).eq('tenant_id', tenantId)
+    const admin = createAdminClient()
+
+    // Verify ownership before deleting
+    const { data: agent } = await admin.from('ai_agents').select('id').eq('id', id).eq('tenant_id', tenantId).single()
+    if (!agent) return { success: false, error: 'Agente não encontrado' }
+
+    // Delete cascade: messages → conversations → documents → agent
+    const { data: convs } = await admin.from('agent_conversations').select('id').eq('agent_id', id)
+    if (convs && convs.length > 0) {
+      const convIds = convs.map(c => c.id)
+      await admin.from('agent_messages').delete().in('conversation_id', convIds)
+      await admin.from('agent_conversations').delete().eq('agent_id', id)
+    }
+    await admin.from('agent_documents').delete().eq('agent_id', id)
+    const { error } = await admin.from('ai_agents').delete().eq('id', id).eq('tenant_id', tenantId)
     if (error) return { success: false, error: error.message }
+
     revalidatePath('/agents')
     return { success: true }
   } catch (err) {
