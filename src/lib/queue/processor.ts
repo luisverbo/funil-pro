@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTextMessage, sendMediaMessage } from '@/lib/evolution'
 import { sendEmail } from '@/lib/resend'
+import { processAgentMessage } from '@/lib/agents/chat'
 
 export interface QueueJob {
   id: string
@@ -310,6 +311,39 @@ export async function processJob(job: QueueJob): Promise<void> {
       event_type: 'agent_activated',
       event_data: { agent_id: agentId },
     })
+
+    // Send greeting message if configured (Bug B fix)
+    const { data: agentRow } = await admin.from('ai_agents').select('greeting_message, tenant_id').eq('id', agentId).single()
+    if (agentRow?.greeting_message) {
+      // Use processAgentMessage with the greeting as a synthetic "first message"
+      // by sending the greeting directly via WA instead of going through LLM
+      const { data: leadRow } = await admin.from('leads').select('phone, funnel_id').eq('id', job.lead_id).single()
+      if (leadRow?.phone && leadRow.funnel_id) {
+        const { data: funnel } = await admin.from('funnels').select('whatsapp_instance_id').eq('id', leadRow.funnel_id).single()
+        if (funnel?.whatsapp_instance_id) {
+          const { data: instance } = await admin.from('whatsapp_instances').select('instance_name').eq('id', funnel.whatsapp_instance_id).single()
+          if (instance?.instance_name) {
+            try {
+              await sendTextMessage(instance.instance_name, leadRow.phone, agentRow.greeting_message)
+              // Create conversation and save greeting as first agent message
+              const { data: conv } = await admin.from('agent_conversations')
+                .insert({ agent_id: agentId, tenant_id: job.tenant_id, lead_id: job.lead_id, status: 'active', message_count: 0 })
+                .select('id').single()
+              if (conv?.id) {
+                await admin.from('agent_messages').insert({
+                  conversation_id: conv.id,
+                  tenant_id: job.tenant_id,
+                  role: 'agent',
+                  content: agentRow.greeting_message,
+                })
+              }
+            } catch (err) {
+              console.error('[processor] agent greeting send error:', err)
+            }
+          }
+        }
+      }
+    }
     // Funil fica pausado — retoma quando agente concluir via webhook Evolution
   }
 
