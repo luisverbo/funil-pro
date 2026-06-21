@@ -69,6 +69,17 @@ export async function POST(
   if (!waInstance) return NextResponse.json({ received: true })
 
   const tenantId = waInstance.tenant_id
+  const pushName = messageData?.pushName ?? null
+
+  // Check for standalone agent linked to this WA instance
+  const { data: standaloneAgent } = await admin
+    .from('ai_agents')
+    .select('id, name, status, max_activations_per_month, activations_used')
+    .eq('whatsapp_instance_id', instanceId)
+    .eq('mode', 'standalone')
+    .eq('status', 'active')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
 
   // Evolution delivers phone with country code (e.g. 5511999999999)
   // but leads may be stored without it (11999999999) — try both
@@ -84,59 +95,92 @@ export async function POST(
     .limit(1)
     .single()
 
-  if (!lead) {
-    console.log(`[webhook/evolution] Mensagem de número desconhecido: ${senderPhone} / ${phoneWithoutCode}`)
-    return NextResponse.json({ received: true })
+  let resolvedLead = lead
+
+  if (!resolvedLead) {
+    if (!standaloneAgent) {
+      // No lead, no standalone agent — ignore
+      console.log(`[webhook/evolution] Mensagem de número desconhecido sem agente standalone: ${senderPhone}`)
+      return NextResponse.json({ received: true })
+    }
+
+    // Create lead for standalone agent conversation
+    const { data: newLead } = await admin.from('leads').insert({
+      tenant_id: tenantId,
+      phone: senderPhone,
+      name: pushName,
+      status: 'active',
+      funnel_id: null,
+      agent_active: false,
+    }).select('id, funnel_id, current_block_id, status, name, agent_active, funnel_resume_block_id').single()
+
+    if (!newLead) return NextResponse.json({ received: true })
+    resolvedLead = newLead
+    console.log(`[webhook/evolution] Novo lead standalone criado: ${newLead.id} para agente ${standaloneAgent.id}`)
   }
 
-  // Record replied event
-  await admin.from('lead_events').insert({
-    tenant_id: tenantId,
-    lead_id: lead.id,
-    funnel_id: lead.funnel_id,
-    block_id: lead.current_block_id,
-    event_type: 'replied',
-    event_data: { text: messageText, phone: senderPhone },
-  })
+  // Record replied event only if lead has a funnel (funnel_id is NOT NULL in lead_events)
+  if (resolvedLead.funnel_id) {
+    await admin.from('lead_events').insert({
+      tenant_id: tenantId,
+      lead_id: resolvedLead.id,
+      funnel_id: resolvedLead.funnel_id,
+      block_id: resolvedLead.current_block_id,
+      event_type: 'replied',
+      event_data: { text: messageText, phone: senderPhone },
+    })
+  }
 
-  // If lead has an active AI agent, route message directly (no HTTP self-call)
-  if ((lead as Record<string, unknown>).agent_active && (lead as Record<string, unknown>).funnel_resume_block_id) {
+  // PRIORITY 1: lead has active funnel agent block
+  if ((resolvedLead as Record<string, unknown>).agent_active && (resolvedLead as Record<string, unknown>).funnel_resume_block_id) {
     const { data: agentBlock } = await admin
       .from('funnel_blocks')
       .select('id, config')
-      .eq('id', (lead as Record<string, unknown>).funnel_resume_block_id as string)
+      .eq('id', (resolvedLead as Record<string, unknown>).funnel_resume_block_id as string)
       .single()
 
     const agentId = (agentBlock?.config as Record<string, unknown>)?.agent_id as string | undefined
 
     if (agentId && messageText) {
-      // Fire async — respond to Evolution immediately
       ;(async () => {
         try {
-          await processAgentMessage(agentId, messageText, { leadId: lead.id })
+          await processAgentMessage(agentId, messageText, { leadId: resolvedLead!.id })
         } catch (err) {
-          console.error('[webhook/evolution] agent processing error:', { agentId, leadId: lead.id, error: String(err) })
-          void admin.from('lead_events').insert({
-            tenant_id: tenantId,
-            lead_id: lead.id,
-            funnel_id: lead.funnel_id,
-            block_id: lead.current_block_id,
-            event_type: 'agent_error',
-            event_data: { agent_id: agentId, error: String(err) },
-          })
+          console.error('[webhook/evolution] funnel agent error:', { agentId, leadId: resolvedLead!.id, error: String(err) })
+          if (resolvedLead!.funnel_id) {
+            void admin.from('lead_events').insert({
+              tenant_id: tenantId,
+              lead_id: resolvedLead!.id,
+              funnel_id: resolvedLead!.funnel_id,
+              block_id: resolvedLead!.current_block_id,
+              event_type: 'agent_error',
+              event_data: { agent_id: agentId, error: String(err) },
+            })
+          }
         }
       })()
     }
-
     return NextResponse.json({ received: true })
   }
 
-  // If lead is paused on a condition block, re-enqueue via queue_jobs (cron picks it up)
-  if (lead.current_block_id) {
+  // PRIORITY 2: standalone agent on this WA instance
+  if (standaloneAgent && messageText) {
+    ;(async () => {
+      try {
+        await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead!.id })
+      } catch (err) {
+        console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead!.id, error: String(err) })
+      }
+    })()
+    return NextResponse.json({ received: true })
+  }
+
+  // PRIORITY 3: funnel condition block waiting for reply
+  if (resolvedLead.current_block_id) {
     const { data: currentBlock } = await admin
       .from('funnel_blocks')
       .select('id, block_type, funnel_id, config')
-      .eq('id', lead.current_block_id)
+      .eq('id', resolvedLead.current_block_id)
       .single()
 
     if (currentBlock?.block_type === 'condition') {
@@ -146,8 +190,8 @@ export async function POST(
       if (isReplyCondition) {
         await admin.from('queue_jobs').insert({
           tenant_id: tenantId,
-          lead_id: lead.id,
-          funnel_id: lead.funnel_id,
+          lead_id: resolvedLead.id,
+          funnel_id: resolvedLead.funnel_id,
           block_id: currentBlock.id,
           status: 'pending',
           scheduled_for: new Date().toISOString(),
