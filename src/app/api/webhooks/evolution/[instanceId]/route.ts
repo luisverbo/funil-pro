@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { processAgentMessage } from '@/lib/agents/chat'
 
 interface EvolutionMessageEvent {
   event: string
@@ -98,7 +99,7 @@ export async function POST(
     event_data: { text: messageText, phone: senderPhone },
   })
 
-  // If lead has an active AI agent, route message to the agent
+  // If lead has an active AI agent, route message directly (no HTTP self-call)
   if ((lead as Record<string, unknown>).agent_active && (lead as Record<string, unknown>).funnel_resume_block_id) {
     const { data: agentBlock } = await admin
       .from('funnel_blocks')
@@ -109,12 +110,22 @@ export async function POST(
     const agentId = (agentBlock?.config as Record<string, unknown>)?.agent_id as string | undefined
 
     if (agentId && messageText) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      fetch(`${baseUrl}/api/agents/${agentId}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: messageText, leadId: lead.id }),
-      }).catch(() => {})
+      // Fire async — respond to Evolution immediately
+      ;(async () => {
+        try {
+          await processAgentMessage(agentId, messageText, { leadId: lead.id })
+        } catch (err) {
+          console.error('[webhook/evolution] agent processing error:', { agentId, leadId: lead.id, error: String(err) })
+          void admin.from('lead_events').insert({
+            tenant_id: tenantId,
+            lead_id: lead.id,
+            funnel_id: lead.funnel_id,
+            block_id: lead.current_block_id,
+            event_type: 'agent_error',
+            event_data: { agent_id: agentId, error: String(err) },
+          })
+        }
+      })()
     }
 
     return NextResponse.json({ received: true })
