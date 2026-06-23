@@ -135,17 +135,23 @@ export async function processAgentMessage(
   const admin = createAdminClient()
 
   // Load agent
-  const { data: agent } = await admin.from('ai_agents').select('*').eq('id', agentId).single()
-  if (!agent) throw new Error('agent_not_found')
+  const { data: agent, error: agentError } = await admin.from('ai_agents').select('*').eq('id', agentId).single()
+  if (!agent) {
+    console.error(`[chat] BLOCKED: agent_not_found agentId=${agentId} error=${agentError?.message}`)
+    throw new Error('agent_not_found')
+  }
   const a = agent as AgentRow
+  console.log(`[chat] agent carregado: id=${a.id} status=${a.status} testMode=${testMode} activations=${a.activations_used}/${a.max_activations_per_month}`)
 
   // Check agent status
   if (!testMode && a.status !== 'active') {
+    console.error(`[chat] BLOCKED: agent_not_active status=${a.status}`)
     throw new Error(`agent_not_active: status=${a.status}`)
   }
 
   // Check activation limit
   if (!testMode && a.max_activations_per_month !== null && a.activations_used >= a.max_activations_per_month) {
+    console.error(`[chat] BLOCKED: activation_limit_reached used=${a.activations_used} max=${a.max_activations_per_month}`)
     const limitMsg = 'Em breve alguém da equipe vai te responder! 🙂'
     if (leadId) {
       await sendPartsViaWhatsApp(leadId, [limitMsg], admin).catch(() => {})
@@ -155,6 +161,7 @@ export async function processAgentMessage(
 
   // Business hours
   if (!withinBusinessHours(a)) {
+    console.log(`[chat] BLOCKED: fora do horário comercial business_hours_only=${a.business_hours_only} start=${a.business_hours_start} end=${a.business_hours_end}`)
     const offHoursMsg = 'Olá! No momento estamos fora do horário de atendimento. Retornaremos assim que possível.'
     return {
       reply: offHoursMsg,
@@ -200,20 +207,28 @@ export async function processAgentMessage(
   }
 
   if (!conversationId) {
-    const { data: newConv } = await admin
+    const { data: newConv, error: convError } = await admin
       .from('agent_conversations')
       .insert({ agent_id: agentId, tenant_id: a.tenant_id, lead_id: leadId ?? null, status: 'active', message_count: 0 })
       .select('id').single()
-    conversationId = newConv?.id ?? 'unknown'
+    if (!newConv) {
+      console.error(`[chat] BLOCKED: falha ao criar conversa error=${convError?.message}`)
+      throw new Error(`conversation_create_failed: ${convError?.message}`)
+    }
+    conversationId = newConv.id
+    console.log(`[chat] nova conversa criada conversationId=${conversationId}`)
     // Increment activations on new conversation
     if (!testMode) {
       await admin.from('ai_agents').update({ activations_used: (a.activations_used ?? 0) + 1 }).eq('id', agentId)
     }
+  } else {
+    console.log(`[chat] conversa existente conversationId=${conversationId} messageCount=${messageCount}`)
   }
 
   // Max messages check
   const maxMsgs = a.max_messages_per_conversation ?? 20
   if (messageCount >= maxMsgs) {
+    console.log(`[chat] BLOCKED: max_messages_reached messageCount=${messageCount} maxMsgs=${maxMsgs}`)
     const abandonMsg = 'Esta conversa atingiu o limite de mensagens. Em breve um de nossos atendentes entrará em contato.'
     await admin.from('agent_conversations').update({ status: 'abandoned', ended_at: new Date().toISOString() }).eq('id', conversationId)
     if (!testMode && leadId) {
@@ -271,6 +286,7 @@ Se ainda não atingiu o objetivo, use action "continue".`
     { role: 'user', content: message },
   ]
 
+  console.log(`[chat] chamando Anthropic API agentId=${agentId} historyLen=${history.length} messageLen=${message.length} apiKey=${process.env.ANTHROPIC_API_KEY ? 'SET' : 'MISSING'}`)
   let rawText = ''
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -287,12 +303,14 @@ Se ainda não atingiu o objetivo, use action "continue".`
         messages: apiMessages,
       }),
     })
-    const json = await res.json() as { content?: { type: string; text: string }[] }
+    const json = await res.json() as { content?: { type: string; text: string }[]; error?: { type: string; message: string } }
+    console.log(`[chat] Anthropic respondeu status=${res.status} hasContent=${Array.isArray(json.content)} error=${json.error?.message ?? 'none'}`)
     if (Array.isArray(json.content)) {
       rawText = json.content.filter(b => b.type === 'text').map(b => b.text).join('')
     }
     if (!rawText) rawText = 'Desculpe, não consegui responder agora. Pode reformular?'
-  } catch {
+  } catch (err) {
+    console.error(`[chat] ERRO na chamada Anthropic: ${String(err)}`)
     rawText = 'Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.'
   }
 
