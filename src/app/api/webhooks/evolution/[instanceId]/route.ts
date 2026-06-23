@@ -31,10 +31,13 @@ export async function POST(
     return NextResponse.json({ received: true })
   }
 
+  console.log(`[webhook/evolution] PAYLOAD instanceId=${instanceId} event=${body.event} state=${body.state} keys=${Object.keys(body).join(',')} full=${JSON.stringify(body).slice(0, 800)}`)
+
   const admin = createAdminClient()
 
   if (body.event === 'CONNECTION_UPDATE' || body.state) {
     const state = body.state ?? ((body as unknown as Record<string, unknown>)?.['data.state'] as string | undefined)
+    console.log(`[webhook/evolution] EARLY_RETURN: CONNECTION_UPDATE/state state=${state}`)
     if (state) {
       const dbStatus = state === 'open' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected'
       await admin.from('whatsapp_instances').update({ status: dbStatus }).eq('id', instanceId)
@@ -43,15 +46,18 @@ export async function POST(
   }
 
   if (body.event === 'QRCODE_UPDATED') {
+    console.log(`[webhook/evolution] EARLY_RETURN: QRCODE_UPDATED`)
     return NextResponse.json({ received: true })
   }
 
   if (body.event !== 'MESSAGES_UPSERT' && body.event !== 'messages.upsert') {
+    console.log(`[webhook/evolution] EARLY_RETURN: evento ignorado event=${body.event}`)
     return NextResponse.json({ received: true })
   }
 
   const messageData = body.data
   if (!messageData?.key?.remoteJid || messageData.key.fromMe) {
+    console.log(`[webhook/evolution] EARLY_RETURN: sem remoteJid ou fromMe=true fromMe=${messageData?.key?.fromMe}`)
     return NextResponse.json({ received: true })
   }
 
