@@ -156,39 +156,34 @@ export async function POST(
     const agentId = (agentBlock?.config as Record<string, unknown>)?.agent_id as string | undefined
 
     if (agentId && messageText) {
-      ;(async () => {
-        try {
-          await processAgentMessage(agentId, messageText, { leadId: resolvedLead!.id })
-        } catch (err) {
-          console.error('[webhook/evolution] funnel agent error:', { agentId, leadId: resolvedLead!.id, error: String(err) })
-          if (resolvedLead!.funnel_id) {
-            void admin.from('lead_events').insert({
-              tenant_id: tenantId,
-              lead_id: resolvedLead!.id,
-              funnel_id: resolvedLead!.funnel_id,
-              block_id: resolvedLead!.current_block_id,
-              event_type: 'agent_error',
-              event_data: { agent_id: agentId, error: String(err) },
-            })
-          }
+      try {
+        await processAgentMessage(agentId, messageText, { leadId: resolvedLead!.id })
+      } catch (err) {
+        console.error('[webhook/evolution] funnel agent error:', { agentId, leadId: resolvedLead!.id, error: String(err) })
+        if (resolvedLead!.funnel_id) {
+          void admin.from('lead_events').insert({
+            tenant_id: tenantId,
+            lead_id: resolvedLead!.id,
+            funnel_id: resolvedLead!.funnel_id,
+            block_id: resolvedLead!.current_block_id,
+            event_type: 'agent_error',
+            event_data: { agent_id: agentId, error: String(err) },
+          })
         }
-      })()
+      }
     }
     return NextResponse.json({ received: true })
   }
 
   // PRIORITY 2: standalone agent on this WA instance
-  console.log(`[webhook/evolution] PRIORITY2 standaloneAgent=${standaloneAgent?.id ?? 'null'} messageText="${messageText}" leadId=${resolvedLead?.id}`)
   if (standaloneAgent && messageText) {
-    ;(async () => {
-      try {
-        console.log(`[webhook/evolution] Chamando processAgentMessage agentId=${standaloneAgent.id} leadId=${resolvedLead!.id}`)
-        await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead!.id })
-        console.log(`[webhook/evolution] processAgentMessage concluído com sucesso`)
-      } catch (err) {
-        console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead!.id, error: String(err) })
-      }
-    })()
+    try {
+      console.log(`[webhook/evolution] standalone agent chamando processAgentMessage agentId=${standaloneAgent.id} leadId=${resolvedLead!.id}`)
+      await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead!.id })
+      console.log(`[webhook/evolution] standalone agent respondeu com sucesso`)
+    } catch (err) {
+      console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead!.id, error: String(err) })
+    }
     return NextResponse.json({ received: true })
   }
 
