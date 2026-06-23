@@ -58,6 +58,8 @@ export async function POST(
   const senderPhone = extractPhone(messageData.key.remoteJid)
   const messageText = messageData.message?.conversation ?? messageData.message?.extendedTextMessage?.text ?? ''
 
+  console.log(`[webhook/evolution] MESSAGES_UPSERT phone=${senderPhone} textLen=${messageText.length} fromMe=${messageData.key.fromMe} msgKeys=${Object.keys(messageData.message ?? {}).join(',')}`)
+
   if (!senderPhone) return NextResponse.json({ received: true })
 
   const { data: waInstance } = await admin
@@ -170,10 +172,13 @@ export async function POST(
   }
 
   // PRIORITY 2: standalone agent on this WA instance
+  console.log(`[webhook/evolution] PRIORITY2 standaloneAgent=${standaloneAgent?.id ?? 'null'} messageText="${messageText}" leadId=${resolvedLead?.id}`)
   if (standaloneAgent && messageText) {
     ;(async () => {
       try {
+        console.log(`[webhook/evolution] Chamando processAgentMessage agentId=${standaloneAgent.id} leadId=${resolvedLead!.id}`)
         await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead!.id })
+        console.log(`[webhook/evolution] processAgentMessage concluído com sucesso`)
       } catch (err) {
         console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead!.id, error: String(err) })
       }
