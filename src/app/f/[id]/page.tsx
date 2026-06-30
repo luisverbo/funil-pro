@@ -26,11 +26,11 @@ export default async function PublicCapturePage({
   // Get tenant to check for meta pixel
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('meta_ad_account_id')
+    .select('meta_pixel_id')
     .eq('id', funnel.tenant_id)
     .single()
 
-  const pixelId = (tenant as unknown as { pixel_meta_id?: string } | null)?.pixel_meta_id ?? null
+  const pixelId = (tenant as unknown as { meta_pixel_id?: string } | null)?.meta_pixel_id ?? null
 
   const utms = {
     utm_source: sp.utm_source,
