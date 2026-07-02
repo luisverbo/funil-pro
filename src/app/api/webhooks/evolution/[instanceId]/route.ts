@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage } from '@/lib/agents/chat'
 
+// Processamento síncrono do agente (Anthropic + delays entre partes) exige mais que o default de 10s
+export const maxDuration = 60
+
 interface EvolutionMessageEvent {
   event: string
   instance: string
   data?: {
-    key?: { remoteJid?: string; fromMe?: boolean }
+    key?: { remoteJid?: string; fromMe?: boolean; id?: string }
     message?: { conversation?: string; extendedTextMessage?: { text?: string } }
     pushName?: string
   }
@@ -31,13 +34,10 @@ export async function POST(
     return NextResponse.json({ received: true })
   }
 
-  console.log(`[webhook/evolution] PAYLOAD instanceId=${instanceId} event=${body.event} state=${body.state} keys=${Object.keys(body).join(',')} full=${JSON.stringify(body).slice(0, 800)}`)
-
   const admin = createAdminClient()
 
   if (body.event === 'CONNECTION_UPDATE' || body.state) {
     const state = body.state ?? ((body as unknown as Record<string, unknown>)?.['data.state'] as string | undefined)
-    console.log(`[webhook/evolution] EARLY_RETURN: CONNECTION_UPDATE/state state=${state}`)
     if (state) {
       const dbStatus = state === 'open' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected'
       await admin.from('whatsapp_instances').update({ status: dbStatus }).eq('id', instanceId)
@@ -46,27 +46,38 @@ export async function POST(
   }
 
   if (body.event === 'QRCODE_UPDATED') {
-    console.log(`[webhook/evolution] EARLY_RETURN: QRCODE_UPDATED`)
     return NextResponse.json({ received: true })
   }
 
   if (body.event !== 'MESSAGES_UPSERT' && body.event !== 'messages.upsert') {
-    console.log(`[webhook/evolution] EARLY_RETURN: evento ignorado event=${body.event}`)
     return NextResponse.json({ received: true })
   }
 
   const messageData = body.data
   if (!messageData?.key?.remoteJid || messageData.key.fromMe) {
-    console.log(`[webhook/evolution] EARLY_RETURN: sem remoteJid ou fromMe=true fromMe=${messageData?.key?.fromMe}`)
     return NextResponse.json({ received: true })
   }
 
   const senderPhone = extractPhone(messageData.key.remoteJid)
   const messageText = messageData.message?.conversation ?? messageData.message?.extendedTextMessage?.text ?? ''
 
-  console.log(`[webhook/evolution] MESSAGES_UPSERT phone=${senderPhone} textLen=${messageText.length} fromMe=${messageData.key.fromMe} msgKeys=${Object.keys(messageData.message ?? {}).join(',')}`)
-
   if (!senderPhone) return NextResponse.json({ received: true })
+
+  // Idempotência: o Evolution reenvia webhooks em caso de timeout.
+  // Registra a message key; se já foi processada, ignora silenciosamente.
+  const messageKeyId = messageData.key.id
+  if (messageKeyId) {
+    const { error: dedupeError } = await admin
+      .from('processed_wa_messages')
+      .insert({ message_key_id: `${instanceId}:${messageKeyId}` })
+    if (dedupeError) {
+      if (dedupeError.code === '23505') {
+        // Duplicata — já processada
+        return NextResponse.json({ received: true, duplicate: true })
+      }
+      // Tabela pode não existir ainda (migration pendente) — segue sem dedupe
+    }
+  }
 
   const { data: waInstance } = await admin
     .from('whatsapp_instances')
@@ -80,12 +91,6 @@ export async function POST(
   const pushName = messageData?.pushName ?? null
 
   // Check for standalone agent linked to this WA instance
-  const { data: allAgents } = await admin
-    .from('ai_agents')
-    .select('id, name, mode, status, whatsapp_instance_id')
-    .eq('tenant_id', tenantId)
-  console.log(`[webhook/evolution] instanceId=${instanceId} tenantId=${tenantId} agents=${JSON.stringify(allAgents?.map(a => ({ id: a.id, name: a.name, mode: a.mode, status: a.status, waid: a.whatsapp_instance_id })))}`)
-
   const { data: standaloneAgent } = await admin
     .from('ai_agents')
     .select('id, name, status, max_activations_per_month, activations_used')
@@ -107,14 +112,13 @@ export async function POST(
     .eq('status', 'active')
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   let resolvedLead = lead
 
   if (!resolvedLead) {
     if (!standaloneAgent) {
-      // No lead, no standalone agent — ignore
-      console.log(`[webhook/evolution] Mensagem de número desconhecido sem agente standalone: ${senderPhone}`)
+      console.log(`[webhook/evolution] número desconhecido sem agente standalone: ${senderPhone}`)
       return NextResponse.json({ received: true })
     }
 
@@ -130,7 +134,6 @@ export async function POST(
 
     if (!newLead) return NextResponse.json({ received: true })
     resolvedLead = newLead
-    console.log(`[webhook/evolution] Novo lead standalone criado: ${newLead.id} para agente ${standaloneAgent.id}`)
   }
 
   // Record replied event only if lead has a funnel (funnel_id is NOT NULL in lead_events)
@@ -146,43 +149,46 @@ export async function POST(
   }
 
   // PRIORITY 1: lead has active funnel agent block
-  if ((resolvedLead as Record<string, unknown>).agent_active && (resolvedLead as Record<string, unknown>).funnel_resume_block_id) {
+  if (resolvedLead.agent_active && resolvedLead.funnel_resume_block_id) {
     const { data: agentBlock } = await admin
       .from('funnel_blocks')
       .select('id, config')
-      .eq('id', (resolvedLead as Record<string, unknown>).funnel_resume_block_id as string)
+      .eq('id', resolvedLead.funnel_resume_block_id)
       .single()
 
     const agentId = (agentBlock?.config as Record<string, unknown>)?.agent_id as string | undefined
 
     if (agentId && messageText) {
       try {
-        await processAgentMessage(agentId, messageText, { leadId: resolvedLead!.id })
+        await processAgentMessage(agentId, messageText, { leadId: resolvedLead.id })
       } catch (err) {
-        console.error('[webhook/evolution] funnel agent error:', { agentId, leadId: resolvedLead!.id, error: String(err) })
-        if (resolvedLead!.funnel_id) {
+        console.error('[webhook/evolution] funnel agent error:', { agentId, leadId: resolvedLead.id, error: String(err) })
+        if (resolvedLead.funnel_id) {
           void admin.from('lead_events').insert({
             tenant_id: tenantId,
-            lead_id: resolvedLead!.id,
-            funnel_id: resolvedLead!.funnel_id,
-            block_id: resolvedLead!.current_block_id,
+            lead_id: resolvedLead.id,
+            funnel_id: resolvedLead.funnel_id,
+            block_id: resolvedLead.current_block_id,
             event_type: 'agent_error',
             event_data: { agent_id: agentId, error: String(err) },
           })
         }
       }
+      return NextResponse.json({ received: true })
     }
-    return NextResponse.json({ received: true })
+
+    // Estado inconsistente (agent_active mas bloco/agent_id não resolve) —
+    // auto-recuperação: limpa o estado e deixa o lead seguir pelos paths normais
+    console.error(`[webhook/evolution] lead ${resolvedLead.id} preso em agent_active sem agente resolvível — limpando estado`)
+    await admin.from('leads').update({ agent_active: false, funnel_resume_block_id: null, funnel_paused_at: null }).eq('id', resolvedLead.id)
   }
 
   // PRIORITY 2: standalone agent on this WA instance
   if (standaloneAgent && messageText) {
     try {
-      console.log(`[webhook/evolution] standalone agent chamando processAgentMessage agentId=${standaloneAgent.id} leadId=${resolvedLead!.id}`)
-      await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead!.id })
-      console.log(`[webhook/evolution] standalone agent respondeu com sucesso`)
+      await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead.id })
     } catch (err) {
-      console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead!.id, error: String(err) })
+      console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead.id, error: String(err) })
     }
     return NextResponse.json({ received: true })
   }
