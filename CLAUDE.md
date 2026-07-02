@@ -483,8 +483,19 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-06-19 — Etapa 15 (Agentes IA treináveis) concluída
+**Última atualização:** 2026-07-02 — Correção completa do agente IA + Quiz Builder nível Inlead
 **O que foi feito:**
+- Correções agente IA (2026-07-02):
+  - **Bug crítico corrigido**: agente standalone não respondia — `sendPartsViaWhatsApp` só resolvia instância via funil; agora resolve via `ai_agents.whatsapp_instance_id` primeiro (leads standalone têm `funnel_id null`)
+  - `src/lib/agents/chat.ts` reescrito: `callAnthropic` com retry 429/529, erro explícito se key ausente, erros não viram "resposta" ao lead; reset mensal de `activations_used`; incremento atômico via RPC `increment_agent_activations`; conversa duplicada reaproveitada (unique index parcial); `resumeFunnel` sempre limpa `agent_active`; try/catch por parte no envio WA
+  - Webhook Evolution: `maxDuration = 60`; idempotência via tabela `processed_wa_messages` (dedupe por `key.id`); auto-recuperação de lead preso em `agent_active` sem bloco resolvível; processamento síncrono com `await` (fire-and-forget era morto pelo Vercel — causa raiz do agente mudo)
+  - Migration: `supabase/migrations/20260702000000_agent_fixes_quiz_v2.sql` — **aplicar manualmente no Supabase Studio**
+- Quiz Builder nível Inlead (2026-07-02):
+  - Temas: `QuizSettings.theme` (5 presets clean/dark/gradient/minimal/bold, fonte Google Fonts, fundo cor/gradiente/imagem, card flat/shadow/glass, cantos de botão, dark mode) — `src/lib/quiz/theme.ts` (resolveTheme compartilhado editor+renderer); aba 🎨 Design no painel do editor; logo renderizada no topo
+  - Blocos landing: hero, testimonials, features, faq, countdown (evergreen via localStorage ou data fixa) — categoria "Landing" na palette; página só-landing com hero CTA esconde botão "Próximo"
+  - Upload de imagens: bucket Supabase Storage `quiz-assets` (criado na migration), action `uploadQuizImage` em `src/app/actions/upload.ts`, componente `ImageUploadField` (modo normal + compact); usado em bloco imagem, opções de resposta (`BlockOption.image_url` → grid de cards 2 col), hero, depoimentos, logo, fundo do tema
+  - Pixel por etapa: `BlockConfig.pixel_event` (Lead/CompleteRegistration/InitiateCheckout/Purchase/custom) em button/final_capture, disparado via `fbq` no `fireIntegrations`; `QuizSettings.pixel_id` por quiz com fallback ao pixel global do tenant em `/pg/[slug]/page.tsx`
+- Correção Meta Pixel (2026-07-02): campo lido errado em `/f/[id]` (`pixel_meta_id` → `meta_pixel_id`); pixel adicionado a todas as páginas `/pg/[slug]`
 - Etapa 1: Next.js 16.2.6 scaffolded, dependências instaladas, estrutura de pastas, lib stubs, schema SQL (15 tabelas + RLS)
 - Etapa 2: Auth completo — login, registro, onboarding multi-tenant, middleware de proteção de rotas, deploy na Vercel funcionando
 - Etapa 3: Builder visual React Flow completo
@@ -528,8 +539,8 @@ APP_SECRET=
   - `ANTHROPIC_API_KEY` necessária no env. Bloco de funil "Agente IA" no builder React Flow ainda não implementado (apenas estrutura/restrição de plano prontas)
 
 **Próximos passos:**
-- **PENDENTE URGENTE**: Aplicar migrations `20260618000000_interactive_quiz.sql` e `20260619000002_ai_agents.sql` no Supabase Studio (projeto hcadyqktfowfkxsbogmj)
-- Adicionar `ANTHROPIC_API_KEY` no env (Vercel + VPS)
+- **PENDENTE URGENTE**: Aplicar migrations no Supabase Studio (projeto hcadyqktfowfkxsbogmj): `20260618000000_interactive_quiz.sql`, `20260619000000_quiz_leads.sql`, `20260619000001_quiz_webhook_logs.sql`, `20260619000002_ai_agents.sql`, `20260702000000_agent_fixes_quiz_v2.sql`
+- Testar agente standalone com mensagem real após deploy + migration
 - Etapa 6: Integração e-mail (Resend + sequências)
 - Etapa 9: Integração API Meta (ad_spend + métricas)
 - Etapa 11: Templates + marketplace
