@@ -1,12 +1,78 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { QuizData, QuizPage, QuizBlock, BlockOption } from '@/app/actions/quiz-v2'
+import type { QuizData, QuizBlock, BlockOption, BlockConfig } from '@/app/actions/quiz-v2'
+import { resolveTheme } from '@/lib/quiz/theme'
 
 interface Props {
   data: QuizData
   pageId: string
   tenantId: string
+}
+
+declare global {
+  interface Window { fbq?: (...args: unknown[]) => void }
+}
+
+function firePixelEvent(config: BlockConfig) {
+  if (typeof window === 'undefined' || !window.fbq) return
+  const ev = config.pixel_event
+  if (!ev || ev === 'none') return
+  if (ev === 'custom') {
+    if (config.pixel_event_custom) window.fbq('trackCustom', config.pixel_event_custom)
+  } else {
+    window.fbq('track', ev)
+  }
+}
+
+function CountdownBlock({ config, blockId }: { config: BlockConfig; blockId: string }) {
+  const [remaining, setRemaining] = useState<number | null>(null)
+
+  useEffect(() => {
+    function computeTarget(): number {
+      if (config.countdown_mode === 'date' && config.countdown_target) {
+        return new Date(config.countdown_target).getTime()
+      }
+      // evergreen: persiste por visitante no localStorage
+      const key = `qz_cd_${blockId}`
+      const stored = localStorage.getItem(key)
+      if (stored) return Number(stored)
+      const target = Date.now() + (config.countdown_minutes ?? 15) * 60_000
+      localStorage.setItem(key, String(target))
+      return target
+    }
+    const target = computeTarget()
+    const tick = () => setRemaining(Math.max(0, target - Date.now()))
+    tick()
+    const iv = setInterval(tick, 1000)
+    return () => clearInterval(iv)
+  }, [config.countdown_mode, config.countdown_target, config.countdown_minutes, blockId])
+
+  if (remaining === null) return null
+
+  if (remaining <= 0) {
+    return <p className="text-center text-lg font-semibold text-red-500">{config.countdown_expired_text || 'Oferta encerrada'}</p>
+  }
+
+  const h = Math.floor(remaining / 3_600_000)
+  const m = Math.floor((remaining % 3_600_000) / 60_000)
+  const s = Math.floor((remaining % 60_000) / 1000)
+  const cells = h > 0 ? [h, m, s] : [m, s]
+  const labels = h > 0 ? ['h', 'min', 'seg'] : ['min', 'seg']
+
+  return (
+    <div className="text-center">
+      {config.countdown_text && <p className="text-base font-medium mb-2 opacity-80">{config.countdown_text}</p>}
+      <div className="flex gap-2 justify-center">
+        {cells.map((v, i) => (
+          <div key={i} className="bg-gray-900 text-white rounded-xl px-3 py-2 min-w-[3.2rem]">
+            <div className="text-2xl font-mono font-bold">{String(v).padStart(2, '0')}</div>
+            <div className="text-[10px] text-gray-400 uppercase">{labels[i]}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function getYoutubeEmbed(url: string): string | null {
@@ -80,6 +146,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const primaryColor = data.settings.primary_color || '#6366f1'
   const showProgress = data.settings.show_progress !== false
   const pages = data.pages
+  const theme = resolveTheme(data.settings.theme)
+  const logoUrl = data.settings.logo_url
 
   const [pageIdx, setPageIdx] = useState(0)
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
@@ -99,6 +167,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     context: { answers: Record<string, unknown>; score: number; name?: string; email?: string; phone?: string }
   ) {
     const leadId = tracker.getLeadId()
+
+    firePixelEvent(config)
 
     if (config.webhook_enabled && config.webhook_url) {
       const payload: Record<string, unknown> = {}
@@ -200,7 +270,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
     const newErrors: Record<string, string> = {}
     for (const block of page.blocks) {
-      if (block.config.required && !['result','text_block','image','video','button'].includes(block.type)) {
+      if (block.config.required && !['result','text_block','image','video','button','hero','testimonials','features','faq','countdown'].includes(block.type)) {
         const val = answers[block.id]
         if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
           newErrors[block.id] = 'Campo obrigatório'
@@ -313,50 +383,80 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           <div style={{ background: config.bg_color || undefined }}>
             {config.question && (
               <div className="text-center mb-6">
-                <h2 className="text-2xl md:text-3xl font-bold text-gray-900">{config.question}</h2>
-                {config.subtitle && <p className="text-gray-500 mt-1">{config.subtitle}</p>}
+                <h2 className="text-2xl md:text-3xl font-bold" style={{ color: theme.textColor }}>{config.question}</h2>
+                {config.subtitle && <p className="mt-1" style={{ color: theme.mutedColor }}>{config.subtitle}</p>}
               </div>
             )}
-            <div className="space-y-3">
-              {(config.options ?? []).map((opt: BlockOption) => {
-                const isSelected = block.type === 'multi_choice'
-                  ? Array.isArray(val) && (val as string[]).includes(opt.label)
-                  : val === opt.label
+            {(() => {
+              const opts = config.options ?? []
+              const hasImages = opts.some(o => o.image_url)
+              const selectOption = (opt: BlockOption, isSelected: boolean) => {
+                if (block.type === 'multi_choice') {
+                  const cur = (val as string[]) ?? []
+                  setAnswer(block.id, isSelected ? cur.filter(l => l !== opt.label) : [...cur, opt.label], page.id, 'choice_selected')
+                } else {
+                  setAnswer(block.id, opt.label, page.id, 'choice_selected')
+                  const nonChoiceInputs = page.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button','hero','testimonials','features','faq','countdown'].includes(b.type))
+                  const hasFinalCapture = page.blocks.some(b => b.type === 'final_capture')
+                  if (nonChoiceInputs.length === 0 && !hasFinalCapture) {
+                    setTimeout(() => handleNextWithAnswer(block.id, opt.label), 350)
+                  }
+                }
+              }
 
+              if (hasImages) {
                 return (
-                  <button
-                    key={opt.id}
-                    onClick={() => {
-                      if (block.type === 'multi_choice') {
-                        const cur = (val as string[]) ?? []
-                        setAnswer(block.id, isSelected ? cur.filter(l => l !== opt.label) : [...cur, opt.label], page.id, 'choice_selected')
-                      } else {
-                        setAnswer(block.id, opt.label, page.id, 'choice_selected')
-                        // Auto-advance single choice
-                        const nonChoiceInputs = page.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button'].includes(b.type))
-                        const hasFinalCapture = page.blocks.some(b => b.type === 'final_capture')
-                        if (nonChoiceInputs.length === 0 && !hasFinalCapture) {
-                          setTimeout(() => handleNextWithAnswer(block.id, opt.label), 350)
-                        }
-                      }
-                    }}
-                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
-                      isSelected ? 'scale-[0.99]' : 'border-gray-200 bg-white hover:scale-[1.01]'
-                    }`}
-                    style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : undefined}
-                  >
-                    {block.type === 'multi_choice' && (
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${isSelected ? 'text-white' : 'border-gray-300'}`}
-                        style={isSelected ? { background: primaryColor, borderColor: primaryColor } : undefined}>
-                        {isSelected && <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>}
-                      </div>
-                    )}
-                    {opt.emoji && <span className="text-3xl shrink-0">{opt.emoji}</span>}
-                    <span className="text-base font-medium text-gray-800 flex-1">{opt.label}</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    {opts.map((opt: BlockOption) => {
+                      const isSelected = block.type === 'multi_choice'
+                        ? Array.isArray(val) && (val as string[]).includes(opt.label)
+                        : val === opt.label
+                      return (
+                        <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
+                          className={`rounded-2xl border-2 overflow-hidden text-left transition-all duration-150 shadow-sm ${isSelected ? 'scale-[0.98]' : 'border-gray-200 bg-white hover:scale-[1.02]'}`}
+                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.cardBg }}>
+                          {opt.image_url
+                            ? <img src={opt.image_url} alt="" className="w-full h-28 object-cover" />
+                            : <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-4xl">{opt.emoji || '🎯'}</div>}
+                          <div className="px-3 py-2.5 flex items-center gap-2">
+                            {opt.emoji && opt.image_url && <span className="text-lg shrink-0">{opt.emoji}</span>}
+                            <span className="text-sm font-medium flex-1" style={{ color: theme.textColor }}>{opt.label}</span>
+                            {isSelected && <span style={{ color: primaryColor }}>✓</span>}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
                 )
-              })}
-            </div>
+              }
+
+              return (
+                <div className="space-y-3">
+                  {opts.map((opt: BlockOption) => {
+                    const isSelected = block.type === 'multi_choice'
+                      ? Array.isArray(val) && (val as string[]).includes(opt.label)
+                      : val === opt.label
+                    return (
+                      <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
+                        className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
+                          isSelected ? 'scale-[0.99]' : 'border-gray-200 hover:scale-[1.01]'
+                        }`}
+                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.cardBg, border: theme.cardBorder }}
+                      >
+                        {block.type === 'multi_choice' && (
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${isSelected ? 'text-white' : 'border-gray-300'}`}
+                            style={isSelected ? { background: primaryColor, borderColor: primaryColor } : undefined}>
+                            {isSelected && <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>}
+                          </div>
+                        )}
+                        {opt.emoji && <span className="text-3xl shrink-0">{opt.emoji}</span>}
+                        <span className="text-base font-medium flex-1" style={{ color: theme.textColor }}>{opt.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             {block.type === 'multi_choice' && (
               <button onClick={handleNext} disabled={!Array.isArray(val) || (val as string[]).length === 0}
                 style={{ background: primaryColor }}
@@ -369,7 +469,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'scale' && (
           <div className="text-center">
-            {config.question && <h2 className="text-2xl font-bold text-gray-900 mb-6">{config.question}</h2>}
+            {config.question && <h2 className="text-2xl font-bold mb-6" style={{ color: theme.textColor }}>{config.question}</h2>}
             <div className="flex flex-wrap justify-center gap-3">
               {Array.from({ length: (config.scale_max ?? 10) - (config.scale_min ?? 1) + 1 }, (_, i) => {
                 const v = (config.scale_min ?? 1) + i
@@ -387,7 +487,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {['field_text','field_email','field_phone','field_number'].includes(block.type) && (
           <div>
-            {config.label && <label className="block text-lg font-semibold text-gray-800 mb-3">{config.label}</label>}
+            {config.label && <label className="block text-lg font-semibold mb-3" style={{ color: theme.textColor }}>{config.label}</label>}
             <input
               type={block.type === 'field_email' ? 'email' : block.type === 'field_phone' ? 'tel' : block.type === 'field_number' ? 'number' : 'text'}
               value={(val as string) ?? ''}
@@ -403,7 +503,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'field_textarea' && (
           <div>
-            {config.label && <label className="block text-lg font-semibold text-gray-800 mb-3">{config.label}</label>}
+            {config.label && <label className="block text-lg font-semibold mb-3" style={{ color: theme.textColor }}>{config.label}</label>}
             <textarea
               value={(val as string) ?? ''}
               onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
@@ -478,6 +578,103 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
+        {block.type === 'hero' && (
+          <div className={config.hero_align === 'left' ? 'text-left' : 'text-center'}>
+            {config.hero_image_url && (
+              <img src={config.hero_image_url} alt="" className="w-full max-h-72 object-cover rounded-2xl mb-6" />
+            )}
+            <h1 className="text-3xl md:text-5xl font-extrabold leading-tight" style={{ color: theme.textColor }}>
+              {config.hero_headline}
+            </h1>
+            {config.hero_subheadline && (
+              <p className="text-lg md:text-xl mt-4" style={{ color: theme.mutedColor }}>{config.hero_subheadline}</p>
+            )}
+            {config.hero_cta_text && (
+              <div className={`mt-8 ${config.hero_align === 'left' ? '' : 'flex justify-center'}`}>
+                {config.hero_cta_action === 'external_url' && config.hero_cta_url ? (
+                  <a href={config.hero_cta_url} target="_blank" rel="noopener noreferrer"
+                    onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.hero_cta_url })}
+                    className="inline-block px-10 py-4 text-white text-lg font-bold shadow-lg hover:opacity-90 transition"
+                    style={{ background: primaryColor, borderRadius: theme.buttonRadius }}>
+                    {config.hero_cta_text}
+                  </a>
+                ) : (
+                  <button onClick={() => { tracker.track('button_clicked', page.id, block.id, {}); handleNext() }}
+                    className="px-10 py-4 text-white text-lg font-bold shadow-lg hover:opacity-90 transition"
+                    style={{ background: primaryColor, borderRadius: theme.buttonRadius }}>
+                    {config.hero_cta_text}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {block.type === 'testimonials' && (
+          <div>
+            {config.testimonials_title && (
+              <h2 className="text-2xl font-bold text-center mb-6" style={{ color: theme.textColor }}>{config.testimonials_title}</h2>
+            )}
+            <div className="grid gap-4 md:grid-cols-2">
+              {(config.testimonials ?? []).map(t => (
+                <div key={t.id} className="rounded-2xl p-5"
+                  style={{ background: theme.cardBg, border: theme.cardBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
+                  <div className="text-amber-400 text-sm mb-2">{'★'.repeat(t.stars ?? 5)}</div>
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: theme.textColor }}>&ldquo;{t.text}&rdquo;</p>
+                  <div className="flex items-center gap-2">
+                    {t.photo_url
+                      ? <img src={t.photo_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                      : <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: primaryColor }}>{t.name.charAt(0)}</div>}
+                    <span className="text-sm font-semibold" style={{ color: theme.textColor }}>{t.name}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {block.type === 'features' && (
+          <div>
+            {config.features_title && (
+              <h2 className="text-2xl font-bold text-center mb-6" style={{ color: theme.textColor }}>{config.features_title}</h2>
+            )}
+            <div className={`grid gap-4 ${(config.features_columns ?? 3) === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
+              {(config.features ?? []).map(f => (
+                <div key={f.id} className="rounded-2xl p-5 text-center"
+                  style={{ background: theme.cardBg, border: theme.cardBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
+                  <div className="text-3xl mb-2">{f.icon || '✨'}</div>
+                  <p className="text-base font-bold mb-1" style={{ color: theme.textColor }}>{f.title}</p>
+                  {f.description && <p className="text-sm" style={{ color: theme.mutedColor }}>{f.description}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {block.type === 'faq' && (
+          <div>
+            {config.faq_title && (
+              <h2 className="text-2xl font-bold text-center mb-6" style={{ color: theme.textColor }}>{config.faq_title}</h2>
+            )}
+            <div className="space-y-2">
+              {(config.faq_items ?? []).map(f => (
+                <details key={f.id} className="rounded-xl overflow-hidden group"
+                  style={{ background: theme.cardBg, border: theme.cardBorder }}>
+                  <summary className="px-5 py-4 cursor-pointer font-semibold text-sm flex items-center justify-between list-none" style={{ color: theme.textColor }}>
+                    {f.question}
+                    <span className="transition group-open:rotate-180" style={{ color: theme.mutedColor }}>▾</span>
+                  </summary>
+                  <p className="px-5 pb-4 text-sm leading-relaxed" style={{ color: theme.mutedColor }}>{f.answer}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {block.type === 'countdown' && (
+          <CountdownBlock config={config} blockId={block.id} />
+        )}
+
         {err && <p className="text-sm text-red-500 mt-2">{err}</p>}
       </div>
     )
@@ -491,7 +688,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       const page = pages[pageIdx]
       const newErrors: Record<string, string> = {}
       for (const block of page.blocks) {
-        if (block.config.required && !['result','text_block','image','video','button','single_choice','yes_no'].includes(block.type)) {
+        if (block.config.required && !['result','text_block','image','video','button','single_choice','yes_no','hero','testimonials','features','faq','countdown'].includes(block.type)) {
           const v = updated[block.id]
           if (v === undefined || v === null || v === '') newErrors[block.id] = 'Campo obrigatório'
         }
@@ -526,8 +723,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const hasFinalCapture = currentPage?.blocks.some(b => b.type === 'final_capture')
   const hasExplicitButton = currentPage?.blocks.some(b => b.type === 'button' && b.config.button_action !== 'external_url')
   const hasResultBlock = currentPage?.blocks.some(b => b.type === 'result')
-  const nonChoiceInputs = currentPage?.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button'].includes(b.type)) ?? []
-  const shouldShowNextButton = !hasResultBlock && (!hasChoiceAutoAdvance || nonChoiceInputs.length > 0 || hasFinalCapture)
+  const nonChoiceInputs = currentPage?.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button','hero','testimonials','features','faq','countdown'].includes(b.type)) ?? []
+  const isLandingOnly = (currentPage?.blocks.length ?? 0) > 0 && currentPage!.blocks.every(b => ['hero','testimonials','features','faq','countdown','text_block','image','video'].includes(b.type))
+  const heroHasCta = currentPage?.blocks.some(b => b.type === 'hero' && b.config.hero_cta_text)
+  const shouldShowNextButton = !hasResultBlock && !(isLandingOnly && heroHasCta) && (!hasChoiceAutoAdvance || nonChoiceInputs.length > 0 || hasFinalCapture || isLandingOnly)
 
   if (phase !== 'answering' && resultBlock) {
     const cfg = resultBlock.config
@@ -537,7 +736,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     const ctaUrl = cfg.cta_url
 
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8" style={{ background: '#f8f7ff' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
+        style={{
+          background: theme.background,
+          backgroundImage: theme.backgroundImage ? `url(${theme.backgroundImage})` : undefined,
+          backgroundSize: 'cover', backgroundPosition: 'center',
+          fontFamily: theme.fontFamily,
+        }}>
+        {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
         <style>{`@keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } } @keyframes confettiFall { 0%{transform:translateY(-20px) rotate(0deg);opacity:1} 100%{transform:translateY(200px) rotate(720deg);opacity:0} }`}</style>
         <div className="w-full max-w-xl text-center" style={{ animation: 'fadeInUp 500ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
           <div className="relative flex justify-center mb-6" aria-hidden>
@@ -546,13 +752,13 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             ))}
           </div>
           <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl md:text-4xl font-bold text-gray-900 mb-4">{cfg.title || 'Parabéns!'}</h2>
+          <h2 className="text-2xl md:text-4xl font-bold mb-4" style={{ color: theme.textColor }}>{cfg.title || 'Parabéns!'}</h2>
           {scoreText && (
             <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-2xl font-semibold text-lg" style={{ background: primaryColor + '20', color: primaryColor }}>
               🏆 {scoreText}
             </div>
           )}
-          {cfg.description && <p className="text-base md:text-lg text-gray-600 mb-8 leading-relaxed whitespace-pre-line">{cfg.description.replace(/\{\{score\}\}/g, String(score))}</p>}
+          {cfg.description && <p className="text-base md:text-lg mb-8 leading-relaxed whitespace-pre-line" style={{ color: theme.mutedColor }}>{cfg.description.replace(/\{\{score\}\}/g, String(score))}</p>}
           {phase === 'submitting' && (
             <div className="flex items-center justify-center gap-2 text-gray-500">
               <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10"/></svg>
@@ -579,8 +785,21 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#fafafa' }}>
+    <div className="min-h-screen flex flex-col"
+      style={{
+        background: theme.background,
+        backgroundImage: theme.backgroundImage ? `url(${theme.backgroundImage})` : undefined,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        fontFamily: theme.fontFamily,
+      }}>
+      {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
       <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } }`}</style>
+
+      {logoUrl && (
+        <div className="flex justify-center pt-6 shrink-0">
+          <img src={logoUrl} alt="" className="h-10 object-contain" />
+        </div>
+      )}
 
       {showProgress && (
         <div className="h-1 shrink-0" style={{ background: primaryColor + '30' }}>

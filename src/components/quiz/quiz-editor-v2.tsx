@@ -16,7 +16,10 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   saveQuizV2, publishQuizV2,
   type QuizData, type QuizPage, type QuizBlock, type BlockType, type BlockConfig, type BlockOption,
+  type QuizTheme, type TestimonialItem, type FeatureItem, type FaqItem,
 } from '@/app/actions/quiz-v2'
+import { THEME_PRESETS } from '@/lib/quiz/theme'
+import ImageUploadField from '@/components/quiz/image-upload-field'
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
@@ -36,9 +39,14 @@ const BLOCK_META: Record<BlockType, { label: string; icon: string; category: str
   button:         { label: 'Botão',            icon: '🔲', category: 'Ação' },
   final_capture:  { label: 'Captura final',    icon: '🏆', category: 'Ação' },
   result:         { label: 'Resultado',        icon: '🎉', category: 'Ação' },
+  hero:           { label: 'Hero',             icon: '🚀', category: 'Landing' },
+  testimonials:   { label: 'Depoimentos',      icon: '💬', category: 'Landing' },
+  features:       { label: 'Benefícios',       icon: '✨', category: 'Landing' },
+  faq:            { label: 'FAQ',              icon: '❓', category: 'Landing' },
+  countdown:      { label: 'Contagem',         icon: '⏰', category: 'Landing' },
 }
 
-const CATEGORIES = ['Formulário', 'Quiz', 'Mídia e conteúdo', 'Ação']
+const CATEGORIES = ['Formulário', 'Quiz', 'Mídia e conteúdo', 'Ação', 'Landing']
 
 function newId() { return crypto.randomUUID() }
 
@@ -75,8 +83,44 @@ function defaultConfig(type: BlockType): BlockConfig {
     case 'image':         return { image_url: '', image_size: 'medium', image_align: 'center' }
     case 'video':         return { video_url: '' }
     case 'button':        return { button_text: 'Próximo →', button_action: 'next_page', button_color: '#6366f1', button_align: 'center' }
-    case 'final_capture': return { show_name: true, show_email: true, show_phone: false, submit_text: 'Ver meu resultado →' }
+    case 'final_capture': return { show_name: true, show_email: true, show_phone: false, submit_text: 'Ver meu resultado →', pixel_event: 'Lead' }
     case 'result':        return { title: 'Parabéns!', description: '', show_score: false, cta_text: 'Acessar agora', cta_url: '' }
+    case 'hero': return {
+      hero_headline: 'Sua headline impactante aqui',
+      hero_subheadline: 'Explique em uma frase o valor da sua oferta',
+      hero_cta_text: 'Quero começar →',
+      hero_cta_action: 'next_page',
+      hero_align: 'center',
+    }
+    case 'testimonials': return {
+      testimonials_title: 'O que dizem nossos alunos',
+      testimonials: [
+        { id: newId(), name: 'Maria Silva', text: 'Resultado incrível em poucas semanas. Recomendo demais!', stars: 5 },
+        { id: newId(), name: 'João Santos', text: 'Melhor investimento que já fiz. Superou minhas expectativas.', stars: 5 },
+      ],
+    }
+    case 'features': return {
+      features_title: 'O que você vai receber',
+      features_columns: 3,
+      features: [
+        { id: newId(), icon: '🎯', title: 'Benefício 1', description: 'Descreva o benefício' },
+        { id: newId(), icon: '⚡', title: 'Benefício 2', description: 'Descreva o benefício' },
+        { id: newId(), icon: '🏆', title: 'Benefício 3', description: 'Descreva o benefício' },
+      ],
+    }
+    case 'faq': return {
+      faq_title: 'Perguntas frequentes',
+      faq_items: [
+        { id: newId(), question: 'Como funciona?', answer: 'Explique aqui como funciona.' },
+        { id: newId(), question: 'Quanto tempo leva?', answer: 'Explique o prazo aqui.' },
+      ],
+    }
+    case 'countdown': return {
+      countdown_mode: 'evergreen',
+      countdown_minutes: 15,
+      countdown_text: '🔥 Oferta expira em:',
+      countdown_expired_text: 'Oferta encerrada',
+    }
     default: return {}
   }
 }
@@ -418,6 +462,72 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
         )}
       </div>
     )
+  } else if (block.type === 'hero') {
+    summary = (
+      <div className={config.hero_align === 'left' ? 'text-left' : 'text-center'}>
+        {config.hero_image_url && <img src={config.hero_image_url} alt="" className="w-full max-h-20 object-cover rounded mb-2" />}
+        <p className="text-sm font-extrabold text-gray-900 line-clamp-2">{config.hero_headline || 'Headline'}</p>
+        {config.hero_subheadline && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{config.hero_subheadline}</p>}
+        {config.hero_cta_text && (
+          <div className="mt-2 inline-block px-4 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-xl">{config.hero_cta_text}</div>
+        )}
+      </div>
+    )
+  } else if (block.type === 'testimonials') {
+    summary = (
+      <div>
+        <p className="text-xs font-bold text-gray-700 mb-1.5">{config.testimonials_title || 'Depoimentos'}</p>
+        {(config.testimonials ?? []).slice(0, 2).map(t => (
+          <div key={t.id} className="flex items-start gap-1.5 text-xs text-gray-600 mb-1">
+            {t.photo_url
+              ? <img src={t.photo_url} alt="" className="w-5 h-5 rounded-full object-cover shrink-0" />
+              : <div className="w-5 h-5 rounded-full bg-gray-200 shrink-0" />}
+            <div className="min-w-0">
+              <span className="font-semibold text-gray-700">{t.name}</span>
+              <span className="text-amber-400 ml-1">{'★'.repeat(t.stars ?? 5)}</span>
+              <p className="line-clamp-1 text-gray-500">{t.text}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  } else if (block.type === 'features') {
+    summary = (
+      <div>
+        <p className="text-xs font-bold text-gray-700 mb-1.5">{config.features_title || 'Benefícios'}</p>
+        <div className="grid grid-cols-3 gap-1">
+          {(config.features ?? []).slice(0, 3).map(f => (
+            <div key={f.id} className="border border-gray-100 rounded p-1 text-center">
+              <div className="text-sm">{f.icon || '✨'}</div>
+              <p className="text-[9px] font-medium text-gray-600 line-clamp-1">{f.title}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  } else if (block.type === 'faq') {
+    summary = (
+      <div>
+        <p className="text-xs font-bold text-gray-700 mb-1">{config.faq_title || 'FAQ'}</p>
+        {(config.faq_items ?? []).slice(0, 3).map(f => (
+          <div key={f.id} className="text-xs text-gray-500 flex items-center gap-1 py-0.5 border-b border-gray-50">
+            <span className="text-gray-300">▸</span>
+            <span className="line-clamp-1">{f.question}</span>
+          </div>
+        ))}
+      </div>
+    )
+  } else if (block.type === 'countdown') {
+    summary = (
+      <div className="text-center">
+        <p className="text-xs text-gray-600 mb-1">{config.countdown_text || 'Oferta expira em:'}</p>
+        <div className="flex gap-1 justify-center">
+          {['00','14','59'].map((v, i) => (
+            <div key={i} className="bg-gray-900 text-white text-xs font-mono font-bold rounded px-1.5 py-1">{v}</div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -428,6 +538,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
           meta.category === 'Quiz' ? 'bg-indigo-100 text-indigo-600' :
           meta.category === 'Formulário' ? 'bg-blue-100 text-blue-600' :
           meta.category === 'Ação' ? 'bg-green-100 text-green-600' :
+          meta.category === 'Landing' ? 'bg-purple-100 text-purple-600' :
           'bg-gray-100 text-gray-600'
         }`}>{meta.label}</span>
         {summary}
@@ -585,33 +696,161 @@ function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; la
 const inputCls = 'w-full text-sm border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white'
 const labelCls = 'block text-xs font-semibold text-gray-500 mb-1.5'
 
+const THEME_PRESET_PREVIEWS: Record<string, { bg: string; card: string; dark: boolean }> = {
+  clean:    { bg: '#f8fafc', card: '#ffffff', dark: false },
+  dark:     { bg: '#0f172a', card: '#1e293b', dark: true },
+  gradient: { bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', card: 'rgba(255,255,255,0.15)', dark: true },
+  minimal:  { bg: '#ffffff', card: '#ffffff', dark: false },
+  bold:     { bg: 'linear-gradient(160deg, #111827 0%, #1f2937 60%, #6366f1 140%)', card: '#1f2937', dark: true },
+}
+
 function RightPanelEmpty({ settings, onUpdateSettings }: {
   settings: QuizData['settings']
   onUpdateSettings: (s: Partial<QuizData['settings']>) => void
 }) {
+  const [tab, setTab] = useState<'general' | 'design'>('general')
+  const theme = settings.theme ?? {}
+  function setTheme(patch: Partial<QuizTheme>) {
+    onUpdateSettings({ theme: { ...theme, ...patch } })
+  }
+
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
-        <span className="text-base">⚙️</span>
-        <p className="text-sm font-semibold text-gray-800">Configurações do quiz</p>
-      </div>
-      <div>
-        <label className={labelCls}>Cor principal</label>
-        <div className="flex items-center gap-2">
-          <input type="color" value={settings.primary_color || '#6366f1'}
-            onChange={e => onUpdateSettings({ primary_color: e.target.value })}
-            className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
-          <span className="text-xs text-gray-500 font-mono">{settings.primary_color || '#6366f1'}</span>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#a855f7','#0ea5e9','#000000'].map(c => (
-          <button key={c} onClick={() => onUpdateSettings({ primary_color: c })}
-            style={{ background: c, borderColor: settings.primary_color === c ? 'white' : c, outlineColor: settings.primary_color === c ? c : 'transparent' }}
-            className="w-7 h-7 rounded-full border-2 outline-2 outline transition" />
+      <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium">
+        {(['general','design'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`flex-1 py-1.5 transition ${tab === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            {t === 'general' ? '⚙️ Geral' : '🎨 Design'}
+          </button>
         ))}
       </div>
-      <Toggle on={!!settings.show_progress} onToggle={() => onUpdateSettings({ show_progress: !settings.show_progress })} label="Mostrar barra de progresso" />
+
+      {tab === 'general' && (
+        <>
+          <div>
+            <label className={labelCls}>Cor principal</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={settings.primary_color || '#6366f1'}
+                onChange={e => onUpdateSettings({ primary_color: e.target.value })}
+                className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
+              <span className="text-xs text-gray-500 font-mono">{settings.primary_color || '#6366f1'}</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#a855f7','#0ea5e9','#000000'].map(c => (
+              <button key={c} onClick={() => onUpdateSettings({ primary_color: c })}
+                style={{ background: c, borderColor: settings.primary_color === c ? 'white' : c, outlineColor: settings.primary_color === c ? c : 'transparent' }}
+                className="w-7 h-7 rounded-full border-2 outline-2 outline transition" />
+            ))}
+          </div>
+          <Toggle on={!!settings.show_progress} onToggle={() => onUpdateSettings({ show_progress: !settings.show_progress })} label="Mostrar barra de progresso" />
+          <div className="border-t border-gray-100 pt-3">
+            <label className={labelCls}>Pixel Meta deste quiz (opcional)</label>
+            <input value={settings.pixel_id ?? ''} onChange={e => onUpdateSettings({ pixel_id: e.target.value || undefined })}
+              className={inputCls + ' font-mono text-xs'} placeholder="123456789012345" />
+            <p className="text-[10px] text-gray-400 mt-1">Vazio = usa o pixel global das Configurações</p>
+          </div>
+        </>
+      )}
+
+      {tab === 'design' && (
+        <>
+          <div>
+            <label className={labelCls}>Tema</label>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(THEME_PRESETS).map(([key, preset]) => {
+                const pv = THEME_PRESET_PREVIEWS[key]
+                const active = theme.preset === key
+                return (
+                  <button key={key} onClick={() => setTheme({ ...preset, preset: preset.preset })}
+                    className={`rounded-lg border-2 p-1.5 transition text-left ${active ? 'border-indigo-500' : 'border-gray-200 hover:border-indigo-300'}`}>
+                    <div className="h-12 rounded-md mb-1 flex items-center justify-center" style={{ background: pv.bg }}>
+                      <div className="w-3/4 h-6 rounded" style={{ background: pv.card, border: pv.dark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #e5e7eb' }} />
+                    </div>
+                    <p className="text-[10px] font-semibold text-gray-700">{preset.label}</p>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Fonte</label>
+            <select value={theme.font ?? 'inter'} onChange={e => setTheme({ font: e.target.value as QuizTheme['font'] })} className={inputCls}>
+              <option value="inter">Inter (moderna)</option>
+              <option value="poppins">Poppins (arredondada)</option>
+              <option value="montserrat">Montserrat (forte)</option>
+              <option value="playfair">Playfair (elegante/serif)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls}>Fundo</label>
+            <div className="flex gap-2 mb-2">
+              {(['color','gradient','image'] as const).map(t => (
+                <button key={t} onClick={() => setTheme({ bg_type: t })}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(theme.bg_type ?? 'color') === t ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {t === 'color' ? 'Cor' : t === 'gradient' ? 'Gradiente' : 'Imagem'}
+                </button>
+              ))}
+            </div>
+            {(theme.bg_type ?? 'color') === 'color' && (
+              <input type="color" value={theme.bg_value?.startsWith('#') ? theme.bg_value : '#f8fafc'}
+                onChange={e => setTheme({ bg_value: e.target.value })}
+                className="w-full h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
+            )}
+            {theme.bg_type === 'gradient' && (
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                  'linear-gradient(160deg, #111827 0%, #6366f1 140%)',
+                  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                ].map(g => (
+                  <button key={g} onClick={() => setTheme({ bg_value: g })}
+                    style={{ background: g, outlineColor: theme.bg_value === g ? '#6366f1' : 'transparent' }}
+                    className="h-10 rounded-lg outline-2 outline transition" />
+                ))}
+              </div>
+            )}
+            {theme.bg_type === 'image' && (
+              <ImageUploadField value={theme.bg_value ?? ''} onChange={url => setTheme({ bg_value: url })} />
+            )}
+          </div>
+
+          <div>
+            <label className={labelCls}>Estilo dos cards</label>
+            <div className="flex gap-2">
+              {(['flat','shadow','glass'] as const).map(s => (
+                <button key={s} onClick={() => setTheme({ card_style: s })}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(theme.card_style ?? 'shadow') === s ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {s === 'flat' ? 'Flat' : s === 'shadow' ? 'Sombra' : 'Vidro'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Cantos dos botões</label>
+            <div className="flex gap-2">
+              {(['none','md','full'] as const).map(r => (
+                <button key={r} onClick={() => setTheme({ button_radius: r })}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(theme.button_radius ?? 'md') === r ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {r === 'none' ? 'Reto' : r === 'md' ? 'Suave' : 'Redondo'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Toggle on={!!theme.dark_mode} onToggle={() => setTheme({ dark_mode: !theme.dark_mode })} label="Modo escuro (texto claro)" />
+
+          <div className="border-t border-gray-100 pt-3">
+            <ImageUploadField label="Logo (topo do quiz)" value={settings.logo_url ?? ''} onChange={url => onUpdateSettings({ logo_url: url || undefined })} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -674,6 +913,7 @@ function OptionList({
                 </div>
               )}
             </div>
+            <ImageUploadField compact value={opt.image_url ?? ''} onChange={url => updateOpt(opt.id, { image_url: url || undefined })} />
           </div>
         ))}
       </div>
@@ -774,10 +1014,7 @@ function BlockEditor({
       {/* Image */}
       {block.type === 'image' && (
         <>
-          <div>
-            <label className={labelCls}>URL da imagem</label>
-            <input value={config.image_url ?? ''} onChange={e => setConfigKey('image_url', e.target.value)} className={inputCls} placeholder="https://..." />
-          </div>
+          <ImageUploadField label="Imagem" value={config.image_url ?? ''} onChange={url => setConfigKey('image_url', url)} />
           <div>
             <label className={labelCls}>Tamanho</label>
             <div className="flex gap-2">
@@ -957,6 +1194,212 @@ function BlockEditor({
         </>
       )}
 
+      {/* Hero */}
+      {block.type === 'hero' && (
+        <>
+          <div>
+            <label className={labelCls}>Headline</label>
+            <textarea value={config.hero_headline ?? ''} onChange={e => setConfigKey('hero_headline', e.target.value)}
+              rows={2} className={inputCls + ' resize-none'} placeholder="Sua headline impactante" />
+          </div>
+          <div>
+            <label className={labelCls}>Sub-headline</label>
+            <textarea value={config.hero_subheadline ?? ''} onChange={e => setConfigKey('hero_subheadline', e.target.value)}
+              rows={2} className={inputCls + ' resize-none'} placeholder="Explique o valor da oferta" />
+          </div>
+          <ImageUploadField label="Imagem (opcional)" value={config.hero_image_url ?? ''} onChange={url => setConfigKey('hero_image_url', url)} />
+          <div>
+            <label className={labelCls}>Texto do CTA</label>
+            <input value={config.hero_cta_text ?? ''} onChange={e => setConfigKey('hero_cta_text', e.target.value)} className={inputCls} placeholder="Quero começar →" />
+          </div>
+          <div>
+            <label className={labelCls}>Ação do CTA</label>
+            <select value={config.hero_cta_action ?? 'next_page'} onChange={e => setConfigKey('hero_cta_action', e.target.value as BlockConfig['hero_cta_action'])} className={inputCls}>
+              <option value="next_page">Próxima página</option>
+              <option value="external_url">URL externa</option>
+            </select>
+          </div>
+          {config.hero_cta_action === 'external_url' && (
+            <div>
+              <label className={labelCls}>URL</label>
+              <input value={config.hero_cta_url ?? ''} onChange={e => setConfigKey('hero_cta_url', e.target.value)} className={inputCls} placeholder="https://..." />
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Alinhamento</label>
+            <div className="flex gap-2">
+              {(['left','center'] as const).map(a => (
+                <button key={a} onClick={() => setConfigKey('hero_align', a)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.hero_align ?? 'center') === a ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {a === 'left' ? '← Esquerda' : '↔ Centro'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Testimonials */}
+      {block.type === 'testimonials' && (
+        <>
+          <div>
+            <label className={labelCls}>Título da seção</label>
+            <input value={config.testimonials_title ?? ''} onChange={e => setConfigKey('testimonials_title', e.target.value)} className={inputCls} placeholder="O que dizem nossos alunos" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5', '')}>Depoimentos</label>
+              <button onClick={() => setConfigKey('testimonials', [...(config.testimonials ?? []), { id: newId(), name: '', text: '', stars: 5 }])}
+                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">+ Adicionar</button>
+            </div>
+            <div className="space-y-2">
+              {(config.testimonials ?? []).map(t => {
+                const update = (patch: Partial<TestimonialItem>) =>
+                  setConfigKey('testimonials', (config.testimonials ?? []).map(x => x.id === t.id ? { ...x, ...patch } : x))
+                return (
+                  <div key={t.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+                    <div className="flex items-center gap-1.5">
+                      <input value={t.name} onChange={e => update({ name: e.target.value })}
+                        className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Nome" />
+                      <select value={t.stars ?? 5} onChange={e => update({ stars: Number(e.target.value) })}
+                        className="text-xs border border-gray-200 rounded px-1 py-1 bg-white">
+                        {[5,4,3].map(s => <option key={s} value={s}>{'★'.repeat(s)}</option>)}
+                      </select>
+                      <button onClick={() => setConfigKey('testimonials', (config.testimonials ?? []).filter(x => x.id !== t.id))}
+                        className="text-red-400 hover:text-red-600">×</button>
+                    </div>
+                    <textarea value={t.text} onChange={e => update({ text: e.target.value })}
+                      rows={2} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white resize-none focus:outline-none" placeholder="Texto do depoimento" />
+                    <ImageUploadField compact value={t.photo_url ?? ''} onChange={url => update({ photo_url: url || undefined })} />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Features */}
+      {block.type === 'features' && (
+        <>
+          <div>
+            <label className={labelCls}>Título da seção</label>
+            <input value={config.features_title ?? ''} onChange={e => setConfigKey('features_title', e.target.value)} className={inputCls} placeholder="O que você vai receber" />
+          </div>
+          <div>
+            <label className={labelCls}>Colunas</label>
+            <div className="flex gap-2">
+              {([2,3] as const).map(c => (
+                <button key={c} onClick={() => setConfigKey('features_columns', c)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.features_columns ?? 3) === c ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {c} colunas
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5', '')}>Itens</label>
+              <button onClick={() => setConfigKey('features', [...(config.features ?? []), { id: newId(), icon: '✨', title: '', description: '' }])}
+                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">+ Adicionar</button>
+            </div>
+            <div className="space-y-2">
+              {(config.features ?? []).map(f => {
+                const update = (patch: Partial<FeatureItem>) =>
+                  setConfigKey('features', (config.features ?? []).map(x => x.id === f.id ? { ...x, ...patch } : x))
+                return (
+                  <div key={f.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+                    <div className="flex items-center gap-1.5">
+                      <input value={f.icon ?? ''} onChange={e => update({ icon: e.target.value })}
+                        className="w-9 text-center text-sm border border-gray-200 rounded py-1 bg-white focus:outline-none" placeholder="✨" maxLength={2} />
+                      <input value={f.title} onChange={e => update({ title: e.target.value })}
+                        className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Título" />
+                      <button onClick={() => setConfigKey('features', (config.features ?? []).filter(x => x.id !== f.id))}
+                        className="text-red-400 hover:text-red-600">×</button>
+                    </div>
+                    <input value={f.description ?? ''} onChange={e => update({ description: e.target.value })}
+                      className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Descrição curta" />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* FAQ */}
+      {block.type === 'faq' && (
+        <>
+          <div>
+            <label className={labelCls}>Título da seção</label>
+            <input value={config.faq_title ?? ''} onChange={e => setConfigKey('faq_title', e.target.value)} className={inputCls} placeholder="Perguntas frequentes" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5', '')}>Perguntas</label>
+              <button onClick={() => setConfigKey('faq_items', [...(config.faq_items ?? []), { id: newId(), question: '', answer: '' }])}
+                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">+ Adicionar</button>
+            </div>
+            <div className="space-y-2">
+              {(config.faq_items ?? []).map(f => {
+                const update = (patch: Partial<FaqItem>) =>
+                  setConfigKey('faq_items', (config.faq_items ?? []).map(x => x.id === f.id ? { ...x, ...patch } : x))
+                return (
+                  <div key={f.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+                    <div className="flex items-center gap-1.5">
+                      <input value={f.question} onChange={e => update({ question: e.target.value })}
+                        className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Pergunta" />
+                      <button onClick={() => setConfigKey('faq_items', (config.faq_items ?? []).filter(x => x.id !== f.id))}
+                        className="text-red-400 hover:text-red-600">×</button>
+                    </div>
+                    <textarea value={f.answer} onChange={e => update({ answer: e.target.value })}
+                      rows={2} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white resize-none focus:outline-none" placeholder="Resposta" />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Countdown */}
+      {block.type === 'countdown' && (
+        <>
+          <div>
+            <label className={labelCls}>Texto de urgência</label>
+            <input value={config.countdown_text ?? ''} onChange={e => setConfigKey('countdown_text', e.target.value)} className={inputCls} placeholder="🔥 Oferta expira em:" />
+          </div>
+          <div>
+            <label className={labelCls}>Modo</label>
+            <div className="flex gap-2">
+              <button onClick={() => setConfigKey('countdown_mode', 'evergreen')}
+                className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.countdown_mode ?? 'evergreen') === 'evergreen' ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                Evergreen (por visita)
+              </button>
+              <button onClick={() => setConfigKey('countdown_mode', 'date')}
+                className={`flex-1 py-1.5 text-xs rounded-lg border transition ${config.countdown_mode === 'date' ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                Data fixa
+              </button>
+            </div>
+          </div>
+          {(config.countdown_mode ?? 'evergreen') === 'evergreen' ? (
+            <div>
+              <label className={labelCls}>Minutos de contagem</label>
+              <input type="number" value={config.countdown_minutes ?? 15} onChange={e => setConfigKey('countdown_minutes', Number(e.target.value))} className={inputCls} min={1} />
+            </div>
+          ) : (
+            <div>
+              <label className={labelCls}>Data/hora alvo</label>
+              <input type="datetime-local" value={config.countdown_target ?? ''} onChange={e => setConfigKey('countdown_target', e.target.value)} className={inputCls} />
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Texto quando expirar</label>
+            <input value={config.countdown_expired_text ?? ''} onChange={e => setConfigKey('countdown_expired_text', e.target.value)} className={inputCls} placeholder="Oferta encerrada" />
+          </div>
+        </>
+      )}
+
       {/* Integrations: webhook + funnel enroll for button and final_capture */}
       {['button', 'final_capture'].includes(block.type) && (() => {
         const hasPhoneBefore = precedingBlocks.some(b =>
@@ -965,6 +1408,23 @@ function BlockEditor({
         return (
           <div className={sectionCls + ' space-y-4'}>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Integrações</p>
+
+            {/* Meta Pixel event */}
+            <div>
+              <label className={labelCls}>Evento do Pixel Meta ao avançar</label>
+              <select value={config.pixel_event ?? 'none'} onChange={e => setConfigKey('pixel_event', e.target.value as BlockConfig['pixel_event'])} className={inputCls}>
+                <option value="none">Nenhum</option>
+                <option value="Lead">Lead</option>
+                <option value="CompleteRegistration">CompleteRegistration</option>
+                <option value="InitiateCheckout">InitiateCheckout</option>
+                <option value="Purchase">Purchase</option>
+                <option value="custom">Evento personalizado</option>
+              </select>
+              {config.pixel_event === 'custom' && (
+                <input value={config.pixel_event_custom ?? ''} onChange={e => setConfigKey('pixel_event_custom', e.target.value)}
+                  className={inputCls + ' mt-2'} placeholder="NomeDoEvento" />
+              )}
+            </div>
 
             {/* Webhook */}
             <div className="space-y-2">

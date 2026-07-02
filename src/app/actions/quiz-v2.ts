@@ -13,13 +13,36 @@ export type BlockType =
   | 'single_choice' | 'multi_choice' | 'yes_no' | 'scale'
   | 'text_block' | 'image' | 'video'
   | 'button' | 'final_capture' | 'result'
+  | 'hero' | 'testimonials' | 'features' | 'faq' | 'countdown'
 
 export interface BlockOption {
   id: string
   label: string
   emoji?: string
+  image_url?: string
   points?: number
   goto_page_id?: string | null
+}
+
+export interface TestimonialItem {
+  id: string
+  name: string
+  photo_url?: string
+  text: string
+  stars?: number
+}
+
+export interface FeatureItem {
+  id: string
+  icon?: string
+  title: string
+  description?: string
+}
+
+export interface FaqItem {
+  id: string
+  question: string
+  answer: string
 }
 
 export interface ScoreRangeV2 {
@@ -87,6 +110,39 @@ export interface BlockConfig {
   webhook_send_score?: boolean
   funnel_enroll_enabled?: boolean
   funnel_enroll_id?: string
+
+  // Pixel de conversão por etapa (button + final_capture)
+  pixel_event?: 'Lead' | 'CompleteRegistration' | 'InitiateCheckout' | 'Purchase' | 'custom' | 'none'
+  pixel_event_custom?: string
+
+  // Hero (landing)
+  hero_headline?: string
+  hero_subheadline?: string
+  hero_image_url?: string
+  hero_cta_text?: string
+  hero_cta_action?: 'next_page' | 'external_url'
+  hero_cta_url?: string
+  hero_align?: 'left' | 'center'
+
+  // Testimonials (landing)
+  testimonials_title?: string
+  testimonials?: TestimonialItem[]
+
+  // Features (landing)
+  features_title?: string
+  features?: FeatureItem[]
+  features_columns?: 2 | 3
+
+  // FAQ (landing)
+  faq_title?: string
+  faq_items?: FaqItem[]
+
+  // Countdown (landing)
+  countdown_mode?: 'date' | 'evergreen'
+  countdown_target?: string       // ISO date quando mode='date'
+  countdown_minutes?: number      // minutos quando mode='evergreen'
+  countdown_text?: string
+  countdown_expired_text?: string
 }
 
 export interface QuizBlock {
@@ -103,11 +159,23 @@ export interface QuizPage {
   blocks: QuizBlock[]
 }
 
+export interface QuizTheme {
+  preset?: 'clean' | 'dark' | 'gradient' | 'minimal' | 'bold'
+  font?: 'inter' | 'poppins' | 'playfair' | 'montserrat'
+  bg_type?: 'color' | 'gradient' | 'image'
+  bg_value?: string
+  card_style?: 'flat' | 'shadow' | 'glass'
+  button_radius?: 'none' | 'md' | 'full'
+  dark_mode?: boolean
+}
+
 export interface QuizSettings {
   title?: string
   primary_color?: string
   logo_url?: string
   show_progress?: boolean
+  theme?: QuizTheme
+  pixel_id?: string
 }
 
 export interface QuizData {

@@ -44,13 +44,14 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
 
   supabase.from('pages').update({ views_count: (page.views_count ?? 0) + 1 }).eq('id', page.id).then(() => {})
 
-  // Load tenant pixel
+  // Pixel: específico do quiz (settings.pixel_id) > pixel global do tenant
+  const quizPixelId = (page.quiz_data as QuizData | null)?.settings?.pixel_id ?? null
   const { data: tenantData } = await supabase
     .from('tenants')
     .select('meta_pixel_id')
     .eq('id', page.tenant_id)
     .single()
-  const pixelId = (tenantData as unknown as { meta_pixel_id?: string } | null)?.meta_pixel_id ?? null
+  const pixelId = quizPixelId || ((tenantData as unknown as { meta_pixel_id?: string } | null)?.meta_pixel_id ?? null)
 
   if (page.page_type === 'interactive') {
     // v2 format: quiz_data column with pages/blocks structure
