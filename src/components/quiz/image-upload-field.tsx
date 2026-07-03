@@ -30,25 +30,29 @@ export default function ImageUploadField({ value, onChange, label, compact = fal
 
   if (compact) {
     return (
-      <div className="flex items-center gap-1.5">
-        {value ? (
-          <img src={value} alt="" className="w-8 h-8 rounded object-cover border border-gray-200 shrink-0" />
-        ) : (
-          <div className="w-8 h-8 rounded bg-gray-100 border border-gray-200 shrink-0 flex items-center justify-center text-gray-300 text-xs">🖼</div>
-        )}
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50 shrink-0"
-        >
-          {uploading ? '...' : value ? 'Trocar' : 'Foto'}
-        </button>
-        {value && (
-          <button type="button" onClick={() => onChange('')} className="text-[10px] text-red-400 hover:text-red-600 shrink-0">×</button>
-        )}
-        <input ref={fileRef} type="file" accept="image/*" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-1.5">
+          {value ? (
+            <img src={value} alt="" className="w-8 h-8 rounded object-cover border border-gray-200 shrink-0" />
+          ) : (
+            <div className="w-8 h-8 rounded bg-gray-100 border border-gray-200 shrink-0 flex items-center justify-center text-gray-300 text-xs">🖼</div>
+          )}
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-50 shrink-0"
+          >
+            {uploading ? '...' : value ? 'Trocar' : 'Foto'}
+          </button>
+          {value && (
+            <button type="button" onClick={() => onChange('')} className="text-[10px] text-red-400 hover:text-red-600 shrink-0">×</button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
+        </div>
+        {/* #13: erro também aparece no modo compact (antes falhava em silêncio) */}
+        {error && <p className="text-[10px] text-red-500 leading-tight">{error}</p>}
       </div>
     )
   }

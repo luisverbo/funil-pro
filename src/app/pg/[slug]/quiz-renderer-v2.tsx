@@ -46,6 +46,26 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const isValidEmail = (v: string) => EMAIL_RE.test(v.trim())
 const isValidPhone = (v: string) => v.replace(/\D/g, '').length >= 10   // DDD + número
 
+// Embed de HTML/script isolado em iframe sandbox — auto-ajusta a altura ao conteúdo.
+function HtmlEmbed({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null)
+  const [height, setHeight] = useState(120)
+  const srcDoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:system-ui,sans-serif}</style></head><body>${html}</body></html>`
+  useEffect(() => {
+    const iv = setInterval(() => {
+      try {
+        const h = ref.current?.contentWindow?.document?.body?.scrollHeight
+        if (h && Math.abs(h - height) > 4) setHeight(h)
+      } catch { /* cross-origin */ }
+    }, 500)
+    return () => clearInterval(iv)
+  }, [height])
+  return (
+    <iframe ref={ref} srcDoc={srcDoc} sandbox="allow-scripts allow-popups allow-forms"
+      style={{ width: '100%', height, border: 'none' }} title="embed" />
+  )
+}
+
 function firePixelEvent(config: BlockConfig) {
   if (typeof window === 'undefined' || !window.fbq) return
   const ev = config.pixel_event
@@ -63,7 +83,9 @@ function CountdownBlock({ config, blockId }: { config: BlockConfig; blockId: str
   useEffect(() => {
     function computeTarget(): number {
       if (config.countdown_mode === 'date' && config.countdown_target) {
-        return new Date(config.countdown_target).getTime()
+        const t = new Date(config.countdown_target).getTime()
+        // #26: data inválida → cai no evergreen em vez de renderizar "NaN"
+        if (!Number.isNaN(t)) return t
       }
       // evergreen: persiste por visitante no localStorage
       const key = `qz_cd_${blockId}`
@@ -409,7 +431,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             const idx = pages.findIndex(p => p.id === match.goto_page_id)
             if (idx >= 0) {
               const targetResult = pages[idx].blocks.find(b => b.type === 'result')
+              // #17: se a página-alvo tem result, mostra; senão NAVEGA para ela
+              // (antes a faixa era ignorada quando a página não tinha bloco result)
               if (targetResult) { setResultBlock(targetResult); return 'result' }
+              return idx
             }
           }
           setResultBlock(rb)
@@ -525,8 +550,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     } catch { /* continue */ }
 
     setPhase('done')
+    // #29: só auto-redireciona quando NÃO há botão de CTA visível (senão o botão
+    // que o usuário ia clicar é atropelado pelo redirect).
     const cta = rb.config.cta_url
-    if (cta) setTimeout(() => { window.location.href = cta }, 800)
+    if (cta && !rb.config.cta_text) setTimeout(() => { window.location.href = cta }, 1500)
   }
 
   function renderBlock(block: QuizBlock) {
@@ -635,8 +662,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           <div className="text-center">
             {config.question && <h2 className="text-2xl font-bold mb-6" style={{ color: theme.textColor }}>{config.question}</h2>}
             <div className="flex flex-wrap justify-center gap-3">
-              {Array.from({ length: (config.scale_max ?? 10) - (config.scale_min ?? 1) + 1 }, (_, i) => {
-                const v = (config.scale_min ?? 1) + i
+              {(() => {
+                // #20: clampa para nunca gerar 0/negativo (travaria um scale obrigatório)
+                const min = config.scale_min ?? 1
+                const max = Math.max(min, config.scale_max ?? 10)
+                return Array.from({ length: max - min + 1 }, (_, i) => {
+                const v = min + i
                 return (
                   <button key={v} onClick={() => setAnswer(block.id, v, page.id, 'choice_selected')}
                     className={`w-14 h-14 rounded-xl text-lg font-bold border-2 transition-all ${val === v ? 'text-white scale-110' : 'bg-white border-gray-200 text-gray-700 hover:scale-105'}`}
@@ -644,7 +675,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                     {v}
                   </button>
                 )
-              })}
+              })
+              })()}
             </div>
           </div>
         )}
@@ -1013,9 +1045,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         {/* Spacer */}
         {block.type === 'spacer' && <div style={{ height: config.spacer_height ?? 40 }} />}
 
-        {/* HTML embed */}
+        {/* HTML embed — iframe sandbox: isola do domínio compartilhado (sem acesso a
+            cookies/DOM do app) E permite <script> de terceiros (pixels), que não executa via innerHTML */}
         {block.type === 'html_embed' && config.html_content && (
-          <div dangerouslySetInnerHTML={{ __html: config.html_content }} />
+          <HtmlEmbed html={config.html_content} />
         )}
 
         {err && <p className="text-sm text-red-500 mt-2">{err}</p>}
