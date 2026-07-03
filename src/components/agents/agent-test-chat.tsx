@@ -38,11 +38,11 @@ export default function AgentTestChat({ agentId }: { agentId: string }) {
       const data = await res.json() as { reply?: string; parts?: string[]; conversationId?: string; action?: { type: string } }
       if (data.conversationId) setConversationId(data.conversationId)
 
-      // Animate parts one by one with typing delay
+      // Animate parts one by one, com delay de "digitando" proporcional ao tamanho
       const parts = (data.parts && data.parts.length > 0) ? data.parts : (data.reply ? [data.reply] : [])
-      for (let i = 0; i < parts.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, 1000))
-        const part = parts[i]
+      for (const part of parts) {
+        const typingMs = Math.min(5000, Math.max(1500, part.length * 40))
+        await new Promise(r => setTimeout(r, typingMs))
         setMessages(m => [...m, { role: 'agent', content: part }])
       }
 

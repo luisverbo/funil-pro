@@ -8,12 +8,13 @@ function normalizePhone(phone: string): string {
   return digits
 }
 
-export async function sendTextMessage(instanceName: string, phone: string, message: string) {
+// delayMs: a Evolution API mostra "digitando…" no WhatsApp durante esse tempo antes de enviar
+export async function sendTextMessage(instanceName: string, phone: string, message: string, delayMs?: number) {
   const normalizedPhone = normalizePhone(phone)
   const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-    body: JSON.stringify({ number: normalizedPhone, text: message }),
+    body: JSON.stringify({ number: normalizedPhone, text: message, ...(delayMs ? { delay: delayMs } : {}) }),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')

@@ -131,9 +131,11 @@ async function sendPartsViaWhatsApp(
   }
 
   for (let i = 0; i < parts.length; i++) {
-    if (i > 0) await new Promise(r => setTimeout(r, 1200))
+    // Simula digitação humana: ~55ms por caractere, entre 2s e 8s.
+    // A Evolution API exibe "digitando…" no WhatsApp durante o delay antes de enviar.
+    const typingMs = Math.min(8000, Math.max(2000, parts[i].length * 55))
     try {
-      await sendTextMessage(instanceName, phone, parts[i])
+      await sendTextMessage(instanceName, phone, parts[i], typingMs)
     } catch (err) {
       console.error(`[chat] falha ao enviar parte ${i + 1}/${parts.length} para ${phone}: ${String(err)}`)
     }
