@@ -6,6 +6,7 @@ import { createAgent, updateAgent, listFaqs, addFaq, deleteFaq, type FaqPair } f
 import AgentTestChat from './agent-test-chat'
 import { THEME_PRESETS } from '@/lib/quiz/theme'
 import { AGENT_TEMPLATES, type AgentTemplate } from '@/lib/agents/templates'
+import ImageUploadField from '@/components/quiz/image-upload-field'
 
 interface Props {
   agent?: Agent | null
@@ -492,6 +493,9 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                         📋 Copiar link: {typeof window !== 'undefined' ? window.location.origin : ''}/a/{form.public_slug}
                       </button>
                     )}
+                  </Field>
+                  <Field label="Foto do agente (aparece no topo do chat)">
+                    <ImageUploadField value={lc('avatar_url')} onChange={url => setLc('avatar_url', url)} />
                   </Field>
                   <Field label="Título de boas-vindas (opcional)">
                     <input className={inputCls} value={lc('headline')} onChange={e => setLc('headline', e.target.value)} placeholder="Tire suas dúvidas com a gente" />

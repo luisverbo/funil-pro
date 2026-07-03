@@ -163,7 +163,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
 
   return (
     <div style={{ background: theme.background, backgroundImage: theme.backgroundImage ?? undefined, fontFamily: theme.fontFamily }}
-      className="min-h-[100dvh] w-full flex flex-col items-center">
+      className="min-h-[100dvh] w-full flex flex-col items-center overflow-x-hidden">
       {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
       {config.pixel_id && (
         <img alt="" width={1} height={1} style={{ display: 'none' }}
@@ -185,7 +185,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
         </div>
 
         {/* Mensagens */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-2">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-2">
           {messages.map((m, i) => (
             <Bubble key={i} role={m.role} content={m.content} theme={theme} primary={primary} />
           ))}
@@ -209,11 +209,11 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
               </p>
               <div className="flex flex-col gap-2">
                 <input placeholder="Seu nome" value={cap.name} onChange={e => setCap(c => ({ ...c, name: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border text-sm outline-none" style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder }} />
-                <input placeholder="Seu WhatsApp" value={cap.phone} onChange={e => setCap(c => ({ ...c, phone: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border text-sm outline-none" style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder }} />
-                <input placeholder="Seu e-mail" value={cap.email} onChange={e => setCap(c => ({ ...c, email: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border text-sm outline-none" style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder }} />
+                  className="px-3 py-2 rounded-lg border outline-none w-full" style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder, fontSize: 16 }} />
+                <input type="tel" placeholder="Seu WhatsApp" value={cap.phone} onChange={e => setCap(c => ({ ...c, phone: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border outline-none w-full" style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder, fontSize: 16 }} />
+                <input type="email" placeholder="Seu e-mail" value={cap.email} onChange={e => setCap(c => ({ ...c, email: e.target.value }))}
+                  className="px-3 py-2 rounded-lg border outline-none w-full" style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder, fontSize: 16 }} />
                 {capError && <p className="text-xs text-red-500">{capError}</p>}
                 <button onClick={submitCapture} className="mt-1 px-4 py-2 rounded-lg text-white font-medium text-sm" style={{ background: primary, borderRadius: theme.buttonRadius }}>
                   Continuar
@@ -243,8 +243,9 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') sendMessage(input) }}
             placeholder="Digite sua mensagem…"
-            className="flex-1 px-4 py-3 rounded-full text-sm outline-none border"
-            style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder }}
+            className="flex-1 min-w-0 px-4 py-3 rounded-full outline-none border"
+            // fontSize 16px: abaixo disso o iOS dá zoom automático ao focar e "desconfigura" o layout
+            style={{ background: inputBg, color: inputText, borderColor: theme.cardBorder, fontSize: 16 }}
           />
           <button onClick={() => sendMessage(input)} disabled={typing}
             className="w-11 h-11 rounded-full flex items-center justify-center text-white disabled:opacity-50 flex-shrink-0"
@@ -259,6 +260,8 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
 
 function Bubble({ role, content, theme, primary }: { role: 'user' | 'agent'; content: string; theme: ReturnType<typeof resolveTheme>; primary: string }) {
   const isUser = role === 'user'
+  // Links clicáveis + quebra forçada (URL longa sem quebra estourava o layout no mobile)
+  const parts = content.split(/(https?:\/\/[^\s]+)/g)
   return (
     <div className={`max-w-[80%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${isUser ? 'self-end' : 'self-start'}`}
       style={{
@@ -266,8 +269,14 @@ function Bubble({ role, content, theme, primary }: { role: 'user' | 'agent'; con
         color: isUser ? '#ffffff' : theme.textColor,
         borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
         border: isUser ? 'none' : `1px solid ${theme.cardBorder}`,
+        overflowWrap: 'anywhere',
+        wordBreak: 'break-word',
       }}>
-      {content}
+      {parts.map((p, i) => /^https?:\/\//.test(p)
+        ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="underline font-medium break-all"
+            style={{ color: isUser ? '#ffffff' : primary }}>{p}</a>
+        : <React.Fragment key={i}>{p}</React.Fragment>
+      )}
     </div>
   )
 }
