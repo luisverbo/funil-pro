@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { QuizData, QuizBlock, BlockOption, BlockConfig } from '@/app/actions/quiz-v2'
+import type { QuizData, QuizBlock, BlockOption, BlockConfig, CarouselItem, ChartDatum } from '@/app/actions/quiz-v2'
 import { resolveTheme } from '@/lib/quiz/theme'
 
 interface Props {
@@ -12,6 +12,31 @@ interface Props {
 
 declare global {
   interface Window { fbq?: (...args: unknown[]) => void }
+}
+
+// Blocos que NÃO são perguntas/inputs — usados para validação, auto-advance e detecção de landing
+const NON_INPUT_BLOCKS = new Set([
+  'result','text_block','image','video','audio','button',
+  'hero','testimonials','features','faq','countdown','pricing',
+  'alert','notification','loading','level','checklist','before_after','carousel',
+  'metrics','chart','spacer','html_embed',
+])
+const LANDING_BLOCKS = new Set([
+  'hero','testimonials','features','faq','countdown','text_block','image','video','audio',
+  'pricing','alert','notification','loading','level','checklist','before_after','carousel',
+  'metrics','chart','spacer','html_embed',
+])
+
+// Envolve um bloco para aparecer só depois de `delay` segundos (com fade-in)
+function TimedBlock({ delay, children }: { delay?: number; children: React.ReactNode }) {
+  const [show, setShow] = useState(!delay || delay <= 0)
+  useEffect(() => {
+    if (!delay || delay <= 0) return
+    const t = setTimeout(() => setShow(true), delay * 1000)
+    return () => clearTimeout(t)
+  }, [delay])
+  if (!show) return null
+  return <div style={{ animation: 'fadeInUp 400ms cubic-bezier(0.4,0,0.2,1)' }}>{children}</div>
 }
 
 function firePixelEvent(config: BlockConfig) {
@@ -81,6 +106,102 @@ function getYoutubeEmbed(url: string): string | null {
   const vimeo = url.match(/vimeo\.com\/(\d+)/)
   if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
   return url.includes('embed') ? url : null
+}
+
+type ThemeShape = ReturnType<typeof resolveTheme>
+
+// Prova social: alterna mensagens estilo toast
+function NotificationBlock({ config }: { config: BlockConfig }) {
+  const items = config.notification_items ?? []
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    if (items.length <= 1) return
+    const iv = setInterval(() => setIdx(i => (i + 1) % items.length), (config.notification_interval ?? 5) * 1000)
+    return () => clearInterval(iv)
+  }, [items.length, config.notification_interval])
+  if (items.length === 0) return null
+  return (
+    <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-md" style={{ animation: 'fadeInUp 400ms ease' }} key={idx}>
+      <span className="text-xl">🔔</span>
+      <span className="text-sm text-gray-700">{items[idx].text}</span>
+    </div>
+  )
+}
+
+// Animação de carregamento que revela/avança após N segundos
+function LoadingBlock({ config, onDone, theme, primaryColor }: { config: BlockConfig; onDone: () => void; theme: ThemeShape; primaryColor: string }) {
+  const [done, setDone] = useState(false)
+  const [pct, setPct] = useState(0)
+  useEffect(() => {
+    const total = (config.loading_seconds ?? 3) * 1000
+    const step = 50
+    let elapsed = 0
+    const iv = setInterval(() => {
+      elapsed += step
+      setPct(Math.min(100, Math.round((elapsed / total) * 100)))
+      if (elapsed >= total) { clearInterval(iv); setDone(true); onDone() }
+    }, step)
+    return () => clearInterval(iv)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <div className="text-center py-6">
+      <div className="inline-block w-10 h-10 border-4 rounded-full animate-spin mb-4" style={{ borderColor: theme.isDark ? '#334155' : '#e5e7eb', borderTopColor: primaryColor }} />
+      <p className="text-base font-medium mb-3" style={{ color: theme.textColor }}>{config.loading_text || 'Carregando...'}</p>
+      <div className="max-w-xs mx-auto h-2 rounded-full overflow-hidden" style={{ background: theme.isDark ? '#334155' : '#e5e7eb' }}>
+        <div className="h-full transition-all" style={{ width: `${pct}%`, background: primaryColor }} />
+      </div>
+      {done && <p className="text-xs mt-2" style={{ color: theme.mutedColor }}>Pronto!</p>}
+    </div>
+  )
+}
+
+// Carrossel de imagens
+function CarouselBlock({ items, theme }: { items: CarouselItem[]; theme: ThemeShape }) {
+  const [idx, setIdx] = useState(0)
+  if (items.length === 0) return null
+  const go = (d: number) => setIdx(i => (i + d + items.length) % items.length)
+  return (
+    <div className="relative rounded-2xl overflow-hidden" style={{ border: theme.cardBorder }}>
+      <img src={items[idx].image_url} alt="" className="w-full h-56 object-cover" />
+      {items[idx].caption && <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-sm px-4 py-2">{items[idx].caption}</div>}
+      {items.length > 1 && (
+        <>
+          <button onClick={() => go(-1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 text-gray-800 flex items-center justify-center">‹</button>
+          <button onClick={() => go(1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/80 text-gray-800 flex items-center justify-center">›</button>
+          <div className="absolute bottom-2 inset-x-0 flex justify-center gap-1.5">
+            {items.map((_, i) => <div key={i} className={`w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />)}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Gráfico de pizza em CSS (conic-gradient)
+function PieChart({ data, theme }: { data: ChartDatum[]; theme: ThemeShape }) {
+  const total = data.reduce((s, d) => s + d.value, 0) || 1
+  let acc = 0
+  const stops = data.map(d => {
+    const start = (acc / total) * 360
+    acc += d.value
+    const end = (acc / total) * 360
+    return `${d.color || '#6366f1'} ${start}deg ${end}deg`
+  }).join(', ')
+  return (
+    <div className="flex items-center gap-5 justify-center flex-wrap">
+      <div className="w-36 h-36 rounded-full" style={{ background: `conic-gradient(${stops})` }} />
+      <div className="space-y-1.5">
+        {data.map(d => (
+          <div key={d.id} className="flex items-center gap-2 text-sm">
+            <span className="w-3 h-3 rounded-full" style={{ background: d.color || '#6366f1' }} />
+            <span style={{ color: theme.textColor }}>{d.label}</span>
+            <span style={{ color: theme.mutedColor }}>({Math.round((d.value / total) * 100)}%)</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ─── Tracking ─────────────────────────────────────────────────────────────────
@@ -270,7 +391,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
     const newErrors: Record<string, string> = {}
     for (const block of page.blocks) {
-      if (block.config.required && !['result','text_block','image','video','button','hero','testimonials','features','faq','countdown'].includes(block.type)) {
+      if (block.config.required && !NON_INPUT_BLOCKS.has(block.type)) {
         const val = answers[block.id]
         if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
           newErrors[block.id] = 'Campo obrigatório'
@@ -378,7 +499,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     if (block.type === 'result' || phase !== 'answering') return null
 
     return (
-      <div key={block.id}>
+      <TimedBlock key={block.id} delay={config.appear_delay}>
+      <div>
         {['single_choice', 'multi_choice', 'yes_no'].includes(block.type) && (
           <div style={{ background: config.bg_color || undefined }}>
             {config.question && (
@@ -396,7 +518,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                   setAnswer(block.id, isSelected ? cur.filter(l => l !== opt.label) : [...cur, opt.label], page.id, 'choice_selected')
                 } else {
                   setAnswer(block.id, opt.label, page.id, 'choice_selected')
-                  const nonChoiceInputs = page.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button','hero','testimonials','features','faq','countdown'].includes(b.type))
+                  const nonChoiceInputs = page.blocks.filter(b => !['single_choice','yes_no'].includes(b.type) && !NON_INPUT_BLOCKS.has(b.type))
                   const hasFinalCapture = page.blocks.some(b => b.type === 'final_capture')
                   if (nonChoiceInputs.length === 0 && !hasFinalCapture) {
                     setTimeout(() => handleNextWithAnswer(block.id, opt.label), 350)
@@ -515,7 +637,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         )}
 
         {block.type === 'text_block' && config.content && (
-          <div className="prose prose-gray max-w-none text-center"
+          <div className="prose max-w-none"
+            style={{ color: theme.textColor, textAlign: config.text_align ?? 'center' }}
             dangerouslySetInnerHTML={{ __html: config.content }} />
         )}
 
@@ -675,8 +798,186 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           <CountdownBlock config={config} blockId={block.id} />
         )}
 
+        {/* Date / Height / Weight fields */}
+        {['field_date','field_height','field_weight'].includes(block.type) && (
+          <div>
+            {config.label && <label className="block text-lg font-semibold mb-3" style={{ color: theme.textColor }}>{config.label}</label>}
+            <div className="relative">
+              <input
+                type={block.type === 'field_date' ? 'date' : 'number'}
+                value={(val as string) ?? ''}
+                onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
+                placeholder={config.placeholder}
+                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white transition"
+              />
+              {block.type !== 'field_date' && (
+                <span className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{block.type === 'field_height' ? 'cm' : 'kg'}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Video answer */}
+        {block.type === 'video_answer' && (() => {
+          const embed = config.video_answer_url ? getYoutubeEmbed(config.video_answer_url) : null
+          return (
+            <div>
+              {config.question && <h2 className="text-2xl font-bold text-center mb-4" style={{ color: theme.textColor }}>{config.question}</h2>}
+              {embed && <div className="aspect-video rounded-xl overflow-hidden bg-black mb-4"><iframe src={embed} className="w-full h-full" allowFullScreen /></div>}
+              <div className="space-y-3">
+                {(config.options ?? []).map((opt: BlockOption) => {
+                  const isSel = val === opt.label
+                  return (
+                    <button key={opt.id} onClick={() => setAnswer(block.id, opt.label, page.id, 'choice_selected')}
+                      className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl border-2 text-left transition ${isSel ? 'scale-[0.99]' : 'hover:scale-[1.01]'}`}
+                      style={isSel ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.cardBg, border: theme.cardBorder }}>
+                      {opt.emoji && <span className="text-2xl">{opt.emoji}</span>}
+                      <span className="font-medium" style={{ color: theme.textColor }}>{opt.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Audio */}
+        {block.type === 'audio' && config.audio_url && (
+          <div className="rounded-2xl p-4" style={{ background: theme.cardBg, border: theme.cardBorder }}>
+            {config.audio_title && <p className="text-sm font-semibold mb-2" style={{ color: theme.textColor }}>{config.audio_title}</p>}
+            <audio controls src={config.audio_url} className="w-full" />
+          </div>
+        )}
+
+        {/* Alert */}
+        {block.type === 'alert' && (() => {
+          const v = config.alert_variant ?? 'warning'
+          const cls = { info: 'bg-blue-50 text-blue-800 border-blue-200', success: 'bg-emerald-50 text-emerald-800 border-emerald-200', warning: 'bg-amber-50 text-amber-800 border-amber-200', danger: 'bg-red-50 text-red-800 border-red-200' }[v]
+          const icon = { info: 'ℹ️', success: '✅', warning: '⚠️', danger: '🚨' }[v]
+          return <div className={`flex items-start gap-2 border rounded-2xl px-4 py-3 ${cls}`}><span>{icon}</span><p className="text-sm font-medium">{config.alert_text}</p></div>
+        })()}
+
+        {/* Notification */}
+        {block.type === 'notification' && <NotificationBlock config={config} />}
+
+        {/* Loading */}
+        {block.type === 'loading' && (
+          <LoadingBlock config={config} onDone={() => { if (config.loading_auto_advance) handleNext() }} theme={theme} primaryColor={primaryColor} />
+        )}
+
+        {/* Level */}
+        {block.type === 'level' && (
+          <div>
+            <div className="flex justify-between mb-1.5">
+              <span className="text-sm font-semibold" style={{ color: theme.textColor }}>{config.level_label}</span>
+              <span className="text-sm font-bold" style={{ color: config.level_color || primaryColor }}>{config.level_percent ?? 0}%</span>
+            </div>
+            <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: theme.isDark ? '#334155' : '#e5e7eb' }}>
+              <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${config.level_percent ?? 0}%`, background: config.level_color || primaryColor }} />
+            </div>
+          </div>
+        )}
+
+        {/* Pricing */}
+        {block.type === 'pricing' && (
+          <div className="rounded-2xl p-6 text-center" style={{ background: theme.cardBg, border: config.pricing_highlight ? `2px solid ${primaryColor}` : theme.cardBorder, boxShadow: theme.cardShadow }}>
+            <p className="text-lg font-bold" style={{ color: theme.textColor }}>{config.pricing_title}</p>
+            <p className="my-2"><span className="text-4xl font-extrabold" style={{ color: theme.textColor }}>{config.pricing_price}</span><span className="text-sm" style={{ color: theme.mutedColor }}>{config.pricing_period}</span></p>
+            <div className="space-y-2 my-4 text-left">
+              {(config.pricing_items ?? []).map(it => (
+                <div key={it.id} className="flex items-center gap-2 text-sm" style={{ color: it.included !== false ? theme.textColor : theme.mutedColor }}>
+                  <span style={{ color: it.included !== false ? '#10b981' : '#ef4444' }}>{it.included !== false ? '✓' : '✕'}</span>
+                  <span className={it.included === false ? 'line-through' : ''}>{it.text}</span>
+                </div>
+              ))}
+            </div>
+            {config.pricing_cta_text && (
+              <a href={config.pricing_cta_url || '#'} target={config.pricing_cta_url ? '_blank' : undefined} rel="noopener noreferrer"
+                onClick={() => tracker.track('button_clicked', page.id, block.id, {})}
+                className="block w-full py-3.5 text-white font-semibold hover:opacity-90 transition"
+                style={{ background: primaryColor, borderRadius: theme.buttonRadius }}>
+                {config.pricing_cta_text}
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Checklist */}
+        {block.type === 'checklist' && (
+          <div>
+            {config.checklist_title && <h3 className="text-xl font-bold mb-3 text-center" style={{ color: theme.textColor }}>{config.checklist_title}</h3>}
+            <div className="space-y-2">
+              {(config.checklist_items ?? []).map(it => (
+                <div key={it.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: theme.cardBg, border: theme.cardBorder }}>
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-sm shrink-0" style={{ background: '#10b981' }}>✓</span>
+                  <span className="text-sm" style={{ color: theme.textColor }}>{it.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Before / After */}
+        {block.type === 'before_after' && (
+          <div className="grid grid-cols-2 gap-3">
+            {([['before', config.before_image_url, config.before_label], ['after', config.after_image_url, config.after_label]] as const).map(([k, img, lbl]) => (
+              <div key={k} className="rounded-2xl overflow-hidden" style={{ border: theme.cardBorder }}>
+                <div className="text-center text-xs font-bold py-1.5 text-white" style={{ background: k === 'before' ? '#94a3b8' : primaryColor }}>{lbl || (k === 'before' ? 'Antes' : 'Depois')}</div>
+                {img ? <img src={img} alt="" className="w-full h-44 object-cover" /> : <div className="w-full h-44 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Sem imagem</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Carousel */}
+        {block.type === 'carousel' && <CarouselBlock items={config.carousel_items ?? []} theme={theme} />}
+
+        {/* Metrics */}
+        {block.type === 'metrics' && (
+          <div className={`grid gap-4 ${(config.metrics_items ?? []).length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            {(config.metrics_items ?? []).map(m => (
+              <div key={m.id} className="text-center">
+                <p className="text-3xl md:text-4xl font-extrabold" style={{ color: primaryColor }}>{m.value}<span className="text-2xl">{m.suffix}</span></p>
+                <p className="text-xs mt-1" style={{ color: theme.mutedColor }}>{m.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Chart */}
+        {block.type === 'chart' && (
+          <div className="rounded-2xl p-5" style={{ background: theme.cardBg, border: theme.cardBorder }}>
+            {config.chart_title && <p className="text-sm font-bold mb-4 text-center" style={{ color: theme.textColor }}>{config.chart_title}</p>}
+            {(config.chart_type ?? 'bar') === 'bar' ? (
+              <div className="flex items-end justify-around gap-2 h-48">
+                {(config.chart_data ?? []).map(d => {
+                  const max = Math.max(...(config.chart_data ?? []).map(x => x.value), 1)
+                  return (
+                    <div key={d.id} className="flex-1 flex flex-col items-center justify-end h-full">
+                      <span className="text-xs font-bold mb-1" style={{ color: theme.textColor }}>{d.value}</span>
+                      <div className="w-full rounded-t-lg transition-all duration-700" style={{ height: `${(d.value / max) * 100}%`, background: d.color || primaryColor }} />
+                      <span className="text-[10px] mt-1 text-center" style={{ color: theme.mutedColor }}>{d.label}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <PieChart data={config.chart_data ?? []} theme={theme} />
+            )}
+          </div>
+        )}
+
+        {/* Spacer */}
+        {block.type === 'spacer' && <div style={{ height: config.spacer_height ?? 40 }} />}
+
+        {/* HTML embed */}
+        {block.type === 'html_embed' && config.html_content && (
+          <div dangerouslySetInnerHTML={{ __html: config.html_content }} />
+        )}
+
         {err && <p className="text-sm text-red-500 mt-2">{err}</p>}
       </div>
+      </TimedBlock>
     )
   }
 
@@ -688,7 +989,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       const page = pages[pageIdx]
       const newErrors: Record<string, string> = {}
       for (const block of page.blocks) {
-        if (block.config.required && !['result','text_block','image','video','button','single_choice','yes_no','hero','testimonials','features','faq','countdown'].includes(block.type)) {
+        if (block.config.required && !['single_choice','yes_no'].includes(block.type) && !NON_INPUT_BLOCKS.has(block.type)) {
           const v = updated[block.id]
           if (v === undefined || v === null || v === '') newErrors[block.id] = 'Campo obrigatório'
         }
@@ -723,8 +1024,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const hasFinalCapture = currentPage?.blocks.some(b => b.type === 'final_capture')
   const hasExplicitButton = currentPage?.blocks.some(b => b.type === 'button' && b.config.button_action !== 'external_url')
   const hasResultBlock = currentPage?.blocks.some(b => b.type === 'result')
-  const nonChoiceInputs = currentPage?.blocks.filter(b => !['single_choice','yes_no','text_block','image','video','button','hero','testimonials','features','faq','countdown'].includes(b.type)) ?? []
-  const isLandingOnly = (currentPage?.blocks.length ?? 0) > 0 && currentPage!.blocks.every(b => ['hero','testimonials','features','faq','countdown','text_block','image','video'].includes(b.type))
+  const nonChoiceInputs = currentPage?.blocks.filter(b => !['single_choice','yes_no'].includes(b.type) && !NON_INPUT_BLOCKS.has(b.type)) ?? []
+  const isLandingOnly = (currentPage?.blocks.length ?? 0) > 0 && currentPage!.blocks.every(b => LANDING_BLOCKS.has(b.type))
   const heroHasCta = currentPage?.blocks.some(b => b.type === 'hero' && b.config.hero_cta_text)
   const shouldShowNextButton = !hasResultBlock && !(isLandingOnly && heroHasCta) && (!hasChoiceAutoAdvance || nonChoiceInputs.length > 0 || hasFinalCapture || isLandingOnly)
 
@@ -793,7 +1094,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         fontFamily: theme.fontFamily,
       }}>
       {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
-      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } }`}</style>
+      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } } @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }`}</style>
 
       {logoUrl && (
         <div className="flex justify-center pt-6 shrink-0">

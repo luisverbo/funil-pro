@@ -10,10 +10,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export type BlockType =
   | 'field_text' | 'field_email' | 'field_phone' | 'field_number' | 'field_textarea'
-  | 'single_choice' | 'multi_choice' | 'yes_no' | 'scale'
-  | 'text_block' | 'image' | 'video'
+  | 'field_date' | 'field_height' | 'field_weight'
+  | 'single_choice' | 'multi_choice' | 'yes_no' | 'scale' | 'video_answer'
+  | 'text_block' | 'image' | 'video' | 'audio'
   | 'button' | 'final_capture' | 'result'
   | 'hero' | 'testimonials' | 'features' | 'faq' | 'countdown'
+  | 'alert' | 'notification' | 'loading' | 'level'
+  | 'pricing' | 'checklist' | 'before_after' | 'carousel'
+  | 'metrics' | 'chart'
+  | 'spacer' | 'html_embed'
 
 export interface BlockOption {
   id: string
@@ -49,6 +54,42 @@ export interface ScoreRangeV2 {
   min: number
   max: number
   goto_page_id?: string | null
+}
+
+export interface PricingItem {
+  id: string
+  text: string
+  included?: boolean
+}
+
+export interface ChecklistItem {
+  id: string
+  text: string
+}
+
+export interface CarouselItem {
+  id: string
+  image_url: string
+  caption?: string
+}
+
+export interface MetricItem {
+  id: string
+  value: string        // ex: "10.000" ou "98"
+  suffix?: string      // ex: "+", "%"
+  label: string
+}
+
+export interface ChartDatum {
+  id: string
+  label: string
+  value: number
+  color?: string
+}
+
+export interface NotificationItem {
+  id: string
+  text: string
 }
 
 export interface BlockConfig {
@@ -143,6 +184,75 @@ export interface BlockConfig {
   countdown_minutes?: number      // minutos quando mode='evergreen'
   countdown_text?: string
   countdown_expired_text?: string
+
+  // ─── Universal: aparição temporizada (todos os blocos) ───
+  appear_delay?: number           // segundos até o bloco aparecer (0/undefined = imediato)
+
+  // Text block: estilo/alinhamento herdado
+  text_align?: 'left' | 'center' | 'right'
+
+  // Alert
+  alert_text?: string
+  alert_variant?: 'info' | 'success' | 'warning' | 'danger'
+
+  // Notification (prova social recorrente)
+  notification_items?: NotificationItem[]
+  notification_interval?: number  // segundos entre notificações
+
+  // Loading (revela/avança após N segundos)
+  loading_text?: string
+  loading_seconds?: number
+  loading_auto_advance?: boolean  // avança para próxima página ao terminar
+
+  // Level (barra de nível)
+  level_label?: string
+  level_percent?: number
+  level_color?: string
+
+  // Pricing
+  pricing_title?: string
+  pricing_price?: string
+  pricing_period?: string
+  pricing_items?: PricingItem[]
+  pricing_cta_text?: string
+  pricing_cta_url?: string
+  pricing_highlight?: boolean
+
+  // Checklist
+  checklist_title?: string
+  checklist_items?: ChecklistItem[]
+
+  // Before / After
+  before_image_url?: string
+  after_image_url?: string
+  before_label?: string
+  after_label?: string
+
+  // Carousel
+  carousel_items?: CarouselItem[]
+
+  // Metrics
+  metrics_items?: MetricItem[]
+
+  // Chart
+  chart_title?: string
+  chart_type?: 'bar' | 'pie'
+  chart_data?: ChartDatum[]
+
+  // Spacer
+  spacer_height?: number          // px
+
+  // HTML embed
+  html_content?: string
+
+  // Audio
+  audio_url?: string
+  audio_title?: string
+
+  // Date / Height / Weight fields reusam label/placeholder/required
+
+  // Video answer (vídeo + opções)
+  video_answer_url?: string
 }
 
 export interface QuizBlock {

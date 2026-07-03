@@ -20,6 +20,8 @@ import {
 } from '@/app/actions/quiz-v2'
 import { THEME_PRESETS } from '@/lib/quiz/theme'
 import ImageUploadField from '@/components/quiz/image-upload-field'
+import RichTextField from '@/components/quiz/rich-text-field'
+import type { PricingItem, ChecklistItem, CarouselItem, MetricItem, ChartDatum, NotificationItem } from '@/app/actions/quiz-v2'
 
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
@@ -29,13 +31,18 @@ const BLOCK_META: Record<BlockType, { label: string; icon: string; category: str
   field_phone:    { label: 'Telefone',         icon: '📱', category: 'Formulário' },
   field_number:   { label: 'Número',           icon: '🔢', category: 'Formulário' },
   field_textarea: { label: 'Textarea',         icon: '📄', category: 'Formulário' },
+  field_date:     { label: 'Data',             icon: '📅', category: 'Formulário' },
+  field_height:   { label: 'Altura',           icon: '📏', category: 'Formulário' },
+  field_weight:   { label: 'Peso',             icon: '⚖️',  category: 'Formulário' },
   single_choice:  { label: 'Escolha única',    icon: '🔘', category: 'Quiz' },
   multi_choice:   { label: 'Múltipla escolha', icon: '☑️',  category: 'Quiz' },
   yes_no:         { label: 'Sim / Não',        icon: '👍', category: 'Quiz' },
   scale:          { label: 'Escala 1-10',      icon: '📊', category: 'Quiz' },
+  video_answer:   { label: 'Vídeo resposta',   icon: '🎬', category: 'Quiz' },
   text_block:     { label: 'Texto',            icon: '📰', category: 'Mídia e conteúdo' },
   image:          { label: 'Imagem',           icon: '🖼️', category: 'Mídia e conteúdo' },
   video:          { label: 'Vídeo',            icon: '▶️',  category: 'Mídia e conteúdo' },
+  audio:          { label: 'Áudio',            icon: '🔊', category: 'Mídia e conteúdo' },
   button:         { label: 'Botão',            icon: '🔲', category: 'Ação' },
   final_capture:  { label: 'Captura final',    icon: '🏆', category: 'Ação' },
   result:         { label: 'Resultado',        icon: '🎉', category: 'Ação' },
@@ -44,9 +51,21 @@ const BLOCK_META: Record<BlockType, { label: string; icon: string; category: str
   features:       { label: 'Benefícios',       icon: '✨', category: 'Landing' },
   faq:            { label: 'FAQ',              icon: '❓', category: 'Landing' },
   countdown:      { label: 'Contagem',         icon: '⏰', category: 'Landing' },
+  pricing:        { label: 'Preço',            icon: '💰', category: 'Landing' },
+  alert:          { label: 'Alerta',           icon: '⚠️',  category: 'Atenção' },
+  notification:   { label: 'Notificação',      icon: '🔔', category: 'Atenção' },
+  loading:        { label: 'Loading',          icon: '⏳', category: 'Atenção' },
+  level:          { label: 'Nível',            icon: '📶', category: 'Atenção' },
+  checklist:      { label: 'Checklist',        icon: '✅', category: 'Estrutura' },
+  before_after:   { label: 'Antes / Depois',   icon: '🔀', category: 'Estrutura' },
+  carousel:       { label: 'Carrossel',        icon: '🎠', category: 'Estrutura' },
+  metrics:        { label: 'Métricas',         icon: '🔢', category: 'Gráficos' },
+  chart:          { label: 'Gráficos',         icon: '📈', category: 'Gráficos' },
+  spacer:         { label: 'Espaço',           icon: '↕️',  category: 'Personalização' },
+  html_embed:     { label: 'HTML / Script',    icon: '</>', category: 'Personalização' },
 }
 
-const CATEGORIES = ['Formulário', 'Quiz', 'Mídia e conteúdo', 'Ação', 'Landing']
+const CATEGORIES = ['Formulário', 'Quiz', 'Mídia e conteúdo', 'Ação', 'Landing', 'Atenção', 'Estrutura', 'Gráficos', 'Personalização']
 
 function newId() { return crypto.randomUUID() }
 
@@ -121,6 +140,62 @@ function defaultConfig(type: BlockType): BlockConfig {
       countdown_text: '🔥 Oferta expira em:',
       countdown_expired_text: 'Oferta encerrada',
     }
+    case 'field_date':   return { label: 'Qual sua data de nascimento?', required: false }
+    case 'field_height': return { label: 'Qual sua altura? (cm)', placeholder: '170', required: false }
+    case 'field_weight': return { label: 'Qual seu peso? (kg)', placeholder: '70', required: false }
+    case 'video_answer': return {
+      question: 'Assista e escolha', video_answer_url: '', required: true,
+      options: [
+        { id: newId(), label: 'Opção A', points: 0 },
+        { id: newId(), label: 'Opção B', points: 0 },
+      ],
+    }
+    case 'audio': return { audio_url: '', audio_title: '' }
+    case 'alert': return { alert_text: 'Atenção: vagas limitadas!', alert_variant: 'warning' }
+    case 'notification': return {
+      notification_interval: 5,
+      notification_items: [
+        { id: newId(), text: 'Maria acabou de se inscrever 🎉' },
+        { id: newId(), text: 'João garantiu a vaga há 2 min' },
+      ],
+    }
+    case 'loading': return { loading_text: 'Analisando suas respostas...', loading_seconds: 3, loading_auto_advance: true }
+    case 'level': return { level_label: 'Seu nível', level_percent: 70, level_color: '#6366f1' }
+    case 'pricing': return {
+      pricing_title: 'Plano Completo', pricing_price: 'R$ 197', pricing_period: '/mês',
+      pricing_cta_text: 'Quero esse plano', pricing_highlight: true,
+      pricing_items: [
+        { id: newId(), text: 'Acesso completo', included: true },
+        { id: newId(), text: 'Suporte prioritário', included: true },
+        { id: newId(), text: 'Atualizações grátis', included: true },
+      ],
+    }
+    case 'checklist': return {
+      checklist_title: 'O que você vai conquistar',
+      checklist_items: [
+        { id: newId(), text: 'Resultado 1' },
+        { id: newId(), text: 'Resultado 2' },
+        { id: newId(), text: 'Resultado 3' },
+      ],
+    }
+    case 'before_after': return { before_image_url: '', after_image_url: '', before_label: 'Antes', after_label: 'Depois' }
+    case 'carousel': return { carousel_items: [] }
+    case 'metrics': return {
+      metrics_items: [
+        { id: newId(), value: '10.000', suffix: '+', label: 'Clientes' },
+        { id: newId(), value: '98', suffix: '%', label: 'Satisfação' },
+        { id: newId(), value: '4.9', label: 'Nota média' },
+      ],
+    }
+    case 'chart': return {
+      chart_title: 'Resultados', chart_type: 'bar',
+      chart_data: [
+        { id: newId(), label: 'Antes', value: 30, color: '#ef4444' },
+        { id: newId(), label: 'Depois', value: 90, color: '#10b981' },
+      ],
+    }
+    case 'spacer': return { spacer_height: 40 }
+    case 'html_embed': return { html_content: '<!-- Cole seu código HTML/embed aqui -->' }
     default: return {}
   }
 }
@@ -528,6 +603,109 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
         </div>
       </div>
     )
+  } else if (['field_date','field_height','field_weight'].includes(block.type)) {
+    summary = (
+      <div>
+        <p className="text-xs text-gray-500 font-medium">{config.label || meta.label}</p>
+        <div className="mt-1.5 w-full border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 bg-gray-50">
+          {block.type === 'field_date' ? 'dd/mm/aaaa' : config.placeholder || (block.type === 'field_height' ? '170 cm' : '70 kg')}
+        </div>
+      </div>
+    )
+  } else if (block.type === 'video_answer') {
+    summary = (
+      <div>
+        <div className="w-full h-12 bg-gray-900 rounded flex items-center justify-center mb-1.5"><span className="text-white">🎬</span></div>
+        <p className="text-sm font-semibold text-gray-800 line-clamp-1">{config.question || 'Vídeo + opções'}</p>
+      </div>
+    )
+  } else if (block.type === 'audio') {
+    summary = (
+      <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2">
+        <span className="text-lg">🔊</span>
+        <span className="text-xs text-gray-500 truncate">{config.audio_title || config.audio_url || 'Áudio'}</span>
+      </div>
+    )
+  } else if (block.type === 'alert') {
+    const vc = { info: 'bg-blue-50 text-blue-700', success: 'bg-emerald-50 text-emerald-700', warning: 'bg-amber-50 text-amber-700', danger: 'bg-red-50 text-red-700' }[config.alert_variant ?? 'warning']
+    summary = <div className={`text-xs rounded-lg px-3 py-2 ${vc}`}>{config.alert_text || 'Mensagem de alerta'}</div>
+  } else if (block.type === 'notification') {
+    summary = (
+      <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 py-1.5 shadow-sm">
+        <span>🔔</span>
+        <span className="text-xs text-gray-600 truncate">{config.notification_items?.[0]?.text || 'Prova social'}</span>
+      </div>
+    )
+  } else if (block.type === 'loading') {
+    summary = (
+      <div className="text-center">
+        <div className="inline-block w-5 h-5 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin mb-1" />
+        <p className="text-xs text-gray-500">{config.loading_text || 'Carregando...'}</p>
+      </div>
+    )
+  } else if (block.type === 'level') {
+    summary = (
+      <div>
+        <p className="text-xs text-gray-600 mb-1">{config.level_label || 'Nível'} · {config.level_percent ?? 70}%</p>
+        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div className="h-full rounded-full" style={{ width: `${config.level_percent ?? 70}%`, background: config.level_color || '#6366f1' }} />
+        </div>
+      </div>
+    )
+  } else if (block.type === 'pricing') {
+    summary = (
+      <div className="border border-gray-200 rounded-lg p-2 text-center">
+        <p className="text-xs font-semibold text-gray-700">{config.pricing_title || 'Plano'}</p>
+        <p className="text-lg font-extrabold text-gray-900">{config.pricing_price || 'R$ 0'}<span className="text-[10px] text-gray-400">{config.pricing_period}</span></p>
+        {config.pricing_cta_text && <div className="mt-1 text-[10px] bg-indigo-600 text-white rounded px-2 py-1 inline-block">{config.pricing_cta_text}</div>}
+      </div>
+    )
+  } else if (block.type === 'checklist') {
+    summary = (
+      <div>
+        {config.checklist_title && <p className="text-xs font-semibold text-gray-700 mb-1">{config.checklist_title}</p>}
+        {(config.checklist_items ?? []).slice(0, 3).map(i => (
+          <div key={i.id} className="flex items-center gap-1.5 text-xs text-gray-600"><span className="text-emerald-500">✓</span>{i.text}</div>
+        ))}
+      </div>
+    )
+  } else if (block.type === 'before_after') {
+    summary = (
+      <div className="grid grid-cols-2 gap-1">
+        {[config.before_image_url, config.after_image_url].map((img, i) => (
+          img ? <img key={i} src={img} alt="" className="w-full h-12 object-cover rounded" />
+              : <div key={i} className="w-full h-12 bg-gray-100 rounded flex items-center justify-center text-[10px] text-gray-400">{i === 0 ? 'Antes' : 'Depois'}</div>
+        ))}
+      </div>
+    )
+  } else if (block.type === 'carousel') {
+    summary = (
+      <div className="flex gap-1 overflow-hidden">
+        {(config.carousel_items ?? []).length > 0
+          ? (config.carousel_items ?? []).slice(0, 3).map(c => <img key={c.id} src={c.image_url} alt="" className="w-1/3 h-12 object-cover rounded" />)
+          : <div className="w-full h-12 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400">Carrossel vazio</div>}
+      </div>
+    )
+  } else if (block.type === 'metrics') {
+    summary = (
+      <div className="grid grid-cols-3 gap-1 text-center">
+        {(config.metrics_items ?? []).slice(0, 3).map(m => (
+          <div key={m.id}><p className="text-sm font-extrabold text-gray-900">{m.value}{m.suffix}</p><p className="text-[9px] text-gray-500 line-clamp-1">{m.label}</p></div>
+        ))}
+      </div>
+    )
+  } else if (block.type === 'chart') {
+    summary = (
+      <div className="flex items-end gap-1 h-12">
+        {(config.chart_data ?? []).slice(0, 4).map(d => (
+          <div key={d.id} className="flex-1 rounded-t" style={{ height: `${Math.min(100, d.value)}%`, background: d.color || '#6366f1' }} />
+        ))}
+      </div>
+    )
+  } else if (block.type === 'spacer') {
+    summary = <div className="text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded py-2">Espaço · {config.spacer_height ?? 40}px</div>
+  } else if (block.type === 'html_embed') {
+    summary = <div className="text-xs text-gray-500 font-mono bg-gray-50 rounded px-2 py-1.5 truncate">{'</> '}{(config.html_content || 'HTML').slice(0, 40)}</div>
   }
 
   return (
@@ -539,6 +717,9 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
           meta.category === 'Formulário' ? 'bg-blue-100 text-blue-600' :
           meta.category === 'Ação' ? 'bg-green-100 text-green-600' :
           meta.category === 'Landing' ? 'bg-purple-100 text-purple-600' :
+          meta.category === 'Atenção' ? 'bg-amber-100 text-amber-600' :
+          meta.category === 'Gráficos' ? 'bg-cyan-100 text-cyan-600' :
+          meta.category === 'Estrutura' ? 'bg-pink-100 text-pink-600' :
           'bg-gray-100 text-gray-600'
         }`}>{meta.label}</span>
         {summary}
@@ -987,27 +1168,319 @@ function BlockEditor({
       )}
 
       {/* Form fields */}
-      {['field_text','field_email','field_phone','field_number','field_textarea'].includes(block.type) && (
+      {['field_text','field_email','field_phone','field_number','field_textarea','field_date','field_height','field_weight'].includes(block.type) && (
         <>
           <div>
             <label className={labelCls}>Label</label>
             <input value={config.label ?? ''} onChange={e => setConfigKey('label', e.target.value)} className={inputCls} placeholder="Texto da pergunta" />
           </div>
-          <div>
-            <label className={labelCls}>Placeholder</label>
-            <input value={config.placeholder ?? ''} onChange={e => setConfigKey('placeholder', e.target.value)} className={inputCls} placeholder="Texto de exemplo..." />
-          </div>
+          {block.type !== 'field_date' && (
+            <div>
+              <label className={labelCls}>Placeholder</label>
+              <input value={config.placeholder ?? ''} onChange={e => setConfigKey('placeholder', e.target.value)} className={inputCls} placeholder="Texto de exemplo..." />
+            </div>
+          )}
           <Toggle on={!!config.required} onToggle={() => setConfigKey('required', !config.required)} label="Obrigatório" />
         </>
       )}
 
-      {/* Text block */}
+      {/* Text block — editor rico flutuante */}
       {block.type === 'text_block' && (
         <div>
-          <label className={labelCls}>Conteúdo (HTML básico aceito)</label>
-          <textarea value={config.content ?? ''} onChange={e => setConfigKey('content', e.target.value)}
-            rows={6} className={inputCls + ' resize-none font-mono text-xs'} placeholder="<p>Seu texto aqui...</p>" />
-          <p className="text-[10px] text-gray-400 mt-1">Tags aceitas: &lt;p&gt; &lt;b&gt; &lt;i&gt; &lt;h2&gt; &lt;h3&gt; &lt;br&gt;</p>
+          <label className={labelCls}>Conteúdo</label>
+          <RichTextField value={config.content ?? ''} onChange={html => setConfigKey('content', html)} placeholder="Digite seu texto..." />
+        </div>
+      )}
+
+      {/* Audio */}
+      {block.type === 'audio' && (
+        <>
+          <ImageUploadField label="Arquivo de áudio (ou URL)" value={config.audio_url ?? ''} onChange={url => setConfigKey('audio_url', url)} />
+          <div>
+            <label className={labelCls}>Título (opcional)</label>
+            <input value={config.audio_title ?? ''} onChange={e => setConfigKey('audio_title', e.target.value)} className={inputCls} placeholder="Nome do áudio" />
+          </div>
+          <p className="text-[10px] text-gray-400">Aceita URL .mp3/.ogg/.wav</p>
+        </>
+      )}
+
+      {/* Video answer */}
+      {block.type === 'video_answer' && (
+        <>
+          <div>
+            <label className={labelCls}>Pergunta</label>
+            <textarea value={config.question ?? ''} onChange={e => setConfigKey('question', e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="Assista e escolha" />
+          </div>
+          <div>
+            <label className={labelCls}>URL do vídeo (YouTube/Vimeo)</label>
+            <input value={config.video_answer_url ?? ''} onChange={e => setConfigKey('video_answer_url', e.target.value)} className={inputCls} placeholder="https://youtube.com/..." />
+          </div>
+          <OptionList options={config.options ?? []} pages={pages} onChange={opts => setConfigKey('options', opts)} />
+          <Toggle on={!!config.required} onToggle={() => setConfigKey('required', !config.required)} label="Resposta obrigatória" />
+        </>
+      )}
+
+      {/* Alert */}
+      {block.type === 'alert' && (
+        <>
+          <div>
+            <label className={labelCls}>Mensagem</label>
+            <textarea value={config.alert_text ?? ''} onChange={e => setConfigKey('alert_text', e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="Texto do alerta" />
+          </div>
+          <div>
+            <label className={labelCls}>Estilo</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['info','success','warning','danger'] as const).map(v => (
+                <button key={v} onClick={() => setConfigKey('alert_variant', v)}
+                  className={`py-1.5 text-xs rounded-lg border transition ${(config.alert_variant ?? 'warning') === v ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 text-gray-600'}`}>
+                  {v === 'info' ? 'Info' : v === 'success' ? 'Sucesso' : v === 'warning' ? 'Aviso' : 'Perigo'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Notification */}
+      {block.type === 'notification' && (
+        <>
+          <div>
+            <label className={labelCls}>Intervalo entre notificações (seg)</label>
+            <input type="number" min={1} value={config.notification_interval ?? 5} onChange={e => setConfigKey('notification_interval', Number(e.target.value))} className={inputCls} />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5','')}>Mensagens</label>
+              <button onClick={() => setConfigKey('notification_items', [...(config.notification_items ?? []), { id: newId(), text: '' }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>
+            </div>
+            {(config.notification_items ?? []).map((n: NotificationItem) => (
+              <div key={n.id} className="flex items-center gap-1.5 mb-1.5">
+                <input value={n.text} onChange={e => setConfigKey('notification_items', (config.notification_items ?? []).map(x => x.id === n.id ? { ...x, text: e.target.value } : x))}
+                  className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Fulano acabou de se inscrever" />
+                <button onClick={() => setConfigKey('notification_items', (config.notification_items ?? []).filter(x => x.id !== n.id))} className="text-red-400 hover:text-red-600">×</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Loading */}
+      {block.type === 'loading' && (
+        <>
+          <div>
+            <label className={labelCls}>Texto</label>
+            <input value={config.loading_text ?? ''} onChange={e => setConfigKey('loading_text', e.target.value)} className={inputCls} placeholder="Analisando suas respostas..." />
+          </div>
+          <div>
+            <label className={labelCls}>Duração (segundos)</label>
+            <input type="number" min={1} value={config.loading_seconds ?? 3} onChange={e => setConfigKey('loading_seconds', Number(e.target.value))} className={inputCls} />
+          </div>
+          <Toggle on={!!config.loading_auto_advance} onToggle={() => setConfigKey('loading_auto_advance', !config.loading_auto_advance)} label="Avançar para próxima página ao terminar" />
+        </>
+      )}
+
+      {/* Level */}
+      {block.type === 'level' && (
+        <>
+          <div>
+            <label className={labelCls}>Rótulo</label>
+            <input value={config.level_label ?? ''} onChange={e => setConfigKey('level_label', e.target.value)} className={inputCls} placeholder="Seu nível" />
+          </div>
+          <div>
+            <label className={labelCls}>Percentual: {config.level_percent ?? 70}%</label>
+            <input type="range" min={0} max={100} value={config.level_percent ?? 70} onChange={e => setConfigKey('level_percent', Number(e.target.value))} className="w-full" />
+          </div>
+          <div>
+            <label className={labelCls}>Cor</label>
+            <input type="color" value={config.level_color || '#6366f1'} onChange={e => setConfigKey('level_color', e.target.value)} className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5" />
+          </div>
+        </>
+      )}
+
+      {/* Pricing */}
+      {block.type === 'pricing' && (
+        <>
+          <div>
+            <label className={labelCls}>Título do plano</label>
+            <input value={config.pricing_title ?? ''} onChange={e => setConfigKey('pricing_title', e.target.value)} className={inputCls} placeholder="Plano Completo" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Preço</label>
+              <input value={config.pricing_price ?? ''} onChange={e => setConfigKey('pricing_price', e.target.value)} className={inputCls} placeholder="R$ 197" />
+            </div>
+            <div>
+              <label className={labelCls}>Período</label>
+              <input value={config.pricing_period ?? ''} onChange={e => setConfigKey('pricing_period', e.target.value)} className={inputCls} placeholder="/mês" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5','')}>Itens inclusos</label>
+              <button onClick={() => setConfigKey('pricing_items', [...(config.pricing_items ?? []), { id: newId(), text: '', included: true }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>
+            </div>
+            {(config.pricing_items ?? []).map((it: PricingItem) => (
+              <div key={it.id} className="flex items-center gap-1.5 mb-1.5">
+                <button onClick={() => setConfigKey('pricing_items', (config.pricing_items ?? []).map(x => x.id === it.id ? { ...x, included: !x.included } : x))}
+                  className={`w-6 h-6 rounded shrink-0 text-xs ${it.included !== false ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'}`}>{it.included !== false ? '✓' : '×'}</button>
+                <input value={it.text} onChange={e => setConfigKey('pricing_items', (config.pricing_items ?? []).map(x => x.id === it.id ? { ...x, text: e.target.value } : x))}
+                  className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Item" />
+                <button onClick={() => setConfigKey('pricing_items', (config.pricing_items ?? []).filter(x => x.id !== it.id))} className="text-red-400 hover:text-red-600">×</button>
+              </div>
+            ))}
+          </div>
+          <div>
+            <label className={labelCls}>Texto do botão</label>
+            <input value={config.pricing_cta_text ?? ''} onChange={e => setConfigKey('pricing_cta_text', e.target.value)} className={inputCls} placeholder="Quero esse plano" />
+          </div>
+          <div>
+            <label className={labelCls}>URL do botão</label>
+            <input value={config.pricing_cta_url ?? ''} onChange={e => setConfigKey('pricing_cta_url', e.target.value)} className={inputCls} placeholder="https://..." />
+          </div>
+          <Toggle on={!!config.pricing_highlight} onToggle={() => setConfigKey('pricing_highlight', !config.pricing_highlight)} label="Destacar (borda colorida)" />
+        </>
+      )}
+
+      {/* Checklist */}
+      {block.type === 'checklist' && (
+        <>
+          <div>
+            <label className={labelCls}>Título</label>
+            <input value={config.checklist_title ?? ''} onChange={e => setConfigKey('checklist_title', e.target.value)} className={inputCls} placeholder="O que você vai conquistar" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5','')}>Itens</label>
+              <button onClick={() => setConfigKey('checklist_items', [...(config.checklist_items ?? []), { id: newId(), text: '' }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>
+            </div>
+            {(config.checklist_items ?? []).map((it: ChecklistItem) => (
+              <div key={it.id} className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-emerald-500">✓</span>
+                <input value={it.text} onChange={e => setConfigKey('checklist_items', (config.checklist_items ?? []).map(x => x.id === it.id ? { ...x, text: e.target.value } : x))}
+                  className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Item" />
+                <button onClick={() => setConfigKey('checklist_items', (config.checklist_items ?? []).filter(x => x.id !== it.id))} className="text-red-400 hover:text-red-600">×</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Before/After */}
+      {block.type === 'before_after' && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Rótulo Antes</label>
+              <input value={config.before_label ?? ''} onChange={e => setConfigKey('before_label', e.target.value)} className={inputCls} placeholder="Antes" />
+            </div>
+            <div>
+              <label className={labelCls}>Rótulo Depois</label>
+              <input value={config.after_label ?? ''} onChange={e => setConfigKey('after_label', e.target.value)} className={inputCls} placeholder="Depois" />
+            </div>
+          </div>
+          <ImageUploadField label="Imagem Antes" value={config.before_image_url ?? ''} onChange={url => setConfigKey('before_image_url', url)} />
+          <ImageUploadField label="Imagem Depois" value={config.after_image_url ?? ''} onChange={url => setConfigKey('after_image_url', url)} />
+        </>
+      )}
+
+      {/* Carousel */}
+      {block.type === 'carousel' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className={labelCls.replace('mb-1.5','')}>Imagens do carrossel</label>
+            <button onClick={() => setConfigKey('carousel_items', [...(config.carousel_items ?? []), { id: newId(), image_url: '' }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>
+          </div>
+          <div className="space-y-2">
+            {(config.carousel_items ?? []).map((c: CarouselItem) => (
+              <div key={c.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-400">Slide</span>
+                  <button onClick={() => setConfigKey('carousel_items', (config.carousel_items ?? []).filter(x => x.id !== c.id))} className="text-red-400 hover:text-red-600">×</button>
+                </div>
+                <ImageUploadField value={c.image_url} onChange={url => setConfigKey('carousel_items', (config.carousel_items ?? []).map(x => x.id === c.id ? { ...x, image_url: url } : x))} />
+                <input value={c.caption ?? ''} onChange={e => setConfigKey('carousel_items', (config.carousel_items ?? []).map(x => x.id === c.id ? { ...x, caption: e.target.value } : x))}
+                  className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Legenda (opcional)" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Metrics */}
+      {block.type === 'metrics' && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className={labelCls.replace('mb-1.5','')}>Métricas</label>
+            <button onClick={() => setConfigKey('metrics_items', [...(config.metrics_items ?? []), { id: newId(), value: '', label: '' }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>
+          </div>
+          {(config.metrics_items ?? []).map((m: MetricItem) => (
+            <div key={m.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50 mb-2">
+              <div className="flex items-center gap-1.5">
+                <input value={m.value} onChange={e => setConfigKey('metrics_items', (config.metrics_items ?? []).map(x => x.id === m.id ? { ...x, value: e.target.value } : x))}
+                  className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="10.000" />
+                <input value={m.suffix ?? ''} onChange={e => setConfigKey('metrics_items', (config.metrics_items ?? []).map(x => x.id === m.id ? { ...x, suffix: e.target.value } : x))}
+                  className="w-12 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="+" />
+                <button onClick={() => setConfigKey('metrics_items', (config.metrics_items ?? []).filter(x => x.id !== m.id))} className="text-red-400 hover:text-red-600">×</button>
+              </div>
+              <input value={m.label} onChange={e => setConfigKey('metrics_items', (config.metrics_items ?? []).map(x => x.id === m.id ? { ...x, label: e.target.value } : x))}
+                className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Rótulo" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chart */}
+      {block.type === 'chart' && (
+        <>
+          <div>
+            <label className={labelCls}>Título</label>
+            <input value={config.chart_title ?? ''} onChange={e => setConfigKey('chart_title', e.target.value)} className={inputCls} placeholder="Resultados" />
+          </div>
+          <div>
+            <label className={labelCls}>Tipo</label>
+            <div className="flex gap-2">
+              {(['bar','pie'] as const).map(t => (
+                <button key={t} onClick={() => setConfigKey('chart_type', t)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.chart_type ?? 'bar') === t ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {t === 'bar' ? 'Barras' : 'Pizza'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5','')}>Dados</label>
+              <button onClick={() => setConfigKey('chart_data', [...(config.chart_data ?? []), { id: newId(), label: '', value: 50, color: '#6366f1' }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>
+            </div>
+            {(config.chart_data ?? []).map((d: ChartDatum) => (
+              <div key={d.id} className="flex items-center gap-1.5 mb-1.5">
+                <input type="color" value={d.color || '#6366f1'} onChange={e => setConfigKey('chart_data', (config.chart_data ?? []).map(x => x.id === d.id ? { ...x, color: e.target.value } : x))} className="w-7 h-7 rounded border border-gray-200 p-0.5 shrink-0" />
+                <input value={d.label} onChange={e => setConfigKey('chart_data', (config.chart_data ?? []).map(x => x.id === d.id ? { ...x, label: e.target.value } : x))}
+                  className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" placeholder="Rótulo" />
+                <input type="number" value={d.value} onChange={e => setConfigKey('chart_data', (config.chart_data ?? []).map(x => x.id === d.id ? { ...x, value: Number(e.target.value) } : x))}
+                  className="w-16 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none" />
+                <button onClick={() => setConfigKey('chart_data', (config.chart_data ?? []).filter(x => x.id !== d.id))} className="text-red-400 hover:text-red-600">×</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Spacer */}
+      {block.type === 'spacer' && (
+        <div>
+          <label className={labelCls}>Altura: {config.spacer_height ?? 40}px</label>
+          <input type="range" min={8} max={200} value={config.spacer_height ?? 40} onChange={e => setConfigKey('spacer_height', Number(e.target.value))} className="w-full" />
+        </div>
+      )}
+
+      {/* HTML embed */}
+      {block.type === 'html_embed' && (
+        <div>
+          <label className={labelCls}>HTML / Script</label>
+          <textarea value={config.html_content ?? ''} onChange={e => setConfigKey('html_content', e.target.value)}
+            rows={6} className={inputCls + ' resize-none font-mono text-xs'} placeholder="<div>...</div>" />
+          <p className="text-[10px] text-gray-400 mt-1">Cuidado: código inserido é renderizado direto na página.</p>
         </div>
       )}
 
@@ -1503,6 +1976,15 @@ function BlockEditor({
           </div>
         </div>
       )}
+
+      {/* Aparição temporizada (todos os blocos) */}
+      <div className="border-t border-gray-100 pt-3">
+        <label className={labelCls}>⏱ Aparecer após (segundos)</label>
+        <input type="number" min={0} step={1} value={config.appear_delay ?? 0}
+          onChange={e => setConfigKey('appear_delay', Number(e.target.value) || undefined)}
+          className={inputCls} placeholder="0 = imediato" />
+        <p className="text-[10px] text-gray-400 mt-1">0 ou vazio = aparece imediatamente</p>
+      </div>
 
       {/* Move to page */}
       {otherPages.length > 0 && (
