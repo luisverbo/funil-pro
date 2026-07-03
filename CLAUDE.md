@@ -483,8 +483,16 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-07-03 — Quiz Builder paridade total com Inlead (blocos + texto rico + timing)
-**O que foi feito:**
+**Última atualização:** 2026-07-03 — Execução do plano (landing conversacional + agente v2 + 20 bugfixes do quiz)
+**O que foi feito (execução do PLANO-LANDBOT-AGENTES-QUIZ.md):**
+- **Sprint 1 (segurança/críticos)**: submit do quiz deriva tenant no server (era forjável pelo body — escrita cross-tenant); `conversions_count` via RPC `increment_page_conversions`; removido `exec_sql` por request; RichTextField `key={block.id}` + toolbar em portal `position:fixed`; `handleNextWithAnswer` sem efeitos colaterais no updater; validação só de blocos revelados; endpoint de chat valida tenant + plano Scale
+- **Sprint 2 (altos + custo agente)**: auto-advance só com 1 escolha/página; score recalculado de `answers` (Voltar não duplica); validação email/telefone; slug de publicação único; autosave com guard de sequência; prompt caching (Anthropic `cache_control`); PDF vazio avisa; **action `route` matricula no `target_funnel_id`** (era campo morto)
+- **Sprint 3 (Landing conversacional / Landbot)**: migration `ai_agents.public_slug/public_enabled/landing_config` + `agent_conversations.channel`; `processAgentMessage({channel:'whatsapp'|'web'|'test'})`; endpoint público `/api/agents/public/[slug]/chat` (resolve por slug, rate limit, cria lead+lead_source com UTMs, injeta payment_link na venda); rota `/a/[slug]` + `ChatLanding` (tema, digitando, quick replies, captura inline/gate, botão de compra, mobile 100dvh); passo "Landing" no wizard
+- **Sprint 4 (parcial)**: 6 templates de agente por nicho (galeria no wizard); bugfixes #13/#15/#16/#17/#20/#26/#28/#29
+- Migrations aplicadas via MCP: `increment_page_conversions`, `agent_product_prices_and_page_url`, `agent_landing_public`
+- **Pendente Sprint 4-5**: aba Q&A de treino, test drive com checklist, feedback loop, versionamento de prompt, RAG pgvector, tool-use nativo; bugs baixos #14/#18/#19/#21/#22(parcial)/#25/#27/#30/#31
+
+**O que foi feito antes:**
 - Quiz Builder paridade Inlead (2026-07-03):
   - **17 blocos novos** em `quiz-v2.ts`/`quiz-editor-v2.tsx`/`quiz-renderer-v2.tsx`: Data/Altura/Peso (Formulário), Vídeo-resposta (Quiz), Áudio (Mídia), Alerta/Notificação/Loading/Nível (categoria Atenção), Preço (Landing), Checklist/Antes-Depois/Carrossel (Estrutura), Métricas/Gráficos (Gráficos, CSS puro sem lib), Espaço/HTML-Script (Personalização)
   - **Texto rico flutuante**: `src/components/quiz/rich-text-field.tsx` — contentEditable + toolbar flutuante (B/I/U/tachado, alinhamento, cor, tamanho, link, lista) via `document.execCommand`; substitui o textarea cru no bloco Texto
