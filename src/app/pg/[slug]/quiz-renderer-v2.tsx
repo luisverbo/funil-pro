@@ -42,6 +42,10 @@ function TimedBlock({ delay, onReveal, children }: { delay?: number; onReveal?: 
   return <div style={{ animation: 'fadeInUp 400ms cubic-bezier(0.4,0,0.2,1)' }}>{children}</div>
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const isValidEmail = (v: string) => EMAIL_RE.test(v.trim())
+const isValidPhone = (v: string) => v.replace(/\D/g, '').length >= 10   // DDD + número
+
 function firePixelEvent(config: BlockConfig) {
   if (typeof window === 'undefined' || !window.fbq) return
   const ev = config.pixel_event
@@ -292,6 +296,25 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   }
   const markRevealed = (id: string) => setRevealedBlocks(prev => prev.has(id) ? prev : new Set(prev).add(id))
 
+  // #7: pontuação SEMPRE derivada de `answers`, nunca acumulada. Acumular fazia o
+  // "Voltar" + avançar somar a mesma página duas vezes.
+  function computeScore(ans: Record<string, unknown>): number {
+    let total = 0
+    for (const p of pages) {
+      for (const block of p.blocks) {
+        if (['single_choice', 'yes_no'].includes(block.type)) {
+          const chosen = (block.config.options ?? []).find(o => o.label === ans[block.id])
+          total += chosen?.points ?? 0
+        } else if (block.type === 'multi_choice') {
+          for (const lbl of (ans[block.id] as string[]) ?? []) {
+            total += (block.config.options ?? []).find(o => o.label === lbl)?.points ?? 0
+          }
+        }
+      }
+    }
+    return total
+  }
+
   const tracker = useTracker(pageId)
 
   function fireIntegrations(
@@ -404,30 +427,34 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
     const newErrors: Record<string, string> = {}
     for (const block of page.blocks) {
-      if (block.config.required && !NON_INPUT_BLOCKS.has(block.type) && isRevealed(block)) {
-        const val = answers[block.id]
-        if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
-          newErrors[block.id] = 'Campo obrigatório'
-        }
+      if (!isRevealed(block)) continue
+      const val = answers[block.id]
+      const empty = val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)
+
+      if (block.config.required && !NON_INPUT_BLOCKS.has(block.type) && empty) {
+        newErrors[block.id] = 'Campo obrigatório'
+        continue
+      }
+      // #8: valida formato de email/telefone
+      if (block.type === 'field_email' && !empty && !isValidEmail(String(val))) {
+        newErrors[block.id] = 'E-mail inválido'
+      }
+      if (block.type === 'field_phone' && !empty && !isValidPhone(String(val))) {
+        newErrors[block.id] = 'Telefone inválido'
+      }
+      if (block.type === 'final_capture') {
+        const fc = captureRef.current
+        if (block.config.show_name && block.config.required && !fc.name.trim()) newErrors[block.id] = 'Preencha seu nome'
+        else if (block.config.show_email && (block.config.required || fc.email) && !isValidEmail(fc.email)) newErrors[block.id] = 'E-mail inválido'
+        else if (block.config.show_phone && (block.config.required || fc.phone) && !isValidPhone(fc.phone)) newErrors[block.id] = 'Telefone inválido'
       }
     }
     if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return }
     setErrors({})
 
-    let pageScore = 0
+    const newScore = computeScore(answers)
     let newLeadData = { ...leadData }
     for (const block of page.blocks) {
-      if (['single_choice', 'yes_no'].includes(block.type)) {
-        const chosen = (block.config.options ?? []).find(o => o.label === answers[block.id])
-        pageScore += chosen?.points ?? 0
-      }
-      if (block.type === 'multi_choice') {
-        const selected = (answers[block.id] as string[]) ?? []
-        for (const lbl of selected) {
-          const opt = (block.config.options ?? []).find(o => o.label === lbl)
-          pageScore += opt?.points ?? 0
-        }
-      }
       if (block.type === 'field_email' && answers[block.id]) {
         newLeadData = { ...newLeadData, email: String(answers[block.id]) }
         tracker.trackContact(undefined, String(answers[block.id]), undefined)
@@ -443,7 +470,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         tracker.track('form_submitted', page.id, block.id, { name: fc.name, email: fc.email, phone: fc.phone })
         fireIntegrations(block.id, block.config, {
           answers,
-          score: score + pageScore,
+          score: newScore,
           name: fc.name || newLeadData.name,
           email: fc.email || newLeadData.email,
           phone: fc.phone || newLeadData.phone,
@@ -451,7 +478,6 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       }
     }
     setLeadData(newLeadData)
-    const newScore = score + pageScore
     setScore(newScore)
 
     const resultBlk = page.blocks.find(b => b.type === 'result')
@@ -533,7 +559,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                   setAnswer(block.id, opt.label, page.id, 'choice_selected')
                   const nonChoiceInputs = page.blocks.filter(b => !['single_choice','yes_no'].includes(b.type) && !NON_INPUT_BLOCKS.has(b.type))
                   const hasFinalCapture = page.blocks.some(b => b.type === 'final_capture')
-                  if (nonChoiceInputs.length === 0 && !hasFinalCapture) {
+                  // #6: só auto-avança quando há UMA única pergunta de escolha na página.
+                  // Com duas single_choice, auto-avançar pularia a segunda sem resposta.
+                  const choiceBlocks = page.blocks.filter(b => ['single_choice','yes_no'].includes(b.type))
+                  if (nonChoiceInputs.length === 0 && !hasFinalCapture && choiceBlocks.length === 1) {
                     setTimeout(() => handleNextWithAnswer(block.id, opt.label), 350)
                   }
                 }
@@ -711,6 +740,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                 onChange={e => { captureRef.current.phone = e.target.value }}
                 className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white" />
             )}
+            {err && <p className="text-sm text-red-500 font-medium">{err}</p>}
           </div>
         )}
 
@@ -1015,13 +1045,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
     setAnswers(updated)
 
-    let pageScore = 0
-    const answeredBlock = page.blocks.find(b => b.id === blockId)
-    if (answeredBlock && ['single_choice','yes_no'].includes(answeredBlock.type)) {
-      const chosen = (answeredBlock.config.options ?? []).find(o => o.id === value || o.label === value)
-      pageScore += chosen?.points ?? 0
-    }
-    const newScore = score + pageScore
+    const newScore = computeScore(updated)
     setScore(newScore)
 
     const resultBlk = page.blocks.find(b => b.type === 'result')

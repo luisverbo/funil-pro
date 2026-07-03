@@ -57,6 +57,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const text = await extractText(file)
 
+    // G3: avisa quando não conseguiu extrair texto (PDF escaneado/imagem, parse falhou).
+    // Antes o doc "treinado" ficava vazio silenciosamente e o usuário achava que treinou.
+    if (text.trim().length < 200) {
+      return NextResponse.json({
+        error: 'extract_failed',
+        message: 'Não consegui ler texto suficiente deste arquivo. Se for um PDF escaneado (imagem), converta para texto ou cole o conteúdo como .txt.',
+        chars: text.trim().length,
+      }, { status: 422 })
+    }
+
     const { data: doc, error } = await admin
       .from('agent_documents')
       .insert({

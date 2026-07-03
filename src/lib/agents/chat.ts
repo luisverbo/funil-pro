@@ -22,6 +22,7 @@ interface AgentRow {
   qualification_rules: string | null
   objection_handling: string | null
   payment_link: string | null
+  target_funnel_id: string | null
   max_messages_per_conversation: number | null
   handoff_to_human_keywords: string[] | null
   business_hours_only: boolean | null
@@ -190,6 +191,34 @@ async function resumeFunnel(
   }
 }
 
+// Matricula o lead no funil alvo do agente (ação "route"). Antes target_funnel_id
+// era campo morto: o "roteamento" só retomava um funil já pausado, e lead standalone
+// (funnel_id null) não ia para funil nenhum.
+async function enrollInFunnel(
+  leadId: string,
+  funnelId: string,
+  tenantId: string,
+  admin: ReturnType<typeof createAdminClient>
+) {
+  const { data: allBlocks } = await admin.from('funnel_blocks').select('id, block_type').eq('funnel_id', funnelId).eq('tenant_id', tenantId)
+  if (!allBlocks || allBlocks.length === 0) return
+  const { data: allEdges } = await admin.from('funnel_edges').select('target_block_id').eq('funnel_id', funnelId)
+  const targetIds = new Set((allEdges ?? []).map((e: { target_block_id: string }) => e.target_block_id))
+  const roots = allBlocks.filter((b: { id: string; block_type: string }) => !targetIds.has(b.id))
+  const firstBlock = roots.find((b: { id: string; block_type: string }) => b.block_type === 'entry') ?? roots[0] ?? allBlocks[0]
+  if (!firstBlock) return
+
+  await admin.from('leads').update({ funnel_id: funnelId, status: 'active' }).eq('id', leadId)
+  await admin.from('queue_jobs').insert({
+    tenant_id: tenantId,
+    lead_id: leadId,
+    funnel_id: funnelId,
+    block_id: firstBlock.id,
+    status: 'pending',
+    scheduled_for: new Date().toISOString(),
+  })
+}
+
 async function callAnthropic(systemPrompt: string, apiMessages: { role: string; content: string }[]): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('anthropic_key_missing: configure ANTHROPIC_API_KEY no ambiente')
@@ -205,7 +234,9 @@ async function callAnthropic(systemPrompt: string, apiMessages: { role: string; 
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
         max_tokens: 800,
-        system: systemPrompt,
+        // Prompt caching: o system prompt (produto, docs, regras) é estável entre
+        // mensagens da mesma conversa — cacheado corta ~90% do custo de input.
+        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages: apiMessages,
       }),
     })
@@ -477,7 +508,13 @@ Se ainda não atingiu o objetivo, use action "continue".`
   }
   await admin.from('agent_conversations').update(convUpdate).eq('id', conversationId)
 
-  // Resume funnel on terminal action
+  // Ação "route": matricula o lead no funil alvo do agente (target_funnel_id)
+  if (!testMode && action.type === 'route' && leadId && a.target_funnel_id) {
+    await enrollInFunnel(leadId, a.target_funnel_id, a.tenant_id, admin)
+      .catch(err => console.error(`[chat] enrollInFunnel falhou: ${String(err)}`))
+  }
+
+  // Resume funnel on terminal action (retoma funil pausado, se houver)
   if (!testMode && newStatus && leadId) {
     await resumeFunnel(leadId, agentId, action.type, admin).catch(err => console.error(`[chat] resumeFunnel falhou: ${String(err)}`))
   }

@@ -2081,6 +2081,8 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [activeId, setActiveId] = useState<string | null>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveSeq = useRef(0)          // #12: ignora respostas de saves obsoletos
+  const skipFirstSave = useRef(true) // #24: não salva no mount sem edição
 
   // Keep selectedPageId valid when pages change
   useEffect(() => {
@@ -2095,6 +2097,8 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
 
   // Auto-save
   useEffect(() => {
+    // #24: primeira renderização não salva (evita persistir a migração v1→v2 sem edição)
+    if (skipFirstSave.current) { skipFirstSave.current = false; return }
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => triggerSave(data), 2000)
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
@@ -2102,10 +2106,14 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
   }, [data])
 
   async function triggerSave(d: QuizData) {
+    // #12: cada save recebe um número de sequência; se um save mais novo começar
+    // antes deste responder, descartamos o resultado obsoleto (evita last-write-wins fora de ordem).
+    const seq = ++saveSeq.current
     setSaveStatus('saving')
     const result = await saveQuizV2(page.id, d)
+    if (seq !== saveSeq.current) return   // resposta obsoleta — um save mais novo assumiu
     setSaveStatus(result.success ? 'saved' : 'error')
-    setTimeout(() => setSaveStatus('idle'), 2500)
+    setTimeout(() => { if (seq === saveSeq.current) setSaveStatus('idle') }, 2500)
   }
 
   async function handlePublish() {

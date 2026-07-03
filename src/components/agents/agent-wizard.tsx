@@ -37,6 +37,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   const [agentId, setAgentId] = useState<string | undefined>(agent?.id)
   const [docs, setDocs] = useState(documents ?? [])
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [showTest, setShowTest] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -140,6 +141,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
       if (!id) return
     }
     setUploading(true)
+    setUploadError(null)
     try {
       for (const file of Array.from(files)) {
         const fd = new FormData()
@@ -147,6 +149,8 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
         const res = await fetch(`/api/agents/${id}/documents`, { method: 'POST', body: fd })
         const data = await res.json()
         if (data.document) setDocs(d => [data.document, ...d])
+        else if (data.message) setUploadError(`${file.name}: ${data.message}`)
+        else if (data.error) setUploadError(`${file.name}: falha no envio (${data.error})`)
       }
     } finally {
       setUploading(false)
@@ -258,6 +262,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                 <div className="flex flex-col gap-2">
                   <input ref={fileRef} type="file" multiple accept=".pdf,.txt,.md,.csv" onChange={e => handleUpload(e.target.files)} className="text-sm" />
                   {uploading && <span className="text-xs text-indigo-600">Enviando…</span>}
+                  {uploadError && <span className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{uploadError}</span>}
                   {docs.map(d => (
                     <div key={d.id} className="flex items-center justify-between text-sm border rounded-lg px-3 py-2">
                       <span>📄 {d.file_name}</span>

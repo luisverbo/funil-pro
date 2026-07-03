@@ -498,16 +498,29 @@ export async function publishQuizV2(
 
     if (!page) return { success: false, error: 'Página não encontrada' }
 
-    const slug = page.slug ||
-      (page.title as string).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Math.random().toString(36).slice(2, 6)
+    const base = (page.title as string).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'quiz'
 
-    await supabase
+    // Se já tem slug, mantém. Senão gera um único checando colisão global
+    // (a rota /pg/[slug] é consultada por slug em toda a tabela — colisão quebraria a página errada).
+    let slug = page.slug as string | null
+    if (!slug) {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const candidate = `${base}-${Math.random().toString(36).slice(2, 6)}`
+        const { data: clash } = await supabase.from('pages').select('id').eq('slug', candidate).limit(1).maybeSingle()
+        if (!clash) { slug = candidate; break }
+      }
+      if (!slug) return { success: false, error: 'Não foi possível gerar um endereço único. Tente de novo.' }
+    }
+
+    const { error: updErr } = await supabase
       .from('pages')
       .update({ published: true, slug })
       .eq('id', pageId)
       .eq('tenant_id', tenantId)
+    if (updErr) return { success: false, error: updErr.message }
 
     revalidatePath('/pages')
+    revalidatePath(`/pg/${slug}`)   // #23: revalida a página pública após publicar
     return { success: true, slug }
   } catch (err) {
     return { success: false, error: String(err) }
