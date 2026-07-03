@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { Agent, AgentInput, AgentMode, AgentObjective, ProductPrice } from '@/app/actions/ai-agents'
-import { createAgent, updateAgent } from '@/app/actions/ai-agents'
+import { createAgent, updateAgent, listFaqs, addFaq, deleteFaq, type FaqPair } from '@/app/actions/ai-agents'
 import AgentTestChat from './agent-test-chat'
 import { THEME_PRESETS } from '@/lib/quiz/theme'
 import { AGENT_TEMPLATES, type AgentTemplate } from '@/lib/agents/templates'
@@ -42,6 +42,25 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showTest, setShowTest] = useState(false)
   const [templateChosen, setTemplateChosen] = useState(false)
+  const [faqs, setFaqs] = useState<FaqPair[]>([])
+  const [faqQ, setFaqQ] = useState('')
+  const [faqA, setFaqA] = useState('')
+
+  useEffect(() => {
+    if (agentId) listFaqs(agentId).then(setFaqs)
+  }, [agentId])
+
+  async function saveFaq() {
+    if (!faqQ.trim() || !faqA.trim()) return
+    let id = agentId
+    if (!id) { id = await ensureAgentCreated(); if (!id) return }
+    const res = await addFaq(id, faqQ, faqA)
+    if (res.id) { setFaqs(f => [...f, { id: res.id!, question: faqQ.trim(), answer: faqA.trim() }]); setFaqQ(''); setFaqA('') }
+  }
+  async function removeFaq(id: string) {
+    await deleteFaq(id)
+    setFaqs(f => f.filter(x => x.id !== id))
+  }
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState<AgentInput>({
@@ -326,6 +345,25 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                     </div>
                   ))}
                 </div>
+              </Field>
+
+              <Field label="Perguntas e Respostas (treino mais confiável)">
+                <p className="text-xs text-gray-400 mb-2">Escreva as perguntas que os clientes mais fazem e a resposta ideal. O agente usa isso com prioridade.</p>
+                <div className="flex flex-col gap-2 mb-2">
+                  {faqs.map(f => (
+                    <div key={f.id} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-medium text-gray-700">❓ {f.question}</p>
+                        <button onClick={() => removeFaq(f.id)} className="text-red-400 hover:text-red-600 text-xs shrink-0">remover</button>
+                      </div>
+                      <p className="text-gray-500 mt-0.5">💬 {f.answer}</p>
+                    </div>
+                  ))}
+                </div>
+                <input className={inputCls + ' mb-2'} value={faqQ} onChange={e => setFaqQ(e.target.value)} placeholder="Pergunta (ex: Vocês parcelam?)" />
+                <textarea className={inputCls + ' h-16'} value={faqA} onChange={e => setFaqA(e.target.value)} placeholder="Resposta ideal do agente" />
+                <button type="button" onClick={saveFaq} disabled={!faqQ.trim() || !faqA.trim()}
+                  className="mt-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50 hover:bg-indigo-700">+ Adicionar Q&A</button>
               </Field>
             </div>
           )}

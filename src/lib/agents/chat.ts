@@ -331,9 +331,12 @@ export async function processAgentMessage(
     }
   }
 
-  // Load documents
-  const { data: documents } = await admin.from('agent_documents').select('extracted_text').eq('agent_id', agentId)
-  const docs = (documents ?? []).filter(d => d.extracted_text)
+  // Load documents (separa por tipo: arquivos, FAQ e correções aprendidas)
+  const { data: documents } = await admin.from('agent_documents').select('extracted_text, doc_type').eq('agent_id', agentId)
+  const allDocs = (documents ?? []).filter(d => d.extracted_text)
+  const docs = allDocs.filter(d => (d.doc_type ?? 'file') === 'file')
+  const faqs = allDocs.filter(d => d.doc_type === 'faq')
+  const corrections = allDocs.filter(d => d.doc_type === 'correction')
 
   // Find or create conversation
   let messageCount = 0
@@ -440,6 +443,10 @@ ${pageLine}
 Tom de voz: ${a.tone_of_voice ?? 'amigável e consultivo'}
 
 ${docs.length > 0 ? `Documentos de referência:\n${docs.map(d => d.extracted_text).join('\n\n')}` : ''}
+
+${faqs.length > 0 ? `Perguntas frequentes (use estas respostas quando o lead perguntar algo parecido):\n${faqs.map(d => d.extracted_text).join('\n\n')}` : ''}
+
+${corrections.length > 0 ? `⚠️ Correções aprendidas — SIGA SEMPRE, têm prioridade sobre o resto:\n${corrections.map(d => d.extracted_text).join('\n\n')}` : ''}
 
 Seu objetivo é: ${objectiveInstructions(a)}
 

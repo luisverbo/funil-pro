@@ -241,6 +241,84 @@ export async function deleteAgent(id: string): Promise<{ success: boolean; error
   }
 }
 
+// ─── Perguntas & Respostas (treino estruturado) ───────────────────────────────
+
+export interface FaqPair { id: string; question: string; answer: string }
+
+export async function listFaqs(agentId: string): Promise<FaqPair[]> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data } = await admin.from('agent_documents')
+      .select('id, file_name, extracted_text')
+      .eq('agent_id', agentId).eq('tenant_id', tenantId).eq('doc_type', 'faq')
+      .order('uploaded_at', { ascending: true })
+    return (data ?? []).map(d => {
+      const text = (d.extracted_text as string) ?? ''
+      const marker = text.indexOf('\nR: ')
+      return {
+        id: d.id,
+        question: (d.file_name as string) ?? '',
+        answer: marker >= 0 ? text.slice(marker + 4) : text,
+      }
+    })
+  } catch { return [] }
+}
+
+export async function addFaq(agentId: string, question: string, answer: string): Promise<{ id?: string; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: agent } = await admin.from('ai_agents').select('id').eq('id', agentId).eq('tenant_id', tenantId).single()
+    if (!agent) return { error: 'Agente não encontrado' }
+    if (!question.trim() || !answer.trim()) return { error: 'Preencha pergunta e resposta' }
+    const { data, error } = await admin.from('agent_documents').insert({
+      agent_id: agentId, tenant_id: tenantId, doc_type: 'faq',
+      file_name: question.trim(),
+      extracted_text: `P: ${question.trim()}\nR: ${answer.trim()}`,
+    }).select('id').single()
+    if (error) return { error: error.message }
+    return { id: data?.id }
+  } catch (err) { return { error: String(err) } }
+}
+
+export async function deleteFaq(faqId: string): Promise<{ success: boolean }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    await admin.from('agent_documents').delete().eq('id', faqId).eq('tenant_id', tenantId)
+    return { success: true }
+  } catch { return { success: false } }
+}
+
+// ─── Feedback loop (correções aprendidas) ──────────────────────────────────────
+
+export async function setMessageFeedback(messageId: string, feedback: 'good' | 'bad' | null): Promise<{ success: boolean }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    await admin.from('agent_messages').update({ feedback }).eq('id', messageId).eq('tenant_id', tenantId)
+    return { success: true }
+  } catch { return { success: false } }
+}
+
+// Registra a correção: "quando o lead disser X, responda Y" — vira treino do agente
+export async function addCorrection(agentId: string, context: string, betterAnswer: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: agent } = await admin.from('ai_agents').select('id').eq('id', agentId).eq('tenant_id', tenantId).single()
+    if (!agent) return { success: false, error: 'Agente não encontrado' }
+    if (!betterAnswer.trim()) return { success: false, error: 'Escreva a resposta correta' }
+    await admin.from('agent_documents').insert({
+      agent_id: agentId, tenant_id: tenantId, doc_type: 'correction',
+      file_name: `Correção: ${context.slice(0, 60)}`,
+      extracted_text: `Quando o lead disser algo como "${context.trim()}", responda no espírito de: ${betterAnswer.trim()}`,
+    })
+    return { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
 export async function activateAgent(id: string) { return setStatus(id, 'active') }
 export async function pauseAgent(id: string) { return setStatus(id, 'paused') }
 
@@ -358,7 +436,7 @@ export async function listConversations(
 
 export async function getConversation(conversationId: string): Promise<{
   conversation?: { id: string; status: string; qualification_score: number | null; outcome_summary: string | null; started_at: string; lead_name: string | null }
-  messages?: { id: string; role: string; content: string; created_at: string }[]
+  messages?: { id: string; role: string; content: string; created_at: string; feedback: string | null }[]
   error?: string
 }> {
   try {
@@ -371,7 +449,7 @@ export async function getConversation(conversationId: string): Promise<{
     if (error || !conv) return { error: 'not_found' }
     const { data: messages } = await supabase
       .from('agent_messages')
-      .select('id, role, content, created_at')
+      .select('id, role, content, created_at, feedback')
       .eq('conversation_id', conversationId).eq('tenant_id', tenantId)
       .order('created_at', { ascending: true })
     const leadRel = (conv as { leads?: { name?: string | null } | { name?: string | null }[] }).leads
