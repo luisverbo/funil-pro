@@ -13,6 +13,8 @@ interface AgentRow {
   product_name: string | null
   product_description: string | null
   product_price_cents: number | null
+  product_prices: { id: string; label: string; value_cents: number }[] | null
+  product_page_url: string | null
   tone_of_voice: string | null
   greeting_message: string | null
   qualification_rules: string | null
@@ -355,11 +357,16 @@ export async function processAgentMessage(
   }
 
   // Build system prompt
-  const priceLine = a.product_price_cents ? `Preço: R$ ${(a.product_price_cents / 100).toFixed(2)}` : ''
+  const prices = a.product_prices && a.product_prices.length > 0
+    ? a.product_prices.map(p => `${p.label}: R$ ${(p.value_cents / 100).toFixed(2).replace('.', ',')}`).join(' | ')
+    : a.product_price_cents ? `R$ ${(a.product_price_cents / 100).toFixed(2).replace('.', ',')}` : ''
+  const priceLine = prices ? `Preços disponíveis: ${prices}` : ''
+  const pageLine = a.product_page_url ? `Link da página do produto: ${a.product_page_url}` : ''
   const systemPrompt = `Você é um assistente de vendas chamado ${a.name} para o produto: ${a.product_name ?? ''}
 
 Descrição do produto: ${a.product_description ?? ''}
 ${priceLine}
+${pageLine}
 
 Tom de voz: ${a.tone_of_voice ?? 'amigável e consultivo'}
 

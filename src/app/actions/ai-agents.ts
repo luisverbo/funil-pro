@@ -12,6 +12,12 @@ export type AgentStatus = 'draft' | 'active' | 'paused'
 export type AgentMode = 'standalone' | 'funnel_block'
 export type AgentObjective = 'qualify' | 'route_to_funnel' | 'sell_direct'
 
+export interface ProductPrice {
+  id: string
+  label: string   // ex: "Mensal", "Anual", "Avulso"
+  value_cents: number
+}
+
 export interface AgentInput {
   name: string
   mode?: AgentMode
@@ -19,6 +25,8 @@ export interface AgentInput {
   product_name?: string | null
   product_description?: string | null
   product_price_cents?: number | null
+  product_prices?: ProductPrice[] | null
+  product_page_url?: string | null
   tone_of_voice?: string | null
   greeting_message?: string | null
   qualification_rules?: string | null
@@ -79,7 +87,7 @@ const ALLOWED_FIELDS: (keyof AgentInput)[] = [
   'tone_of_voice', 'greeting_message', 'qualification_rules', 'objection_handling', 'payment_link',
   'target_funnel_id', 'max_messages_per_conversation', 'handoff_to_human_keywords',
   'business_hours_only', 'business_hours_start', 'business_hours_end', 'whatsapp_instance_id',
-  'max_activations_per_month',
+  'max_activations_per_month', 'product_prices', 'product_page_url',
 ]
 
 function sanitize(data: Partial<AgentInput>): Record<string, unknown> {

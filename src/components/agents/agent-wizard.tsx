@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef } from 'react'
-import type { Agent, AgentInput, AgentMode, AgentObjective } from '@/app/actions/ai-agents'
+import type { Agent, AgentInput, AgentMode, AgentObjective, ProductPrice } from '@/app/actions/ai-agents'
 import { createAgent, updateAgent } from '@/app/actions/ai-agents'
 import AgentTestChat from './agent-test-chat'
 
@@ -47,6 +47,8 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     product_name: agent?.product_name ?? '',
     product_description: agent?.product_description ?? '',
     product_price_cents: agent?.product_price_cents ?? null,
+    product_prices: (agent as Agent & { product_prices?: ProductPrice[] })?.product_prices ?? [],
+    product_page_url: (agent as Agent & { product_page_url?: string })?.product_page_url ?? '',
     tone_of_voice: agent?.tone_of_voice ?? 'amigável e consultivo',
     greeting_message: agent?.greeting_message ?? '',
     qualification_rules: agent?.qualification_rules ?? '',
@@ -57,9 +59,13 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'atendente', 'pessoa real'],
   })
 
+  // kept for summary display of the first/main price
   const [priceInput, setPriceInput] = useState(
     agent?.product_price_cents ? (agent.product_price_cents / 100).toFixed(2) : ''
   )
+  // new price being typed in the multi-price adder
+  const [newPriceLabel, setNewPriceLabel] = useState('')
+  const [newPriceValue, setNewPriceValue] = useState('')
   const [customTone, setCustomTone] = useState(
     agent?.tone_of_voice && !TONES.includes(agent.tone_of_voice) ? agent.tone_of_voice : ''
   )
@@ -72,10 +78,29 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     setForm(f => ({ ...f, [key]: value }))
   }
 
+  function addPrice() {
+    const val = newPriceValue.trim().replace(',', '.')
+    if (!val || isNaN(parseFloat(val))) return
+    const entry: ProductPrice = {
+      id: crypto.randomUUID(),
+      label: newPriceLabel.trim() || 'Preço',
+      value_cents: Math.round(parseFloat(val) * 100),
+    }
+    set('product_prices', [...(form.product_prices ?? []), entry])
+    setNewPriceLabel('')
+    setNewPriceValue('')
+  }
+
+  function removePrice(id: string) {
+    set('product_prices', (form.product_prices ?? []).filter(p => p.id !== id))
+  }
+
   function buildPayload(): AgentInput {
-    const price = priceInput.trim() ? Math.round(parseFloat(priceInput.replace(',', '.')) * 100) : null
+    // product_price_cents = first price for backwards compat
+    const prices = form.product_prices ?? []
+    const firstPrice = prices.length > 0 ? prices[0].value_cents : (priceInput.trim() ? Math.round(parseFloat(priceInput.replace(',', '.')) * 100) : null)
     const tone = toneSelect === 'personalizado' ? (customTone || 'personalizado') : toneSelect
-    return { ...form, product_price_cents: price, tone_of_voice: tone }
+    return { ...form, product_price_cents: firstPrice, tone_of_voice: tone }
   }
 
   async function ensureAgentCreated(): Promise<string | undefined> {
@@ -199,8 +224,32 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
               <Field label="Descrição">
                 <textarea className={inputCls + ' h-28'} value={form.product_description ?? ''} onChange={e => set('product_description', e.target.value)} />
               </Field>
-              <Field label="Preço (R$)">
-                <input className={inputCls} value={priceInput} onChange={e => setPriceInput(e.target.value)} placeholder="0,00" />
+              <Field label="Link da página / checkout">
+                <input className={inputCls} value={form.product_page_url ?? ''} onChange={e => set('product_page_url', e.target.value)} placeholder="https://..." />
+                <p className="text-xs text-gray-400 mt-1">O agente pode compartilhar este link quando o lead pedir mais informações.</p>
+              </Field>
+              <Field label="Preços">
+                <div className="flex flex-col gap-2 mb-2">
+                  {(form.product_prices ?? []).map(p => (
+                    <div key={p.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      <span className="font-medium text-gray-700">{p.label}</span>
+                      <span className="text-indigo-600 font-semibold">R$ {(p.value_cents / 100).toFixed(2).replace('.', ',')}</span>
+                      <button type="button" onClick={() => removePrice(p.id)} className="text-gray-400 hover:text-red-500 ml-2">×</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <p className="text-xs text-gray-500 mb-1">Nome do preço (ex: Mensal, Anual)</p>
+                    <input className={inputCls} value={newPriceLabel} onChange={e => setNewPriceLabel(e.target.value)} placeholder="Ex: Mensal" />
+                  </div>
+                  <div className="w-32">
+                    <p className="text-xs text-gray-500 mb-1">Valor (R$)</p>
+                    <input className={inputCls} value={newPriceValue} onChange={e => setNewPriceValue(e.target.value)} placeholder="0,00" onKeyDown={e => e.key === 'Enter' && addPrice()} />
+                  </div>
+                  <button type="button" onClick={addPrice} className="h-10 px-3 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 whitespace-nowrap flex-shrink-0">+ Adicionar</button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Adicione quantos preços quiser (ex: mensal, anual, plano básico, plano premium…)</p>
               </Field>
               <Field label="Documentos de treinamento">
                 {!agentId && !isEdit ? (
@@ -315,7 +364,8 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
               <SummaryRow label="Nome" value={form.name} />
               <SummaryRow label="Modo" value={form.mode === 'standalone' ? 'Standalone' : 'Bloco de funil'} />
               <SummaryRow label="Produto" value={form.product_name || '—'} />
-              <SummaryRow label="Preço" value={priceInput ? `R$ ${priceInput}` : '—'} />
+              <SummaryRow label="Preços" value={(form.product_prices ?? []).length > 0 ? (form.product_prices ?? []).map(p => `${p.label}: R$ ${(p.value_cents/100).toFixed(2).replace('.',',')}`).join(' | ') : '—'} />
+              {form.product_page_url && <SummaryRow label="Link do produto" value={form.product_page_url} />}
               <SummaryRow label="Tom de voz" value={toneSelect === 'personalizado' ? customTone : toneSelect} />
               <SummaryRow label="Objetivo" value={OBJECTIVES.find(o => o.value === form.objective)?.label ?? ''} />
               <SummaryRow label="Documentos" value={`${docs.length} arquivo(s)`} />
