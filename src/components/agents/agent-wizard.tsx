@@ -5,6 +5,7 @@ import type { Agent, AgentInput, AgentMode, AgentObjective, ProductPrice } from 
 import { createAgent, updateAgent } from '@/app/actions/ai-agents'
 import AgentTestChat from './agent-test-chat'
 import { THEME_PRESETS } from '@/lib/quiz/theme'
+import { AGENT_TEMPLATES, type AgentTemplate } from '@/lib/agents/templates'
 
 interface Props {
   agent?: Agent | null
@@ -40,6 +41,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showTest, setShowTest] = useState(false)
+  const [templateChosen, setTemplateChosen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState<AgentInput>({
@@ -89,6 +91,15 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   const lcArr = (k: string): string[] => (Array.isArray(landing[k]) ? landing[k] as string[] : [])
   const lcObj = (k: string): Record<string, unknown> => (landing[k] && typeof landing[k] === 'object' ? landing[k] as Record<string, unknown> : {})
   const setLc = (k: string, v: unknown) => set('landing_config', { ...landing, [k]: v })
+
+  function applyTemplate(t: AgentTemplate) {
+    setForm(f => ({ ...f, ...t.defaults }))
+    if (t.defaults.tone_of_voice) {
+      if (TONES.includes(t.defaults.tone_of_voice)) setToneSelect(t.defaults.tone_of_voice)
+      else { setToneSelect('personalizado'); setCustomTone(t.defaults.tone_of_voice) }
+    }
+    setTemplateChosen(true)
+  }
 
   function addPrice() {
     const val = newPriceValue.trim().replace(',', '.')
@@ -176,6 +187,40 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   }
 
   const canNext = step !== 0 || !!form.name?.trim()
+
+  // Galeria de templates: mostrada só ao criar um novo agente, antes dos passos
+  if (!isEdit && !templateChosen) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+          <div className="px-6 pt-5 pb-3 border-b flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Criar agente IA</h2>
+              <p className="text-sm text-gray-500">Comece com um modelo pronto ou do zero.</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button onClick={() => setTemplateChosen(true)}
+              className="text-left border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-indigo-400 hover:bg-indigo-50/40 transition">
+              <div className="text-2xl mb-1">✨</div>
+              <p className="font-semibold text-gray-800">Começar do zero</p>
+              <p className="text-xs text-gray-500 mt-1">Configure tudo manualmente.</p>
+            </button>
+            {AGENT_TEMPLATES.map(t => (
+              <button key={t.id} onClick={() => applyTemplate(t)}
+                className="text-left border border-gray-200 rounded-xl p-4 hover:border-indigo-400 hover:shadow-md transition">
+                <div className="text-2xl mb-1">{t.emoji}</div>
+                <p className="font-semibold text-gray-800">{t.name}</p>
+                <p className="text-[11px] text-indigo-600 font-medium">{t.niche}</p>
+                <p className="text-xs text-gray-500 mt-1">{t.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
