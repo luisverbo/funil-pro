@@ -43,6 +43,7 @@ export interface AgentInput {
   public_slug?: string | null
   public_enabled?: boolean | null
   landing_config?: Record<string, unknown> | null
+  channels?: string[] | null   // ['whatsapp', 'web'] — null/undefined = ambos
 }
 
 export interface Agent extends AgentInput {

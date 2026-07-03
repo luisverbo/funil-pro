@@ -93,7 +93,7 @@ export async function POST(
   // Check for standalone agent linked to this WA instance
   const { data: standaloneAgent } = await admin
     .from('ai_agents')
-    .select('id, name, status, max_activations_per_month, activations_used')
+    .select('id, name, status, max_activations_per_month, activations_used, channels')
     .eq('whatsapp_instance_id', instanceId)
     .eq('mode', 'standalone')
     .eq('status', 'active')
@@ -184,7 +184,9 @@ export async function POST(
   }
 
   // PRIORITY 2: standalone agent on this WA instance
-  if (standaloneAgent && messageText) {
+  const agentChannels: string[] | null = (standaloneAgent as typeof standaloneAgent & { channels?: string[] | null })?.channels ?? null
+  const whatsappEnabled = !agentChannels || agentChannels.includes('whatsapp')
+  if (standaloneAgent && whatsappEnabled && messageText) {
     try {
       await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead.id })
     } catch (err) {

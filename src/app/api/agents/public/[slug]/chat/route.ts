@@ -35,10 +35,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Resolve agente pelo slug público — NUNCA aceita agentId/tenantId do cliente
     const { data: agent } = await admin
       .from('ai_agents')
-      .select('id, tenant_id, public_enabled, payment_link')
+      .select('id, tenant_id, public_enabled, payment_link, channels')
       .eq('public_slug', slug)
       .maybeSingle()
     if (!agent || !agent.public_enabled) {
+      return NextResponse.json({ error: 'agent_unavailable' }, { status: 404 })
+    }
+    // Se channels estiver definido, verificar se 'web' está habilitado
+    const channels: string[] | null = (agent as typeof agent & { channels?: string[] | null }).channels ?? null
+    if (channels && !channels.includes('web')) {
       return NextResponse.json({ error: 'agent_unavailable' }, { status: 404 })
     }
 

@@ -84,6 +84,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     landing_config: (agent as Agent & { landing_config?: Record<string, unknown> })?.landing_config ?? {},
     whatsapp_instance_id: agent?.whatsapp_instance_id ?? null,
     handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'atendente', 'pessoa real'],
+    channels: (agent as Agent & { channels?: string[] })?.channels ?? ['whatsapp', 'web'],
   })
 
   // kept for summary display of the first/main price
@@ -285,7 +286,29 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   ))}
                 </div>
               </Field>
-              {form.mode === 'standalone' && (
+              <Field label="Canais de atendimento">
+                <div className="flex flex-col gap-2">
+                  {[
+                    { key: 'whatsapp', label: '💬 WhatsApp', desc: 'Responde mensagens da instância conectada' },
+                    { key: 'web', label: '🌐 Chat Web', desc: 'Página pública /a/slug para visitantes' },
+                  ].map(c => {
+                    const active = (form.channels ?? ['whatsapp', 'web']).includes(c.key)
+                    return (
+                      <label key={c.key} className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer ${active ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
+                        <input type="checkbox" checked={active} onChange={e => {
+                          const prev = form.channels ?? ['whatsapp', 'web']
+                          set('channels', e.target.checked ? [...prev, c.key] : prev.filter(x => x !== c.key))
+                        }} className="w-4 h-4 accent-indigo-600" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{c.label}</p>
+                          <p className="text-xs text-gray-500">{c.desc}</p>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </Field>
+              {form.mode === 'standalone' && (form.channels ?? ['whatsapp', 'web']).includes('whatsapp') && (
                 <Field label="Instância WhatsApp">
                   <select className={inputCls} value={form.whatsapp_instance_id ?? ''} onChange={e => set('whatsapp_instance_id', e.target.value || null)}>
                     <option value="">Nenhuma</option>
