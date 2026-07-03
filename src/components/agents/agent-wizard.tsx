@@ -292,18 +292,17 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                     { key: 'whatsapp', label: '💬 WhatsApp', desc: 'Responde mensagens da instância conectada' },
                     { key: 'web', label: '🌐 Chat Web', desc: 'Página pública /a/slug para visitantes' },
                   ].map(c => {
-                    const active = (form.channels ?? ['whatsapp', 'web']).includes(c.key)
+                    const ch = form.channels ?? ['whatsapp', 'web']
+                    const active = ch.includes(c.key)
+                    const toggle = () => set('channels', active ? ch.filter(x => x !== c.key) : [...ch, c.key])
                     return (
-                      <label key={c.key} className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer ${active ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
-                        <input type="checkbox" checked={active} onChange={e => {
-                          const prev = form.channels ?? ['whatsapp', 'web']
-                          set('channels', e.target.checked ? [...prev, c.key] : prev.filter(x => x !== c.key))
-                        }} className="w-4 h-4 accent-indigo-600" />
+                      <div key={c.key} onClick={toggle} className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer ${active ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`}>
+                        <input type="checkbox" checked={active} onChange={toggle} className="w-4 h-4 accent-indigo-600" onClick={e => e.stopPropagation()} />
                         <div>
                           <p className="text-sm font-medium text-gray-800">{c.label}</p>
                           <p className="text-xs text-gray-500">{c.desc}</p>
                         </div>
-                      </label>
+                      </div>
                     )
                   })}
                 </div>
