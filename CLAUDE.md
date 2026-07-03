@@ -483,8 +483,15 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-07-02 — Correção completa do agente IA + Quiz Builder nível Inlead
+**Última atualização:** 2026-07-03 — Quiz Builder paridade total com Inlead (blocos + texto rico + timing)
 **O que foi feito:**
+- Quiz Builder paridade Inlead (2026-07-03):
+  - **17 blocos novos** em `quiz-v2.ts`/`quiz-editor-v2.tsx`/`quiz-renderer-v2.tsx`: Data/Altura/Peso (Formulário), Vídeo-resposta (Quiz), Áudio (Mídia), Alerta/Notificação/Loading/Nível (categoria Atenção), Preço (Landing), Checklist/Antes-Depois/Carrossel (Estrutura), Métricas/Gráficos (Gráficos, CSS puro sem lib), Espaço/HTML-Script (Personalização)
+  - **Texto rico flutuante**: `src/components/quiz/rich-text-field.tsx` — contentEditable + toolbar flutuante (B/I/U/tachado, alinhamento, cor, tamanho, link, lista) via `document.execCommand`; substitui o textarea cru no bloco Texto
+  - **Aparição temporizada**: `BlockConfig.appear_delay` (segundos) em TODOS os blocos; componente `TimedBlock` no renderer esconde/revela com fade-in; campo "⏱ Aparecer após" no editor
+  - Refactor: `NON_INPUT_BLOCKS`/`LANDING_BLOCKS` Sets centralizados no renderer (antes ~4 arrays hardcoded repetidos) — todo bloco não-pergunta entra neles
+  - Componentes auxiliares no renderer: `NotificationBlock` (prova social rotativa), `LoadingBlock` (barra + auto-advance), `CarouselBlock`, `PieChart` (conic-gradient)
+- Migrations aplicadas no Supabase (2026-07-02): todas as migrations pendentes + bucket `quiz-assets` + `increment_agent_activations` + `activations_reset_at` + plano do tenant = scale — banco 100% em dia com o código
 - Correções agente IA (2026-07-02):
   - **Bug crítico corrigido**: agente standalone não respondia — `sendPartsViaWhatsApp` só resolvia instância via funil; agora resolve via `ai_agents.whatsapp_instance_id` primeiro (leads standalone têm `funnel_id null`)
   - `src/lib/agents/chat.ts` reescrito: `callAnthropic` com retry 429/529, erro explícito se key ausente, erros não viram "resposta" ao lead; reset mensal de `activations_used`; incremento atômico via RPC `increment_agent_activations`; conversa duplicada reaproveitada (unique index parcial); `resumeFunnel` sempre limpa `agent_active`; try/catch por parte no envio WA
