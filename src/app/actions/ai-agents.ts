@@ -40,6 +40,9 @@ export interface AgentInput {
   business_hours_end?: string | null
   whatsapp_instance_id?: string | null
   max_activations_per_month?: number | null
+  public_slug?: string | null
+  public_enabled?: boolean | null
+  landing_config?: Record<string, unknown> | null
 }
 
 export interface Agent extends AgentInput {
@@ -88,6 +91,7 @@ const ALLOWED_FIELDS: (keyof AgentInput)[] = [
   'target_funnel_id', 'max_messages_per_conversation', 'handoff_to_human_keywords',
   'business_hours_only', 'business_hours_start', 'business_hours_end', 'whatsapp_instance_id',
   'max_activations_per_month', 'product_prices', 'product_page_url',
+  'public_slug', 'public_enabled', 'landing_config',
 ]
 
 function sanitize(data: Partial<AgentInput>): Record<string, unknown> {

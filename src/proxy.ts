@@ -8,9 +8,11 @@ const PUBLIC_PREFIXES = [
   '/api/queue/process',
   '/api/track',
   '/api/quiz',
+  '/api/agents/public/',
   '/p/',
   '/f/',
   '/pg/',
+  '/a/',
   '/_next',
   '/favicon.ico',
 ]

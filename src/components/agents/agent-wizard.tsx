@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react'
 import type { Agent, AgentInput, AgentMode, AgentObjective, ProductPrice } from '@/app/actions/ai-agents'
 import { createAgent, updateAgent } from '@/app/actions/ai-agents'
 import AgentTestChat from './agent-test-chat'
+import { THEME_PRESETS } from '@/lib/quiz/theme'
 
 interface Props {
   agent?: Agent | null
@@ -28,7 +29,7 @@ const OBJECTIVES: { value: AgentObjective; label: string; desc: string; emoji: s
   { value: 'sell_direct', label: 'Vender direto', desc: 'Conduz o lead até a compra', emoji: '💰' },
 ]
 
-const STEPS = ['Identidade', 'Produto', 'Personalidade', 'Objetivo', 'Revisão']
+const STEPS = ['Identidade', 'Produto', 'Personalidade', 'Objetivo', 'Landing', 'Revisão']
 
 export default function AgentWizard({ agent, funnels, instances, documents, onClose, onSaved }: Props) {
   const isEdit = !!agent
@@ -56,6 +57,9 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     objection_handling: agent?.objection_handling ?? '',
     payment_link: agent?.payment_link ?? '',
     target_funnel_id: agent?.target_funnel_id ?? null,
+    public_slug: (agent as Agent & { public_slug?: string })?.public_slug ?? null,
+    public_enabled: (agent as Agent & { public_enabled?: boolean })?.public_enabled ?? false,
+    landing_config: (agent as Agent & { landing_config?: Record<string, unknown> })?.landing_config ?? {},
     whatsapp_instance_id: agent?.whatsapp_instance_id ?? null,
     handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'atendente', 'pessoa real'],
   })
@@ -78,6 +82,13 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   function set<K extends keyof AgentInput>(key: K, value: AgentInput[K]) {
     setForm(f => ({ ...f, [key]: value }))
   }
+
+  // Helpers para landing_config (objeto jsonb livre)
+  const landing = (form.landing_config ?? {}) as Record<string, unknown>
+  const lc = (k: string): string => (typeof landing[k] === 'string' ? landing[k] as string : '')
+  const lcArr = (k: string): string[] => (Array.isArray(landing[k]) ? landing[k] as string[] : [])
+  const lcObj = (k: string): Record<string, unknown> => (landing[k] && typeof landing[k] === 'object' ? landing[k] as Record<string, unknown> : {})
+  const setLc = (k: string, v: unknown) => set('landing_config', { ...landing, [k]: v })
 
   function addPrice() {
     const val = newPriceValue.trim().replace(',', '.')
@@ -365,6 +376,67 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
           )}
 
           {step === 4 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Página de conversa pública</p>
+                  <p className="text-xs text-gray-500">Uma landing estilo chat onde o agente atende visitantes e captura leads.</p>
+                </div>
+                <label className="inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" checked={!!form.public_enabled}
+                    onChange={e => {
+                      set('public_enabled', e.target.checked)
+                      if (e.target.checked && !form.public_slug) {
+                        const s = (form.name || 'agente').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + Math.random().toString(36).slice(2, 5)
+                        set('public_slug', s)
+                      }
+                    }} />
+                  <div className="w-11 h-6 bg-gray-300 peer-checked:bg-indigo-600 rounded-full peer relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5" />
+                </label>
+              </div>
+
+              {form.public_enabled && (
+                <>
+                  <Field label="Endereço da página (slug)">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-400">/a/</span>
+                      <input className={inputCls} value={form.public_slug ?? ''} onChange={e => set('public_slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="meu-agente" />
+                    </div>
+                    {form.public_slug && (
+                      <button type="button"
+                        onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/a/${form.public_slug}`); }}
+                        className="mt-2 text-xs text-indigo-600 hover:underline">
+                        📋 Copiar link: {typeof window !== 'undefined' ? window.location.origin : ''}/a/{form.public_slug}
+                      </button>
+                    )}
+                  </Field>
+                  <Field label="Título de boas-vindas (opcional)">
+                    <input className={inputCls} value={lc('headline')} onChange={e => setLc('headline', e.target.value)} placeholder="Tire suas dúvidas com a gente" />
+                  </Field>
+                  <Field label="Respostas rápidas (chips) — uma por linha">
+                    <textarea className={inputCls + ' h-20'} value={(lcArr('quick_replies')).join('\n')}
+                      onChange={e => setLc('quick_replies', e.target.value.split('\n').map(s => s.trim()).filter(Boolean))}
+                      placeholder={'Quero saber o preço\nComo funciona?\nQuero comprar'} />
+                  </Field>
+                  <Field label="Quando pedir o contato do visitante">
+                    <select className={inputCls} value={lc('capture_mode') || 'inline'} onChange={e => setLc('capture_mode', e.target.value)}>
+                      <option value="inline">Durante a conversa (recomendado)</option>
+                      <option value="gate">Logo no início (antes de conversar)</option>
+                      <option value="none">Nunca pedir</option>
+                    </select>
+                  </Field>
+                  <Field label="Tema visual">
+                    <select className={inputCls} value={(lcObj('theme').preset as string) || 'clean'}
+                      onChange={e => setLc('theme', { ...THEME_PRESETS[e.target.value] })}>
+                      {Object.entries(THEME_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                  </Field>
+                </>
+              )}
+            </div>
+          )}
+
+          {step === 5 && (
             <div className="flex flex-col gap-3">
               <SummaryRow label="Nome" value={form.name} />
               <SummaryRow label="Modo" value={form.mode === 'standalone' ? 'Standalone' : 'Bloco de funil'} />

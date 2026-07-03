@@ -270,9 +270,15 @@ export async function processAgentMessage(
     leadId?: string
     conversationId?: string
     testMode?: boolean
+    channel?: 'whatsapp' | 'web' | 'test'
   } = {}
 ): Promise<AgentChatResult> {
-  const { leadId, testMode = false } = options
+  const { leadId } = options
+  // channel: 'whatsapp' (default) envia via WA e respeita limites; 'web' (landing) NÃO
+  // envia WA mas respeita limites; 'test' ignora limites e não envia nada.
+  const channel: 'whatsapp' | 'web' | 'test' = options.channel ?? (options.testMode ? 'test' : 'whatsapp')
+  const testMode = channel === 'test'
+  const isWhatsapp = channel === 'whatsapp'
   let { conversationId } = options
   const admin = createAdminClient()
 
@@ -305,7 +311,7 @@ export async function processAgentMessage(
   // Check activation limit
   if (!testMode && a.max_activations_per_month !== null && a.activations_used >= a.max_activations_per_month) {
     const limitMsg = 'Em breve alguém da equipe vai te responder! 🙂'
-    if (leadId) {
+    if (isWhatsapp && leadId) {
       await sendPartsViaWhatsApp(leadId, [limitMsg], admin, a.whatsapp_instance_id)
     }
     throw new Error('activation_limit_reached')
@@ -314,7 +320,7 @@ export async function processAgentMessage(
   // Business hours
   if (!withinBusinessHours(a)) {
     const offHoursMsg = 'Olá! No momento estamos fora do horário de atendimento. Retornaremos assim que possível.'
-    if (!testMode && leadId) {
+    if (isWhatsapp && leadId) {
       await sendPartsViaWhatsApp(leadId, [offHoursMsg], admin, a.whatsapp_instance_id)
     }
     return {
@@ -362,7 +368,7 @@ export async function processAgentMessage(
   if (!conversationId) {
     const { data: newConv, error: convError } = await admin
       .from('agent_conversations')
-      .insert({ agent_id: agentId, tenant_id: a.tenant_id, lead_id: leadId ?? null, status: 'active', message_count: 0 })
+      .insert({ agent_id: agentId, tenant_id: a.tenant_id, lead_id: leadId ?? null, status: 'active', message_count: 0, channel })
       .select('id').single()
 
     if (!newConv) {
@@ -481,8 +487,8 @@ Se ainda não atingiu o objetivo, use action "continue".`
   const parts = fullReply.split('[QUEBRA]').map(p => p.trim()).filter(Boolean)
   const reply = parts.join('\n')
 
-  // Send via WhatsApp (real mode)
-  if (!testMode && leadId) {
+  // Send via WhatsApp (só no canal WhatsApp; web devolve as partes ao navegador)
+  if (isWhatsapp && leadId) {
     await sendPartsViaWhatsApp(leadId, parts, admin, a.whatsapp_instance_id)
   }
 
