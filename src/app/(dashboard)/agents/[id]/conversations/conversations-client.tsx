@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import Link from 'next/link'
-import { listConversations, getConversation, setMessageFeedback, addCorrection } from '@/app/actions/ai-agents'
+import { listConversations, getConversation, setMessageFeedback, addCorrection, deleteConversations } from '@/app/actions/ai-agents'
 
 type Conversation = {
   id: string; status: string; qualification_score: number | null
@@ -36,14 +36,15 @@ interface Props {
 export default function ConversationsClient({ agentId, agentName, initialConversations, total }: Props) {
   const [conversations, setConversations] = useState(initialConversations)
   const [filter, setFilter] = useState('')
-  const [drawer, setDrawer] = useState<{ status: string; lead_name: string | null; score: number | null; summary: string | null } | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+  const [drawer, setDrawer] = useState<{ id: string; status: string; lead_name: string | null; score: number | null; summary: string | null } | null>(null)
   const [messages, setMessages] = useState<{ id: string; role: string; content: string; feedback?: string | null }[]>([])
   const [correcting, setCorrecting] = useState<{ msgId: string; context: string; original: string } | null>(null)
   const [correctionText, setCorrectionText] = useState('')
   const [savingCorrection, setSavingCorrection] = useState(false)
 
   async function markBad(msgId: string, idx: number) {
-    // contexto = a última mensagem do lead antes desta resposta do agente
     let context = ''
     for (let i = idx - 1; i >= 0; i--) { if (messages[i].role === 'lead') { context = messages[i].content; break } }
     await setMessageFeedback(msgId, 'bad')
@@ -62,6 +63,7 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
 
   async function applyFilter(f: string) {
     setFilter(f)
+    setSelected(new Set())
     const { conversations: c } = await listConversations(agentId, { status: f || undefined, page: 0, pageSize: 50 })
     setConversations(c)
   }
@@ -69,9 +71,42 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
   async function openConversation(id: string) {
     const { conversation, messages: m } = await getConversation(id)
     if (conversation) {
-      setDrawer({ status: conversation.status, lead_name: conversation.lead_name, score: conversation.qualification_score, summary: conversation.outcome_summary })
+      setDrawer({ id: conversation.id, status: conversation.status, lead_name: conversation.lead_name, score: conversation.qualification_score, summary: conversation.outcome_summary })
       setMessages(m ?? [])
     }
+  }
+
+  function toggleSelect(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (selected.size === conversations.length) setSelected(new Set())
+    else setSelected(new Set(conversations.map(c => c.id)))
+  }
+
+  async function deleteSelected() {
+    if (!selected.size) return
+    if (!confirm(`Excluir ${selected.size} conversa(s)? Esta ação não pode ser desfeita.`)) return
+    setDeleting(true)
+    await deleteConversations([...selected])
+    setConversations(c => c.filter(x => !selected.has(x.id)))
+    setSelected(new Set())
+    setDeleting(false)
+  }
+
+  async function deleteOne(id: string) {
+    if (!confirm('Excluir esta conversa? Esta ação não pode ser desfeita.')) return
+    setDeleting(true)
+    await deleteConversations([id])
+    setConversations(c => c.filter(x => x.id !== id))
+    setDrawer(null)
+    setDeleting(false)
   }
 
   return (
@@ -83,20 +118,31 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
 
       <div className="flex flex-wrap gap-2 mb-4">
         {FILTERS.map(f => (
-          <button
-            key={f || 'all'}
-            onClick={() => applyFilter(f)}
-            className={`text-xs px-3 py-1.5 rounded-full ${filter === f ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-          >
+          <button key={f || 'all'} onClick={() => applyFilter(f)}
+            className={`text-xs px-3 py-1.5 rounded-full ${filter === f ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {f ? STATUS_LABELS[f] : `Todas (${total})`}
           </button>
         ))}
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
+          <span className="text-sm text-red-700 font-medium">{selected.size} selecionada(s)</span>
+          <button onClick={deleteSelected} disabled={deleting}
+            className="ml-auto text-sm px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+            {deleting ? 'Excluindo…' : '🗑 Excluir selecionadas'}
+          </button>
+        </div>
+      )}
+
       <div className="border rounded-xl overflow-hidden bg-white">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-left">
             <tr>
+              <th className="px-3 py-2 w-8">
+                <input type="checkbox" checked={conversations.length > 0 && selected.size === conversations.length}
+                  onChange={toggleAll} className="w-4 h-4 accent-indigo-600" />
+              </th>
               <th className="px-4 py-2 font-medium">Lead</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2 font-medium">Score</th>
@@ -107,9 +153,12 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
           </thead>
           <tbody>
             {conversations.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Nenhuma conversa</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Nenhuma conversa</td></tr>
             ) : conversations.map(c => (
               <tr key={c.id} onClick={() => openConversation(c.id)} className="border-t hover:bg-gray-50 cursor-pointer">
+                <td className="px-3 py-2.5" onClick={e => toggleSelect(c.id, e)}>
+                  <input type="checkbox" checked={selected.has(c.id)} onChange={() => {}} className="w-4 h-4 accent-indigo-600" />
+                </td>
                 <td className="px-4 py-2.5">{c.lead_name ?? 'Anônimo'}</td>
                 <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLS[c.status] ?? 'bg-gray-100'}`}>{STATUS_LABELS[c.status] ?? c.status}</span></td>
                 <td className="px-4 py-2.5">{c.qualification_score ?? '—'}</td>
@@ -132,7 +181,13 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
                 <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLS[drawer.status] ?? 'bg-gray-100'}`}>{STATUS_LABELS[drawer.status] ?? drawer.status}</span>
                 {drawer.score != null && <span className="ml-2 text-xs text-gray-500">Score: {drawer.score}</span>}
               </div>
-              <button onClick={() => setDrawer(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => deleteOne(drawer.id)} disabled={deleting}
+                  className="text-sm px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
+                  🗑 Excluir
+                </button>
+                <button onClick={() => setDrawer(null)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+              </div>
             </div>
             {drawer.summary && <div className="px-5 py-2 bg-gray-50 text-xs text-gray-600 border-b">{drawer.summary}</div>}
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 bg-gray-50">

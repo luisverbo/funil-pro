@@ -92,7 +92,7 @@ const ALLOWED_FIELDS: (keyof AgentInput)[] = [
   'target_funnel_id', 'max_messages_per_conversation', 'handoff_to_human_keywords',
   'business_hours_only', 'business_hours_start', 'business_hours_end', 'whatsapp_instance_id',
   'max_activations_per_month', 'product_prices', 'product_page_url',
-  'public_slug', 'public_enabled', 'landing_config',
+  'public_slug', 'public_enabled', 'landing_config', 'channels',
 ]
 
 function sanitize(data: Partial<AgentInput>): Record<string, unknown> {
@@ -465,5 +465,24 @@ export async function getConversation(conversationId: string): Promise<{
     }
   } catch (err) {
     return { error: String(err) }
+  }
+}
+
+export async function deleteConversations(conversationIds: string[]): Promise<{ success: boolean; error?: string }> {
+  if (!conversationIds.length) return { success: true }
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    await supabase.from('agent_messages').delete().in('conversation_id', conversationIds)
+    const { error } = await supabase
+      .from('agent_conversations')
+      .delete()
+      .in('id', conversationIds)
+      .eq('tenant_id', tenantId)
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/agents')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
   }
 }
