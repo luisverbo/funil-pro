@@ -540,6 +540,11 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                       {Object.entries(THEME_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
                   </Field>
+                  <Field label="Pixel do Facebook (ID)">
+                    <input className={inputCls} value={lc('pixel_id')} onChange={e => setLc('pixel_id', e.target.value.trim())}
+                      placeholder="Ex: 1234567890123456" />
+                    <p className="text-xs text-gray-400 mt-1">Dispara PageView ao abrir, Lead ao capturar contato e InitiateCheckout no botão de compra.</p>
+                  </Field>
                 </>
               )}
             </div>
