@@ -1188,7 +1188,8 @@ function BlockEditor({
       {block.type === 'text_block' && (
         <div>
           <label className={labelCls}>Conteúdo</label>
-          <RichTextField value={config.content ?? ''} onChange={html => setConfigKey('content', html)} placeholder="Digite seu texto..." />
+          {/* key={block.id} força remontar ao trocar de bloco — senão o innerHTML (inicializado só no mount) mantém o texto do bloco anterior e o grava no novo */}
+          <RichTextField key={block.id} value={config.content ?? ''} onChange={html => setConfigKey('content', html)} placeholder="Digite seu texto..." />
         </div>
       )}
 

@@ -412,13 +412,9 @@ export async function loadQuizV2(pageId: string): Promise<{
   try {
     const tenantId = await getTenantId()
     const supabase = await getSupabase()
-    const admin = createAdminClient()
 
-    // Ensure quiz_data column exists (idempotent) — silently ignore if RPC absent
-    try {
-      await admin.rpc('exec_sql' as never, { sql: 'ALTER TABLE pages ADD COLUMN IF NOT EXISTS quiz_data jsonb;' })
-    } catch { /* column already exists or RPC not available */ }
-
+    // A coluna quiz_data já existe via migration — não rodar DDL por request
+    // (o antigo rpc('exec_sql') era vetor de SQL arbitrário + lock a cada carga do editor).
     const { data: page, error: pageError } = await supabase
       .from('pages')
       .select('id, title, slug, published, quiz_data')

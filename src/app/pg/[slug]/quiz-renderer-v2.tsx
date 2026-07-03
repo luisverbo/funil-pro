@@ -27,12 +27,15 @@ const LANDING_BLOCKS = new Set([
   'metrics','chart','spacer','html_embed',
 ])
 
-// Envolve um bloco para aparecer só depois de `delay` segundos (com fade-in)
-function TimedBlock({ delay, children }: { delay?: number; children: React.ReactNode }) {
+// Envolve um bloco para aparecer só depois de `delay` segundos (com fade-in).
+// Avisa o pai (onReveal) quando revela, para a validação só considerar blocos visíveis.
+function TimedBlock({ delay, onReveal, children }: { delay?: number; onReveal?: () => void; children: React.ReactNode }) {
   const [show, setShow] = useState(!delay || delay <= 0)
+  const revealCb = useRef(onReveal)
+  revealCb.current = onReveal
   useEffect(() => {
-    if (!delay || delay <= 0) return
-    const t = setTimeout(() => setShow(true), delay * 1000)
+    if (!delay || delay <= 0) { revealCb.current?.(); return }
+    const t = setTimeout(() => { setShow(true); revealCb.current?.() }, delay * 1000)
     return () => clearTimeout(t)
   }, [delay])
   if (!show) return null
@@ -278,7 +281,16 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const [phase, setPhase] = useState<'answering' | 'submitting' | 'done'>('answering')
   const [resultBlock, setResultBlock] = useState<QuizBlock | null>(null)
   const [transitionKey, setTransitionKey] = useState(0)
+  // Blocos com appear_delay que já foram revelados — usado para não validar/errar
+  // um obrigatório que ainda está escondido (senão o quiz trava sem feedback).
+  const [revealedBlocks, setRevealedBlocks] = useState<Set<string>>(new Set())
   const captureRef = useRef<{ name: string; email: string; phone: string }>({ name: '', email: '', phone: '' })
+
+  function isRevealed(block: QuizBlock): boolean {
+    const d = block.config.appear_delay
+    return !d || d <= 0 || revealedBlocks.has(block.id)
+  }
+  const markRevealed = (id: string) => setRevealedBlocks(prev => prev.has(id) ? prev : new Set(prev).add(id))
 
   const tracker = useTracker(pageId)
 
@@ -325,10 +337,11 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Track page views
+  // Track page views + reseta blocos revelados ao entrar em cada página
   useEffect(() => {
     const currentPage = pages[pageIdx]
     if (!currentPage) return
+    setRevealedBlocks(new Set())
     tracker.track('page_viewed', currentPage.id, null, {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIdx, pages])
@@ -391,7 +404,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
     const newErrors: Record<string, string> = {}
     for (const block of page.blocks) {
-      if (block.config.required && !NON_INPUT_BLOCKS.has(block.type)) {
+      if (block.config.required && !NON_INPUT_BLOCKS.has(block.type) && isRevealed(block)) {
         const val = answers[block.id]
         if (val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)) {
           newErrors[block.id] = 'Campo obrigatório'
@@ -499,7 +512,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     if (block.type === 'result' || phase !== 'answering') return null
 
     return (
-      <TimedBlock key={block.id} delay={config.appear_delay}>
+      <TimedBlock key={block.id} delay={config.appear_delay} onReveal={() => markRevealed(block.id)}>
       <div>
         {['single_choice', 'multi_choice', 'yes_no'].includes(block.type) && (
           <div style={{ background: config.bg_color || undefined }}>
@@ -983,41 +996,46 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
   // Used for auto-advance: ensures answers state has latest value
   function handleNextWithAnswer(blockId: string, value: unknown) {
-    setAnswers(prev => {
-      const updated = { ...prev, [blockId]: value }
-      // Re-run handleNext logic inline with updated answers
-      const page = pages[pageIdx]
-      const newErrors: Record<string, string> = {}
-      for (const block of page.blocks) {
-        if (block.config.required && !['single_choice','yes_no'].includes(block.type) && !NON_INPUT_BLOCKS.has(block.type)) {
-          const v = updated[block.id]
-          if (v === undefined || v === null || v === '') newErrors[block.id] = 'Campo obrigatório'
-        }
-      }
-      if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return prev }
+    // Calcula tudo FORA do updater do setAnswers — efeitos colaterais dentro do
+    // updater rodam 2x em StrictMode/re-render (score dobrado, submit duplicado, avanço duplo).
+    const updated = { ...answers, [blockId]: value }
+    const page = pages[pageIdx]
 
-      let pageScore = 0
-      if (['single_choice','yes_no'].includes(page.blocks.find(b => b.id === blockId)?.type ?? '')) {
-        const chosen = (page.blocks.find(b => b.id === blockId)?.config.options ?? []).find(o => o.label === value)
-        pageScore += chosen?.points ?? 0
+    // Só valida blocos JÁ REVELADOS (appear_delay pode esconder um obrigatório)
+    const newErrors: Record<string, string> = {}
+    for (const block of page.blocks) {
+      if (block.config.required && !['single_choice','yes_no'].includes(block.type)
+          && !NON_INPUT_BLOCKS.has(block.type) && isRevealed(block)) {
+        const v = updated[block.id]
+        if (v === undefined || v === null || v === '') newErrors[block.id] = 'Campo obrigatório'
       }
-      const newScore = score + pageScore
-      setScore(newScore)
+    }
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return }
+    setErrors({})
 
-      const resultBlk = page.blocks.find(b => b.type === 'result')
-      if (resultBlk) { setResultBlock(resultBlk); submitResult(resultBlk, newScore, leadData); return updated }
+    setAnswers(updated)
 
-      const next = resolveNextPage(pageIdx, updated, newScore)
-      if (next === 'result') {
-        const rb = resultBlock ?? pages.flatMap(p => p.blocks).find(b => b.type === 'result')
-        if (rb) { setResultBlock(rb); submitResult(rb, newScore, leadData) }
-        return updated
-      }
-      if (next === 'end') { setPhase('done'); return updated }
-      setTransitionKey(k => k + 1)
-      setPageIdx(next as number)
-      return updated
-    })
+    let pageScore = 0
+    const answeredBlock = page.blocks.find(b => b.id === blockId)
+    if (answeredBlock && ['single_choice','yes_no'].includes(answeredBlock.type)) {
+      const chosen = (answeredBlock.config.options ?? []).find(o => o.id === value || o.label === value)
+      pageScore += chosen?.points ?? 0
+    }
+    const newScore = score + pageScore
+    setScore(newScore)
+
+    const resultBlk = page.blocks.find(b => b.type === 'result')
+    if (resultBlk) { setResultBlock(resultBlk); submitResult(resultBlk, newScore, leadData); return }
+
+    const next = resolveNextPage(pageIdx, updated, newScore)
+    if (next === 'result') {
+      const rb = resultBlock ?? pages.flatMap(p => p.blocks).find(b => b.type === 'result')
+      if (rb) { setResultBlock(rb); submitResult(rb, newScore, leadData) }
+      return
+    }
+    if (next === 'end') { setPhase('done'); return }
+    setTransitionKey(k => k + 1)
+    setPageIdx(next as number)
   }
 
   const hasChoiceAutoAdvance = currentPage?.blocks.some(b => ['single_choice','yes_no'].includes(b.type))

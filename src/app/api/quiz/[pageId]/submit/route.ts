@@ -7,15 +7,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const body = await request.json()
-    const { answers, leadData, result_profile, funnel_id, tenantId } = body as {
+    const { answers, leadData, result_profile, funnel_id } = body as {
       answers: Record<string, unknown>
       leadData: { name?: string; email?: string; phone?: string }
       result_profile: string | null
       funnel_id: string | null
-      tenantId: string
     }
 
     const admin = createAdminClient()
+
+    // SEGURANÇA: o tenant é derivado da própria página (server-side), NUNCA do body.
+    // Isso impede que um visitante forje um tenantId e escreva em outro tenant.
+    const { data: page } = await admin
+      .from('pages')
+      .select('tenant_id')
+      .eq('id', pageId)
+      .single()
+    if (!page) {
+      return NextResponse.json({ success: false, error: 'page_not_found' }, { status: 404 })
+    }
+    const tenantId: string = page.tenant_id
 
     // Find or create lead
     let leadId: string | null = null
@@ -24,13 +35,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const query = admin.from('leads').select('id').eq('tenant_id', tenantId)
       if (leadData.phone) query.eq('phone', leadData.phone)
       else if (leadData.email) query.eq('email', leadData.email)
-      const { data: existing } = await query.limit(1).single()
+      const { data: existing } = await query.limit(1).maybeSingle()
 
       if (existing) {
         leadId = existing.id
         await admin.from('leads').update({
           name: leadData.name ?? undefined,
           email: leadData.email ?? undefined,
+          phone: leadData.phone ?? undefined,
           metadata: answers,
         }).eq('id', leadId)
       } else {
@@ -103,8 +115,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     }
 
-    // Update conversions count
-    await admin.from('pages').update({ conversions_count: admin.rpc('increment_by_one' as never) }).eq('id', pageId)
+    // Update conversions count (RPC atômico — antes passava um query-builder como valor e nunca contava)
+    await admin.rpc('increment_page_conversions', { p_page_id: pageId })
 
     return NextResponse.json({ success: true, lead_id: leadId })
   } catch (err) {
