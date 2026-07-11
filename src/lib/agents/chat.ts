@@ -435,6 +435,7 @@ export async function processAgentMessage(
   // Find or create conversation
   let messageCount = 0
   let history: { role: string; content: string }[] = []
+  let convStatus: string | null = null
 
   if (!conversationId && leadId) {
     const { data: existing } = await admin
@@ -454,12 +455,32 @@ export async function processAgentMessage(
       .from('agent_conversations').select('id, message_count, status').eq('id', conversationId).single()
     if (conv) {
       messageCount = conv.message_count ?? 0
+      convStatus = conv.status ?? null
       const { data: msgs } = await admin
         .from('agent_messages').select('role, content').eq('conversation_id', conversationId).order('created_at', { ascending: true })
       history = msgs ?? []
     } else {
       conversationId = undefined
     }
+  }
+
+  // Conversa já ENCERRADA (lead dispensado, transferido ou abandonado): não reengaja.
+  // Sem isso, o lead que continua digitando fazia o agente responder pra sempre.
+  const TERMINAL_STOP = ['disqualified', 'handed_to_human', 'abandoned']
+  if (!testMode && convStatus && TERMINAL_STOP.includes(convStatus)) {
+    // Registra a fala do lead (histórico), mas responde só uma vez de forma seca —
+    // o objetivo é encerrar, não puxar conversa. Não chama a IA (economia + para o loop).
+    await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'lead', content: message })
+    const lastAgent = [...history].reverse().find(h => h.role === 'agent')?.content ?? ''
+    const alreadyClosed = /à disposi|por aqui se precisar|qualquer coisa/i.test(lastAgent)
+    if (alreadyClosed) {
+      // já demos o fecho antes → fica em silêncio pra não repetir
+      return { reply: '', parts: [], action: { type: 'continue', data: {} }, conversationId: conversationId ?? '' }
+    }
+    const closer = 'Fico por aqui se precisar, tá? Qualquer coisa é só me chamar 🙏'
+    if (isWhatsapp && leadId) await sendPartsViaWhatsApp(leadId, [closer], admin, a.whatsapp_instance_id).catch(() => {})
+    await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'agent', content: closer })
+    return { reply: closer, parts: [closer], action: { type: 'continue', data: {} }, conversationId: conversationId ?? '' }
   }
 
   if (!conversationId) {
