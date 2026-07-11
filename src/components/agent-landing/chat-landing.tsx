@@ -27,7 +27,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   config: LandingConfig
 }) {
   const theme = resolveTheme(config.theme)
-  const primary = '#6366f1'
+  const primary = theme.accent
 
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
@@ -180,20 +180,21 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
 
       <div className="w-full max-w-lg flex flex-col h-[100dvh]" style={{ background: theme.isDark ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.6)' }}>
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: theme.cardBorder, background: theme.cardBg }}>
+        <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: theme.cardBorder, background: theme.headerBg }}>
           {config.avatar_url
             ? <img src={config.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
-            : <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{ background: primary }}>{agentName.charAt(0).toUpperCase()}</div>}
+            : <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold" style={{ background: theme.isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.25)', color: theme.headerText }}>{agentName.charAt(0).toUpperCase()}</div>}
           <div>
-            <p className="font-semibold text-sm" style={{ color: theme.textColor }}>{agentName}</p>
-            <p className="text-xs flex items-center gap-1" style={{ color: theme.mutedColor }}>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> online
+            <p className="font-semibold text-sm" style={{ color: theme.headerText }}>{agentName}</p>
+            <p className="text-xs flex items-center gap-1" style={{ color: theme.headerText, opacity: 0.8 }}>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> online
             </p>
           </div>
         </div>
 
         {/* Mensagens */}
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-2">
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-2"
+          style={theme.chatBg ? { background: theme.chatBg } : undefined}>
           {messages.map((m, i) => (
             <Bubble key={i} role={m.role} content={m.content} theme={theme} primary={primary} />
           ))}
@@ -286,8 +287,8 @@ function Bubble({ role, content, theme, primary }: { role: 'user' | 'agent'; con
   return (
     <div className={`max-w-[80%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${isUser ? 'self-end' : 'self-start'}`}
       style={{
-        background: isUser ? primary : theme.cardBg,
-        color: isUser ? '#ffffff' : theme.textColor,
+        background: isUser ? theme.userBubbleBg : theme.cardBg,
+        color: isUser ? theme.userBubbleText : theme.textColor,
         borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
         border: isUser ? 'none' : `1px solid ${theme.cardBorder}`,
         overflowWrap: 'anywhere',
@@ -295,7 +296,7 @@ function Bubble({ role, content, theme, primary }: { role: 'user' | 'agent'; con
       }}>
       {parts.map((p, i) => /^https?:\/\//.test(p)
         ? <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="underline font-medium break-all"
-            style={{ color: isUser ? '#ffffff' : primary }}>{p}</a>
+            style={{ color: isUser ? theme.userBubbleText : primary }}>{p}</a>
         : <React.Fragment key={i}>{p}</React.Fragment>
       )}
     </div>

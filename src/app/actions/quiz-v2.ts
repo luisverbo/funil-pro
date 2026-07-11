@@ -270,7 +270,7 @@ export interface QuizPage {
 }
 
 export interface QuizTheme {
-  preset?: 'clean' | 'dark' | 'gradient' | 'minimal' | 'bold'
+  preset?: 'clean' | 'dark' | 'gradient' | 'minimal' | 'bold' | 'whatsapp'
   font?: 'inter' | 'poppins' | 'playfair' | 'montserrat'
   bg_type?: 'color' | 'gradient' | 'image'
   bg_value?: string

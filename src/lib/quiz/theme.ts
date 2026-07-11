@@ -6,6 +6,7 @@ export const THEME_PRESETS: Record<string, QuizTheme & { label: string }> = {
   gradient: { label: 'Gradient', preset: 'gradient', font: 'poppins',    bg_type: 'gradient', bg_value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', card_style: 'glass', button_radius: 'full', dark_mode: true },
   minimal:  { label: 'Minimal',  preset: 'minimal',  font: 'inter',      bg_type: 'color',    bg_value: '#ffffff', card_style: 'flat',   button_radius: 'none', dark_mode: false },
   bold:     { label: 'Bold',     preset: 'bold',     font: 'montserrat', bg_type: 'gradient', bg_value: 'linear-gradient(160deg, #111827 0%, #1f2937 60%, #6366f1 140%)', card_style: 'shadow', button_radius: 'full', dark_mode: true },
+  whatsapp: { label: 'WhatsApp', preset: 'whatsapp', font: 'inter',      bg_type: 'color',    bg_value: '#efeae2', card_style: 'shadow', button_radius: 'full', dark_mode: false },
 }
 
 export const FONT_STACKS: Record<string, string> = {
@@ -35,6 +36,13 @@ export interface ResolvedTheme {
   cardShadow: string
   cardBackdrop: string | null
   buttonRadius: string
+  // Campos usados pelo chat do agente (ChatLanding) — cor de destaque e balões
+  accent: string          // botões, cabeçalho, envio
+  userBubbleBg: string    // balão do lead
+  userBubbleText: string
+  headerBg: string        // fundo do cabeçalho do chat
+  headerText: string      // texto do cabeçalho
+  chatBg: string | null   // fundo da área de mensagens (null = usa o padrão translúcido)
 }
 
 export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
@@ -68,6 +76,15 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
   const radiusMap = { none: '0.25rem', md: '0.75rem', full: '9999px' }
   const buttonRadius = radiusMap[merged.button_radius ?? 'md']
 
+  // Tema WhatsApp: cores próprias de balões, cabeçalho e destaque
+  const isWhatsapp = merged.preset === 'whatsapp'
+  const accent = isWhatsapp ? '#00a884' : '#6366f1'
+  const userBubbleBg = isWhatsapp ? (isDark ? '#005c4b' : '#d9fdd3') : accent
+  const userBubbleText = isWhatsapp ? (isDark ? '#e9edef' : '#111b21') : '#ffffff'
+  const headerBg = isWhatsapp ? (isDark ? '#202c33' : '#008069') : cardBg
+  const headerText = isWhatsapp ? '#ffffff' : (isDark ? '#f1f5f9' : '#111827')
+  const chatBg = isWhatsapp ? (isDark ? '#0b141a' : '#efeae2') : null
+
   return {
     fontFamily: FONT_STACKS[font],
     fontUrl: GOOGLE_FONT_URLS[font] ?? null,
@@ -81,5 +98,11 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
     cardShadow,
     cardBackdrop,
     buttonRadius,
+    accent,
+    userBubbleBg,
+    userBubbleText,
+    headerBg,
+    headerText,
+    chatBg,
   }
 }
