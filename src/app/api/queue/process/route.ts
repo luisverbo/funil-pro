@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processJob, type QueueJob } from '@/lib/queue/processor'
+import { sendMeetingReminders } from '@/lib/agents/remind'
 
 export const maxDuration = 60
 
 async function run() {
   const admin = createAdminClient()
+
+  // Lembretes de reunião pegam carona neste cron (roda todo minuto no VPS) —
+  // o plano Hobby do Vercel só permite cron 1x/dia, então não dá pra ter um próprio.
+  const reminders = await sendMeetingReminders().catch(err => {
+    console.error('[queue/process] lembretes falharam:', String(err)); return { sent: 0 }
+  })
+  if (reminders.sent > 0) console.log(`[queue/process] ${reminders.sent} lembrete(s) de reunião enviados`)
 
   const now = new Date().toISOString()
   const { data: jobs, error: fetchError } = await admin
