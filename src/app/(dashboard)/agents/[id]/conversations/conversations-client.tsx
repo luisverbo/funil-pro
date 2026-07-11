@@ -197,6 +197,12 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
                     m.role === 'lead' ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-white border text-gray-800 rounded-bl-sm'
                   } ${m.feedback === 'bad' ? 'ring-2 ring-red-300' : ''}`}>
                     {m.content}
+                    {m.role === 'agent' && (
+                      // ✓✓ estilo WhatsApp: azul = lead respondeu depois (viu); cinza = ainda não
+                      <span className={`ml-1.5 text-[11px] align-bottom select-none ${
+                        messages.slice(idx + 1).some(x => x.role === 'lead') ? 'text-sky-500' : 'text-gray-400'
+                      }`}>✓✓</span>
+                    )}
                   </div>
                   {m.role === 'agent' && (
                     <button onClick={() => markBad(m.id, idx)}
