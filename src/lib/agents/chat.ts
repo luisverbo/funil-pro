@@ -118,6 +118,48 @@ function brazilNow(): { hours: number; minutes: number; label: string } {
   return { hours, minutes, label: `${get('weekday')}, ${get('day')} de ${get('month')}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}` }
 }
 
+// Extrai contato do que o LEAD digitou, sem depender de o modelo devolver certinho.
+// email/telefone por regex (confiável); nome por heurística: resposta curta logo
+// após a Ana perguntar o nome. actionName (se o modelo mandou) tem prioridade no nome.
+function extractContact(
+  leadTexts: string[],
+  historyPairs: { role: string; content: string }[],
+  currentMessage: string,
+  actionName?: string | null
+): { name: string | null; email: string | null; phone: string | null } {
+  const all = leadTexts.join('\n')
+  const email = all.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0]?.toLowerCase() ?? null
+
+  let phone: string | null = null
+  for (const t of leadTexts) {
+    const digits = t.replace(/\D/g, '')
+    if (digits.length >= 10 && digits.length <= 13) { phone = digits; break }
+  }
+
+  let name: string | null = actionName?.trim() || null
+  if (!name) {
+    // procura "qual seu nome / como é seu nome / com quem eu falo" numa msg da Ana,
+    // seguida de uma resposta curta do lead (o nome)
+    const seq = [...historyPairs, { role: 'lead', content: currentMessage }]
+    for (let i = 0; i < seq.length - 1; i++) {
+      const a = seq[i]
+      if (a.role !== 'agent') continue
+      if (!/\bnome\b|com quem (eu )?falo|quem (é|e) você|como (te )?chamo/i.test(a.content)) continue
+      const reply = seq[i + 1]
+      if (reply.role !== 'lead') continue
+      let cand = reply.content.trim()
+      // limpa "meu nome é / me chamo / sou o(a)"
+      cand = cand.replace(/^(meu nome (é|e)|me chamo|sou (o|a)?|aqui (é|e)( o| a)?)\s*/i, '').trim()
+      cand = cand.replace(/[.!,;]+$/, '').trim()
+      const words = cand.split(/\s+/)
+      const looksName = words.length >= 1 && words.length <= 4 && /^[\p{L}][\p{L}'\- ]+$/u.test(cand)
+        && !/\b(sim|nao|não|ok|oi|ola|olá|blz|beleza|quero|pode|isso)\b/i.test(cand)
+      if (looksName) { name = cand.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); break }
+    }
+  }
+  return { name, email, phone }
+}
+
 function withinBusinessHours(agent: AgentRow): boolean {
   if (!agent.business_hours_only) return true
   const { hours, minutes } = brazilNow()
@@ -525,7 +567,9 @@ ${schedCfg?.gate?.enabled && (schedCfg.gate.options?.length ?? 0) > 0 ? `🚦 FI
 Cedo na conversa, faça esta pergunta: "${schedCfg.gate.question || 'Quanto você investe hoje?'}" e ofereça EXATAMENTE estas opções como escolha (emita elas em choices na action pra virarem botões):
 ${(schedCfg.gate.options ?? []).map(o => `- "${o.label}"${o.qualifies ? '' : ' → NÃO qualifica'}`).join('\n')}
 Para apresentar as opções, marque: |||ACTION:{"action":"continue","data":{"choices":["opção 1","opção 2","..."]}}|||
-REGRA DURA: se o lead escolher uma opção marcada como "NÃO qualifica", você NÃO pode agendar reunião de jeito nenhum. Agradeça com elegância e honestidade (ex: "pelo momento atual faz mais sentido a gente se falar mais pra frente"), ofereça um material/continuar em contato, e marque action "qualify" com data.score baixo (abaixo de 40). Nunca ofereça horários a quem não passou no filtro.
+Só emita "choices" com as faixas UMA vez, ao FAZER a pergunta. Depois que o lead escolher, NUNCA mais mostre essas opções — não repita os botões.
+REGRA DURA: se o lead escolher uma opção marcada como "NÃO qualifica", você NÃO pode agendar reunião de jeito nenhum. Nunca ofereça horários a quem não passou no filtro, e marque action "qualify" com data.score baixo (abaixo de 40).
+Como dispensar quem não passou: ${schedCfg.gate.fail_message ? `diga (com suas palavras, natural e gentil): "${schedCfg.gate.fail_message}"` : 'agradeça com elegância e honestidade (ex: "pelo momento atual faz mais sentido a gente se falar mais pra frente"), e ofereça continuar em contato'}.${schedCfg.gate.fail_link ? ` Depois, envie este link${schedCfg.gate.fail_link_label ? ` (${schedCfg.gate.fail_link_label})` : ''}: ${schedCfg.gate.fail_link}` : ''}
 Só quem escolher uma opção que QUALIFICA pode seguir para o agendamento.
 
 ` : ''}${schedCfg ? `📅 AGENDAMENTO DE REUNIÕES — você pode marcar ${schedCfg.meeting_title || 'uma reunião'} (${schedCfg.slot_minutes ?? 30} min${schedCfg.meeting_location ? `, em ${schedCfg.meeting_location}` : ''}) direto nesta conversa.
@@ -612,18 +656,29 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
   const fullReply = rawText.replace(ACTION_DELIM_RE, '').trim()
   let parts = fullReply.split('[QUEBRA]').map(p => p.trim()).filter(Boolean)
 
-  // Captura de nome em QUALQUER action: assim que o agente informa o nome do lead,
-  // grava no lead (ou cria um) pra não ficar "Anônimo" no painel — mesmo sem agendar.
-  if (!testMode && action.type !== 'schedule' && typeof action.data.name === 'string' && action.data.name.trim()) {
-    const nm = action.data.name.trim()
-    if (leadId) {
-      if (!leadName) await admin.from('leads').update({ name: nm }).eq('id', leadId)
-    } else {
-      const { data: newLead } = await admin.from('leads').insert({
-        tenant_id: a.tenant_id, funnel_id: null, name: nm, status: 'active',
-      }).select('id').single()
-      if (newLead?.id && conversationId) {
-        await admin.from('agent_conversations').update({ lead_id: newLead.id }).eq('id', conversationId).is('lead_id', null)
+  // Captura DETERMINÍSTICA de contato (não depende do modelo devolver certinho):
+  // extrai nome/email/telefone do que o lead digitou e grava no lead (ou cria um)
+  // pra não ficar "Anônimo" no painel — mesmo sem agendar.
+  let resolvedLeadId = leadId
+  if (!testMode && action.type !== 'schedule') {
+    const leadTexts = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
+    const actName = typeof action.data.name === 'string' ? action.data.name : null
+    const c = extractContact(leadTexts, cappedHistory, message, actName)
+    if (c.name || c.email || c.phone) {
+      if (resolvedLeadId) {
+        await admin.from('leads').update({
+          name: (!leadName && c.name) ? c.name : undefined,
+          email: c.email ?? undefined,
+          phone: c.phone ?? undefined,
+        }).eq('id', resolvedLeadId)
+      } else {
+        const { data: newLead } = await admin.from('leads').insert({
+          tenant_id: a.tenant_id, funnel_id: null, name: c.name, email: c.email, phone: c.phone, status: 'active',
+        }).select('id').single()
+        resolvedLeadId = newLead?.id
+        if (resolvedLeadId && conversationId) {
+          await admin.from('agent_conversations').update({ lead_id: resolvedLeadId }).eq('id', conversationId).is('lead_id', null)
+        }
       }
     }
   }
@@ -633,9 +688,12 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
   if (action.type === 'schedule' && schedCfg) {
     const slotIso = typeof action.data.datetime === 'string' ? action.data.datetime : ''
     const topic = typeof action.data.topic === 'string' ? action.data.topic : null
-    const cName = typeof action.data.name === 'string' ? action.data.name.trim() : (leadName ?? null)
-    const cEmail = typeof action.data.email === 'string' ? action.data.email.trim() : null
-    const cPhone = typeof action.data.phone === 'string' ? action.data.phone.replace(/[^\d+]/g, '') : null
+    // Extrai contato do que o lead digitou como fallback ao que o modelo mandou
+    const leadTexts = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
+    const ex = extractContact(leadTexts, cappedHistory, message, typeof action.data.name === 'string' ? action.data.name : null)
+    const cName = (typeof action.data.name === 'string' ? action.data.name.trim() : '') || ex.name || leadName || null
+    const cEmail = (typeof action.data.email === 'string' ? action.data.email.trim() : '') || ex.email || null
+    const cPhone = (typeof action.data.phone === 'string' ? action.data.phone.replace(/[^\d+]/g, '') : '') || ex.phone || null
 
     // Cria/atualiza o lead com o contato coletado (resolve o "Anônimo" no painel e
     // dá telefone/e-mail pro lembrete). No canal web o lead costuma ser anônimo.
@@ -685,7 +743,7 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
 
   // Opções de resposta rápida (viram botões no chat web). No WhatsApp, como não
   // dá pra renderizar botões, anexamos as opções como lista numerada na última parte.
-  const choices: string[] = Array.isArray(action.data.choices)
+  let choices: string[] = Array.isArray(action.data.choices)
     ? (action.data.choices as unknown[]).filter((c): c is string => typeof c === 'string' && c.trim().length > 0).slice(0, 6)
     : []
   if (choices.length > 0 && isWhatsapp && parts.length > 0) {
@@ -706,7 +764,11 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
   const statusMap: Record<string, string> = {
     qualify: 'qualified', route: 'routed_to_funnel', sell: 'sold', handoff: 'handed_to_human', schedule: 'scheduled',
   }
-  const newStatus = statusMap[action.type]
+  // Lead reprovado no filtro (score baixo) vira "disqualified", não "qualified"
+  const disqualified = action.type === 'qualify' && typeof action.data.score === 'number' && action.data.score < 40
+  const newStatus = disqualified ? 'disqualified' : statusMap[action.type]
+  // Conversa terminou (ação terminal) → não faz sentido mostrar botões de opção
+  if (newStatus) choices = []
   const convUpdate: Record<string, unknown> = { message_count: messageCount + 1 }
   if (newStatus) {
     convUpdate.status = newStatus

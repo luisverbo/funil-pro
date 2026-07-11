@@ -134,9 +134,9 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
 
   // Gate de qualificação (filtro por faixa antes de agendar)
   type GateOpt = { label: string; qualifies: boolean }
-  const gate = (sched.gate && typeof sched.gate === 'object' ? sched.gate : {}) as { enabled?: boolean; question?: string; options?: GateOpt[] }
+  const gate = (sched.gate && typeof sched.gate === 'object' ? sched.gate : {}) as { enabled?: boolean; question?: string; options?: GateOpt[]; fail_message?: string; fail_link?: string; fail_link_label?: string }
   const gateOpts: GateOpt[] = Array.isArray(gate.options) ? gate.options : []
-  const setGate = (patch: Partial<{ enabled: boolean; question: string; options: GateOpt[] }>) =>
+  const setGate = (patch: Partial<{ enabled: boolean; question: string; options: GateOpt[]; fail_message: string; fail_link: string; fail_link_label: string }>) =>
     setSched('gate', { enabled: false, question: 'Quanto você investe hoje em anúncios por mês?', options: gateOpts, ...gate, ...patch })
   const setGateOpt = (i: number, patch: Partial<GateOpt>) =>
     setGate({ options: gateOpts.map((o, idx) => idx === i ? { ...o, ...patch } : o) })
@@ -578,6 +578,24 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                             ))}
                           </div>
                           <button type="button" onClick={addGateOpt} className="mt-2 text-xs text-indigo-600 hover:underline">+ adicionar faixa</button>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-amber-200">
+                          <p className="text-xs font-medium text-gray-600 mb-2">Se o lead NÃO passar no filtro</p>
+                          <Field label="Mensagem de despedida (opcional)">
+                            <textarea className={inputCls + ' h-16'} value={String(gate.fail_message ?? '')} onChange={e => setGate({ fail_message: e.target.value })}
+                              placeholder="Ex: Pelo seu momento agora, faz mais sentido a gente se falar mais pra frente. Fico à disposição!" />
+                          </Field>
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <Field label="Link para enviar (ex: Instagram)">
+                              <input className={inputCls} value={String(gate.fail_link ?? '')} onChange={e => setGate({ fail_link: e.target.value })}
+                                placeholder="https://instagram.com/seu_user" />
+                            </Field>
+                            <Field label="Texto do link">
+                              <input className={inputCls} value={String(gate.fail_link_label ?? '')} onChange={e => setGate({ fail_link_label: e.target.value })}
+                                placeholder="meu Instagram" />
+                            </Field>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">O agente se despede com essa mensagem e manda o link — assim você não perde o contato de quem ainda não é o momento.</p>
                         </div>
                       </>
                     )}

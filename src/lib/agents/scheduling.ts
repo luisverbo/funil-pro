@@ -18,6 +18,9 @@ export interface QualifyGate {
   enabled?: boolean
   question?: string        // ex: "Quanto você investe hoje em anúncios por mês?"
   options?: GateOption[]
+  fail_message?: string    // o que dizer a quem NÃO passa no filtro
+  fail_link?: string       // link para enviar ao reprovado (ex: Instagram)
+  fail_link_label?: string // texto do link (ex: "meu Instagram")
 }
 
 export interface SchedulingConfig {
