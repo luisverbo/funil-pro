@@ -116,8 +116,10 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
       await revealParts(parts)
       if (data.action) setLastAction(data.action)
 
-      // Captura inline: após N mensagens do agente, pede contato (se ainda não capturou)
-      const after = config.capture_after ?? 2
+      // Captura inline: após N mensagens do agente, pede contato (se ainda não
+      // capturou). Default 4 (não 2) pra não pular por cima do início da conversa,
+      // onde o próprio agente já pede o nome de forma natural.
+      const after = config.capture_after ?? 4
       if (config.capture_mode !== 'none' && !captured && (agentMsgCount + parts.length) >= after) {
         setShowCapture(true)
       }
