@@ -503,6 +503,20 @@ export async function processAgentMessage(
     return { reply: closer, parts: [closer], action: { type: 'continue', data: {} }, conversationId: conversationId ?? '' }
   }
 
+  // Reunião JÁ confirmada nesta conversa/lead? (evita reagendar quando o lead só
+  // agradece depois de agendar — bug do "esse horário acabou de ser preenchido")
+  let existingMeeting: { id: string; iso: string; when: string; url: string | null } | null = null
+  if (schedCfg && (conversationId || leadId)) {
+    let mq = admin.from('agent_meetings')
+      .select('id, scheduled_at, meeting_url')
+      .eq('agent_id', agentId).eq('status', 'confirmed')
+      .gte('scheduled_at', new Date().toISOString())
+      .order('scheduled_at', { ascending: true }).limit(1)
+    mq = conversationId ? mq.eq('conversation_id', conversationId) : mq.eq('lead_id', leadId!)
+    const { data: mtg } = await mq.maybeSingle()
+    if (mtg) existingMeeting = { id: mtg.id, iso: mtg.scheduled_at, when: slotLabel(mtg.scheduled_at), url: mtg.meeting_url ?? null }
+  }
+
   if (!conversationId) {
     const { data: newConv, error: convError } = await admin
       .from('agent_conversations')
@@ -613,7 +627,9 @@ REGRA DURA: se o lead escolher uma opção marcada como "NÃO qualifica", você 
 Como dispensar quem não passou: ${schedCfg.gate.fail_message ? `diga (com suas palavras, natural e gentil): "${schedCfg.gate.fail_message}"` : 'agradeça com elegância e honestidade (ex: "pelo momento atual faz mais sentido a gente se falar mais pra frente"), e ofereça continuar em contato'}.${schedCfg.gate.fail_link ? ` Depois, envie este link${schedCfg.gate.fail_link_label ? ` (${schedCfg.gate.fail_link_label})` : ''}: ${schedCfg.gate.fail_link}` : ''}
 Só quem escolher uma opção que QUALIFICA pode seguir para o agendamento.
 
-` : ''}${schedCfg ? `📅 AGENDAMENTO DE REUNIÕES — você pode marcar ${schedCfg.meeting_title || 'uma reunião'} (${schedCfg.slot_minutes ?? 30} min${schedCfg.meeting_location ? `, em ${schedCfg.meeting_location}` : ''}) direto nesta conversa.
+` : ''}${schedCfg && existingMeeting ? `✅ REUNIÃO JÁ CONFIRMADA com este lead para ${existingMeeting.when}${existingMeeting.url ? ` (${existingMeeting.url})` : ''}.
+NÃO ofereça horários e NÃO agende de novo. Se o lead só agradecer ou mandar uma mensagem solta, responda leve e breve confirmando que está tudo certo pra ${existingMeeting.when} — NUNCA diga que o horário foi preenchido nem ofereça outros horários.
+SÓ reagende se o lead pedir EXPLICITAMENTE para remarcar ou cancelar; só nesse caso ofereça novos horários e marque action "schedule" com o novo horário.` : ''}${schedCfg && !existingMeeting ? `📅 AGENDAMENTO DE REUNIÕES — você pode marcar ${schedCfg.meeting_title || 'uma reunião'} (${schedCfg.slot_minutes ?? 30} min${schedCfg.meeting_location ? `, em ${schedCfg.meeting_location}` : ''}) direto nesta conversa.
 ${slots.length > 0 ? `Horários LIVRES agora (só ofereça horários EXATAMENTE desta lista, nunca invente outros):
 ${slots.map(s => `- ${s.label} → ${s.iso}`).join('\n')}
 
@@ -729,6 +745,18 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
   if (action.type === 'schedule' && schedCfg) {
     const slotIso = typeof action.data.datetime === 'string' ? action.data.datetime : ''
     const topic = typeof action.data.topic === 'string' ? action.data.topic : null
+
+    // Já existe reunião confirmada e o modelo tentou agendar de novo:
+    // - mesmo horário (ou sem horário): NÃO reagenda, só confirma que está tudo certo
+    // - horário diferente: é remarcação → cancela a antiga e segue para agendar a nova
+    if (existingMeeting && (!slotIso || slotIso === existingMeeting.iso)) {
+      const alreadyConfirms = parts.some(p => /confirmad|tudo cert|nos falamos|nos vemos/i.test(p))
+      if (!alreadyConfirms) parts = [`Tá tudo certo, nosso encontro segue confirmado pra ${existingMeeting.when} 🙌${existingMeeting.url ? `\nLink: ${existingMeeting.url}` : ''}`]
+      action = { type: 'continue', data: {} }
+    } else {
+    if (existingMeeting && slotIso && slotIso !== existingMeeting.iso) {
+      await admin.from('agent_meetings').update({ status: 'cancelled' }).eq('id', existingMeeting.id)
+    }
     // Extrai contato do que o lead digitou como fallback ao que o modelo mandou
     const leadTexts = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
     const ex = extractContact(leadTexts, cappedHistory, message, typeof action.data.name === 'string' ? action.data.name : null)
@@ -782,6 +810,7 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
         : ['Poxa, esse horário acabou de ser preenchido e a agenda lotou 😕 Vou pedir pro time te chamar pra encaixar um horário, tá?']
       action = { type: 'continue', data: { schedule_failed: booking.reason } }
     }
+    } // fecha o else (não havia reunião confirmada, ou é remarcação)
   }
 
   // Opções de resposta rápida (viram botões no chat web). No WhatsApp, como não
