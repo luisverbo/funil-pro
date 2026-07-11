@@ -481,22 +481,20 @@ export async function listMeetings(agentId: string): Promise<{ meetings: AgentMe
   try {
     const tenantId = await getTenantId()
     const supabase = await getSupabase()
+    // Lê o contato direto da própria reunião (não faz join com leads — não há FK
+    // e o lead do chat web costuma ser anônimo; o contato fica salvo na reunião).
     const { data, error } = await supabase
       .from('agent_meetings')
-      .select('id, scheduled_at, duration_minutes, status, topic, created_at, leads(name, phone, email)')
+      .select('id, scheduled_at, duration_minutes, status, topic, created_at, lead_name, lead_email, lead_phone')
       .eq('agent_id', agentId)
       .eq('tenant_id', tenantId)
       .order('scheduled_at', { ascending: true })
     if (error) return { meetings: [], error: error.message }
-    const meetings: AgentMeeting[] = (data ?? []).map(m => {
-      const rel = (m as { leads?: { name?: string | null; phone?: string | null; email?: string | null } | { name?: string | null; phone?: string | null; email?: string | null }[] }).leads
-      const lead = Array.isArray(rel) ? rel[0] : rel
-      return {
-        id: m.id, scheduled_at: m.scheduled_at, duration_minutes: m.duration_minutes,
-        status: m.status, topic: m.topic, created_at: m.created_at,
-        lead_name: lead?.name ?? null, lead_phone: lead?.phone ?? null, lead_email: lead?.email ?? null,
-      }
-    })
+    const meetings: AgentMeeting[] = (data ?? []).map(m => ({
+      id: m.id, scheduled_at: m.scheduled_at, duration_minutes: m.duration_minutes,
+      status: m.status, topic: m.topic, created_at: m.created_at,
+      lead_name: m.lead_name ?? null, lead_phone: m.lead_phone ?? null, lead_email: m.lead_email ?? null,
+    }))
     return { meetings }
   } catch (err) {
     return { meetings: [], error: String(err) }

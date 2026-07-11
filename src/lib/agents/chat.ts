@@ -95,7 +95,13 @@ Método:
 3. Extraia o máximo do que o lead já disse — não pergunte o que ele já respondeu ou o que dá para deduzir. Cada resposta dele contém 2-3 informações se você prestar atenção.
 4. Priorize descobrir (nesta ordem): a DOR real, a urgência, o contexto (tamanho/situação) e a capacidade de decisão. Ignore detalhes que não mudam o score.
 5. Com 3-4 informações-chave você já tem o suficiente: marque action "qualify" com data.score (0-100). Não estique a conversa.
-6. Lead qualificado quente merece um fechamento de expectativa: diga O QUE acontece agora ("vou te conectar com...", "você vai receber...").${page}${agent.qualification_rules ? `\n\nRegras de qualificação (o que torna um lead bom/ruim para ESTE produto):\n${agent.qualification_rules}` : ''}`
+6. Lead qualificado quente merece um fechamento de expectativa: diga O QUE acontece agora ("vou te conectar com...", "você vai receber...").
+
+REGRA DE PREÇO (importante em venda high-ticket) — NUNCA seja você a dizer o preço ou um "a partir de X":
+- Dizer um piso ("a partir de 3,5 mil") ANCORA o lead nesse número — mesmo que o caso dele valha muito mais. Isso derruba o seu valor final. NÃO faça isso.
+- Para checar orçamento sem ancorar, faça o LEAD falar o número dele: pergunte quanto ele JÁ investe hoje (ou investiu) em marketing/anúncios por mês, ou quanto ele planeja investir para atingir a meta. Deixe ELE dizer o valor.
+- Se houver um piso interno de qualificação (nas regras abaixo), use-o só como CRITÉRIO SILENCIOSO seu para decidir se qualifica — jamais mencione esse número ao lead.
+- O valor do serviço é definido pelo especialista na reunião, sob medida para o caso. Se o lead insistir no preço, diga exatamente isso (que depende do diagnóstico) e leve para o agendamento — não solte número.${page}${agent.qualification_rules ? `\n\nRegras de qualificação (CRITÉRIO INTERNO SEU — nunca leia números destas regras em voz alta para o lead):\n${agent.qualification_rules}` : ''}`
   }
 }
 
@@ -521,8 +527,10 @@ ${slots.map(s => `- ${s.label} → ${s.iso}`).join('\n')}
 Como agendar bem:
 - Ofereça no MÁXIMO 2-3 opções por vez (de dias/períodos diferentes quando possível) — lista longa paralisa o lead.
 - Pergunte primeiro se ele prefere manhã ou tarde / início ou fim de semana, se a lista permitir filtrar.
-- Quando o lead ESCOLHER um horário, confirme em 1 frase e marque a action "schedule" com o iso EXATO da lista: |||ACTION:{"action":"schedule","data":{"datetime":"<iso da lista>","topic":"<assunto em 3-5 palavras>"}}|||
-- A confirmação oficial (com link de agenda) é enviada automaticamente pelo sistema depois da sua mensagem — não invente link.
+- ANTES de confirmar, você PRECISA ter três dados do lead: NOME, E-MAIL e WHATSAPP (com DDD). Você já deve saber o nome; peça o e-mail e o WhatsApp de forma natural ("pra eu te enviar o convite e o lembrete, me passa seu melhor e-mail e o WhatsApp com DDD?"). NÃO confirme o horário sem ter os três — sem isso não dá pra te lembrar da reunião.
+- Só depois de ter horário escolhido + nome + e-mail + whatsapp, marque a action "schedule" com o iso EXATO da lista e os dados de contato:
+|||ACTION:{"action":"schedule","data":{"datetime":"<iso EXATO da lista>","topic":"<assunto em 3-5 palavras>","name":"<nome>","email":"<email>","phone":"<whatsapp com DDD>"}}|||
+- A confirmação oficial (com link da reunião e da agenda) é enviada automaticamente pelo sistema depois da sua mensagem — não invente link.
 - Agendar reunião com lead qualificado CONTA como sucesso do seu objetivo.` : `No momento NÃO há horários livres na agenda. Se o lead pedir reunião, diga que a agenda está cheia e que o time entra em contato para encaixar — marque action "handoff".`}` : ''}
 
 ${a.greeting_message
@@ -565,7 +573,8 @@ IMPORTANTE — como conversar (valem acima de tudo):
 
 Quando identificar que atingiu seu objetivo ou precisar executar uma ação, inclua no FINAL da sua resposta (será removido antes de enviar ao lead) exatamente neste formato:
 |||ACTION:{"action":"continue|qualify|route|sell|handoff|schedule","data":{}}|||
-Se ainda não atingiu o objetivo, use action "continue".`
+Se ainda não atingiu o objetivo, use action "continue".
+Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |||ACTION:{"action":"continue","data":{"name":"Marcos"}}|||) — isso registra o lead no painel em vez de ficar "Anônimo".`
 
   // Cap do histórico: conversas longas mandavam tudo pra API (custo crescente
   // e modelo se perdendo). 40 mensagens ≈ 20 trocas — mais que suficiente.
@@ -595,15 +604,55 @@ Se ainda não atingiu o objetivo, use action "continue".`
   const fullReply = rawText.replace(ACTION_DELIM_RE, '').trim()
   let parts = fullReply.split('[QUEBRA]').map(p => p.trim()).filter(Boolean)
 
+  // Captura de nome em QUALQUER action: assim que o agente informa o nome do lead,
+  // grava no lead (ou cria um) pra não ficar "Anônimo" no painel — mesmo sem agendar.
+  if (!testMode && action.type !== 'schedule' && typeof action.data.name === 'string' && action.data.name.trim()) {
+    const nm = action.data.name.trim()
+    if (leadId) {
+      if (!leadName) await admin.from('leads').update({ name: nm }).eq('id', leadId)
+    } else {
+      const { data: newLead } = await admin.from('leads').insert({
+        tenant_id: a.tenant_id, funnel_id: null, name: nm, status: 'active',
+      }).select('id').single()
+      if (newLead?.id && conversationId) {
+        await admin.from('agent_conversations').update({ lead_id: newLead.id }).eq('id', conversationId).is('lead_id', null)
+      }
+    }
+  }
+
   // Ação "schedule": marca a reunião AGORA (antes de enviar) — o texto de
   // confirmação depende do resultado do booking
   if (action.type === 'schedule' && schedCfg) {
     const slotIso = typeof action.data.datetime === 'string' ? action.data.datetime : ''
     const topic = typeof action.data.topic === 'string' ? action.data.topic : null
+    const cName = typeof action.data.name === 'string' ? action.data.name.trim() : (leadName ?? null)
+    const cEmail = typeof action.data.email === 'string' ? action.data.email.trim() : null
+    const cPhone = typeof action.data.phone === 'string' ? action.data.phone.replace(/[^\d+]/g, '') : null
+
+    // Cria/atualiza o lead com o contato coletado (resolve o "Anônimo" no painel e
+    // dá telefone/e-mail pro lembrete). No canal web o lead costuma ser anônimo.
+    let bookLeadId = leadId
+    if (!testMode && (cEmail || cPhone || cName)) {
+      if (bookLeadId) {
+        await admin.from('leads').update({
+          name: cName ?? undefined, email: cEmail ?? undefined, phone: cPhone ?? undefined,
+        }).eq('id', bookLeadId)
+      } else {
+        const { data: newLead } = await admin.from('leads').insert({
+          tenant_id: a.tenant_id, funnel_id: null, name: cName, email: cEmail, phone: cPhone, status: 'active',
+        }).select('id').single()
+        bookLeadId = newLead?.id
+        if (bookLeadId && conversationId) {
+          await admin.from('agent_conversations').update({ lead_id: bookLeadId }).eq('id', conversationId).is('lead_id', null)
+        }
+      }
+    }
+
     const booking = testMode
       ? { ok: true as const, meetingId: 'test' }
       : await bookMeeting({
-          agentId, tenantId: a.tenant_id, leadId, conversationId, slotIso, cfg: schedCfg, topic, admin,
+          agentId, tenantId: a.tenant_id, leadId: bookLeadId, conversationId, slotIso, cfg: schedCfg, topic,
+          contact: { name: cName, email: cEmail, phone: cPhone }, admin,
         }).catch(err => ({ ok: false as const, reason: String(err) }))
 
     if (booking.ok) {

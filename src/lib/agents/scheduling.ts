@@ -121,9 +121,10 @@ export async function bookMeeting(params: {
   slotIso: string
   cfg: SchedulingConfig
   topic?: string | null
+  contact?: { name?: string | null; email?: string | null; phone?: string | null }
   admin: ReturnType<typeof createAdminClient>
 }): Promise<{ ok: boolean; meetingId?: string; reason?: string }> {
-  const { agentId, tenantId, leadId, conversationId, slotIso, cfg, topic, admin } = params
+  const { agentId, tenantId, leadId, conversationId, slotIso, cfg, topic, contact, admin } = params
   const slotMin = cfg.slot_minutes ?? 30
 
   // O slot precisa estar na grade de disponibilidade atual (revalida contra config + conflitos)
@@ -141,6 +142,10 @@ export async function bookMeeting(params: {
     duration_minutes: slotMin,
     status: 'confirmed',
     topic: topic ?? null,
+    lead_name: contact?.name ?? null,
+    lead_email: contact?.email ?? null,
+    lead_phone: contact?.phone ?? null,
+    meeting_url: cfg.meeting_location ?? null,
   }).select('id').single()
 
   if (error || !data) {

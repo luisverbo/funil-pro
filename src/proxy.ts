@@ -6,6 +6,7 @@ const PUBLIC_PREFIXES = [
   '/api/webhooks',
   '/api/funnels',
   '/api/queue/process',
+  '/api/agents/meetings/remind',
   '/api/track',
   '/api/quiz',
   '/api/agents/public/',
