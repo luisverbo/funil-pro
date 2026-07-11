@@ -85,6 +85,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     whatsapp_instance_id: agent?.whatsapp_instance_id ?? null,
     handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'atendente', 'pessoa real'],
     channels: (agent as Agent & { channels?: string[] })?.channels ?? ['whatsapp', 'web'],
+    scheduling_config: (agent as Agent & { scheduling_config?: Record<string, unknown> })?.scheduling_config ?? null,
   })
 
   // kept for summary display of the first/main price
@@ -112,6 +113,24 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   const lcArr = (k: string): string[] => (Array.isArray(landing[k]) ? landing[k] as string[] : [])
   const lcObj = (k: string): Record<string, unknown> => (landing[k] && typeof landing[k] === 'object' ? landing[k] as Record<string, unknown> : {})
   const setLc = (k: string, v: unknown) => set('landing_config', { ...landing, [k]: v })
+
+  // Helpers para scheduling_config (agendamento de reuniões)
+  const DEFAULT_WEEK: Record<string, { enabled: boolean; start: string; end: string }> = {
+    '0': { enabled: false, start: '09:00', end: '18:00' },
+    '1': { enabled: true, start: '09:00', end: '18:00' },
+    '2': { enabled: true, start: '09:00', end: '18:00' },
+    '3': { enabled: true, start: '09:00', end: '18:00' },
+    '4': { enabled: true, start: '09:00', end: '18:00' },
+    '5': { enabled: true, start: '09:00', end: '18:00' },
+    '6': { enabled: false, start: '09:00', end: '13:00' },
+  }
+  const sched = (form.scheduling_config ?? {}) as Record<string, unknown>
+  const schedEnabled = sched.enabled === true
+  const schedWeek = (sched.week && typeof sched.week === 'object' ? sched.week : DEFAULT_WEEK) as Record<string, { enabled: boolean; start: string; end: string }>
+  const setSched = (k: string, v: unknown) => set('scheduling_config', { week: DEFAULT_WEEK, slot_minutes: 30, buffer_minutes: 10, days_ahead: 7, min_notice_hours: 3, ...sched, [k]: v })
+  const setSchedDay = (d: string, patch: Partial<{ enabled: boolean; start: string; end: string }>) =>
+    setSched('week', { ...schedWeek, [d]: { ...(schedWeek[d] ?? DEFAULT_WEEK[d]), ...patch } })
+  const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
   function applyTemplate(t: AgentTemplate) {
     setForm(f => ({ ...f, ...t.defaults }))
@@ -451,6 +470,72 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   </Field>
                   <Field label="Tratamento de objeções">
                     <textarea className={inputCls + ' h-24'} value={form.objection_handling ?? ''} onChange={e => set('objection_handling', e.target.value)} />
+                  </Field>
+                </>
+              )}
+
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">📅 Agendamento de reuniões</p>
+                  <p className="text-xs text-gray-500">O agente oferece horários livres e marca a reunião sozinho — funciona junto com qualquer objetivo.</p>
+                </div>
+                <label className="inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" checked={schedEnabled}
+                    onChange={e => setSched('enabled', e.target.checked)} />
+                  <div className="w-11 h-6 bg-gray-300 peer-checked:bg-emerald-600 rounded-full peer relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5" />
+                </label>
+              </div>
+
+              {schedEnabled && (
+                <>
+                  <Field label="Dias e horários disponíveis">
+                    <div className="flex flex-col gap-1.5">
+                      {['1', '2', '3', '4', '5', '6', '0'].map(d => {
+                        const day = schedWeek[d] ?? DEFAULT_WEEK[d]
+                        return (
+                          <div key={d} className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 ${day.enabled ? 'border-emerald-300 bg-emerald-50/50' : 'border-gray-200 opacity-60'}`}>
+                            <input type="checkbox" checked={day.enabled} onChange={e => setSchedDay(d, { enabled: e.target.checked })} className="w-4 h-4 accent-emerald-600" />
+                            <span className="text-sm w-9 font-medium text-gray-700">{WEEKDAY_LABELS[Number(d)]}</span>
+                            <input type="time" value={day.start} disabled={!day.enabled} onChange={e => setSchedDay(d, { start: e.target.value })}
+                              className="text-sm border rounded px-2 py-1 bg-white" />
+                            <span className="text-xs text-gray-400">até</span>
+                            <input type="time" value={day.end} disabled={!day.enabled} onChange={e => setSchedDay(d, { end: e.target.value })}
+                              className="text-sm border rounded px-2 py-1 bg-white" />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Duração da reunião">
+                      <select className={inputCls} value={Number(sched.slot_minutes ?? 30)} onChange={e => setSched('slot_minutes', Number(e.target.value))}>
+                        {[15, 30, 45, 60, 90].map(v => <option key={v} value={v}>{v} min</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Intervalo entre reuniões">
+                      <select className={inputCls} value={Number(sched.buffer_minutes ?? 10)} onChange={e => setSched('buffer_minutes', Number(e.target.value))}>
+                        {[0, 5, 10, 15, 30, 60].map(v => <option key={v} value={v}>{v} min</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Oferecer até quantos dias à frente">
+                      <select className={inputCls} value={Number(sched.days_ahead ?? 7)} onChange={e => setSched('days_ahead', Number(e.target.value))}>
+                        {[3, 5, 7, 14, 21, 30].map(v => <option key={v} value={v}>{v} dias</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Antecedência mínima">
+                      <select className={inputCls} value={Number(sched.min_notice_hours ?? 3)} onChange={e => setSched('min_notice_hours', Number(e.target.value))}>
+                        {[1, 2, 3, 6, 12, 24, 48].map(v => <option key={v} value={v}>{v}h antes</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                  <Field label="Nome da reunião">
+                    <input className={inputCls} value={String(sched.meeting_title ?? '')} onChange={e => setSched('meeting_title', e.target.value)}
+                      placeholder="Ex: Sessão estratégica gratuita" />
+                  </Field>
+                  <Field label="Onde acontece (link do Meet/Zoom ou endereço)">
+                    <input className={inputCls} value={String(sched.meeting_location ?? '')} onChange={e => setSched('meeting_location', e.target.value)}
+                      placeholder="Ex: https://meet.google.com/xxx-xxxx-xxx" />
+                    <p className="text-xs text-gray-400 mt-1">Vai no convite e na confirmação enviada ao lead, junto com o link para adicionar no Google Agenda.</p>
                   </Field>
                 </>
               )}

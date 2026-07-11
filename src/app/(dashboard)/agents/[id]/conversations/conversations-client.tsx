@@ -11,15 +11,15 @@ type Conversation = {
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Ativa', qualified: 'Qualificado', disqualified: 'Desqualificado',
-  sold: 'Vendido', routed_to_funnel: 'Roteado', handed_to_human: 'Humano', abandoned: 'Abandonado',
+  sold: 'Vendido', routed_to_funnel: 'Roteado', handed_to_human: 'Humano', abandoned: 'Abandonado', scheduled: 'Reunião marcada',
 }
 const STATUS_CLS: Record<string, string> = {
   active: 'bg-blue-100 text-blue-700', qualified: 'bg-emerald-100 text-emerald-700',
   disqualified: 'bg-gray-100 text-gray-600', sold: 'bg-green-100 text-green-700',
-  routed_to_funnel: 'bg-indigo-100 text-indigo-700', handed_to_human: 'bg-amber-100 text-amber-700',
+  routed_to_funnel: 'bg-indigo-100 text-indigo-700', handed_to_human: 'bg-amber-100 text-amber-700', scheduled: 'bg-teal-100 text-teal-700',
   abandoned: 'bg-red-50 text-red-600',
 }
-const FILTERS = ['', 'active', 'qualified', 'sold', 'routed_to_funnel', 'handed_to_human', 'abandoned']
+const FILTERS = ['', 'active', 'qualified', 'sold', 'scheduled', 'routed_to_funnel', 'handed_to_human', 'abandoned']
 
 function fmtDuration(start: string, end: string | null): string {
   if (!end) return '—'

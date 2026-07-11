@@ -129,6 +129,7 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
                 <button onClick={() => openEdit(agent.id)} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Editar</button>
                 <button onClick={() => setTestAgentId(agent.id)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">Testar</button>
                 <Link href={`/agents/${agent.id}/conversations`} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">Conversas</Link>
+                <Link href={`/agents/${agent.id}/meetings`} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">📅 Reuniões</Link>
                 <button onClick={() => toggleStatus(agent)} className={`px-3 py-1.5 text-sm rounded-lg ${agent.status === 'active' ? 'border hover:bg-gray-50' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                   {agent.status === 'active' ? 'Pausar' : 'Ativar'}
                 </button>

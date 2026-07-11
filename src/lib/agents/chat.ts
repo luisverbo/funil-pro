@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTextMessage } from '@/lib/evolution'
+import { isSchedulingEnabled, getAvailableSlots, bookMeeting, googleCalendarLink, slotLabel, type SchedulingConfig, type Slot } from '@/lib/agents/scheduling'
 
 const ACTION_DELIM_RE = /\|\|\|ACTION:(\{[\s\S]*?\})\|\|\|/
 // Sonnet por padrão: agente de vendas precisa de raciocínio de conversa muito melhor
@@ -32,6 +33,7 @@ interface AgentRow {
   max_activations_per_month: number | null
   activations_used: number
   activations_reset_at: string | null
+  scheduling_config: SchedulingConfig | null
 }
 
 export interface AgentChatResult {
@@ -366,6 +368,14 @@ export async function processAgentMessage(
     leadName = leadRow?.name?.trim() || null
   }
 
+  // Agendamento: slots livres calculados agora (disponibilidade − reuniões marcadas)
+  const schedCfg = isSchedulingEnabled(a.scheduling_config) ? a.scheduling_config : null
+  let slots: Slot[] = []
+  if (schedCfg) {
+    slots = await getAvailableSlots(agentId, schedCfg, admin, 24)
+      .catch(err => { console.error(`[chat] getAvailableSlots falhou: ${String(err)}`); return [] })
+  }
+
   // Load documents (separa por tipo: arquivos, FAQ e correções aprendidas)
   const { data: documents } = await admin.from('agent_documents').select('extracted_text, doc_type').eq('agent_id', agentId)
   const allDocs = (documents ?? []).filter(d => d.extracted_text)
@@ -490,6 +500,17 @@ ${corrections.length > 0 ? `⚠️ Correções aprendidas — SIGA SEMPRE, têm 
 
 Seu objetivo é: ${objectiveInstructions(a)}
 
+${schedCfg ? `📅 AGENDAMENTO DE REUNIÕES — você pode marcar ${schedCfg.meeting_title || 'uma reunião'} (${schedCfg.slot_minutes ?? 30} min${schedCfg.meeting_location ? `, em ${schedCfg.meeting_location}` : ''}) direto nesta conversa.
+${slots.length > 0 ? `Horários LIVRES agora (só ofereça horários EXATAMENTE desta lista, nunca invente outros):
+${slots.map(s => `- ${s.label} → ${s.iso}`).join('\n')}
+
+Como agendar bem:
+- Ofereça no MÁXIMO 2-3 opções por vez (de dias/períodos diferentes quando possível) — lista longa paralisa o lead.
+- Pergunte primeiro se ele prefere manhã ou tarde / início ou fim de semana, se a lista permitir filtrar.
+- Quando o lead ESCOLHER um horário, confirme em 1 frase e marque a action "schedule" com o iso EXATO da lista: |||ACTION:{"action":"schedule","data":{"datetime":"<iso da lista>","topic":"<assunto em 3-5 palavras>"}}|||
+- A confirmação oficial (com link de agenda) é enviada automaticamente pelo sistema depois da sua mensagem — não invente link.
+- Agendar reunião com lead qualificado CONTA como sucesso do seu objetivo.` : `No momento NÃO há horários livres na agenda. Se o lead pedir reunião, diga que a agenda está cheia e que o time entra em contato para encaixar — marque action "handoff".`}` : ''}
+
 ${a.greeting_message
     ? channel === 'web'
       ? `Sua PRIMEIRA mensagem já foi enviada automaticamente ao lead (não está no histórico abaixo, mas ele JÁ a leu): "${a.greeting_message}". NÃO repita essa saudação nem se apresente de novo — continue a conversa a partir dela.`
@@ -526,7 +547,7 @@ IMPORTANTE — como conversar (valem acima de tudo):
 - Lead irritado ou desinteressado explícito ("para de mandar mensagem") = respeite na hora, encerre com elegância e marque action "handoff".
 
 Quando identificar que atingiu seu objetivo ou precisar executar uma ação, inclua no FINAL da sua resposta (será removido antes de enviar ao lead) exatamente neste formato:
-|||ACTION:{"action":"continue|qualify|route|sell|handoff","data":{}}|||
+|||ACTION:{"action":"continue|qualify|route|sell|handoff|schedule","data":{}}|||
 Se ainda não atingiu o objetivo, use action "continue".`
 
   // Cap do histórico: conversas longas mandavam tudo pra API (custo crescente
@@ -555,7 +576,39 @@ Se ainda não atingiu o objetivo, use action "continue".`
     } catch { /* ignore malformed */ }
   }
   const fullReply = rawText.replace(ACTION_DELIM_RE, '').trim()
-  const parts = fullReply.split('[QUEBRA]').map(p => p.trim()).filter(Boolean)
+  let parts = fullReply.split('[QUEBRA]').map(p => p.trim()).filter(Boolean)
+
+  // Ação "schedule": marca a reunião AGORA (antes de enviar) — o texto de
+  // confirmação depende do resultado do booking
+  if (action.type === 'schedule' && schedCfg) {
+    const slotIso = typeof action.data.datetime === 'string' ? action.data.datetime : ''
+    const topic = typeof action.data.topic === 'string' ? action.data.topic : null
+    const booking = testMode
+      ? { ok: true as const, meetingId: 'test' }
+      : await bookMeeting({
+          agentId, tenantId: a.tenant_id, leadId, conversationId, slotIso, cfg: schedCfg, topic, admin,
+        }).catch(err => ({ ok: false as const, reason: String(err) }))
+
+    if (booking.ok) {
+      const calLink = googleCalendarLink({
+        title: schedCfg.meeting_title || `Reunião — ${a.product_name || a.name}`,
+        startIso: slotIso,
+        durationMinutes: schedCfg.slot_minutes ?? 30,
+        location: schedCfg.meeting_location,
+        details: topic ?? undefined,
+      })
+      parts = [...parts, `Confirmado: ${slotLabel(slotIso)} ✅${schedCfg.meeting_location ? `\nOnde: ${schedCfg.meeting_location}` : ''}\nAdiciona na sua agenda: ${calLink}`]
+      action.data = { ...action.data, meeting_id: booking.meetingId, calendar_link: calLink }
+    } else {
+      // Slot tomado no meio da conversa: oferece as 3 próximas opções reais
+      const fresh = await getAvailableSlots(agentId, schedCfg, admin, 3).catch(() => [])
+      parts = fresh.length > 0
+        ? [`Poxa, esse horário acabou de ser preenchido 😕 Tenho ${fresh.map(s => s.label).join(', ou ')}. Algum desses funciona?`]
+        : ['Poxa, esse horário acabou de ser preenchido e a agenda lotou 😕 Vou pedir pro time te chamar pra encaixar um horário, tá?']
+      action = { type: 'continue', data: { schedule_failed: booking.reason } }
+    }
+  }
+
   const reply = parts.join('\n')
 
   // Send via WhatsApp (só no canal WhatsApp; web devolve as partes ao navegador)
@@ -568,7 +621,7 @@ Se ainda não atingiu o objetivo, use action "continue".`
 
   // Update conversation status
   const statusMap: Record<string, string> = {
-    qualify: 'qualified', route: 'routed_to_funnel', sell: 'sold', handoff: 'handed_to_human',
+    qualify: 'qualified', route: 'routed_to_funnel', sell: 'sold', handoff: 'handed_to_human', schedule: 'scheduled',
   }
   const newStatus = statusMap[action.type]
   const convUpdate: Record<string, unknown> = { message_count: messageCount + 1 }

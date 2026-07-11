@@ -44,6 +44,7 @@ export interface AgentInput {
   public_enabled?: boolean | null
   landing_config?: Record<string, unknown> | null
   channels?: string[] | null   // ['whatsapp', 'web'] — null/undefined = ambos
+  scheduling_config?: Record<string, unknown> | null
 }
 
 export interface Agent extends AgentInput {
@@ -92,7 +93,7 @@ const ALLOWED_FIELDS: (keyof AgentInput)[] = [
   'target_funnel_id', 'max_messages_per_conversation', 'handoff_to_human_keywords',
   'business_hours_only', 'business_hours_start', 'business_hours_end', 'whatsapp_instance_id',
   'max_activations_per_month', 'product_prices', 'product_page_url',
-  'public_slug', 'public_enabled', 'landing_config', 'channels',
+  'public_slug', 'public_enabled', 'landing_config', 'channels', 'scheduling_config',
 ]
 
 function sanitize(data: Partial<AgentInput>): Record<string, unknown> {
@@ -465,6 +466,57 @@ export async function getConversation(conversationId: string): Promise<{
     }
   } catch (err) {
     return { error: String(err) }
+  }
+}
+
+// ─── Reuniões agendadas pelo agente ─────────────────────────────────────────
+
+export interface AgentMeeting {
+  id: string; scheduled_at: string; duration_minutes: number; status: string
+  topic: string | null; created_at: string; lead_name: string | null
+  lead_phone: string | null; lead_email: string | null
+}
+
+export async function listMeetings(agentId: string): Promise<{ meetings: AgentMeeting[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data, error } = await supabase
+      .from('agent_meetings')
+      .select('id, scheduled_at, duration_minutes, status, topic, created_at, leads(name, phone, email)')
+      .eq('agent_id', agentId)
+      .eq('tenant_id', tenantId)
+      .order('scheduled_at', { ascending: true })
+    if (error) return { meetings: [], error: error.message }
+    const meetings: AgentMeeting[] = (data ?? []).map(m => {
+      const rel = (m as { leads?: { name?: string | null; phone?: string | null; email?: string | null } | { name?: string | null; phone?: string | null; email?: string | null }[] }).leads
+      const lead = Array.isArray(rel) ? rel[0] : rel
+      return {
+        id: m.id, scheduled_at: m.scheduled_at, duration_minutes: m.duration_minutes,
+        status: m.status, topic: m.topic, created_at: m.created_at,
+        lead_name: lead?.name ?? null, lead_phone: lead?.phone ?? null, lead_email: lead?.email ?? null,
+      }
+    })
+    return { meetings }
+  } catch (err) {
+    return { meetings: [], error: String(err) }
+  }
+}
+
+export async function cancelMeeting(meetingId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { error } = await supabase
+      .from('agent_meetings')
+      .update({ status: 'cancelled' })
+      .eq('id', meetingId)
+      .eq('tenant_id', tenantId)
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/agents')
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
   }
 }
 
