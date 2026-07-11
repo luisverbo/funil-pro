@@ -42,10 +42,24 @@ export async function sendMeetingReminders(): Promise<{ sent: number; error?: st
         .from('ai_agents').select('name, whatsapp_instance_id').eq('id', m.agent_id).single()
       const agentName = agent?.name ?? 'Equipe'
 
-      if (m.lead_phone && agent?.whatsapp_instance_id) {
-        const { data: inst } = await admin
-          .from('whatsapp_instances').select('instance_name').eq('id', agent.whatsapp_instance_id).single()
-        if (inst?.instance_name) {
+      if (m.lead_phone) {
+        // Instância do agente; se não tiver (ex: Ana só no chat web), usa qualquer
+        // instância conectada do tenant para ENVIAR o lembrete
+        let instName: string | null = null
+        if (agent?.whatsapp_instance_id) {
+          const { data: inst } = await admin
+            .from('whatsapp_instances').select('instance_name').eq('id', agent.whatsapp_instance_id).single()
+          instName = inst?.instance_name ?? null
+        }
+        if (!instName) {
+          const { data: anyInst } = await admin
+            .from('whatsapp_instances').select('instance_name')
+            .eq('tenant_id', m.tenant_id).eq('status', 'connected')
+            .limit(1).maybeSingle()
+          instName = anyInst?.instance_name ?? null
+        }
+        if (instName) {
+          const inst = { instance_name: instName }
           const msg = `Oi${firstName ? ` ${firstName}` : ''}! 👋 Passando pra lembrar da nossa reunião ${when}.${link}\nQualquer imprevisto é só me avisar por aqui.`
           await sendTextMessage(inst.instance_name, m.lead_phone, msg).catch(err =>
             console.error(`[remind] WA falhou meeting=${m.id}: ${String(err)}`))

@@ -337,14 +337,22 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   })}
                 </div>
               </Field>
-              {form.mode === 'standalone' && (form.channels ?? ['whatsapp', 'web']).includes('whatsapp') && (
-                <Field label="Instância WhatsApp">
-                  <select className={inputCls} value={form.whatsapp_instance_id ?? ''} onChange={e => set('whatsapp_instance_id', e.target.value || null)}>
-                    <option value="">Nenhuma</option>
-                    {instances.map(i => <option key={i.id} value={i.id}>{i.instance_name} ({i.status})</option>)}
-                  </select>
-                </Field>
-              )}
+              {form.mode === 'standalone' && (() => {
+                const chatWA = (form.channels ?? ['whatsapp', 'web']).includes('whatsapp')
+                return (
+                  <Field label={chatWA ? 'Instância WhatsApp' : 'Instância WhatsApp (só para envios)'}>
+                    <select className={inputCls} value={form.whatsapp_instance_id ?? ''} onChange={e => set('whatsapp_instance_id', e.target.value || null)}>
+                      <option value="">Nenhuma</option>
+                      {instances.map(i => <option key={i.id} value={i.id}>{i.instance_name} ({i.status})</option>)}
+                    </select>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {chatWA
+                        ? 'A Ana responde e envia por esta instância.'
+                        : 'A Ana NÃO atende no WhatsApp (só no chat web), mas usa esta instância para ENVIAR o lembrete de reunião. Deixe "Nenhuma" se não quiser lembrete por WhatsApp.'}
+                    </p>
+                  </Field>
+                )
+              })()}
             </div>
           )}
 
