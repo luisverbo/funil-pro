@@ -136,25 +136,40 @@ function extractContact(
     if (digits.length >= 10 && digits.length <= 13) { phone = digits; break }
   }
 
+  const STOPWORDS = /\b(sim|nao|não|ok|okay|oi|ola|olá|blz|beleza|quero|pode|podemos|isso|claro|bom|boa|dia|tarde|noite|obrigado|obrigada|valeu|legal|show|top|mil|reais|menos|mais|ainda|invisto|whatsapp|email|gmail|hotmail|manha|manhã|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b/i
+  const cleanCandidate = (raw: string): string | null => {
+    let cand = raw.trim()
+    // limpa prefixos: "meu nome é / me chamo / sou o(a) / aqui é / é / pode me chamar de"
+    cand = cand.replace(/^(meu nome (é|e)\s+|me chamo\s+|pode me chamar de\s+|sou (o |a )?|aqui (é|e)( o| a)?\s+|(é|e)\s+(o |a )?)/i, '').trim()
+    // corta o que vem depois de vírgula/pontuação ("Lucas, tudo bem?")
+    cand = cand.split(/[,!?\n]/)[0].replace(/[.;]+$/, '').trim()
+    const words = cand.split(/\s+/)
+    const looksName = cand.length >= 2 && cand.length <= 40 && words.length <= 4
+      && /^[\p{L}][\p{L}'\- ]*$/u.test(cand) && !STOPWORDS.test(cand) && !/\d/.test(cand)
+    if (!looksName) return null
+    return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+  }
+
   let name: string | null = actionName?.trim() || null
+  const seq = [...historyPairs, { role: 'lead', content: currentMessage }]
   if (!name) {
-    // procura "qual seu nome / como é seu nome / com quem eu falo" numa msg da Ana,
-    // seguida de uma resposta curta do lead (o nome)
-    const seq = [...historyPairs, { role: 'lead', content: currentMessage }]
+    // 1) auto-apresentação em qualquer mensagem do lead ("meu nome é X", "me chamo X", "aqui é X")
+    for (const m of seq) {
+      if (m.role !== 'lead') continue
+      const intro = m.content.match(/(?:meu nome (?:é|e)|me chamo|pode me chamar de|aqui (?:é|e)(?: o| a)?|sou (?:o|a))\s+([\p{L}][\p{L}'\- ]{1,40})/iu)
+      if (intro?.[1]) { const n = cleanCandidate(intro[1]); if (n) { name = n; break } }
+    }
+  }
+  if (!name) {
+    // 2) resposta curta do lead logo após a Ana pedir o nome (regex ampla: nome/chamar/com quem falo)
     for (let i = 0; i < seq.length - 1; i++) {
       const a = seq[i]
       if (a.role !== 'agent') continue
-      if (!/\bnome\b|com quem (eu )?falo|quem (é|e) você|como (te )?chamo/i.test(a.content)) continue
+      if (!/nome|cham(o|ar|a)|com quem\s+(eu\s+)?fal|quem fala|com quem tenho/i.test(a.content)) continue
       const reply = seq[i + 1]
       if (reply.role !== 'lead') continue
-      let cand = reply.content.trim()
-      // limpa "meu nome é / me chamo / sou o(a)"
-      cand = cand.replace(/^(meu nome (é|e)|me chamo|sou (o|a)?|aqui (é|e)( o| a)?)\s*/i, '').trim()
-      cand = cand.replace(/[.!,;]+$/, '').trim()
-      const words = cand.split(/\s+/)
-      const looksName = words.length >= 1 && words.length <= 4 && /^[\p{L}][\p{L}'\- ]+$/u.test(cand)
-        && !/\b(sim|nao|não|ok|oi|ola|olá|blz|beleza|quero|pode|isso)\b/i.test(cand)
-      if (looksName) { name = cand.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); break }
+      const n = cleanCandidate(reply.content)
+      if (n) { name = n; break }
     }
   }
   return { name, email, phone }
@@ -352,7 +367,7 @@ export async function processAgentMessage(
     channel?: 'whatsapp' | 'web' | 'test'
   } = {}
 ): Promise<AgentChatResult> {
-  const { leadId } = options
+  let { leadId } = options
   // channel: 'whatsapp' (default) envia via WA e respeita limites; 'web' (landing) NÃO
   // envia WA mas respeita limites; 'test' ignora limites e não envia nada.
   const channel: 'whatsapp' | 'web' | 'test' = options.channel ?? (options.testMode ? 'test' : 'whatsapp')
@@ -410,13 +425,6 @@ export async function processAgentMessage(
     }
   }
 
-  // Contexto do lead: nome e dados conhecidos deixam a conversa pessoal
-  let leadName: string | null = null
-  if (leadId) {
-    const { data: leadRow } = await admin.from('leads').select('name').eq('id', leadId).single()
-    leadName = leadRow?.name?.trim() || null
-  }
-
   // Agendamento: slots livres calculados agora (disponibilidade − reuniões marcadas)
   const schedCfg = isSchedulingEnabled(a.scheduling_config) ? a.scheduling_config : null
   let slots: Slot[] = []
@@ -452,16 +460,28 @@ export async function processAgentMessage(
 
   if (conversationId) {
     const { data: conv } = await admin
-      .from('agent_conversations').select('id, message_count, status').eq('id', conversationId).single()
+      .from('agent_conversations').select('id, message_count, status, lead_id').eq('id', conversationId).single()
     if (conv) {
       messageCount = conv.message_count ?? 0
       convStatus = conv.status ?? null
+      // Adota o lead já ligado à conversa (o chat web só manda conversationId,
+      // não leadId — sem isso cada mensagem tratava o lead como desconhecido
+      // e criava leads duplicados/órfãos)
+      if (!leadId && conv.lead_id) leadId = conv.lead_id
       const { data: msgs } = await admin
         .from('agent_messages').select('role, content').eq('conversation_id', conversationId).order('created_at', { ascending: true })
       history = msgs ?? []
     } else {
       conversationId = undefined
     }
+  }
+
+  // Contexto do lead: nome e dados conhecidos deixam a conversa pessoal.
+  // Roda DEPOIS de adotar o lead da conversa (chat web só manda conversationId).
+  let leadName: string | null = null
+  if (leadId) {
+    const { data: leadRow } = await admin.from('leads').select('name').eq('id', leadId).single()
+    leadName = leadRow?.name?.trim() || null
   }
 
   // Conversa já ENCERRADA (lead dispensado, transferido ou abandonado): não reengaja.
