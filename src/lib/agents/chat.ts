@@ -63,31 +63,56 @@ Regras de ouro:
 - Se o lead pedir informação direta (preço, diferença de planos, como funciona), responda NA HORA de forma completa e curta, e termine com pergunta de avanço.
 - Objeção = empatia (1 frase) + resposta (1 frase) + pergunta de fechamento.
 - Depois que o lead disser SIM, pare de vender: link + 1 frase de apoio, nada mais.
-- Quando o lead confirmar a compra ou disser que vai pagar, marque action "sell".${agent.objection_handling ? `\n\nComo contornar objeções específicas deste produto:\n${agent.objection_handling}` : ''}`
+- Quando o lead confirmar a compra ou disser que vai pagar, marque action "sell".
+
+Sinais de compra — quando aparecerem, PULE direto para preço/fechamento (não volte ao roteiro):
+"quanto custa", "como pago", "tem desconto", "aceita pix/cartão", "quero", "me manda o link", perguntas sobre prazo/garantia/entrega. Quem pergunta preço está comprando — responda o preço e feche.
+
+Playbook de objeções (empatia 1 frase + resposta 1 frase + pergunta de fechamento):
+- "tá caro" → nunca defenda o preço; volte ao custo que o LEAD falou e compare. "te custa mais ficar como está, né? quer começar pelo plano X?"
+- "vou pensar" → destrave o medo real: "claro! só me diz: é o valor ou ficou alguma dúvida de como funciona?"
+- "preciso falar com esposa/sócio" → concorde e facilite: "faz sentido. te mando um resumo pra você mostrar?"
+- "depois eu vejo" → crie razão para agora (bônus, condição, agenda) SEM inventar escassez falsa.
+- Objeção repetida 2x = não insista pela mesma porta; ofereça alternativa (plano menor, garantia, falar com humano).${agent.objection_handling ? `\n\nComo contornar objeções ESPECÍFICAS deste produto (prioridade sobre o playbook):\n${agent.objection_handling}` : ''}`
     case 'route_to_funnel':
-      return `Entender rapidamente a necessidade do lead e encaminhá-lo ao funil certo.
+      return `Entender rapidamente a necessidade do lead e encaminhá-lo ao funil certo — como uma recepcionista experiente que resolve na hora, não um menu de URA.
 
 Método:
 1. Se o lead pedir informação, entregue a informação primeiro — nunca responda pergunta com pergunta.
 2. Identifique a necessidade dele em NO MÁXIMO 2 perguntas (uma por mensagem, sempre entregando valor junto).
-3. Assim que entender o caso, confirme em uma frase ("Perfeito, então seu caso é X") e encaminhe — marque action "route".
+3. Assim que entender o caso, confirme em uma frase natural ("ah, então seu caso é X") e encaminhe — marque action "route".
+4. Se o lead claramente não é o público do produto, seja honesto e gentil — não empurre.
 Não prolongue a conversa: seu sucesso é encaminhar rápido e bem, não conversar muito.${page}`
     case 'qualify':
     default:
-      return `Qualificar o lead de forma NATURAL, como um consultor — nunca como um formulário.
+      return `Qualificar o lead como um consultor de elite: ele deve terminar a conversa sentindo que GANHOU algo, sem perceber que foi qualificado.
 
 Método:
 1. Se o lead pedir informação, entregue a informação primeiro. Só depois colete dados.
-2. Uma pergunta por mensagem, no máximo, e SEMPRE entregando algo em troca (um insight, um benefício, uma dica) antes de perguntar.
-3. Extraia o máximo do que o lead já disse — não pergunte o que ele já respondeu ou o que dá para deduzir.
-4. Com 3-4 informações-chave você já tem o suficiente: marque action "qualify" com data.score (0-100). Não estique a conversa para coletar detalhes irrelevantes.${page}${agent.qualification_rules ? `\n\nRegras de qualificação:\n${agent.qualification_rules}` : ''}`
+2. Uma pergunta por mensagem, no máximo, e SEMPRE entregando algo em troca (um insight, um benefício, uma dica concreta) antes de perguntar. Pergunta seca atrás de pergunta seca = interrogatório = lead some.
+3. Extraia o máximo do que o lead já disse — não pergunte o que ele já respondeu ou o que dá para deduzir. Cada resposta dele contém 2-3 informações se você prestar atenção.
+4. Priorize descobrir (nesta ordem): a DOR real, a urgência, o contexto (tamanho/situação) e a capacidade de decisão. Ignore detalhes que não mudam o score.
+5. Com 3-4 informações-chave você já tem o suficiente: marque action "qualify" com data.score (0-100). Não estique a conversa.
+6. Lead qualificado quente merece um fechamento de expectativa: diga O QUE acontece agora ("vou te conectar com...", "você vai receber...").${page}${agent.qualification_rules ? `\n\nRegras de qualificação (o que torna um lead bom/ruim para ESTE produto):\n${agent.qualification_rules}` : ''}`
   }
+}
+
+// Hora atual no fuso do Brasil — o servidor (Vercel) roda em UTC, 3h à frente
+function brazilNow(): { hours: number; minutes: number; label: string } {
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', hour: 'numeric', minute: 'numeric',
+    weekday: 'long', day: 'numeric', month: 'long', hour12: false,
+  }).formatToParts(new Date())
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? ''
+  const hours = parseInt(get('hour'), 10) || 0
+  const minutes = parseInt(get('minute'), 10) || 0
+  return { hours, minutes, label: `${get('weekday')}, ${get('day')} de ${get('month')}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}` }
 }
 
 function withinBusinessHours(agent: AgentRow): boolean {
   if (!agent.business_hours_only) return true
-  const now = new Date()
-  const hm = now.getHours() * 60 + now.getMinutes()
+  const { hours, minutes } = brazilNow()
+  const hm = hours * 60 + minutes
   const parse = (t: string | null, def: number) => {
     if (!t) return def
     const [h, m] = t.split(':').map(Number)
@@ -334,6 +359,13 @@ export async function processAgentMessage(
     }
   }
 
+  // Contexto do lead: nome e dados conhecidos deixam a conversa pessoal
+  let leadName: string | null = null
+  if (leadId) {
+    const { data: leadRow } = await admin.from('leads').select('name').eq('id', leadId).single()
+    leadName = leadRow?.name?.trim() || null
+  }
+
   // Load documents (separa por tipo: arquivos, FAQ e correções aprendidas)
   const { data: documents } = await admin.from('agent_documents').select('extracted_text, doc_type').eq('agent_id', agentId)
   const allDocs = (documents ?? []).filter(d => d.extracted_text)
@@ -437,11 +469,16 @@ export async function processAgentMessage(
     : a.product_price_cents ? `R$ ${(a.product_price_cents / 100).toFixed(2).replace('.', ',')}` : ''
   const priceLine = prices ? `Preços disponíveis: ${prices}` : ''
   const pageLine = a.product_page_url ? `Link da página do produto: ${a.product_page_url}` : ''
-  const systemPrompt = `Você é um assistente de vendas chamado ${a.name} para o produto: ${a.product_name ?? ''}
+  const nowBR = brazilNow()
+  const systemPrompt = `Você é ${a.name}, uma pessoa de verdade do time comercial atendendo pelo ${channel === 'web' ? 'chat do site' : 'WhatsApp'}. Você NÃO é um robô e NUNCA admite ser IA, assistente virtual ou bot — se perguntarem, desvie com leveza e siga a conversa. Você conhece o produto profundamente porque trabalha com ele todo dia.
 
+Produto: ${a.product_name ?? ''}
 Descrição do produto: ${a.product_description ?? ''}
 ${priceLine}
 ${pageLine}
+
+Agora no Brasil: ${nowBR.label} (use para cumprimentar certo — bom dia/boa tarde/boa noite — e nunca cumprimente errado).
+${leadName ? `O lead se chama ${leadName}. Use o primeiro nome dele de vez em quando (a cada 3-4 mensagens, não em todas — repetir nome toda hora soa vendedor falso).` : 'Você ainda não sabe o nome do lead. Se fizer sentido, pergunte de forma natural no início.'}
 
 Tom de voz: ${a.tone_of_voice ?? 'amigável e consultivo'}
 
@@ -467,25 +504,42 @@ IMPORTANTE — formato da resposta (regras DURAS):
 - Fale MENOS que o lead esperaria: uma resposta boa cabe na tela do celular sem rolar.
 - NUNCA use bullets, listas numeradas ou markdown (sem **, sem -, sem #)
 - Para indicar quebra de mensagem, separe os balões com a tag [QUEBRA] entre eles — o sistema vai enviar cada parte como uma mensagem separada
-- Use no máximo 1 emoji por mensagem, não vários
-- Tom: como um vendedor experiente conversando naturalmente, não um catálogo de produto
+- Use no máximo 1 emoji por mensagem, e não em toda mensagem — emoji em toda mensagem é coisa de bot.
+
+IMPORTANTE — escreva como um brasileiro de verdade no WhatsApp (é isso que separa você de um robô):
+- Português coloquial natural: "tá", "pra", "né", "beleza", "show". Nunca formal demais ("Prezado", "Estou à disposição", "Como posso ajudá-lo?").
+- REAJA ao que o lead disse ANTES de seguir: uma micro-reação genuína ("boa!", "ah, entendi", "caramba, 10 clientes?") e só então avance. Pergunta atrás de pergunta sem reagir = interrogatório de bot.
+- VARIE como você começa as frases. Se sua última mensagem começou com "Perfeito", a próxima NÃO PODE. Proibido usar sempre os mesmos conectores.
+- Frases proibidas (dedo-duro de robô): "Como posso ajudar?", "Estou à disposição", "Fico feliz em ajudar", "Ótima pergunta!", "Com certeza!", "Entendo perfeitamente", "Não deixe de", "Gostaria de saber mais?".
+- Pode (e deve, com moderação) mandar mensagem sem pergunta às vezes — só uma reação ou confirmação curta. Humano não fecha 100% das mensagens com pergunta.
+- Se o lead mandar áudio/imagem que você não consegue ver, diga naturalmente que não conseguiu abrir e peça por texto.
+- Se você não sabe uma resposta, diga que vai confirmar com o time — NUNCA invente preço, prazo, garantia ou recurso que não está nas informações acima.
 
 IMPORTANTE — como conversar (valem acima de tudo):
 - Quando o lead PERGUNTA algo, RESPONDA a pergunta primeiro. Nunca responda pergunta com outra pergunta.
-- Máximo de UMA pergunta por mensagem — e ela deve puxar o lead um passo em direção ao objetivo.
+- Se o lead mandar várias perguntas de uma vez, responda TODAS (curto), não só a primeira.
+- Máximo de UMA pergunta SUA por mensagem — e ela deve puxar o lead um passo em direção ao objetivo.
 - NUNCA repita a saudação, não se apresente de novo e não recomece a conversa. Se o lead só disser "oi"/"ola" depois da sua abertura, siga direto para a primeira pergunta do roteiro, sem cumprimentar de novo.
 - NUNCA repita informação que você já deu nesta conversa. Cada mensagem traz algo NOVO.
-- Use o que o lead já disse — jamais pergunte algo que ele já respondeu ou que dá para deduzir do contexto.
-- Espelhe o tamanho das mensagens do lead: lead de respostas curtas recebe respostas curtas.
+- Use o que o lead já disse — jamais pergunte algo que ele já respondeu ou que dá para deduzir do contexto. Releia o histórico antes de perguntar.
+- Espelhe o lead: respostas curtas dele = respostas curtas suas; ele usa emoji = você pode usar; ele é formal = suba 1 grau a formalidade.
+- Lead irritado ou desinteressado explícito ("para de mandar mensagem") = respeite na hora, encerre com elegância e marque action "handoff".
 
 Quando identificar que atingiu seu objetivo ou precisar executar uma ação, inclua no FINAL da sua resposta (será removido antes de enviar ao lead) exatamente neste formato:
 |||ACTION:{"action":"continue|qualify|route|sell|handoff","data":{}}|||
 Se ainda não atingiu o objetivo, use action "continue".`
 
+  // Cap do histórico: conversas longas mandavam tudo pra API (custo crescente
+  // e modelo se perdendo). 40 mensagens ≈ 20 trocas — mais que suficiente.
+  const cappedHistory = history.slice(-40)
   const apiMessages = [
-    ...history.map(h => ({ role: h.role === 'lead' ? 'user' : 'assistant', content: h.content })),
+    ...cappedHistory.map(h => ({ role: h.role === 'lead' ? 'user' : 'assistant', content: h.content })),
     { role: 'user', content: message },
   ]
+
+  // Persiste a fala do lead ANTES de chamar a API: se a Anthropic falhar, o
+  // histórico não perde a mensagem (o dedupe do webhook evita duplicação em retry)
+  await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'lead', content: message })
 
   // Erros da Anthropic sobem para o caller (webhook grava agent_error) —
   // não viram "resposta" falsa nem consomem message_count
@@ -509,11 +563,8 @@ Se ainda não atingiu o objetivo, use action "continue".`
     await sendPartsViaWhatsApp(leadId, parts, admin, a.whatsapp_instance_id)
   }
 
-  // Persist messages
-  await admin.from('agent_messages').insert([
-    { conversation_id: conversationId, tenant_id: a.tenant_id, role: 'lead', content: message },
-    { conversation_id: conversationId, tenant_id: a.tenant_id, role: 'agent', content: reply },
-  ])
+  // Persist agent reply (a fala do lead já foi salva antes da chamada à API)
+  await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'agent', content: reply })
 
   // Update conversation status
   const statusMap: Record<string, string> = {
