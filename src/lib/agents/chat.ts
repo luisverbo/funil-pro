@@ -98,11 +98,11 @@ Método:
 5. Com 3-4 informações-chave você já tem o suficiente: marque action "qualify" com data.score (0-100). Não estique a conversa.
 6. Lead qualificado quente merece um fechamento de expectativa: diga O QUE acontece agora ("vou te conectar com...", "você vai receber...").
 
-REGRA DE PREÇO (importante em venda high-ticket) — NUNCA seja você a dizer o preço ou um "a partir de X":
-- Dizer um piso ("a partir de 3,5 mil") ANCORA o lead nesse número — mesmo que o caso dele valha muito mais. Isso derruba o seu valor final. NÃO faça isso.
-- Para checar orçamento sem ancorar, faça o LEAD falar o número dele: pergunte quanto ele JÁ investe hoje (ou investiu) em marketing/anúncios por mês, ou quanto ele planeja investir para atingir a meta. Deixe ELE dizer o valor.
-- Se houver um piso interno de qualificação (nas regras abaixo), use-o só como CRITÉRIO SILENCIOSO seu para decidir se qualifica — jamais mencione esse número ao lead.
-- O valor do serviço é definido pelo especialista na reunião, sob medida para o caso. Se o lead insistir no preço, diga exatamente isso (que depende do diagnóstico) e leve para o agendamento — não solte número.${page}${agent.qualification_rules ? `\n\nRegras de qualificação (CRITÉRIO INTERNO SEU — nunca leia números destas regras em voz alta para o lead):\n${agent.qualification_rules}` : ''}`
+REGRA DE PREÇO (PRIORIDADE MÁXIMA — vale ACIMA de qualquer regra de qualificação abaixo, mesmo que elas contenham um roteiro com valores):
+- É PROIBIDO você dizer qualquer preço, piso, faixa ou "a partir de X" do SERVIÇO. Dizer um piso ANCORA o lead nesse número — mesmo que o caso dele valha muito mais. Se as regras de qualificação abaixo contiverem um número ou uma frase pronta com valor, esse número é CRITÉRIO INTERNO SEU: use para decidir o score, mas NUNCA o pronuncie.
+- Para checar orçamento sem ancorar, faça o LEAD falar o número dele: pergunte quanto ele JÁ investe hoje em marketing/anúncios por mês, ou quanto planeja investir. Deixe ELE dizer o valor.
+- Se o filtro de faixas (botões) estiver ativo e o lead já escolheu uma faixa que qualifica, NÃO faça mais nenhuma pergunta de orçamento e NÃO fale de valores — siga para os próximos critérios ou para o agendamento.
+- O valor do serviço é definido pelo especialista na reunião, sob medida para o caso. Se o lead perguntar o preço, diga exatamente isso (que depende do diagnóstico) e leve para o agendamento — não solte número.${page}${agent.qualification_rules ? `\n\nRegras de qualificação (CRITÉRIO INTERNO SEU — nunca leia números ou frases com valores destas regras em voz alta para o lead):\n${agent.qualification_rules}` : ''}`
   }
 }
 
@@ -749,9 +749,11 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
           tenant_id: a.tenant_id, funnel_id: null, name: cName, email: cEmail, phone: cPhone, status: 'active',
         }).select('id').single()
         bookLeadId = newLead?.id
-        if (bookLeadId && conversationId) {
-          await admin.from('agent_conversations').update({ lead_id: bookLeadId }).eq('id', conversationId).is('lead_id', null)
-        }
+      }
+      // Garante o vínculo conversa→lead (se ainda não houver) — é o que faz o
+      // nome aparecer no painel de conversas
+      if (bookLeadId && conversationId) {
+        await admin.from('agent_conversations').update({ lead_id: bookLeadId }).eq('id', conversationId).is('lead_id', null)
       }
     }
 
@@ -787,6 +789,15 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
   let choices: string[] = Array.isArray(action.data.choices)
     ? (action.data.choices as unknown[]).filter((c): c is string => typeof c === 'string' && c.trim().length > 0).slice(0, 6)
     : []
+
+  // Trava determinística: se o lead JÁ respondeu uma das faixas do gate, os botões
+  // de faixa nunca reaparecem (o modelo às vezes re-emitia as opções)
+  if (choices.length > 0 && schedCfg?.gate?.enabled) {
+    const gateLabels = new Set((schedCfg.gate.options ?? []).map(o => o.label.trim().toLowerCase()).filter(Boolean))
+    const leadAnswered = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
+      .some(t => gateLabels.has(t.trim().toLowerCase()))
+    if (leadAnswered) choices = choices.filter(c => !gateLabels.has(c.trim().toLowerCase()))
+  }
   if (choices.length > 0 && isWhatsapp && parts.length > 0) {
     parts[parts.length - 1] += '\n\n' + choices.map((c, i) => `${i + 1}) ${c}`).join('\n')
   }

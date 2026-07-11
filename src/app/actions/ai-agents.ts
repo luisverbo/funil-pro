@@ -430,6 +430,20 @@ export async function listConversations(
         lead_name: lead?.name ?? null,
       }
     })
+    // Fallback: conversa sem lead nomeado, mas que gerou reunião com contato —
+    // usa o nome salvo na reunião (o agendamento captura o contato de forma confiável)
+    const nameless = conversations.filter(c => !c.lead_name).map(c => c.id)
+    if (nameless.length > 0) {
+      const { data: mtgs } = await supabase
+        .from('agent_meetings')
+        .select('conversation_id, lead_name')
+        .in('conversation_id', nameless)
+        .not('lead_name', 'is', null)
+      const byConv = new Map((mtgs ?? []).map(m => [m.conversation_id as string, m.lead_name as string]))
+      for (const c of conversations) {
+        if (!c.lead_name && byConv.has(c.id)) c.lead_name = byConv.get(c.id) ?? null
+      }
+    }
     return { conversations, total: count ?? 0 }
   } catch (err) {
     return { conversations: [], total: 0, error: String(err) }
