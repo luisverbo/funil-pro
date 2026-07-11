@@ -41,6 +41,7 @@ export interface AgentChatResult {
   parts: string[]
   action: { type: string; data: Record<string, unknown> }
   conversationId: string
+  choices?: string[]   // opções de resposta rápida (botões no chat web)
 }
 
 function objectiveInstructions(agent: AgentRow): string {
@@ -520,7 +521,14 @@ ${corrections.length > 0 ? `⚠️ Correções aprendidas — SIGA SEMPRE, têm 
 
 Seu objetivo é: ${objectiveInstructions(a)}
 
-${schedCfg ? `📅 AGENDAMENTO DE REUNIÕES — você pode marcar ${schedCfg.meeting_title || 'uma reunião'} (${schedCfg.slot_minutes ?? 30} min${schedCfg.meeting_location ? `, em ${schedCfg.meeting_location}` : ''}) direto nesta conversa.
+${schedCfg?.gate?.enabled && (schedCfg.gate.options?.length ?? 0) > 0 ? `🚦 FILTRO OBRIGATÓRIO ANTES DE AGENDAR (gate de qualificação):
+Cedo na conversa, faça esta pergunta: "${schedCfg.gate.question || 'Quanto você investe hoje?'}" e ofereça EXATAMENTE estas opções como escolha (emita elas em choices na action pra virarem botões):
+${(schedCfg.gate.options ?? []).map(o => `- "${o.label}"${o.qualifies ? '' : ' → NÃO qualifica'}`).join('\n')}
+Para apresentar as opções, marque: |||ACTION:{"action":"continue","data":{"choices":["opção 1","opção 2","..."]}}|||
+REGRA DURA: se o lead escolher uma opção marcada como "NÃO qualifica", você NÃO pode agendar reunião de jeito nenhum. Agradeça com elegância e honestidade (ex: "pelo momento atual faz mais sentido a gente se falar mais pra frente"), ofereça um material/continuar em contato, e marque action "qualify" com data.score baixo (abaixo de 40). Nunca ofereça horários a quem não passou no filtro.
+Só quem escolher uma opção que QUALIFICA pode seguir para o agendamento.
+
+` : ''}${schedCfg ? `📅 AGENDAMENTO DE REUNIÕES — você pode marcar ${schedCfg.meeting_title || 'uma reunião'} (${schedCfg.slot_minutes ?? 30} min${schedCfg.meeting_location ? `, em ${schedCfg.meeting_location}` : ''}) direto nesta conversa.
 ${slots.length > 0 ? `Horários LIVRES agora (só ofereça horários EXATAMENTE desta lista, nunca invente outros):
 ${slots.map(s => `- ${s.label} → ${s.iso}`).join('\n')}
 
@@ -675,6 +683,15 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
     }
   }
 
+  // Opções de resposta rápida (viram botões no chat web). No WhatsApp, como não
+  // dá pra renderizar botões, anexamos as opções como lista numerada na última parte.
+  const choices: string[] = Array.isArray(action.data.choices)
+    ? (action.data.choices as unknown[]).filter((c): c is string => typeof c === 'string' && c.trim().length > 0).slice(0, 6)
+    : []
+  if (choices.length > 0 && isWhatsapp && parts.length > 0) {
+    parts[parts.length - 1] += '\n\n' + choices.map((c, i) => `${i + 1}) ${c}`).join('\n')
+  }
+
   const reply = parts.join('\n')
 
   // Send via WhatsApp (só no canal WhatsApp; web devolve as partes ao navegador)
@@ -712,5 +729,5 @@ Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |
     await resumeFunnel(leadId, agentId, action.type, admin).catch(err => console.error(`[chat] resumeFunnel falhou: ${String(err)}`))
   }
 
-  return { reply, parts, action, conversationId: conversationId ?? '' }
+  return { reply, parts, action, conversationId: conversationId ?? '', choices: choices.length > 0 ? choices : undefined }
 }

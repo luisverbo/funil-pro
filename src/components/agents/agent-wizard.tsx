@@ -132,6 +132,17 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     setSched('week', { ...schedWeek, [d]: { ...(schedWeek[d] ?? DEFAULT_WEEK[d]), ...patch } })
   const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
+  // Gate de qualificação (filtro por faixa antes de agendar)
+  type GateOpt = { label: string; qualifies: boolean }
+  const gate = (sched.gate && typeof sched.gate === 'object' ? sched.gate : {}) as { enabled?: boolean; question?: string; options?: GateOpt[] }
+  const gateOpts: GateOpt[] = Array.isArray(gate.options) ? gate.options : []
+  const setGate = (patch: Partial<{ enabled: boolean; question: string; options: GateOpt[] }>) =>
+    setSched('gate', { enabled: false, question: 'Quanto você investe hoje em anúncios por mês?', options: gateOpts, ...gate, ...patch })
+  const setGateOpt = (i: number, patch: Partial<GateOpt>) =>
+    setGate({ options: gateOpts.map((o, idx) => idx === i ? { ...o, ...patch } : o) })
+  const addGateOpt = () => setGate({ options: [...gateOpts, { label: '', qualifies: true }] })
+  const removeGateOpt = (i: number) => setGate({ options: gateOpts.filter((_, idx) => idx !== i) })
+
   function applyTemplate(t: AgentTemplate) {
     setForm(f => ({ ...f, ...t.defaults }))
     if (t.defaults.tone_of_voice) {
@@ -537,6 +548,40 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                       placeholder="Ex: https://meet.google.com/xxx-xxxx-xxx" />
                     <p className="text-xs text-gray-400 mt-1">Vai no convite e na confirmação enviada ao lead, junto com o link para adicionar no Google Agenda.</p>
                   </Field>
+
+                  {/* Gate de qualificação por faixa */}
+                  <div className="border border-amber-200 bg-amber-50/60 rounded-lg p-3">
+                    <label className="flex items-center gap-2 cursor-pointer mb-1">
+                      <input type="checkbox" checked={gate.enabled === true} onChange={e => setGate({ enabled: e.target.checked })} className="w-4 h-4 accent-amber-600" />
+                      <span className="text-sm font-medium text-gray-800">🚦 Filtrar por faixa antes de agendar</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mb-3">O agente faz uma pergunta com botões de faixa. Quem escolher uma faixa marcada como &quot;não agenda&quot; é dispensado com elegância — só quem passa no filtro vê os horários.</p>
+                    {gate.enabled && (
+                      <>
+                        <Field label="Pergunta do filtro">
+                          <input className={inputCls} value={gate.question ?? ''} onChange={e => setGate({ question: e.target.value })}
+                            placeholder="Ex: Quanto você investe hoje em anúncios por mês?" />
+                        </Field>
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-gray-600 mb-1">Faixas (opções que o lead escolhe)</p>
+                          <div className="flex flex-col gap-2">
+                            {gateOpts.map((o, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <input className={inputCls + ' flex-1'} value={o.label} onChange={e => setGateOpt(i, { label: e.target.value })}
+                                  placeholder="Ex: 10 a 20 mil/mês" />
+                                <label className={`flex items-center gap-1 text-xs px-2 py-1.5 rounded-lg cursor-pointer whitespace-nowrap ${o.qualifies ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                                  <input type="checkbox" checked={o.qualifies} onChange={e => setGateOpt(i, { qualifies: e.target.checked })} className="accent-emerald-600" />
+                                  {o.qualifies ? 'agenda' : 'não agenda'}
+                                </label>
+                                <button type="button" onClick={() => removeGateOpt(i)} className="text-gray-400 hover:text-red-500 px-1">×</button>
+                              </div>
+                            ))}
+                          </div>
+                          <button type="button" onClick={addGateOpt} className="mt-2 text-xs text-indigo-600 hover:underline">+ adicionar faixa</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </>
               )}
 

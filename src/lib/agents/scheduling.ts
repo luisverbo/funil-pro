@@ -10,6 +10,16 @@ export interface SchedulingDay {
   end: string     // "18:00"
 }
 
+export interface GateOption {
+  label: string        // ex: "10 a 20 mil/mês"
+  qualifies: boolean   // se false, escolher esta opção NÃO deixa agendar
+}
+export interface QualifyGate {
+  enabled?: boolean
+  question?: string        // ex: "Quanto você investe hoje em anúncios por mês?"
+  options?: GateOption[]
+}
+
 export interface SchedulingConfig {
   enabled?: boolean
   slot_minutes?: number        // duração da reunião
@@ -19,6 +29,7 @@ export interface SchedulingConfig {
   meeting_title?: string
   meeting_location?: string    // link do Meet/Zoom ou endereço
   week?: Record<string, SchedulingDay>   // '0'(dom) … '6'(sáb)
+  gate?: QualifyGate           // filtro de qualificação por faixa (gate de agendamento)
 }
 
 export interface Slot { iso: string; label: string }

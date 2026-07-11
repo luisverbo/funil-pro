@@ -37,6 +37,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   const [captured, setCaptured] = useState(false)
   const [showCapture, setShowCapture] = useState(config.capture_mode === 'gate')
   const [lastAction, setLastAction] = useState<Action | null>(null)
+  const [choices, setChoices] = useState<string[]>([])
   const [cap, setCap] = useState({ name: '', email: '', phone: '' })
   const [capError, setCapError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -92,6 +93,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
     const clean = text.trim()
     if (!clean || typing) return
     setInput('')
+    setChoices([])   // limpa botões da rodada anterior ao enviar
     setMessages(m => [...m, { role: 'user', content: clean }])
     setTyping(true)
     try {
@@ -105,7 +107,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
           landingUrl: landingUrlRef.current,
         }),
       })
-      const data = await res.json() as { parts?: string[]; reply?: string; conversationId?: string; action?: Action; error?: string }
+      const data = await res.json() as { parts?: string[]; reply?: string; conversationId?: string; action?: Action; error?: string; choices?: string[] }
       setTyping(false)
       if (data.conversationId) setConversationId(data.conversationId)
       if (data.error) {
@@ -115,6 +117,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
       const parts = (data.parts && data.parts.length > 0) ? data.parts : (data.reply ? [data.reply] : [])
       await revealParts(parts)
       if (data.action) setLastAction(data.action)
+      if (Array.isArray(data.choices) && data.choices.length > 0) setChoices(data.choices)
 
       // Captura inline: após N mensagens do agente, pede contato (se ainda não
       // capturou). Default 4 (não 2) pra não pular por cima do início da conversa,
@@ -228,8 +231,21 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
           )}
         </div>
 
+        {/* Opções de resposta rápida enviadas pelo agente (ex: faixas de investimento) */}
+        {choices.length > 0 && !typing && (
+          <div className="px-4 pb-2 flex flex-wrap gap-2">
+            {choices.map((c, i) => (
+              <button key={i} onClick={() => sendMessage(c)}
+                className="px-3.5 py-2 rounded-full text-sm font-medium text-white shadow-sm"
+                style={{ background: primary, borderRadius: theme.buttonRadius }}>
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Quick replies */}
-        {messages.length > 0 && !typing && (config.quick_replies?.length ?? 0) > 0 && agentMsgCount <= 2 && (
+        {messages.length > 0 && !typing && choices.length === 0 && (config.quick_replies?.length ?? 0) > 0 && agentMsgCount <= 2 && (
           <div className="px-4 pb-2 flex gap-2 overflow-x-auto" style={{ scrollSnapType: 'x mandatory' }}>
             {config.quick_replies!.map((q, i) => (
               <button key={i} onClick={() => sendMessage(q)}
