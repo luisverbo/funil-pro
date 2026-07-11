@@ -458,10 +458,24 @@ export async function processAgentMessage(
     return { reply: abandonMsg, parts: [abandonMsg], action: { type: 'handoff', data: {} }, conversationId: conversationId ?? '' }
   }
 
-  // Handoff keyword check
+  // Handoff keyword check — casa por PALAVRA INTEIRA (word boundary unicode),
+  // não por substring. Assim "são atendentes via WhatsApp" (lead falando do
+  // próprio negócio) não dispara a keyword "atendente". Além disso, palavras
+  // curtas/ambíguas (1 termo) só valem se a mensagem for claramente um PEDIDO.
   const keywords = a.handoff_to_human_keywords ?? []
-  const lower = message.toLowerCase()
-  if (keywords.some(k => k && lower.includes(k.toLowerCase()))) {
+  const REQUEST_HINT = /\b(quero|preciso|posso|pode|gostaria|me\s+(passa|transfere|chama|liga)|falar|atende|atender|chamar|transfer)/i
+  const matchesHandoff = keywords.some(k => {
+    const kk = (k ?? '').toLowerCase().trim()
+    if (!kk) return false
+    const esc = kk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`(^|[^\\p{L}])${esc}([^\\p{L}]|$)`, 'iu')
+    if (!re.test(message)) return false
+    // Termo de 1 palavra e ambíguo (ex: "atendente", "humano") exige sinal de pedido
+    const singleWord = !kk.includes(' ')
+    if (singleWord && !REQUEST_HINT.test(message)) return false
+    return true
+  })
+  if (matchesHandoff) {
     await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'lead', content: message })
     const handoffMsg = 'Claro! Vou transferir você para um atendente humano. Aguarde um momento, por favor.'
     await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'agent', content: handoffMsg })
@@ -488,7 +502,7 @@ ${priceLine}
 ${pageLine}
 
 Agora no Brasil: ${nowBR.label} (use para cumprimentar certo — bom dia/boa tarde/boa noite — e nunca cumprimente errado).
-${leadName ? `O lead se chama ${leadName}. Use o primeiro nome dele de vez em quando (a cada 3-4 mensagens, não em todas — repetir nome toda hora soa vendedor falso).` : 'Você ainda não sabe o nome do lead. Se fizer sentido, pergunte de forma natural no início.'}
+${leadName ? `O lead se chama ${leadName}. Use o primeiro nome dele de vez em quando (a cada 3-4 mensagens, não em todas — repetir nome toda hora soa vendedor falso).` : `Você ainda NÃO sabe o nome do lead. LOGO no começo, antes de entrar nas perguntas do roteiro, pergunte o nome dele de um jeito leve ("antes de mais nada, como é seu nome?" / "com quem eu falo?") e use o nome no resto da conversa. Perguntar o nome primeiro é justamente o que faz parecer um atendente de verdade, não um robô.`}
 
 Tom de voz: ${a.tone_of_voice ?? 'amigável e consultivo'}
 
@@ -542,7 +556,10 @@ IMPORTANTE — como conversar (valem acima de tudo):
 - Máximo de UMA pergunta SUA por mensagem — e ela deve puxar o lead um passo em direção ao objetivo.
 - NUNCA repita a saudação, não se apresente de novo e não recomece a conversa. Se o lead só disser "oi"/"ola" depois da sua abertura, siga direto para a primeira pergunta do roteiro, sem cumprimentar de novo.
 - NUNCA repita informação que você já deu nesta conversa. Cada mensagem traz algo NOVO.
+- NUNCA refaça uma pergunta que você já fez. Antes de perguntar qualquer coisa, releia o histórico: se você já perguntou aquilo (mesmo com outras palavras), NÃO pergunte de novo — siga em frente com o que já sabe.
+- NUNCA diga que "anotei seus dados", "registrei aqui", "salvei suas informações" ou algo parecido. Você é uma pessoa conversando, não um formulário — esse tipo de frase entrega na hora que é robô.
 - Use o que o lead já disse — jamais pergunte algo que ele já respondeu ou que dá para deduzir do contexto. Releia o histórico antes de perguntar.
+- Só transfira para um humano (action "handoff") quando o LEAD PEDIR isso claramente ("quero falar com alguém", "me passa pra um atendente"). Se ele mencionar atendentes/humanos falando do NEGÓCIO dele, isso NÃO é um pedido de transferência — continue normalmente.
 - Espelhe o lead: respostas curtas dele = respostas curtas suas; ele usa emoji = você pode usar; ele é formal = suba 1 grau a formalidade.
 - Lead irritado ou desinteressado explícito ("para de mandar mensagem") = respeite na hora, encerre com elegância e marque action "handoff".
 

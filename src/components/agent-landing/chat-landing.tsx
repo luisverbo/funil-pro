@@ -63,14 +63,17 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
     }
   }, [config.pixel_id])
 
-  // Saudação inicial com "digitando"
+  // Saudação inicial: chat começa VAZIO, mostra "digitando…" e a saudação
+  // "chega" depois de um tempo proporcional ao texto — dá o ar de um atendente
+  // de verdade digitando na hora, em vez de a mensagem já estar lá pronta.
   useEffect(() => {
+    const delay = Math.min(2800, Math.max(1400, greeting.length * 32))
     setTyping(true)
     const t = setTimeout(() => {
       setTyping(false)
       setMessages([{ role: 'agent', content: greeting }])
       setAgentMsgCount(1)
-    }, 900)
+    }, delay)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

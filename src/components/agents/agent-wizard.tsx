@@ -83,7 +83,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     public_enabled: (agent as Agent & { public_enabled?: boolean })?.public_enabled ?? false,
     landing_config: (agent as Agent & { landing_config?: Record<string, unknown> })?.landing_config ?? {},
     whatsapp_instance_id: agent?.whatsapp_instance_id ?? null,
-    handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'atendente', 'pessoa real'],
+    handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'falar com atendente', 'falar com uma pessoa'],
     channels: (agent as Agent & { channels?: string[] })?.channels ?? ['whatsapp', 'web'],
     scheduling_config: (agent as Agent & { scheduling_config?: Record<string, unknown> })?.scheduling_config ?? null,
   })
