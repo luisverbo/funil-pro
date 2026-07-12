@@ -635,6 +635,7 @@ ${slots.map(s => `- ${s.label} → ${s.iso}`).join('\n')}
 
 Como agendar bem:
 - Ofereça no MÁXIMO 2-3 opções por vez (de dias/períodos diferentes quando possível) — lista longa paralisa o lead.
+- Ao oferecer horários, emita-os TAMBÉM como botões: |||ACTION:{"action":"continue","data":{"choices":["segunda 14:00","terça 09:00"]}}||| (labels curtos; quando o lead clicar/escolher, você mapeia de volta pro iso EXATO da lista).
 - Pergunte primeiro se ele prefere manhã ou tarde / início ou fim de semana, se a lista permitir filtrar.
 - ANTES de confirmar, você PRECISA ter três dados do lead: NOME, E-MAIL e WHATSAPP (com DDD). Você já deve saber o nome; peça o e-mail e o WhatsApp de forma natural ("pra eu te enviar o convite e o lembrete, me passa seu melhor e-mail e o WhatsApp com DDD?"). NÃO confirme o horário sem ter os três — sem isso não dá pra te lembrar da reunião.
 - Só depois de ter horário escolhido + nome + e-mail + whatsapp, marque a action "schedule" com o iso EXATO da lista e os dados de contato:
@@ -683,7 +684,8 @@ IMPORTANTE — como conversar (valem acima de tudo):
 Quando identificar que atingiu seu objetivo ou precisar executar uma ação, inclua no FINAL da sua resposta (será removido antes de enviar ao lead) exatamente neste formato:
 |||ACTION:{"action":"continue|qualify|route|sell|handoff|schedule","data":{}}|||
 Se ainda não atingiu o objetivo, use action "continue".
-Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |||ACTION:{"action":"continue","data":{"name":"Marcos"}}|||) — isso registra o lead no painel em vez de ficar "Anônimo".`
+Assim que souber o NOME do lead, inclua "name" no data de QUALQUER action (ex: |||ACTION:{"action":"continue","data":{"name":"Marcos"}}|||) — isso registra o lead no painel em vez de ficar "Anônimo".
+Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manhã/tarde, opções de plano), emita-as em "choices" no data — elas viram botões clicáveis e o lead responde com 1 toque. Não use choices para perguntas abertas (nome, e-mail, descrição do negócio).`
 
   // Cap do histórico: conversas longas mandavam tudo pra API (custo crescente
   // e modelo se perdendo). 40 mensagens ≈ 20 trocas — mais que suficiente.

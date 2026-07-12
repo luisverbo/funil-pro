@@ -15,10 +15,15 @@ export interface LandingConfig {
   pixel_id?: string
 }
 
-interface Msg { role: 'user' | 'agent'; content: string }
+interface Msg { role: 'user' | 'agent'; content: string; ts?: number }
 type Action = { type: string; data?: Record<string, unknown> }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function fmtTime(ts?: number): string {
+  if (!ts) return ''
+  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
 
 export default function ChatLanding({ slug, agentName, greeting, config }: {
   slug: string
@@ -41,12 +46,44 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   const [cap, setCap] = useState({ name: '', email: '', phone: '' })
   const [capError, setCapError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const utmRef = useRef<Record<string, string>>({})
   const landingUrlRef = useRef<string>('')
+  const restoredRef = useRef(false)
+  const storageKey = `fp_chat_${slug}`
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, typing, showCapture])
+
+  // Persistência: o lead pode fechar/atualizar a página e voltar de onde parou
+  // (conversa guardada por 24h no localStorage)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const saved = JSON.parse(raw) as { conversationId?: string; messages?: Msg[]; captured?: boolean; agentMsgCount?: number; savedAt?: number }
+        if (saved.savedAt && Date.now() - saved.savedAt < 24 * 3600_000 && (saved.messages?.length ?? 0) > 0) {
+          restoredRef.current = true
+          setMessages(saved.messages!)
+          setConversationId(saved.conversationId)
+          setCaptured(saved.captured ?? false)
+          setAgentMsgCount(saved.agentMsgCount ?? 1)
+          setShowCapture(false)
+        } else {
+          localStorage.removeItem(storageKey)
+        }
+      }
+    } catch { /* localStorage indisponível (modo privado etc.) */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (messages.length === 0) return
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ conversationId, messages, captured, agentMsgCount, savedAt: Date.now() }))
+    } catch { /* quota/privado */ }
+  }, [messages, conversationId, captured, agentMsgCount, storageKey])
 
   // Captura UTMs da URL uma vez
   useEffect(() => {
@@ -68,11 +105,12 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   // "chega" depois de um tempo proporcional ao texto — dá o ar de um atendente
   // de verdade digitando na hora, em vez de a mensagem já estar lá pronta.
   useEffect(() => {
+    if (restoredRef.current) return   // conversa restaurada: não repete a saudação
     const delay = Math.min(2800, Math.max(1400, greeting.length * 32))
     setTyping(true)
     const t = setTimeout(() => {
       setTyping(false)
-      setMessages([{ role: 'agent', content: greeting }])
+      setMessages(m => m.length > 0 ? m : [{ role: 'agent', content: greeting, ts: Date.now() }])
       setAgentMsgCount(1)
     }, delay)
     return () => clearTimeout(t)
@@ -84,7 +122,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
       setTyping(true)
       await new Promise(r => setTimeout(r, Math.min(4000, Math.max(1200, part.length * 35))))
       setTyping(false)
-      setMessages(m => [...m, { role: 'agent', content: part }])
+      setMessages(m => [...m, { role: 'agent', content: part, ts: Date.now() }])
       setAgentMsgCount(c => c + 1)
     }
   }, [])
@@ -94,7 +132,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
     if (!clean || typing) return
     setInput('')
     setChoices([])   // limpa botões da rodada anterior ao enviar
-    setMessages(m => [...m, { role: 'user', content: clean }])
+    setMessages(m => [...m, { role: 'user', content: clean, ts: Date.now() }])
     setTyping(true)
     try {
       const res = await fetch(`/api/agents/public/${slug}/chat`, {
@@ -118,6 +156,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
       await revealParts(parts)
       if (data.action) setLastAction(data.action)
       if (Array.isArray(data.choices) && data.choices.length > 0) setChoices(data.choices)
+      inputRef.current?.focus()
 
       // Captura inline: após N mensagens do agente, pede contato (se ainda não
       // capturou). Default 4 (não 2) pra não pular por cima do início da conversa,
@@ -196,7 +235,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-4 flex flex-col gap-2"
           style={theme.chatBg ? { background: theme.chatBg } : undefined}>
           {messages.map((m, i) => (
-            <Bubble key={i} role={m.role} content={m.content} theme={theme} primary={primary} />
+            <Bubble key={i} role={m.role} content={m.content} ts={m.ts} theme={theme} primary={primary} />
           ))}
           {typing && <TypingDots theme={theme} />}
 
@@ -207,6 +246,15 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
               className="self-start mt-1 px-5 py-3 rounded-xl text-white font-semibold text-sm shadow-lg"
               style={{ background: primary, borderRadius: theme.buttonRadius }}>
               Finalizar compra →
+            </a>
+          )}
+
+          {/* Reunião agendada: botão de adicionar à agenda */}
+          {lastAction?.type === 'schedule' && typeof lastAction.data?.calendar_link === 'string' && (
+            <a href={lastAction.data.calendar_link as string} target="_blank" rel="noopener noreferrer"
+              className="self-start mt-1 px-5 py-3 rounded-xl text-white font-semibold text-sm shadow-lg flex items-center gap-2"
+              style={{ background: primary, borderRadius: theme.buttonRadius }}>
+              📅 Adicionar ao Google Agenda
             </a>
           )}
 
@@ -261,6 +309,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
         {/* Input */}
         <div className="px-3 py-3 border-t flex gap-2" style={{ borderColor: theme.cardBorder, background: theme.cardBg, paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
           <input
+            ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') sendMessage(input) }}
@@ -280,7 +329,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   )
 }
 
-function Bubble({ role, content, theme, primary }: { role: 'user' | 'agent'; content: string; theme: ReturnType<typeof resolveTheme>; primary: string }) {
+function Bubble({ role, content, ts, theme, primary }: { role: 'user' | 'agent'; content: string; ts?: number; theme: ReturnType<typeof resolveTheme>; primary: string }) {
   const isUser = role === 'user'
   // Links clicáveis + quebra forçada (URL longa sem quebra estourava o layout no mobile)
   const parts = content.split(/(https?:\/\/[^\s]+)/g)
@@ -299,6 +348,7 @@ function Bubble({ role, content, theme, primary }: { role: 'user' | 'agent'; con
             style={{ color: isUser ? theme.userBubbleText : primary }}>{p}</a>
         : <React.Fragment key={i}>{p}</React.Fragment>
       )}
+      {ts ? <span className="block text-right text-[10px] mt-0.5 select-none" style={{ opacity: 0.55 }}>{fmtTime(ts)}</span> : null}
     </div>
   )
 }

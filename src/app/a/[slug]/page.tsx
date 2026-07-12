@@ -16,9 +16,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     .maybeSingle()
   if (!agent || !agent.public_enabled) return { title: 'Indisponível' }
   const cfg = (agent.landing_config ?? {}) as LandingConfig
+  const title = cfg.headline || agent.name || 'Fale conosco'
+  const description = cfg.subheadline || `Converse agora com ${agent.name} — atendimento imediato.`
   return {
-    title: cfg.headline || agent.name || 'Fale conosco',
-    description: cfg.subheadline || undefined,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      ...(cfg.avatar_url ? { images: [{ url: cfg.avatar_url }] } : {}),
+    },
+    twitter: { card: 'summary', title, description },
   }
 }
 
