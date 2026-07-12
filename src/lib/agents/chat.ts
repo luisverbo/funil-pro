@@ -313,7 +313,7 @@ async function enrollInFunnel(
   })
 }
 
-async function callAnthropic(systemPrompt: string, apiMessages: { role: string; content: string }[]): Promise<string> {
+export async function callAnthropic(systemPrompt: string, apiMessages: { role: string; content: string }[]): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('anthropic_key_missing: configure ANTHROPIC_API_KEY no ambiente')
 
@@ -852,7 +852,8 @@ Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manh�
   const newStatus = disqualified ? 'disqualified' : statusMap[action.type]
   // Conversa terminou (ação terminal) → não faz sentido mostrar botões de opção
   if (newStatus) choices = []
-  const convUpdate: Record<string, unknown> = { message_count: messageCount + 1 }
+  // last_agent_at alimenta o follow-up automático; lead respondeu = ciclo zera
+  const convUpdate: Record<string, unknown> = { message_count: messageCount + 1, last_agent_at: new Date().toISOString(), followups_sent: 0 }
   if (newStatus) {
     convUpdate.status = newStatus
     convUpdate.ended_at = new Date().toISOString()

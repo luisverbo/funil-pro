@@ -86,6 +86,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     handoff_to_human_keywords: agent?.handoff_to_human_keywords ?? ['falar com humano', 'falar com atendente', 'falar com uma pessoa'],
     channels: (agent as Agent & { channels?: string[] })?.channels ?? ['whatsapp', 'web'],
     scheduling_config: (agent as Agent & { scheduling_config?: Record<string, unknown> })?.scheduling_config ?? null,
+    followup_config: (agent as Agent & { followup_config?: Record<string, unknown> })?.followup_config ?? null,
   })
 
   // kept for summary display of the first/main price
@@ -610,6 +611,35 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   </div>
                 </>
               )}
+
+              {(() => {
+                const fu = (form.followup_config ?? {}) as { enabled?: boolean; first_after_hours?: number; second_after_hours?: number }
+                const setFu = (patch: Record<string, unknown>) => set('followup_config', { enabled: false, first_after_hours: 4, second_after_hours: 24, ...fu, ...patch })
+                return (
+                  <div className="border border-sky-200 bg-sky-50/60 rounded-lg p-3">
+                    <label className="flex items-center gap-2 cursor-pointer mb-1">
+                      <input type="checkbox" checked={fu.enabled === true} onChange={e => setFu({ enabled: e.target.checked })} className="w-4 h-4 accent-sky-600" />
+                      <span className="text-sm font-medium text-gray-800">🔁 Follow-up automático (recupera lead que sumiu)</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">Se o lead parar de responder, o agente manda uma retomada leve por WhatsApp — escrita pela IA com o contexto da conversa, sem cobrança.</p>
+                    {fu.enabled && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label="1ª retomada após">
+                          <select className={inputCls} value={fu.first_after_hours ?? 4} onChange={e => setFu({ first_after_hours: Number(e.target.value) })}>
+                            {[1, 2, 4, 8, 12, 24].map(h => <option key={h} value={h}>{h}h sem resposta</option>)}
+                          </select>
+                        </Field>
+                        <Field label="2ª retomada (última)">
+                          <select className={inputCls} value={fu.second_after_hours ?? 24} onChange={e => setFu({ second_after_hours: Number(e.target.value) })}>
+                            <option value={0}>Não enviar 2ª</option>
+                            {[24, 48, 72].map(h => <option key={h} value={h}>{h}h depois da 1ª</option>)}
+                          </select>
+                        </Field>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               <Field label="Palavras para transferir a humano">
                 <div className="flex flex-wrap gap-2 mb-2">

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage } from '@/lib/agents/chat'
+import { getMediaBase64 } from '@/lib/evolution'
+import { transcribeAudio } from '@/lib/agents/transcribe'
 
 // Processamento síncrono do agente (Anthropic + delays entre partes) exige mais que o default de 10s
 export const maxDuration = 60
@@ -10,7 +12,7 @@ interface EvolutionMessageEvent {
   instance: string
   data?: {
     key?: { remoteJid?: string; fromMe?: boolean; id?: string }
-    message?: { conversation?: string; extendedTextMessage?: { text?: string } }
+    message?: { conversation?: string; extendedTextMessage?: { text?: string }; audioMessage?: Record<string, unknown> }
     pushName?: string
   }
   state?: string
@@ -81,13 +83,28 @@ export async function POST(
 
   const { data: waInstance } = await admin
     .from('whatsapp_instances')
-    .select('id, tenant_id')
+    .select('id, tenant_id, instance_name')
     .eq('id', instanceId)
     .single()
 
   if (!waInstance) return NextResponse.json({ received: true })
 
   const tenantId = waInstance.tenant_id
+
+  // Áudio: transcreve via Whisper (se OPENAI_API_KEY configurada); sem
+  // transcrição, o agente pede o texto com naturalidade
+  let effectiveText = messageText
+  if (!effectiveText && messageData.message?.audioMessage) {
+    let transcript: string | null = null
+    if (waInstance.instance_name && messageData.key.id) {
+      const media = await getMediaBase64(waInstance.instance_name, messageData.key)
+        .catch(() => null)
+      if (media) transcript = await transcribeAudio(media.base64, media.mimetype ?? 'audio/ogg')
+    }
+    effectiveText = transcript
+      ? transcript
+      : '[o lead enviou um áudio que você não conseguiu ouvir — peça com naturalidade para ele mandar por texto]'
+  }
   const pushName = messageData?.pushName ?? null
 
   // Check for standalone agent linked to this WA instance
@@ -144,7 +161,7 @@ export async function POST(
       funnel_id: resolvedLead.funnel_id,
       block_id: resolvedLead.current_block_id,
       event_type: 'replied',
-      event_data: { text: messageText, phone: senderPhone },
+      event_data: { text: effectiveText, phone: senderPhone },
     })
   }
 
@@ -158,9 +175,9 @@ export async function POST(
 
     const agentId = (agentBlock?.config as Record<string, unknown>)?.agent_id as string | undefined
 
-    if (agentId && messageText) {
+    if (agentId && effectiveText) {
       try {
-        await processAgentMessage(agentId, messageText, { leadId: resolvedLead.id })
+        await processAgentMessage(agentId, effectiveText, { leadId: resolvedLead.id })
       } catch (err) {
         console.error('[webhook/evolution] funnel agent error:', { agentId, leadId: resolvedLead.id, error: String(err) })
         if (resolvedLead.funnel_id) {
@@ -186,9 +203,9 @@ export async function POST(
   // PRIORITY 2: standalone agent on this WA instance
   const agentChannels: string[] | null = (standaloneAgent as typeof standaloneAgent & { channels?: string[] | null })?.channels ?? null
   const whatsappEnabled = !agentChannels || agentChannels.includes('whatsapp')
-  if (standaloneAgent && whatsappEnabled && messageText) {
+  if (standaloneAgent && whatsappEnabled && effectiveText) {
     try {
-      await processAgentMessage(standaloneAgent.id, messageText, { leadId: resolvedLead.id })
+      await processAgentMessage(standaloneAgent.id, effectiveText, { leadId: resolvedLead.id })
     } catch (err) {
       console.error('[webhook/evolution] standalone agent error:', { agentId: standaloneAgent.id, leadId: resolvedLead.id, error: String(err) })
     }

@@ -1,5 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
-import { getAgent, listConversations } from '@/app/actions/ai-agents'
+import { getAgent, listConversations, getAgentFunnel } from '@/app/actions/ai-agents'
 import ConversationsClient from './conversations-client'
 
 export default async function ConversationsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -8,7 +8,10 @@ export default async function ConversationsPage({ params }: { params: Promise<{ 
   if (error === 'not_found' || !agent) notFound()
   if (!agent) redirect('/agents')
 
-  const { conversations, total } = await listConversations(id, { page: 0, pageSize: 20 })
+  const [{ conversations, total }, funnel] = await Promise.all([
+    listConversations(id, { page: 0, pageSize: 20 }),
+    getAgentFunnel(id),
+  ])
 
   return (
     <ConversationsClient
@@ -16,6 +19,7 @@ export default async function ConversationsPage({ params }: { params: Promise<{ 
       agentName={agent.name}
       initialConversations={conversations}
       total={total}
+      funnel={funnel}
     />
   )
 }

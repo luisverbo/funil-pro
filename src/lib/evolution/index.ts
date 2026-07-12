@@ -120,3 +120,16 @@ export async function setInstanceWebhook(instanceName: string, webhookUrl: strin
   if (!res.ok) throw new Error(`Evolution webhook set error: ${res.status}`)
   return res.json()
 }
+
+// Baixa a mídia de uma mensagem recebida (áudio, imagem...) em base64
+export async function getMediaBase64(instanceName: string, messageKey: { id?: string; remoteJid?: string; fromMe?: boolean }): Promise<{ base64: string; mimetype?: string } | null> {
+  const res = await fetch(`${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+    body: JSON.stringify({ message: { key: messageKey }, convertToMp4: false }),
+  })
+  if (!res.ok) return null
+  const json = await res.json().catch(() => null) as { base64?: string; mimetype?: string } | null
+  if (!json?.base64) return null
+  return { base64: json.base64, mimetype: json.mimetype }
+}

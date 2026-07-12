@@ -31,9 +31,10 @@ function fmtDuration(start: string, end: string | null): string {
 interface Props {
   agentId: string; agentName: string
   initialConversations: Conversation[]; total: number
+  funnel?: { total: number; withContact: number; qualified: number; scheduled: number; sold: number }
 }
 
-export default function ConversationsClient({ agentId, agentName, initialConversations, total }: Props) {
+export default function ConversationsClient({ agentId, agentName, initialConversations, total, funnel }: Props) {
   const [conversations, setConversations] = useState(initialConversations)
   const [filter, setFilter] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -115,6 +116,26 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
         <Link href="/agents" className="text-sm text-indigo-600 hover:underline">← Voltar</Link>
       </div>
       <h1 className="text-2xl font-bold text-gray-900 mb-4">Conversas de {agentName}</h1>
+
+      {funnel && funnel.total > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-5">
+          {[
+            { label: 'Conversas', value: funnel.total, pct: 100 },
+            { label: 'Com contato', value: funnel.withContact, pct: funnel.total ? Math.round(funnel.withContact / funnel.total * 100) : 0 },
+            { label: 'Qualificados', value: funnel.qualified, pct: funnel.total ? Math.round(funnel.qualified / funnel.total * 100) : 0 },
+            { label: 'Reuniões', value: funnel.scheduled, pct: funnel.total ? Math.round(funnel.scheduled / funnel.total * 100) : 0 },
+            { label: 'Vendas', value: funnel.sold, pct: funnel.total ? Math.round(funnel.sold / funnel.total * 100) : 0 },
+          ].map((s, i) => (
+            <div key={s.label} className="rounded-xl bg-white border border-gray-100 shadow-sm px-3 py-2.5">
+              <p className="text-xl font-bold text-gray-900 leading-tight">{s.value}</p>
+              <p className="text-[11px] text-gray-500">{s.label}{i > 0 ? ` · ${s.pct}%` : ''}</p>
+              <div className="h-1 mt-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500" style={{ width: `${s.pct}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         {FILTERS.map(f => (

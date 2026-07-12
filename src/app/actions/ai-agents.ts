@@ -45,6 +45,7 @@ export interface AgentInput {
   landing_config?: Record<string, unknown> | null
   channels?: string[] | null   // ['whatsapp', 'web'] — null/undefined = ambos
   scheduling_config?: Record<string, unknown> | null
+  followup_config?: Record<string, unknown> | null
 }
 
 export interface Agent extends AgentInput {
@@ -93,7 +94,7 @@ const ALLOWED_FIELDS: (keyof AgentInput)[] = [
   'target_funnel_id', 'max_messages_per_conversation', 'handoff_to_human_keywords',
   'business_hours_only', 'business_hours_start', 'business_hours_end', 'whatsapp_instance_id',
   'max_activations_per_month', 'product_prices', 'product_page_url',
-  'public_slug', 'public_enabled', 'landing_config', 'channels', 'scheduling_config',
+  'public_slug', 'public_enabled', 'landing_config', 'channels', 'scheduling_config', 'followup_config',
 ]
 
 function sanitize(data: Partial<AgentInput>): Record<string, unknown> {
@@ -396,6 +397,35 @@ export async function getAgentStats(id: string): Promise<{
     return { total, rate, rate_label: label, avg_messages, by_day }
   } catch (err) {
     return { total: 0, rate: 0, rate_label: '', avg_messages: 0, by_day: [], error: String(err) }
+  }
+}
+
+// Funil do agente: visão rápida de conversão em cada etapa
+export interface AgentFunnel {
+  total: number; withContact: number; qualified: number; scheduled: number; sold: number
+}
+export async function getAgentFunnel(agentId: string): Promise<AgentFunnel> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data: convs } = await supabase
+      .from('agent_conversations')
+      .select('status, lead_id')
+      .eq('agent_id', agentId).eq('tenant_id', tenantId)
+    const list = convs ?? []
+    const { count: meetings } = await supabase
+      .from('agent_meetings')
+      .select('id', { count: 'exact', head: true })
+      .eq('agent_id', agentId).eq('tenant_id', tenantId).eq('status', 'confirmed')
+    return {
+      total: list.length,
+      withContact: list.filter(c => c.lead_id).length,
+      qualified: list.filter(c => ['qualified', 'scheduled', 'sold', 'routed_to_funnel'].includes(c.status)).length,
+      scheduled: meetings ?? list.filter(c => c.status === 'scheduled').length,
+      sold: list.filter(c => c.status === 'sold').length,
+    }
+  } catch {
+    return { total: 0, withContact: 0, qualified: 0, scheduled: 0, sold: 0 }
   }
 }
 
