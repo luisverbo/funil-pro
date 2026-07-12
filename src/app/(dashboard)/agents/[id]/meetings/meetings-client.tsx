@@ -41,8 +41,12 @@ interface Props {
 export default function MeetingsClient({ agentName, initialMeetings, meetingTitle, meetingLocation }: Props) {
   const [meetings, setMeetings] = useState(initialMeetings)
   const [busy, setBusy] = useState(false)
+  const [showCancelled, setShowCancelled] = useState(false)
 
   const upcoming = meetings.filter(m => m.status === 'confirmed' && new Date(m.scheduled_at).getTime() > Date.now())
+  // Canceladas somem da lista por padrão (toggle para rever se precisar)
+  const visible = showCancelled ? meetings : meetings.filter(m => m.status !== 'cancelled')
+  const cancelledCount = meetings.filter(m => m.status === 'cancelled').length
 
   async function cancel(id: string) {
     if (!confirm('Cancelar esta reunião? O horário volta a ficar disponível.')) return
@@ -57,8 +61,17 @@ export default function MeetingsClient({ agentName, initialMeetings, meetingTitl
       <div className="flex items-center gap-3 mb-1">
         <Link href="/agents" className="text-sm text-indigo-600 hover:underline">← Voltar</Link>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Reuniões de {agentName}</h1>
-      <p className="text-sm text-gray-500 mb-5">{upcoming.length} reunião(ões) confirmada(s) daqui pra frente</p>
+      <div className="flex items-end justify-between mb-5 flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Reuniões de {agentName}</h1>
+          <p className="text-sm text-gray-500">{upcoming.length} reunião(ões) confirmada(s) daqui pra frente</p>
+        </div>
+        {cancelledCount > 0 && (
+          <button onClick={() => setShowCancelled(v => !v)} className="text-xs text-gray-400 hover:text-gray-600 underline">
+            {showCancelled ? 'ocultar canceladas' : `mostrar canceladas (${cancelledCount})`}
+          </button>
+        )}
+      </div>
 
       <div className="border rounded-xl overflow-hidden bg-white">
         <table className="w-full text-sm">
@@ -73,11 +86,11 @@ export default function MeetingsClient({ agentName, initialMeetings, meetingTitl
             </tr>
           </thead>
           <tbody>
-            {meetings.length === 0 ? (
+            {visible.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">
                 Nenhuma reunião ainda. Ative o agendamento no passo &quot;Objetivo&quot; do agente e ele começa a marcar sozinho. 📅
               </td></tr>
-            ) : meetings.map(m => (
+            ) : visible.map(m => (
               <tr key={m.id} className={`border-t ${m.status === 'cancelled' ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-2.5 font-medium text-gray-800">{fmtDate(m.scheduled_at)} <span className="text-xs text-gray-400">({m.duration_minutes}min)</span></td>
                 <td className="px-4 py-2.5">{m.lead_name ?? 'Anônimo'}</td>

@@ -75,7 +75,7 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
         {isScale && (
           <button
             onClick={() => { setEditAgent(null); setEditDocs([]); setWizardOpen(true) }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+            className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-indigo-200 transition-all hover:-translate-y-0.5"
           >
             + Criar Agente
           </button>
@@ -106,37 +106,67 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
           <p className="text-sm">Clique em &quot;Criar Agente&quot; para começar.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {agents.map(agent => (
-            <div key={agent.id} className="border rounded-xl p-5 bg-white flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-indigo-600" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {agents.map(agent => {
+            const avatar = (agent.landing_config as Record<string, unknown> | null | undefined)?.avatar_url as string | undefined
+            const channels = (agent as AgentWithStats & { channels?: string[] }).channels ?? ['whatsapp', 'web']
+            return (
+              <div key={agent.id} className="group rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all overflow-hidden flex flex-col">
+                {/* Faixa superior com gradiente */}
+                <div className="h-14 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 relative">
+                  <span className={`absolute top-3 right-3 text-[11px] font-medium px-2.5 py-1 rounded-full backdrop-blur bg-white/90 ${
+                    agent.status === 'active' ? 'text-emerald-600' : agent.status === 'paused' ? 'text-amber-600' : 'text-gray-500'
+                  }`}>
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle ${
+                      agent.status === 'active' ? 'bg-emerald-500' : agent.status === 'paused' ? 'bg-amber-500' : 'bg-gray-400'
+                    }`} />
+                    {STATUS_LABELS[agent.status]}
+                  </span>
                 </div>
-                <div>
-                  <h3 className="font-semibold">{agent.name}</h3>
-                  <span className="text-xs text-gray-500">{agent.mode === 'standalone' ? 'Standalone' : 'Bloco de funil'}</span>
+                <div className="px-5 pb-5 -mt-7 flex flex-col gap-3 flex-1">
+                  <div className="flex items-end gap-3">
+                    {avatar
+                      ? <img src={avatar} alt="" className="w-14 h-14 rounded-2xl object-cover ring-4 ring-white shadow-md" />
+                      : <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 ring-4 ring-white shadow-md flex items-center justify-center">
+                          <Bot className="w-7 h-7 text-white" />
+                        </div>}
+                    <div className="pb-0.5 min-w-0">
+                      <h3 className="font-semibold text-gray-900 truncate">{agent.name}</h3>
+                      <p className="text-xs text-gray-400">
+                        {OBJECTIVE_LABELS[agent.objective ?? 'qualify']} · {channels.includes('whatsapp') && channels.includes('web') ? 'WhatsApp + Web' : channels.includes('web') ? 'Chat Web' : 'WhatsApp'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-gray-50 px-3 py-2">
+                      <p className="text-lg font-bold text-gray-900 leading-tight">{agent.total_conversations}</p>
+                      <p className="text-[11px] text-gray-500">conversas</p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-3 py-2">
+                      <p className="text-lg font-bold text-gray-900 leading-tight">{agent.rate}%</p>
+                      <p className="text-[11px] text-gray-500">{agent.rate_label}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mt-auto">
+                    <button onClick={() => openEdit(agent.id)} className="px-3 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors">✏️ Editar</button>
+                    <button onClick={() => setTestAgentId(agent.id)} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">💬 Testar</button>
+                    <Link href={`/agents/${agent.id}/conversations`} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 text-center transition-colors">🗂 Conversas</Link>
+                    <Link href={`/agents/${agent.id}/meetings`} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 text-center transition-colors">📅 Reuniões</Link>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-50">
+                    <button onClick={() => toggleStatus(agent)} className={`text-xs font-medium ${agent.status === 'active' ? 'text-amber-600 hover:text-amber-700' : 'text-emerald-600 hover:text-emerald-700'}`}>
+                      {agent.status === 'active' ? '⏸ Pausar' : '▶ Ativar'}
+                    </button>
+                    <button onClick={() => setConfirmDelete({ id: agent.id, name: agent.name })} className="text-xs text-gray-300 hover:text-red-500 transition-colors">
+                      Excluir
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">{OBJECTIVE_LABELS[agent.objective ?? 'qualify']}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLS[agent.status]}`}>{STATUS_LABELS[agent.status]}</span>
-              </div>
-              <div className="text-sm text-gray-600">
-                {agent.total_conversations} conversas · {agent.rate}% {agent.rate_label}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => openEdit(agent.id)} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700">Editar</button>
-                <button onClick={() => setTestAgentId(agent.id)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">Testar</button>
-                <Link href={`/agents/${agent.id}/conversations`} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">Conversas</Link>
-                <Link href={`/agents/${agent.id}/meetings`} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">📅 Reuniões</Link>
-                <button onClick={() => toggleStatus(agent)} className={`px-3 py-1.5 text-sm rounded-lg ${agent.status === 'active' ? 'border hover:bg-gray-50' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                  {agent.status === 'active' ? 'Pausar' : 'Ativar'}
-                </button>
-                <button onClick={() => setConfirmDelete({ id: agent.id, name: agent.name })} className="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100">Excluir</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

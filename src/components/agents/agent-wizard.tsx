@@ -242,29 +242,29 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   // Galeria de templates: mostrada só ao criar um novo agente, antes dos passos
   if (!isEdit && !templateChosen) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
-          <div className="px-6 pt-5 pb-3 border-b flex items-center justify-between">
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+          <div className="px-7 pt-6 pb-5 bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Criar agente IA</h2>
-              <p className="text-sm text-gray-500">Comece com um modelo pronto ou do zero.</p>
+              <h2 className="text-xl font-bold text-white">Qual agente você quer criar? 🤖</h2>
+              <p className="text-sm text-white/80 mt-0.5">Escolha um modelo pronto pro seu nicho — tudo pode ser ajustado depois.</p>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
           </div>
-          <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-gray-50/50">
             <button onClick={() => setTemplateChosen(true)}
-              className="text-left border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-indigo-400 hover:bg-indigo-50/40 transition">
-              <div className="text-2xl mb-1">✨</div>
-              <p className="font-semibold text-gray-800">Começar do zero</p>
+              className="text-left border-2 border-dashed border-gray-300 rounded-2xl p-4 bg-white hover:border-indigo-400 hover:bg-indigo-50/40 transition-all hover:-translate-y-0.5">
+              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-xl mb-2">✨</div>
+              <p className="font-semibold text-gray-800 text-sm">Começar do zero</p>
               <p className="text-xs text-gray-500 mt-1">Configure tudo manualmente.</p>
             </button>
             {AGENT_TEMPLATES.map(t => (
               <button key={t.id} onClick={() => applyTemplate(t)}
-                className="text-left border border-gray-200 rounded-xl p-4 hover:border-indigo-400 hover:shadow-md transition">
-                <div className="text-2xl mb-1">{t.emoji}</div>
-                <p className="font-semibold text-gray-800">{t.name}</p>
-                <p className="text-[11px] text-indigo-600 font-medium">{t.niche}</p>
-                <p className="text-xs text-gray-500 mt-1">{t.description}</p>
+                className="text-left border border-gray-100 rounded-2xl p-4 bg-white shadow-sm hover:border-indigo-300 hover:shadow-lg transition-all hover:-translate-y-0.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-100 flex items-center justify-center text-xl mb-2">{t.emoji}</div>
+                <p className="font-semibold text-gray-800 text-sm leading-snug">{t.name}</p>
+                <p className="text-[11px] text-indigo-600 font-medium mt-0.5">{t.niche}</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{t.description}</p>
               </button>
             ))}
           </div>
@@ -274,26 +274,26 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header / stepper */}
-        <div className="px-6 pt-5 pb-3 border-b">
+        <div className="px-6 pt-5 pb-4 bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">{isEdit ? 'Editar agente' : 'Criar agente IA'}</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+            <h2 className="text-lg font-bold text-white">{isEdit ? `Editar ${form.name || 'agente'}` : 'Criar agente IA'}</h2>
+            <button onClick={onClose} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1.5">
             {STEPS.map((s, i) => (
               <button
                 key={s}
                 onClick={() => setStep(i)}
-                className={`flex-1 text-center text-xs py-1.5 rounded-md transition-colors ${
-                  i === step ? 'bg-indigo-600 text-white font-medium'
-                  : i < step ? 'bg-indigo-100 text-indigo-700'
-                  : 'bg-gray-100 text-gray-400'
+                className={`flex-1 text-center text-[11px] py-1.5 rounded-lg transition-all ${
+                  i === step ? 'bg-white text-indigo-700 font-semibold shadow-sm'
+                  : i < step ? 'bg-white/25 text-white'
+                  : 'bg-white/10 text-white/60'
                 }`}
               >
-                {i + 1}. {s}
+                {i < step ? '✓ ' : ''}{s}
               </button>
             ))}
           </div>
