@@ -64,7 +64,9 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
           transcripts: testDrive.result.transcripts,
         }),
       })
-      const data = await res.json() as { applied?: string[]; error?: string }
+      const text = await res.text()
+      let data: { applied?: string[]; error?: string }
+      try { data = JSON.parse(text) } catch { data = { error: `Resposta inesperada (${res.status}). Tenta de novo.` } }
       setTestDrive(td => td ? { ...td, applying: false, applied: data.applied, applyError: data.error } : td)
     } catch (err) {
       setTestDrive(td => td ? { ...td, applying: false, applyError: String(err) } : td)
@@ -75,7 +77,13 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
     setTestDrive({ agentId, name, loading: true })
     try {
       const res = await fetch(`/api/agents/${agentId}/testdrive`, { method: 'POST' })
-      const data = await res.json()
+      // Timeout/504 devolve HTML — nunca tentar res.json() direto
+      const text = await res.text()
+      let data: { error?: string } & Partial<TestDriveResult>
+      try { data = JSON.parse(text) } catch {
+        setTestDrive({ agentId, name, loading: false, error: res.status === 504 || res.status === 502 ? 'O teste demorou mais que o limite — roda de novo que normalmente completa. 🙏' : `Resposta inesperada do servidor (${res.status}). Tenta de novo.` })
+        return
+      }
       if (data.error) setTestDrive({ agentId, name, loading: false, error: String(data.error) })
       else setTestDrive({ agentId, name, loading: false, result: data as TestDriveResult })
     } catch (err) {

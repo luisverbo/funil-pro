@@ -36,7 +36,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const testConvIds: string[] = []
 
   try {
-    for (const sc of SCENARIOS) {
+    // Cenários rodam em PARALELO (cada um é sequencial por dentro) — em série
+    // eram 6 chamadas encadeadas e o total estourava o limite de 60s da função
+    const results = await Promise.all(SCENARIOS.map(async sc => {
       let convId: string | undefined
       const exchanges: { lead: string; agent: string }[] = []
       for (const turn of sc.turns) {
@@ -45,13 +47,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           convId = result.conversationId || convId
           exchanges.push({ lead: turn, agent: result.reply || '(sem resposta)' })
         } catch (err) {
-          // Um turno falhou (ex: resposta vazia da API) — registra e continua,
-          // sem abortar o test drive inteiro
+          // Um turno falhou — registra e continua, sem abortar o test drive inteiro
           exchanges.push({ lead: turn, agent: `(erro ao responder: ${String(err).slice(0, 80)})` })
         }
       }
-      if (convId) testConvIds.push(convId)
-      transcripts.push({ label: sc.label, exchanges })
+      return { label: sc.label, exchanges, convId }
+    }))
+    for (const r of results) {
+      if (r.convId) testConvIds.push(r.convId)
+      transcripts.push({ label: r.label, exchanges: r.exchanges })
     }
 
     // Se NENHUM turno respondeu de verdade, avisa em vez de mandar lixo pra avaliação
