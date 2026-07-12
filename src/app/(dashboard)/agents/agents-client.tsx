@@ -50,7 +50,26 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [testDrive, setTestDrive] = useState<{ agentId: string; name: string; loading: boolean; result?: TestDriveResult; error?: string } | null>(null)
+  const [testDrive, setTestDrive] = useState<{ agentId: string; name: string; loading: boolean; result?: TestDriveResult; error?: string; applying?: boolean; applied?: string[]; applyError?: string } | null>(null)
+
+  async function applyFixes() {
+    if (!testDrive?.result?.evaluation?.melhorias?.length) return
+    setTestDrive(td => td ? { ...td, applying: true, applyError: undefined } : td)
+    try {
+      const res = await fetch(`/api/agents/${testDrive.agentId}/testdrive/apply`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          melhorias: testDrive.result.evaluation.melhorias,
+          transcripts: testDrive.result.transcripts,
+        }),
+      })
+      const data = await res.json() as { applied?: string[]; error?: string }
+      setTestDrive(td => td ? { ...td, applying: false, applied: data.applied, applyError: data.error } : td)
+    } catch (err) {
+      setTestDrive(td => td ? { ...td, applying: false, applyError: String(err) } : td)
+    }
+  }
 
   async function runTestDrive(agentId: string, name: string) {
     setTestDrive({ agentId, name, loading: true })
@@ -297,6 +316,30 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
                         <li key={i} className="text-xs text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">💡 {m}</li>
                       ))}
                     </ul>
+
+                    {/* Aplicar correções com 1 clique — viram "correções aprendidas" (prioridade máx, removíveis) */}
+                    {!testDrive.applied ? (
+                      <div className="mt-3">
+                        <button onClick={applyFixes} disabled={testDrive.applying}
+                          className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 disabled:opacity-60 shadow-md shadow-emerald-100 transition-all">
+                          {testDrive.applying ? '✨ Aplicando correções…' : '✨ Aplicar correções automaticamente'}
+                        </button>
+                        <p className="text-[11px] text-gray-400 mt-1.5 text-center">
+                          As melhorias viram regras que o agente segue com prioridade máxima. Elas ficam nos documentos do agente e você pode remover quando quiser.
+                        </p>
+                        {testDrive.applyError && <p className="text-xs text-red-600 mt-1 text-center">{testDrive.applyError}</p>}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 p-3">
+                        <p className="text-sm font-semibold text-emerald-800 mb-1.5">✅ Correções aplicadas — o agente já segue estas regras:</p>
+                        <ul className="flex flex-col gap-1">
+                          {testDrive.applied.map((r, i) => (
+                            <li key={i} className="text-xs text-emerald-700">✓ {r}</li>
+                          ))}
+                        </ul>
+                        <p className="text-[11px] text-emerald-600/70 mt-2">Rode o test drive de novo para ver a evolução da nota.</p>
+                      </div>
+                    )}
                   </div>
                 )}
                 <details className="text-xs text-gray-500">
