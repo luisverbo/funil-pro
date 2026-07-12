@@ -483,7 +483,20 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-07-03 — Execução do plano (landing conversacional + agente v2 + 20 bugfixes do quiz)
+**Última atualização:** 2026-07-12 — Agente IA classe mundial (agendamento, follow-up, áudio, test drive)
+**O que foi feito (2026-07-11/12, sessão agentes):**
+- **Agendamento de reuniões**: `agent_meetings` + `scheduling_config` (dias/horários, duração, intervalo, antecedência), slots em America/Sao_Paulo, anti double-booking, link Google Agenda sem OAuth, página /agents/[id]/meetings (canceladas ocultas), coleta obrigatória nome+email+whatsapp, anti-reagendamento (lead que agradece não re-agenda), lembrete automático ~1h antes (WA+Resend) de carona no cron do queue
+- **Gate de qualificação por faixa**: botões de investimento configuráveis (pergunta+faixas agenda/não-agenda), fail_message+fail_link (Instagram) p/ reprovados, trava anti-repetição de botões, disqualified status
+- **Humanização/inteligência**: persona real anti-robô, playbook de objeções, sinais de compra, anti-âncora de preço (prioridade máx), handoff por palavra inteira, hora do Brasil, nome do lead, encerramento de conversa terminal, captura determinística de contato (regex email/fone + heurística nome), conversa web adota lead_id
+- **Canais por agente**: channels[] (whatsapp/web/ambos); instância WA "só para envios" quando agente é web-only
+- **Chat web**: persistência localStorage 24h, timestamps, botões de choices (faixas/horários/sim-não), botão add-agenda, tema WhatsApp, avatar, pixel FB (PageView/Lead/InitiateCheckout), OG image
+- **Follow-up automático**: followup_config (1ª/2ª retomada), texto gerado pela IA com contexto, via WA, cron
+- **Áudio WhatsApp**: transcrição Whisper (OPENAI_API_KEY opcional; sem chave pede texto)
+- **Test drive**: /api/agents/[id]/testdrive simula 3 leads difíceis + avaliação com notas/melhorias
+- **Funil de métricas** na página de conversas; visto duplo ✓✓; excluir conversas; layout moderno (cards gradiente, galeria 14 templates)
+- Migrations aplicadas via MCP: agent_channels, agent_meetings(+contact/reminder), agent_followups, update regras Ana
+
+**O que foi feito antes (2026-07-03):** Execução do plano (landing conversacional + agente v2 + 20 bugfixes do quiz)
 **O que foi feito (execução do PLANO-LANDBOT-AGENTES-QUIZ.md):**
 - **Sprint 1 (segurança/críticos)**: submit do quiz deriva tenant no server (era forjável pelo body — escrita cross-tenant); `conversions_count` via RPC `increment_page_conversions`; removido `exec_sql` por request; RichTextField `key={block.id}` + toolbar em portal `position:fixed`; `handleNextWithAnswer` sem efeitos colaterais no updater; validação só de blocos revelados; endpoint de chat valida tenant + plano Scale
 - **Sprint 2 (altos + custo agente)**: auto-advance só com 1 escolha/página; score recalculado de `answers` (Voltar não duplica); validação email/telefone; slug de publicação único; autosave com guard de sequência; prompt caching (Anthropic `cache_control`); PDF vazio avisa; **action `route` matricula no `target_funnel_id`** (era campo morto)
