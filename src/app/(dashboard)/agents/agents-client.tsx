@@ -177,8 +177,9 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
                   </span>
                 </div>
                 <div className="px-5 pb-5 flex flex-col gap-3 flex-1">
-                  {/* Só o avatar sobrepõe a faixa; nome fica abaixo (a faixa tampava o texto) */}
-                  <div className="-mt-7">
+                  {/* relative z-10: a faixa tem position:relative (badge) e por isso pintava
+                      POR CIMA do avatar; posicionar o avatar faz ele ficar na frente */}
+                  <div className="-mt-7 relative z-10 w-fit">
                     {avatar
                       ? <img src={avatar} alt="" className="w-14 h-14 rounded-2xl object-cover ring-4 ring-white shadow-md" />
                       : <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 ring-4 ring-white shadow-md flex items-center justify-center">
