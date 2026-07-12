@@ -56,11 +56,21 @@ ${transcripts.map(t => `### ${t.label}\n${t.exchanges.map(e => `Lead: ${e.lead}\
 Responda APENAS com JSON válido neste formato exato:
 {"scores":{"humanizacao":0-10,"conducao":0-10,"objecoes":0-10,"clareza":0-10},"nota_geral":0-10,"veredito":"1 frase direta","melhorias":["até 3 melhorias específicas e acionáveis"]}`
 
-    const rawEval = await callAnthropic('Você responde somente JSON válido, sem markdown.', [{ role: 'user', content: evalPrompt }])
+    // Prefill do assistant com "{" força a resposta a começar direto no JSON
+    const rawEval = await callAnthropic('Você responde somente JSON válido, sem markdown.', [
+      { role: 'user', content: evalPrompt },
+      { role: 'assistant', content: '{' },
+    ])
     let evaluation: unknown = null
     try {
-      evaluation = JSON.parse(rawEval.replace(/```json|```/g, '').trim())
-    } catch { evaluation = { veredito: rawEval.slice(0, 300) } }
+      // Extrai do primeiro "{" ao último "}" — tolera qualquer texto em volta
+      const full = ('{' + rawEval).replace(/```json|```/g, '')
+      const start = full.indexOf('{')
+      const end = full.lastIndexOf('}')
+      evaluation = JSON.parse(full.slice(start, end + 1))
+    } catch {
+      evaluation = { veredito: rawEval.replace(/[{}"]/g, ' ').slice(0, 300).trim() }
+    }
 
     return NextResponse.json({ transcripts, evaluation })
   } catch (err) {

@@ -285,12 +285,19 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
 
             {testDrive.result && (
               <div className="flex flex-col gap-4">
-                {testDrive.result.evaluation?.nota_geral != null && (
+                {(testDrive.result.evaluation?.nota_geral != null || testDrive.result.evaluation?.veredito) && (
                   <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 p-4">
-                    <div className={`text-3xl font-extrabold ${(testDrive.result.evaluation.nota_geral ?? 0) >= 7 ? 'text-emerald-600' : (testDrive.result.evaluation.nota_geral ?? 0) >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
-                      {testDrive.result.evaluation.nota_geral}/10
-                    </div>
-                    <p className="text-sm text-gray-700">{testDrive.result.evaluation.veredito}</p>
+                    {testDrive.result.evaluation?.nota_geral != null && (
+                      <div className={`text-3xl font-extrabold shrink-0 ${(testDrive.result.evaluation.nota_geral ?? 0) >= 7 ? 'text-emerald-600' : (testDrive.result.evaluation.nota_geral ?? 0) >= 5 ? 'text-amber-600' : 'text-red-600'}`}>
+                        {testDrive.result.evaluation.nota_geral}/10
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-700">{testDrive.result.evaluation?.veredito}</p>
+                  </div>
+                )}
+                {!testDrive.result.evaluation?.nota_geral && !testDrive.result.evaluation?.veredito && !testDrive.result.evaluation?.scores && (
+                  <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-500">
+                    A avaliação não retornou desta vez — clica em &quot;Rodar de novo&quot; que normalmente resolve. As conversas simuladas estão logo abaixo.
                   </div>
                 )}
                 {testDrive.result.evaluation?.scores && (
