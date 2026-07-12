@@ -350,9 +350,16 @@ export async function callAnthropic(systemPrompt: string, apiMessages: { role: s
     throw new Error(`anthropic_error: status=${status} ${json.error?.message ?? ''}`)
   }
 
-  const text = Array.isArray(json.content)
+  const extract = () => Array.isArray(json.content)
     ? json.content.filter(b => b.type === 'text').map(b => b.text).join('')
     : ''
+  let text = extract()
+  // Resposta vazia pode ser transitória — 1 retry antes de desistir
+  if (!text) {
+    await new Promise(r => setTimeout(r, 1000))
+    ;({ status, json } = await doCall())
+    if (status === 200 && !json.error) text = extract()
+  }
   if (!text) throw new Error('anthropic_empty_response')
   return text
 }
@@ -434,11 +441,13 @@ export async function processAgentMessage(
   }
 
   // Load documents (separa por tipo: arquivos, FAQ e correções aprendidas)
-  const { data: documents } = await admin.from('agent_documents').select('extracted_text, doc_type').eq('agent_id', agentId)
+  const { data: documents } = await admin.from('agent_documents').select('extracted_text, doc_type, uploaded_at').eq('agent_id', agentId).order('uploaded_at', { ascending: false })
   const allDocs = (documents ?? []).filter(d => d.extracted_text)
   const docs = allDocs.filter(d => (d.doc_type ?? 'file') === 'file')
   const faqs = allDocs.filter(d => d.doc_type === 'faq')
-  const corrections = allDocs.filter(d => d.doc_type === 'correction')
+  // Cap de correções: só as 8 mais recentes entram no prompt. Acumular correções
+  // incha o prompt e elas passam a se contradizer, PIORANDO o agente.
+  const corrections = allDocs.filter(d => d.doc_type === 'correction').slice(0, 8)
 
   // Find or create conversation
   let messageCount = 0

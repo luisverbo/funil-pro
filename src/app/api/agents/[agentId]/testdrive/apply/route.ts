@@ -64,6 +64,13 @@ Responda APENAS com JSON válido: {"regras":["regra 1","regra 2","..."]} (no má
       file_name: `Test drive ${today}: ${r.slice(0, 50)}`,
       extracted_text: r,
     }))
+    // SUBSTITUI as correções de test drive anteriores em vez de empilhar —
+    // acumular regras incha o prompt e elas passam a se contradizer (piora a nota).
+    // As correções manuais (do 👎) são preservadas.
+    await admin.from('agent_documents')
+      .delete()
+      .eq('agent_id', agentId).eq('doc_type', 'correction')
+      .like('file_name', 'Test drive %')
     const { error: insErr } = await admin.from('agent_documents').insert(rows)
     if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
 

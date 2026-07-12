@@ -40,12 +40,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       let convId: string | undefined
       const exchanges: { lead: string; agent: string }[] = []
       for (const turn of sc.turns) {
-        const result = await processAgentMessage(agentId, turn, { channel: 'test', conversationId: convId })
-        convId = result.conversationId || convId
-        exchanges.push({ lead: turn, agent: result.reply })
+        try {
+          const result = await processAgentMessage(agentId, turn, { channel: 'test', conversationId: convId })
+          convId = result.conversationId || convId
+          exchanges.push({ lead: turn, agent: result.reply || '(sem resposta)' })
+        } catch (err) {
+          // Um turno falhou (ex: resposta vazia da API) — registra e continua,
+          // sem abortar o test drive inteiro
+          exchanges.push({ lead: turn, agent: `(erro ao responder: ${String(err).slice(0, 80)})` })
+        }
       }
       if (convId) testConvIds.push(convId)
       transcripts.push({ label: sc.label, exchanges })
+    }
+
+    // Se NENHUM turno respondeu de verdade, avisa em vez de mandar lixo pra avaliação
+    const anyReal = transcripts.some(t => t.exchanges.some(e => e.agent && !e.agent.startsWith('(')))
+    if (!anyReal) {
+      return NextResponse.json({ transcripts, evaluation: null, note: 'O agente não respondeu nas simulações — verifique a configuração e tente de novo.' })
     }
 
     // Avaliação por IA: notas + melhorias acionáveis
