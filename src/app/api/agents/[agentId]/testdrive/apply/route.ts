@@ -47,7 +47,7 @@ Transforme as melhorias em regras de comportamento para o agente seguir DALI EM 
 
 Responda APENAS com JSON válido: {"regras":["regra 1","regra 2","..."]} (no máximo ${Math.min(melhorias.length, 4)} regras).`
 
-    const raw = await callAnthropic('Você responde somente JSON válido, sem markdown, sem texto antes ou depois.', [{ role: 'user', content: prompt }])
+    const raw = await callAnthropic('Você responde somente JSON válido, sem markdown, sem texto antes ou depois.', [{ role: 'user', content: prompt }], 1200)
     let regras: string[] = []
     try {
       const full = raw.replace(/```json|```/g, '')

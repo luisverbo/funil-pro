@@ -56,7 +56,8 @@ ${transcripts.map(t => `### ${t.label}\n${t.exchanges.map(e => `Lead: ${e.lead}\
 Responda APENAS com JSON válido neste formato exato:
 {"scores":{"humanizacao":0-10,"conducao":0-10,"objecoes":0-10,"clareza":0-10},"nota_geral":0-10,"veredito":"1 frase direta","melhorias":["até 3 melhorias específicas e acionáveis"]}`
 
-    const rawEval = await callAnthropic('Você responde somente JSON válido, sem markdown, sem texto antes ou depois.', [{ role: 'user', content: evalPrompt }])
+    // max_tokens alto: JSON com scores + veredito + melhorias não pode ser truncado
+    const rawEval = await callAnthropic('Você responde somente JSON válido, sem markdown, sem texto antes ou depois.', [{ role: 'user', content: evalPrompt }], 1500)
     let evaluation: unknown = null
     try {
       // Extrai do primeiro "{" ao último "}" — tolera qualquer texto/markdown em volta
@@ -65,7 +66,9 @@ Responda APENAS com JSON válido neste formato exato:
       const end = full.lastIndexOf('}')
       evaluation = JSON.parse(full.slice(start, end + 1))
     } catch {
-      evaluation = { veredito: rawEval.replace(/[{}"]/g, ' ').slice(0, 300).trim() }
+      // Parse falhou (JSON truncado/malformado): não despeja texto cru na UI.
+      // Deixa null para o modal mostrar o aviso limpo de "rode de novo".
+      evaluation = null
     }
 
     return NextResponse.json({ transcripts, evaluation })

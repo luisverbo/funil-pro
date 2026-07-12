@@ -313,7 +313,7 @@ async function enrollInFunnel(
   })
 }
 
-export async function callAnthropic(systemPrompt: string, apiMessages: { role: string; content: string }[]): Promise<string> {
+export async function callAnthropic(systemPrompt: string, apiMessages: { role: string; content: string }[], maxTokens = 800): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('anthropic_key_missing: configure ANTHROPIC_API_KEY no ambiente')
 
@@ -327,7 +327,7 @@ export async function callAnthropic(systemPrompt: string, apiMessages: { role: s
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 800,
+        max_tokens: maxTokens,
         // Prompt caching: o system prompt (produto, docs, regras) é estável entre
         // mensagens da mesma conversa — cacheado corta ~90% do custo de input.
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
