@@ -288,7 +288,7 @@ async function resumeFunnel(
 // Matricula o lead no funil alvo do agente (ação "route"). Antes target_funnel_id
 // era campo morto: o "roteamento" só retomava um funil já pausado, e lead standalone
 // (funnel_id null) não ia para funil nenhum.
-async function enrollInFunnel(
+export async function enrollInFunnel(
   leadId: string,
   funnelId: string,
   tenantId: string,

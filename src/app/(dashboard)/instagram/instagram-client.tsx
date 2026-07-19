@@ -8,7 +8,7 @@ const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm out
 
 interface Connection { connected: boolean; username?: string; accountId?: string; error?: string }
 
-export default function InstagramClient({ initialAutomations, connection }: { initialAutomations: IgAutomation[]; connection?: Connection }) {
+export default function InstagramClient({ initialAutomations, connection, funnels = [] }: { initialAutomations: IgAutomation[]; connection?: Connection; funnels?: { id: string; name: string }[] }) {
   const [automations, setAutomations] = useState(initialAutomations)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -22,13 +22,15 @@ export default function InstagramClient({ initialAutomations, connection }: { in
   const [commentReplies, setCommentReplies] = useState('')
   const [dmMessage, setDmMessage] = useState('')
   const [dmUseAgent, setDmUseAgent] = useState(true)
+  const [funnelId, setFunnelId] = useState('')
+  const [leadTag, setLeadTag] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   async function openModal() {
     setModalOpen(true)
     setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
-    setCommentReplies(''); setDmMessage(''); setDmUseAgent(true); setSaveError(null)
+    setCommentReplies(''); setDmMessage(''); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
     setPosts(null); setPostsError(null)
     const { posts: p, error } = await listInstagramPosts()
     if (error) setPostsError(error)
@@ -48,6 +50,8 @@ export default function InstagramClient({ initialAutomations, connection }: { in
       comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
       dm_message: dmMessage || null,
       dm_use_agent: dmUseAgent,
+      funnel_id: funnelId || null,
+      lead_tag: leadTag || null,
     })
     setSaving(false)
     if (error) { setSaveError(error); return }
@@ -56,7 +60,9 @@ export default function InstagramClient({ initialAutomations, connection }: { in
       media_id: media?.id ?? null, media_caption: media?.caption?.slice(0, 120) ?? null,
       media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
       keywords, comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
-      dm_message: dmMessage || null, dm_use_agent: dmUseAgent, triggers_count: 0, created_at: new Date().toISOString(),
+      dm_message: dmMessage || null, dm_use_agent: dmUseAgent,
+      funnel_id: funnelId || null, lead_tag: leadTag || null,
+      triggers_count: 0, created_at: new Date().toISOString(),
     }, ...a])
     setModalOpen(false)
   }
@@ -142,6 +148,8 @@ export default function InstagramClient({ initialAutomations, connection }: { in
                 {a.comment_replies.length > 0 && <p>💬 Responde: “{a.comment_replies[0]}”{a.comment_replies.length > 1 ? ` (+${a.comment_replies.length - 1})` : ''}</p>}
                 {a.dm_message && <p>📩 DM: “{a.dm_message.slice(0, 60)}{a.dm_message.length > 60 ? '…' : ''}”</p>}
                 {a.dm_use_agent && <p>🤖 IA assume a conversa na DM</p>}
+                {a.funnel_id && <p>🔀 Lead entra num funil</p>}
+                {a.lead_tag && <p>🏷 Tag: {a.lead_tag}</p>}
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-gray-50 mt-auto">
                 <span className="text-xs text-gray-400">{a.triggers_count} disparo(s)</span>
@@ -219,6 +227,21 @@ export default function InstagramClient({ initialAutomations, connection }: { in
                 <textarea className={inputCls + ' h-24'} value={dmMessage} onChange={e => setDmMessage(e.target.value)}
                   placeholder="Oi! Vi seu comentário 👋 Aqui está o link que você pediu: https://..." />
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Matricular o lead num funil (opcional)</label>
+                  <select className={inputCls} value={funnelId} onChange={e => setFunnelId(e.target.value)}>
+                    <option value="">Não matricular</option>
+                    {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tag do lead (opcional)</label>
+                  <input className={inputCls} value={leadTag} onChange={e => setLeadTag(e.target.value)} placeholder="Ex: ig-eu-quero" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 -mt-2">Quem comentar vira lead automaticamente (aparece em Leads com o @ do Instagram). A tag ajuda a filtrar; o funil dispara a sequência.</p>
 
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={dmUseAgent} onChange={e => setDmUseAgent(e.target.checked)} className="w-4 h-4 accent-purple-600" />

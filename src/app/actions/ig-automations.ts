@@ -17,6 +17,8 @@ export interface IgAutomation {
   comment_replies: string[]
   dm_message: string | null
   dm_use_agent: boolean
+  funnel_id: string | null
+  lead_tag: string | null
   triggers_count: number
   created_at: string
 }
@@ -30,6 +32,8 @@ export interface IgAutomationInput {
   comment_replies?: string[]
   dm_message?: string | null
   dm_use_agent?: boolean
+  funnel_id?: string | null
+  lead_tag?: string | null
 }
 
 async function getSupabase() {
@@ -75,6 +79,8 @@ export async function createIgAutomation(input: IgAutomationInput): Promise<{ id
       comment_replies: (input.comment_replies ?? []).map(r => r.trim()).filter(Boolean),
       dm_message: input.dm_message?.trim() || null,
       dm_use_agent: input.dm_use_agent ?? true,
+      funnel_id: input.funnel_id || null,
+      lead_tag: input.lead_tag?.trim() || null,
       status: 'active',
     }).select('id').single()
     if (error) return { error: error.message }

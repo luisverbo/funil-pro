@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { processAgentMessage } from '@/lib/agents/chat'
+import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
 import { sendInstagramDM, replyToComment, sendPrivateReplyToComment } from '@/lib/instagram'
 
 export const maxDuration = 60
@@ -121,15 +121,13 @@ export async function POST(request: NextRequest) {
       // Não responde aos próprios comentários (quando o dono responde)
       if (fromId && fromId === igAccountId) continue
       try {
-        const agent = await findInstagramAgent(admin, igAccountId)
-        if (!agent) continue
-        const leadId = fromId ? await resolveLead(admin, agent.tenant_id, fromId, c.value?.from?.username) : null
+        console.log(`[ig] comentário recebido: media=${mediaId} from=${fromId} texto="${text.slice(0, 60)}"`)
 
-        // 1º: AUTOMAÇÕES (estilo ManyChat) — post + palavra-chave → resposta + DM
+        // 1º: AUTOMAÇÕES (estilo ManyChat) — independem de agente IA configurado.
+        // O tenant vem da própria automação (a conta conectada é única por instalação).
         const { data: autos } = await admin
           .from('ig_automations')
-          .select('id, media_id, keywords, comment_replies, dm_message, dm_use_agent')
-          .eq('tenant_id', agent.tenant_id)
+          .select('id, tenant_id, media_id, keywords, comment_replies, dm_message, dm_use_agent, funnel_id, lead_tag')
           .eq('status', 'active')
         const lower = text.toLowerCase()
         const matches = (autos ?? []).filter(a => {
@@ -140,8 +138,26 @@ export async function POST(request: NextRequest) {
         })
         // Mais específica vence: automação com post definido > automação geral
         const auto = matches.find(a => a.media_id) ?? matches[0]
+        console.log(`[ig] automações ativas=${autos?.length ?? 0} match=${auto?.id ?? 'nenhum'}`)
 
         if (auto) {
+          // Captura o LEAD (estilo ManyChat): cria/acha pelo IGSID, aplica tag e matricula no funil
+          let leadId: string | null = null
+          if (fromId) {
+            leadId = await resolveLead(admin, auto.tenant_id, fromId, c.value?.from?.username)
+            if (leadId && auto.lead_tag) {
+              const { data: l } = await admin.from('leads').select('tags').eq('id', leadId).single()
+              const tags: string[] = Array.isArray(l?.tags) ? l.tags : []
+              if (!tags.includes(auto.lead_tag)) {
+                await admin.from('leads').update({ tags: [...tags, auto.lead_tag] }).eq('id', leadId)
+              }
+            }
+            if (leadId && auto.funnel_id) {
+              await enrollInFunnel(leadId, auto.funnel_id, auto.tenant_id, admin)
+                .catch(e => console.error('[ig] enrollInFunnel', String(e)))
+            }
+          }
+
           const replies: string[] = (auto.comment_replies ?? []).filter(Boolean)
           if (replies.length > 0) {
             // rotaciona por comentário para não parecer robô
@@ -155,7 +171,10 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // 2º: fallback — agente IA responde o comentário (comportamento anterior)
+        // 2º: fallback — agente IA responde o comentário (se houver agente com canal IG)
+        const agent = await findInstagramAgent(admin, igAccountId)
+        if (!agent) { console.log('[ig] sem automação e sem agente IG — ignorando'); continue }
+        const leadId = fromId ? await resolveLead(admin, agent.tenant_id, fromId, c.value?.from?.username) : null
         const parts = await dispatchToAgent(agent.id, leadId, text)
         const reply = parts.join(' ').slice(0, 260)
         if (reply) {
