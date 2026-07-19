@@ -6,7 +6,9 @@ import type { IgMedia } from '@/lib/instagram'
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
-export default function InstagramClient({ initialAutomations }: { initialAutomations: IgAutomation[] }) {
+interface Connection { connected: boolean; username?: string; accountId?: string; error?: string }
+
+export default function InstagramClient({ initialAutomations, connection }: { initialAutomations: IgAutomation[]; connection?: Connection }) {
   const [automations, setAutomations] = useState(initialAutomations)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -83,6 +85,29 @@ export default function InstagramClient({ initialAutomations }: { initialAutomat
           + Nova automação
         </button>
       </div>
+
+      {/* Status da conexão */}
+      {connection?.connected ? (
+        <div className="mt-4 mb-2 flex items-center gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+          <p className="text-sm text-emerald-800">
+            Conectado como <strong>@{connection.username}</strong>
+            {connection.accountId ? <span className="text-emerald-600/70"> · ID {connection.accountId}</span> : null}
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 mb-2 rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4">
+          <p className="text-sm font-semibold text-amber-800 mb-2">⚠️ Instagram ainda não conectado</p>
+          <ol className="text-sm text-amber-800/90 flex flex-col gap-1.5 list-decimal list-inside">
+            <li>No painel da Meta (developers.facebook.com → seu app → caso de uso do Instagram), vá no passo <strong>&quot;2. Gerar tokens de acesso&quot;</strong>, conecte sua conta profissional e clique em <strong>Gerar token</strong>.</li>
+            <li>Na <strong>Vercel</strong> → projeto funil-pro → Settings → Environment Variables, adicione: <code className="bg-amber-100 px-1 rounded">IG_ACCESS_TOKEN</code> (o token gerado) e <code className="bg-amber-100 px-1 rounded">IG_APP_SECRET</code> (chave secreta do app do Instagram).</li>
+            <li>Faça <strong>Redeploy</strong> na Vercel e recarregue esta página — o status fica verde com o seu @.</li>
+          </ol>
+          {connection?.error && connection.error !== 'token_missing' && (
+            <p className="text-xs text-amber-600 mt-2">Detalhe técnico: {connection.error.slice(0, 140)}</p>
+          )}
+        </div>
+      )}
 
       {automations.length === 0 ? (
         <div className="border-2 border-dashed rounded-2xl p-12 text-center text-gray-500 mt-6">

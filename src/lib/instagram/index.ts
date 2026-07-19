@@ -71,3 +71,19 @@ export async function listRecentMedia(limit = 24): Promise<IgMedia[]> {
   const json = await res.json() as { data?: IgMedia[] }
   return json.data ?? []
 }
+
+/** Verifica a conexão: retorna o @ da conta se o token estiver válido */
+export async function getConnectedAccount(): Promise<{ connected: boolean; username?: string; accountId?: string; error?: string }> {
+  const t = process.env.IG_ACCESS_TOKEN
+  if (!t) return { connected: false, error: 'token_missing' }
+  try {
+    const res = await fetch(`${GRAPH}/v21.0/me?fields=user_id,username`, {
+      headers: { Authorization: `Bearer ${t}` },
+    })
+    const json = await res.json().catch(() => null) as { user_id?: string; id?: string; username?: string; error?: { message?: string } } | null
+    if (!res.ok || !json || json.error) return { connected: false, error: json?.error?.message ?? `status ${res.status}` }
+    return { connected: true, username: json.username, accountId: json.user_id ?? json.id }
+  } catch (err) {
+    return { connected: false, error: String(err) }
+  }
+}

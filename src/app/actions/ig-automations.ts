@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { listRecentMedia, type IgMedia } from '@/lib/instagram'
+import { listRecentMedia, getConnectedAccount, type IgMedia } from '@/lib/instagram'
 
 export interface IgAutomation {
   id: string
@@ -103,6 +103,14 @@ export async function deleteIgAutomation(id: string): Promise<{ success: boolean
     revalidatePath('/instagram')
     return { success: true }
   } catch (err) { return { success: false, error: String(err) } }
+}
+
+/** Status da conexão com o Instagram (token configurado e válido?) */
+export async function getIgConnection(): Promise<{ connected: boolean; username?: string; accountId?: string; error?: string }> {
+  try {
+    await getTenantId()
+    return await getConnectedAccount()
+  } catch (err) { return { connected: false, error: String(err) } }
 }
 
 /** Posts recentes da conta conectada (para o seletor de post do modal) */
