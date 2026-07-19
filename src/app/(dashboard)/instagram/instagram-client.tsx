@@ -127,7 +127,8 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     setSaving(false)
     if (error) { setSaveError(error); return }
     setAutomations(a => [{
-      id: id!, status: 'active', triggers_count: 0, created_at: new Date().toISOString(), ...payload,
+      id: id!, status: 'active', triggers_count: 0, created_at: new Date().toISOString(),
+      follow_gate: false, follow_gate_message: null, canvas: null, ...payload,
     }, ...a])
     setModalOpen(false)
   }

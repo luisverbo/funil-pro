@@ -20,6 +20,9 @@ export interface IgAutomation {
   dm_use_agent: boolean
   funnel_id: string | null
   lead_tag: string | null
+  follow_gate: boolean
+  follow_gate_message: string | null
+  canvas: Record<string, { x: number; y: number }> | null
   triggers_count: number
   created_at: string
 }
@@ -36,6 +39,9 @@ export interface IgAutomationInput {
   dm_use_agent?: boolean
   funnel_id?: string | null
   lead_tag?: string | null
+  follow_gate?: boolean
+  follow_gate_message?: string | null
+  canvas?: Record<string, { x: number; y: number }> | null
 }
 
 async function getSupabase() {
@@ -95,6 +101,8 @@ export async function createIgAutomation(input: IgAutomationInput): Promise<{ id
       dm_use_agent: input.dm_use_agent ?? true,
       funnel_id: input.funnel_id || null,
       lead_tag: input.lead_tag?.trim() || null,
+      follow_gate: input.follow_gate ?? false,
+      follow_gate_message: input.follow_gate_message?.trim() || null,
       status: 'active',
     }).select('id').single()
     if (error) return { error: error.message }

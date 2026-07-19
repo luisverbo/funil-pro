@@ -140,3 +140,15 @@ export async function sendInstagramQuickReplies(recipientId: string, text: strin
     await sendInstagramDM(recipientId, `${text}\n\n(responde com: ${valid.join(' / ')})`)
   }
 }
+
+/** Perfil do usuário que interagiu — inclui se ele SEGUE a conta (follow gate) */
+export async function getIgUserProfile(igsid: string): Promise<{ username?: string; follows: boolean | null }> {
+  try {
+    const res = await fetch(`${GRAPH}/v21.0/${igsid}?fields=username,is_user_follow_business`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    })
+    const json = await res.json().catch(() => null) as { username?: string; is_user_follow_business?: boolean } | null
+    if (!res.ok || !json) return { follows: null }
+    return { username: json.username, follows: json.is_user_follow_business ?? null }
+  } catch { return { follows: null } }
+}

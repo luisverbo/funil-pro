@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
-import { sendInstagramDM, replyToComment, sendPrivateReplyToComment } from '@/lib/instagram'
+import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramQuickReplies, getIgUserProfile } from '@/lib/instagram'
 import { resolveSteps, startSequence } from '@/lib/instagram/sequence'
 
 export const maxDuration = 60
@@ -101,6 +101,34 @@ export async function POST(request: NextRequest) {
       const text = m.message?.text?.trim()
       if (!senderId || !text) continue
       try {
+        // FOLLOW GATE pendente? Pessoa respondeu — checa se agora está seguindo
+        const { data: gated } = await admin
+          .from('ig_sequence_jobs')
+          .select('id, tenant_id, automation_id, comment_id')
+          .eq('ig_user_id', senderId).eq('status', 'gated')
+          .order('created_at', { ascending: false }).limit(1)
+        if (gated && gated.length > 0) {
+          const profile = await getIgUserProfile(senderId)
+          if (profile.follows) {
+            // seguiu → libera a sequência completa
+            await admin.from('ig_sequence_jobs').update({ status: 'done' })
+              .eq('ig_user_id', senderId).eq('status', 'gated')
+            const { data: auto } = await admin
+              .from('ig_automations').select('tenant_id, dm_steps, dm_message').eq('id', gated[0].automation_id).single()
+            if (auto) {
+              await startSequence({
+                tenantId: auto.tenant_id, automationId: gated[0].automation_id,
+                igUserId: senderId, commentId: null, steps: resolveSteps(auto), admin,
+              }).catch(e => console.error('[ig] gate release', String(e)))
+            }
+            console.log('[ig] follow gate liberado — sequência iniciada')
+          } else {
+            await sendInstagramQuickReplies(senderId,
+              'Ainda não achei seu follow 🥲 Me segue no perfil e toca de novo 👇', ['JÁ SIGO ✅']).catch(() => {})
+          }
+          continue   // gate resolve a interação; agente não entra aqui
+        }
+
         // Pessoa respondeu na DM. Duas situações:
         // a) tocou num BOTÃO DE RESPOSTA da sequência (ex: "SIM") → renova a janela
         //    de 24h e ADIANTA o próximo passo pra agora (a sequência continua)
@@ -158,7 +186,7 @@ export async function POST(request: NextRequest) {
         // O tenant vem da própria automação (a conta conectada é única por instalação).
         const { data: autos } = await admin
           .from('ig_automations')
-          .select('id, tenant_id, media_id, keywords, comment_replies, dm_message, dm_steps, dm_use_agent, funnel_id, lead_tag')
+          .select('id, tenant_id, media_id, keywords, comment_replies, dm_message, dm_steps, dm_use_agent, funnel_id, lead_tag, follow_gate, follow_gate_message')
           .eq('status', 'active')
         const lower = text.toLowerCase()
         const matches = (autos ?? []).filter(a => {
@@ -195,6 +223,24 @@ export async function POST(request: NextRequest) {
             const pick = replies[Math.abs(commentId.split('').reduce((s, ch) => s + ch.charCodeAt(0), 0)) % replies.length]
             await replyToComment(commentId, pick.slice(0, 300)).catch(e => console.error('[ig] replyComment', String(e)))
           }
+          // FOLLOW GATE: exige seguir o perfil antes de liberar a sequência
+          if (fromId && auto.follow_gate) {
+            const profile = await getIgUserProfile(fromId)
+            if (profile.follows === false) {
+              const gateMsg = auto.follow_gate_message?.trim() ||
+                'Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá no perfil e toca no botão abaixo que eu libero na hora 👇'
+              await sendPrivateReplyToComment(commentId, gateMsg).catch(e => console.error('[ig] gate privateReply', String(e)))
+              await sendInstagramQuickReplies(fromId, 'Quando seguir, me avisa 👇', ['JÁ SIGO ✅']).catch(() => {})
+              // marcador: quando a pessoa responder e estiver seguindo, a sequência libera
+              await admin.from('ig_sequence_jobs').insert({
+                tenant_id: auto.tenant_id, automation_id: auto.id, ig_user_id: fromId,
+                comment_id: commentId, step_index: -1, scheduled_for: new Date().toISOString(), status: 'gated',
+              })
+              await admin.rpc('increment_ig_automation_triggers', { p_id: auto.id }).then(() => {}, () => {})
+              continue
+            }
+          }
+
           // Sequência de DMs: passo 0 pode sair já ou com espera; os demais são agendados
           if (fromId) {
             const steps = resolveSteps(auto)

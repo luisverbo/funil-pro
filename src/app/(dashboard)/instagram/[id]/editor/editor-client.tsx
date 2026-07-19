@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ReactFlow, Background, Controls, Handle, Position,
-  type Node, type Edge, type NodeProps,
+  type Node, type Edge, type NodeProps, type NodeChange,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { updateIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
@@ -48,7 +48,7 @@ function stepsToDb(steps: UiStep[]) {
 // ─── Nodes customizados (estilo ManyChat) ────────────────────────────────────
 
 function TriggerNode({ data, selected }: NodeProps) {
-  const d = data as { keywords: string[]; mediaThumb: string | null; mediaLabel: string }
+  const d = data as { keywords: string[]; mediaThumb: string | null; mediaLabel: string; followGate?: boolean }
   return (
     <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-hidden cursor-pointer`}>
       <div className="px-4 py-2 text-xs font-semibold text-gray-500 flex items-center gap-1.5">✨ Quando…</div>
@@ -65,6 +65,11 @@ function TriggerNode({ data, selected }: NodeProps) {
             : <span className="text-[10px] text-gray-400">qualquer comentário</span>}
         </div>
       </div>
+      {d.followGate && (
+        <div className="mx-3 mb-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[10px] text-amber-700 font-medium">
+          🔒 Só libera pra quem SEGUE o perfil
+        </div>
+      )}
       <div className="px-4 pb-2 text-right text-[10px] text-gray-400">Então ⟶</div>
       <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-3 !h-3" />
     </div>
@@ -133,25 +138,40 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [funnelId, setFunnelId] = useState(automation.funnel_id ?? '')
   const [leadTag, setLeadTag] = useState(automation.lead_tag ?? '')
   const [dmUseAgent, setDmUseAgent] = useState(automation.dm_use_agent)
+  const [followGate, setFollowGate] = useState(automation.follow_gate ?? false)
+  const [followGateMsg, setFollowGateMsg] = useState(automation.follow_gate_message ?? '')
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(automation.canvas ?? {})
   const [selected, setSelected] = useState<string>('trigger')
   const [posts, setPosts] = useState<IgMedia[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  // Aplica os arrastos dos nós (posições persistidas no salvar)
+  const onNodesChange = (changes: NodeChange[]) => {
+    setPositions(prev => {
+      const next = { ...prev }
+      for (const c of changes) {
+        if (c.type === 'position' && c.position) next[c.id] = { x: Math.round(c.position.x), y: Math.round(c.position.y) }
+      }
+      return next
+    })
+  }
 
   useEffect(() => { listInstagramPosts().then(r => setPosts(r.posts)) }, [])
 
   const replyList = replies.split('\n').map(s => s.trim()).filter(Boolean)
 
   const nodes: Node[] = useMemo(() => {
+    const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? def
     const list: Node[] = [
-      { id: 'trigger', type: 'trigger', position: { x: 0, y: 80 }, data: { keywords, mediaThumb, mediaLabel: mediaId ? 'um post específico' : 'qualquer post/Reel' } },
-      { id: 'reply', type: 'reply', position: { x: 340, y: 96 }, data: { replies: replyList } },
+      { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb, mediaLabel: mediaId ? 'um post específico' : 'qualquer post/Reel', followGate } },
+      { id: 'reply', type: 'reply', position: pos('reply', { x: 340, y: 96 }), data: { replies: replyList } },
       ...steps.map((s, i) => ({
-        id: `dm-${i}`, type: 'dm', position: { x: 680 + i * 340, y: 60 }, data: { step: s, index: i },
+        id: `dm-${i}`, type: 'dm', position: pos(`dm-${i}`, { x: 680 + i * 340, y: 60 }), data: { step: s, index: i },
       })),
     ]
     return list
-  }, [keywords, mediaThumb, mediaId, replyList, steps])
+  }, [keywords, mediaThumb, mediaId, replyList, steps, positions, followGate])
 
   const edges: Edge[] = useMemo(() => {
     const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ espera ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
@@ -184,6 +204,9 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
       dm_use_agent: dmUseAgent,
       funnel_id: funnelId || null,
       lead_tag: leadTag || null,
+      follow_gate: followGate,
+      follow_gate_message: followGateMsg || null,
+      canvas: Object.keys(positions).length > 0 ? positions : null,
     })
     setSaving(false)
     setSavedAt(Date.now())
@@ -221,8 +244,9 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
             edges={edges}
             nodeTypes={nodeTypes}
             onNodeClick={(_, n) => setSelected(n.id)}
+            onNodesChange={onNodesChange}
             fitView
-            nodesDraggable={false}
+            nodesDraggable
             nodesConnectable={false}
             proOptions={{ hideAttribution: true }}
           >
@@ -269,6 +293,19 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   onKeyDown={e => { if (e.key === 'Enter' && keywordInput.trim()) { e.preventDefault(); if (!keywords.includes(keywordInput.trim())) setKeywords(ks => [...ks, keywordInput.trim()]); setKeywordInput('') } }}
                   onBlur={() => { if (keywordInput.trim() && !keywords.includes(keywordInput.trim())) { setKeywords(ks => [...ks, keywordInput.trim()]); setKeywordInput('') } }}
                   placeholder="Digite e aperte Enter" />
+              </div>
+              <div className="border-t pt-3 flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-800">
+                  <input type="checkbox" checked={followGate} onChange={e => setFollowGate(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                  🔒 Exigir seguir o perfil antes de liberar
+                </label>
+                {followGate && (
+                  <>
+                    <p className="text-[11px] text-gray-500">Quem não segue recebe esta mensagem na DM com o botão &quot;JÁ SIGO ✅&quot;. Quando seguir e tocar, a sequência libera sozinha.</p>
+                    <textarea className={inputCls + ' h-20'} value={followGateMsg} onChange={e => setFollowGateMsg(e.target.value)}
+                      placeholder="Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá e toca no botão que eu libero na hora 👇" />
+                  </>
+                )}
               </div>
               <div className="border-t pt-3 flex flex-col gap-3">
                 <p className="text-sm font-medium text-gray-700">Depois do disparo</p>
