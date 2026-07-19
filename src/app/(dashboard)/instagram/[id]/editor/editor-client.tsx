@@ -3,8 +3,8 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  ReactFlow, Background, Controls, Handle, Position,
-  type Node, type Edge, type NodeProps, type NodeChange,
+  ReactFlow, Background, Controls, Handle, Position, useNodesState,
+  type Node, type Edge, type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { updateIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
@@ -146,16 +146,9 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
-  // Aplica os arrastos dos nós (posições persistidas no salvar)
-  const onNodesChange = (changes: NodeChange[]) => {
-    setPositions(prev => {
-      const next = { ...prev }
-      for (const c of changes) {
-        if (c.type === 'position' && c.position) next[c.id] = { x: Math.round(c.position.x), y: Math.round(c.position.y) }
-      }
-      return next
-    })
-  }
+  // useNodesState cuida das mudanças internas do React Flow (medição + arrasto);
+  // ao soltar o nó, gravamos a posição em `positions` (persistida no Salvar)
+  const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState<Node>([])
 
   useEffect(() => { listInstagramPosts().then(r => setPosts(r.posts)) }, [])
 
@@ -171,7 +164,13 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
       })),
     ]
     return list
-  }, [keywords, mediaThumb, mediaId, replyList, steps, positions, followGate])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, selected])
+
+  // Sincroniza os nós computados com o estado interno do React Flow
+  useEffect(() => {
+    setRfNodes(nodes.map(n => ({ ...n, selected: n.id === selected })))
+  }, [nodes, selected, setRfNodes])
 
   const edges: Edge[] = useMemo(() => {
     const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ espera ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
@@ -240,11 +239,12 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         {/* Canvas */}
         <div className="flex-1">
           <ReactFlow
-            nodes={nodes.map(n => ({ ...n, selected: n.id === selected }))}
+            nodes={rfNodes}
             edges={edges}
             nodeTypes={nodeTypes}
             onNodeClick={(_, n) => setSelected(n.id)}
-            onNodesChange={onNodesChange}
+            onNodesChange={onRfNodesChange}
+            onNodeDragStop={(_, n) => setPositions(p => ({ ...p, [n.id]: { x: Math.round(n.position.x), y: Math.round(n.position.y) } }))}
             fitView
             nodesDraggable
             nodesConnectable={false}
