@@ -11,6 +11,7 @@ interface Connection { connected: boolean; username?: string; accountId?: string
 export default function InstagramClient({ initialAutomations, connection, funnels = [] }: { initialAutomations: IgAutomation[]; connection?: Connection; funnels?: { id: string; name: string }[] }) {
   const [automations, setAutomations] = useState(initialAutomations)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // form
   const [name, setName] = useState('')
@@ -27,21 +28,38 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  async function openModal() {
-    setModalOpen(true)
-    setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
-    setCommentReplies(''); setDmMessage(''); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
+  async function loadPosts() {
     setPosts(null); setPostsError(null)
     const { posts: p, error } = await listInstagramPosts()
     if (error) setPostsError(error)
     setPosts(p)
   }
 
+  async function openModal() {
+    setModalOpen(true); setEditingId(null)
+    setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
+    setCommentReplies(''); setDmMessage(''); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
+    await loadPosts()
+  }
+
+  async function openEdit(a: IgAutomation) {
+    setModalOpen(true); setEditingId(a.id)
+    setName(a.name)
+    setSelectedPost(a.media_id ? { id: a.media_id, caption: a.media_caption ?? undefined, thumbnail_url: a.media_thumb ?? undefined } : 'all')
+    setKeywords(a.keywords ?? []); setKeywordInput('')
+    setCommentReplies((a.comment_replies ?? []).join('\n'))
+    setDmMessage(a.dm_message ?? '')
+    setDmUseAgent(a.dm_use_agent)
+    setFunnelId(a.funnel_id ?? ''); setLeadTag(a.lead_tag ?? '')
+    setSaveError(null)
+    await loadPosts()
+  }
+
   async function save() {
     if (!dmMessage.trim() && !commentReplies.trim()) { setSaveError('Defina ao menos a resposta do comentário ou a mensagem de DM'); return }
     setSaving(true); setSaveError(null)
     const media = selectedPost && selectedPost !== 'all' ? selectedPost : null
-    const { id, error } = await createIgAutomation({
+    const payload = {
       name: name || 'Automação',
       media_id: media?.id ?? null,
       media_caption: media?.caption?.slice(0, 120) ?? null,
@@ -52,17 +70,22 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       dm_use_agent: dmUseAgent,
       funnel_id: funnelId || null,
       lead_tag: leadTag || null,
-    })
+    }
+
+    if (editingId) {
+      const { success, error } = await updateIgAutomation(editingId, payload)
+      setSaving(false)
+      if (!success) { setSaveError(error ?? 'Erro ao salvar'); return }
+      setAutomations(a => a.map(x => x.id === editingId ? { ...x, ...payload } : x))
+      setModalOpen(false)
+      return
+    }
+
+    const { id, error } = await createIgAutomation(payload)
     setSaving(false)
     if (error) { setSaveError(error); return }
     setAutomations(a => [{
-      id: id!, name: name || 'Automação', status: 'active',
-      media_id: media?.id ?? null, media_caption: media?.caption?.slice(0, 120) ?? null,
-      media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
-      keywords, comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
-      dm_message: dmMessage || null, dm_use_agent: dmUseAgent,
-      funnel_id: funnelId || null, lead_tag: leadTag || null,
-      triggers_count: 0, created_at: new Date().toISOString(),
+      id: id!, status: 'active', triggers_count: 0, created_at: new Date().toISOString(), ...payload,
     }, ...a])
     setModalOpen(false)
   }
@@ -154,6 +177,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               <div className="flex items-center justify-between pt-2 border-t border-gray-50 mt-auto">
                 <span className="text-xs text-gray-400">{a.triggers_count} disparo(s)</span>
                 <div className="flex gap-3">
+                  <button onClick={() => openEdit(a)} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">✏️ Editar</button>
                   <button onClick={() => toggle(a)} className={`text-xs font-medium ${a.status === 'active' ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {a.status === 'active' ? '⏸ Pausar' : '▶ Ativar'}
                   </button>
@@ -169,7 +193,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalOpen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="px-6 pt-5 pb-4 bg-gradient-to-r from-pink-500 to-purple-600 rounded-t-3xl flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">Nova automação do Instagram</h2>
+              <h2 className="text-lg font-bold text-white">{editingId ? 'Editar automação' : 'Nova automação do Instagram'}</h2>
               <button onClick={() => setModalOpen(false)} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
             </div>
             <div className="p-6 flex flex-col gap-4">
@@ -251,7 +275,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               {saveError && <p className="text-sm text-red-600">{saveError}</p>}
               <button onClick={save} disabled={saving}
                 className="w-full px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-60">
-                {saving ? 'Salvando…' : 'Criar automação'}
+                {saving ? 'Salvando…' : editingId ? 'Salvar alterações' : 'Criar automação'}
               </button>
             </div>
           </div>

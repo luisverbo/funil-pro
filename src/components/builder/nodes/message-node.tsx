@@ -21,7 +21,7 @@ export default function MessageNode({ id, data, selected }: NodeProps) {
   const config = (nodeData.config ?? {}) as MessageConfig
   const metrics = nodeData.metrics as BlockMetrics | null | undefined
 
-  const channel = config.channel === 'email' ? 'Email' : 'WhatsApp'
+  const channel = config.channel === 'email' ? 'Email' : config.channel === 'instagram' ? 'Instagram' : 'WhatsApp'
   const preview = config.body ? `${channel}: ${config.body}` : `Via ${channel}`
 
   return (

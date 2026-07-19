@@ -498,6 +498,7 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
               >
                 <option value="whatsapp">WhatsApp</option>
                 <option value="email">E-mail</option>
+                <option value="instagram">Instagram (DM)</option>
               </select>
             </FieldWrap>
             <FieldWrap>

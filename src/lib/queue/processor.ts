@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendTextMessage, sendMediaMessage } from '@/lib/evolution'
+import { sendInstagramDM } from '@/lib/instagram'
 import { sendEmail } from '@/lib/resend'
 import { processAgentMessage } from '@/lib/agents/chat'
 
@@ -17,7 +18,7 @@ export interface QueueJob {
 export async function processJob(job: QueueJob): Promise<void> {
   const admin = createAdminClient()
 
-  const { data: lead } = await admin.from('leads').select('id, name, phone, email, tenant_id').eq('id', job.lead_id).single()
+  const { data: lead } = await admin.from('leads').select('id, name, phone, email, tenant_id, metadata').eq('id', job.lead_id).single()
   if (!lead) {
     console.warn(`[processor] Lead ${job.lead_id} não encontrado — pulando job ${job.id}`)
     return
@@ -70,6 +71,13 @@ export async function processJob(job: QueueJob): Promise<void> {
             await sendTextMessage(instance.instance_name, lead.phone, body)
           }
         }
+      }
+    } else if (channel === 'instagram' || (channel === 'whatsapp' && !lead.phone && (lead.metadata as Record<string, unknown> | null)?.ig_user_id)) {
+      // Sequência via Instagram DM: canal explícito OU fallback quando o lead
+      // veio do Instagram (sem telefone, com IGSID no metadata)
+      const igUserId = (lead.metadata as Record<string, unknown> | null)?.ig_user_id as string | undefined
+      if (igUserId && body) {
+        await sendInstagramDM(igUserId, body).catch(err => console.error(`[processor] IG DM falhou: ${String(err)}`))
       }
     } else if (channel === 'email' && lead.email) {
       const subject = (config.subject as string) ?? 'Nova mensagem'
