@@ -483,7 +483,14 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-07-12 — Agente IA classe mundial (agendamento, follow-up, áudio, test drive)
+**Última atualização:** 2026-07-19 — Instagram estilo ManyChat (automações, sequências, editor canvas)
+**O que foi feito (2026-07-19, sessão Instagram):**
+- **Integração Instagram** (API com login do Instagram, app publicado): webhook `/api/webhooks/instagram` (GET handshake IG_VERIFY_TOKEN + POST assinado IG_APP_SECRET), lib `src/lib/instagram` (DM, reply comentário, private reply, quick replies, button template, listar posts, getConnectedAccount); env: IG_ACCESS_TOKEN/IG_APP_SECRET/IG_VERIFY_TOKEN
+- **Automações estilo ManyChat** (`ig_automations` + página /instagram na sidebar): post específico (seletor com thumbnails) ou todos, palavras-chave, respostas públicas rotativas, sequência de DMs (`dm_steps`: espera min/h + texto + botões 🔗 link / 💬 resposta rápida que renova janela 24h), captura de lead (tag + matrícula em funil), IA assume em resposta livre; quick reply adianta próximo passo, resposta livre cancela sequência; `ig_sequence_jobs` processado no cron
+- **Editor visual em canvas** `/instagram/[id]/editor` (React Flow): nó gatilho → resposta pública → mensagens com arestas rotuladas com a espera; painel lateral de edição
+- Canal 'instagram' no motor do agente + bloco message do funil envia DM (fallback automático p/ lead IG sem telefone); página pública /privacidade (LGPD) p/ publicação do app Meta
+- Agente: test drive resiliente/paralelo + auto-correção substitui (não acumula) + cap 8 correções; leads capturados por IGSID em `leads.metadata.ig_user_id`
+
 **O que foi feito (2026-07-11/12, sessão agentes):**
 - **Agendamento de reuniões**: `agent_meetings` + `scheduling_config` (dias/horários, duração, intervalo, antecedência), slots em America/Sao_Paulo, anti double-booking, link Google Agenda sem OAuth, página /agents/[id]/meetings (canceladas ocultas), coleta obrigatória nome+email+whatsapp, anti-reagendamento (lead que agradece não re-agenda), lembrete automático ~1h antes (WA+Resend) de carona no cron do queue
 - **Gate de qualificação por faixa**: botões de investimento configuráveis (pergunta+faixas agenda/não-agenda), fail_message+fail_link (Instagram) p/ reprovados, trava anti-repetição de botões, disqualified status
