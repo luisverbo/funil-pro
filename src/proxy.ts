@@ -7,6 +7,7 @@ const PUBLIC_PREFIXES = [
   '/api/funnels',
   '/api/queue/process',
   '/api/agents/meetings/remind',
+  '/privacidade',
   '/api/track',
   '/api/quiz',
   '/api/agents/public/',
