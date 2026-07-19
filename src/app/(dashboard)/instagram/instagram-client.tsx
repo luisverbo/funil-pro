@@ -92,6 +92,11 @@ export default function InstagramClient({ initialAutomations, connection, funnel
 
   async function save() {
     const steps = stepsToDb(dmSteps)
+    // Captura a palavra digitada que ainda não virou chip (sem Enter)
+    const finalKeywords = keywordInput.trim() && !keywords.includes(keywordInput.trim())
+      ? [...keywords, keywordInput.trim()]
+      : keywords
+    if (keywordInput.trim()) { setKeywords(finalKeywords); setKeywordInput('') }
     if (steps.length === 0 && !commentReplies.trim()) { setSaveError('Defina ao menos a resposta do comentário ou um passo de DM'); return }
     setSaving(true); setSaveError(null)
     const media = selectedPost && selectedPost !== 'all' ? selectedPost : null
@@ -100,7 +105,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       media_id: media?.id ?? null,
       media_caption: media?.caption?.slice(0, 120) ?? null,
       media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
-      keywords,
+      keywords: finalKeywords,
       comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
       dm_message: steps[0]?.text || null,
       dm_steps: steps.length > 0 ? steps : null,
@@ -276,9 +281,19 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                     </span>
                   ))}
                 </div>
-                <input className={inputCls} value={keywordInput} onChange={e => setKeywordInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && keywordInput.trim()) { e.preventDefault(); setKeywords(ks => [...ks, keywordInput.trim()]); setKeywordInput('') } }}
-                  placeholder="Ex: EU QUERO" />
+                <input className={inputCls} value={keywordInput}
+                  onChange={e => {
+                    const v = e.target.value
+                    // vírgula também adiciona (além do Enter)
+                    if (v.includes(',')) {
+                      const parts = v.split(',').map(s => s.trim()).filter(Boolean)
+                      setKeywords(ks => [...ks, ...parts.filter(p => !ks.includes(p))])
+                      setKeywordInput('')
+                    } else setKeywordInput(v)
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter' && keywordInput.trim()) { e.preventDefault(); if (!keywords.includes(keywordInput.trim())) setKeywords(ks => [...ks, keywordInput.trim()]); setKeywordInput('') } }}
+                  onBlur={() => { if (keywordInput.trim() && !keywords.includes(keywordInput.trim())) { setKeywords(ks => [...ks, keywordInput.trim()]); setKeywordInput('') } }}
+                  placeholder="Digite e aperte Enter (ex: EU QUERO)" />
               </div>
 
               <div>
