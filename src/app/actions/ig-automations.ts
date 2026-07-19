@@ -16,7 +16,7 @@ export interface IgAutomation {
   keywords: string[]
   comment_replies: string[]
   dm_message: string | null
-  dm_steps: { delay_minutes?: number; text?: string; buttons?: { title: string; url: string }[] }[] | null
+  dm_steps: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string }[] }[] | null
   dm_use_agent: boolean
   funnel_id: string | null
   lead_tag: string | null
@@ -32,7 +32,7 @@ export interface IgAutomationInput {
   keywords?: string[]
   comment_replies?: string[]
   dm_message?: string | null
-  dm_steps?: { delay_minutes?: number; text?: string; buttons?: { title: string; url: string }[] }[] | null
+  dm_steps?: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string }[] }[] | null
   dm_use_agent?: boolean
   funnel_id?: string | null
   lead_tag?: string | null

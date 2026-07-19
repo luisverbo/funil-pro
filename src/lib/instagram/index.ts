@@ -117,3 +117,26 @@ export async function sendInstagramButtons(recipientId: string, text: string, bu
     await sendInstagramDM(recipientId, fallback)
   }
 }
+
+/** Envia DM com botões de resposta rápida (quick replies) — a pessoa toca e o
+ *  texto vira resposta dela (renova a janela de 24h do Instagram) */
+export async function sendInstagramQuickReplies(recipientId: string, text: string, options: string[]): Promise<void> {
+  const valid = options.filter(Boolean).slice(0, 13)
+  if (valid.length === 0) return sendInstagramDM(recipientId, text)
+  const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    body: JSON.stringify({
+      recipient: { id: recipientId },
+      message: {
+        text: text.slice(0, 1000),
+        quick_replies: valid.map(o => ({ content_type: 'text', title: o.slice(0, 20), payload: o.slice(0, 20) })),
+      },
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`IG quickReplies ${res.status}: ${body}`)
+    await sendInstagramDM(recipientId, `${text}\n\n(responde com: ${valid.join(' / ')})`)
+  }
+}

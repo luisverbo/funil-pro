@@ -7,16 +7,20 @@ import type { IgMedia } from '@/lib/instagram'
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
 // Passo da sequência de DM (estado da UI)
-type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: { title: string; url: string }[] }
+// kind 'url' = botão de link; kind 'reply' = resposta rápida ("SIM") — renova a janela de 24h
+type UiButton = { title: string; url: string; kind: 'url' | 'reply' }
+type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[] }
 const emptyStep = (): UiStep => ({ delay_value: 0, delay_unit: 'min', text: '', buttons: [] })
 
 function stepsToDb(steps: UiStep[]) {
   return steps
-    .filter(s => s.text.trim() || s.buttons.some(b => b.title && b.url))
+    .filter(s => s.text.trim() || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
     .map(s => ({
       delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
       text: s.text.trim(),
-      buttons: s.buttons.filter(b => b.title && b.url),
+      buttons: s.buttons
+        .filter(b => b.title && (b.kind === 'reply' || b.url))
+        .map(b => b.kind === 'reply' ? { title: b.title } : { title: b.title, url: b.url }),
     }))
 }
 
@@ -32,7 +36,7 @@ function dbToSteps(a: IgAutomation): UiStep[] {
       delay_value: asHours ? min / 60 : min,
       delay_unit: asHours ? 'h' as const : 'min' as const,
       text: s.text ?? '',
-      buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: b.url })),
+      buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: (b as { url?: string }).url ?? '', kind: ((b as { url?: string }).url ? 'url' : 'reply') as 'url' | 'reply' })),
     }
   })
 }
@@ -307,20 +311,35 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                       <textarea className={inputCls + ' h-16 bg-white'} value={s.text}
                         onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, text: e.target.value } : x))}
                         placeholder={i === 0 ? 'Oi! Vi seu comentário 👋 Toma o link:' : 'E aí, conseguiu ver? Qualquer dúvida me chama!'} />
-                      {/* Botões com link */}
+                      {/* Botões: link (abre URL) ou resposta rápida ("SIM" — renova a janela de 24h) */}
                       {s.buttons.map((b, bi) => (
-                        <div key={bi} className="flex gap-2">
-                          <input className={inputCls + ' bg-white flex-1'} value={b.title} placeholder="Texto do botão (ex: ACESSAR)"
+                        <div key={bi} className="flex gap-2 items-center">
+                          <span className={`text-[10px] font-bold px-1.5 py-1 rounded ${b.kind === 'reply' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>
+                            {b.kind === 'reply' ? '💬' : '🔗'}
+                          </span>
+                          <input className={inputCls + ' bg-white flex-1'} value={b.title}
+                            placeholder={b.kind === 'reply' ? 'Texto da resposta (ex: SIM)' : 'Texto do botão (ex: ACESSAR)'}
                             onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.map((bb, bbi) => bbi === bi ? { ...bb, title: e.target.value } : bb) } : x))} />
-                          <input className={inputCls + ' bg-white flex-[2]'} value={b.url} placeholder="https://..."
-                            onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.map((bb, bbi) => bbi === bi ? { ...bb, url: e.target.value } : bb) } : x))} />
+                          {b.kind === 'url' && (
+                            <input className={inputCls + ' bg-white flex-[2]'} value={b.url} placeholder="https://..."
+                              onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.map((bb, bbi) => bbi === bi ? { ...bb, url: e.target.value } : bb) } : x))} />
+                          )}
                           <button type="button" onClick={() => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.filter((_, bbi) => bbi !== bi) } : x))}
                             className="text-gray-300 hover:text-red-500 px-1">×</button>
                         </div>
                       ))}
-                      {s.buttons.length < 3 && (
-                        <button type="button" onClick={() => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: [...x.buttons, { title: '', url: '' }] } : x))}
-                          className="text-xs text-purple-600 hover:underline self-start">+ botão com link</button>
+                      <div className="flex gap-3">
+                        {s.buttons.length < 3 && (
+                          <button type="button" onClick={() => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: [...x.buttons, { title: '', url: '', kind: 'url' as const }] } : x))}
+                            className="text-xs text-sky-600 hover:underline">+ 🔗 botão com link</button>
+                        )}
+                        {s.buttons.length < 3 && (
+                          <button type="button" onClick={() => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: [...x.buttons, { title: '', url: '', kind: 'reply' as const }] } : x))}
+                            className="text-xs text-emerald-600 hover:underline">+ 💬 botão de resposta (ex: SIM)</button>
+                        )}
+                      </div>
+                      {s.buttons.some(b => b.kind === 'reply') && (
+                        <p className="text-[11px] text-emerald-600/80">💡 Quando a pessoa toca no botão de resposta, ela &quot;fala&quot; com você — isso renova a janela de 24h e permite os próximos passos chegarem.</p>
                       )}
                     </div>
                   ))}

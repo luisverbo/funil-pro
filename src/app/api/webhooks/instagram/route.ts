@@ -101,6 +101,36 @@ export async function POST(request: NextRequest) {
       const text = m.message?.text?.trim()
       if (!senderId || !text) continue
       try {
+        // Pessoa respondeu na DM. Duas situações:
+        // a) tocou num BOTÃO DE RESPOSTA da sequência (ex: "SIM") → renova a janela
+        //    de 24h e ADIANTA o próximo passo pra agora (a sequência continua)
+        // b) resposta livre → pausa os passos agendados e o agente IA assume
+        const { data: pendingJobs } = await admin
+          .from('ig_sequence_jobs')
+          .select('id, automation_id, step_index, scheduled_for')
+          .eq('ig_user_id', senderId).eq('status', 'pending')
+          .order('scheduled_for', { ascending: true })
+
+        if (pendingJobs && pendingJobs.length > 0) {
+          const { data: auto } = await admin
+            .from('ig_automations').select('dm_steps').eq('id', pendingJobs[0].automation_id).single()
+          const steps = Array.isArray(auto?.dm_steps) ? auto.dm_steps as { buttons?: { title?: string; url?: string }[] }[] : []
+          const replyTitles = steps.flatMap(s => (s.buttons ?? []).filter(b => !b.url && b.title).map(b => b.title!.toLowerCase().trim()))
+          const isQuickReply = replyTitles.includes(text.toLowerCase().trim())
+
+          if (isQuickReply) {
+            // continua a sequência: próximo passo sai agora
+            await admin.from('ig_sequence_jobs')
+              .update({ scheduled_for: new Date().toISOString() })
+              .eq('id', pendingJobs[0].id)
+            console.log(`[ig] quick reply "${text}" — próximo passo adiantado`)
+            continue   // não chama o agente: a sequência responde
+          }
+
+          await admin.from('ig_sequence_jobs').update({ status: 'cancelled' })
+            .eq('ig_user_id', senderId).eq('status', 'pending')
+          console.log(`[ig] ${pendingJobs.length} passo(s) cancelados — lead respondeu livre, agente assume`)
+        }
         const agent = await findInstagramAgent(admin, igAccountId)
         if (!agent) continue
         const leadId = await resolveLead(admin, agent.tenant_id, senderId)
