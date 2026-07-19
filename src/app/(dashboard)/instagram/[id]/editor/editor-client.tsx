@@ -65,12 +65,40 @@ function TriggerNode({ data, selected }: NodeProps) {
             : <span className="text-[10px] text-gray-400">qualquer comentário</span>}
         </div>
       </div>
-      {d.followGate && (
-        <div className="mx-3 mb-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[10px] text-amber-700 font-medium">
-          🔒 Só libera pra quem SEGUE o perfil
-        </div>
-      )}
       <div className="px-4 pb-2 text-right text-[10px] text-gray-400">Então ⟶</div>
+      <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-3 !h-3" />
+    </div>
+  )
+}
+
+function GateNode({ data, selected }: NodeProps) {
+  const d = data as { message: string }
+  return (
+    <div className={`w-60 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-hidden cursor-pointer`}>
+      <Handle type="target" position={Position.Left} className="!bg-amber-400 !w-3 !h-3" />
+      <div className="px-4 py-2 text-xs font-semibold text-amber-600 flex items-center gap-1.5">🔒 A pessoa segue o perfil?</div>
+      <div className="mx-3 mb-2 rounded-xl bg-amber-50 border border-amber-100 p-2.5">
+        <p className="text-[11px] text-gray-600 leading-snug">Se não seguir, recebe na DM:</p>
+        <p className="text-[11px] text-amber-800 mt-1 italic">“{d.message.slice(0, 90)}{d.message.length > 90 ? '…' : ''}” + botão [JÁ SIGO ✅]</p>
+      </div>
+      <div className="px-4 pb-2 flex justify-between text-[10px]">
+        <span className="text-emerald-600 font-semibold">✅ segue ⟶</span>
+        <span className="text-red-400 font-semibold">❌ não segue ⟶</span>
+      </div>
+      <Handle id="yes" type="source" position={Position.Right} style={{ top: '40%' }} className="!bg-emerald-500 !w-3 !h-3" />
+      <Handle id="no" type="source" position={Position.Bottom} className="!bg-red-400 !w-3 !h-3" />
+    </div>
+  )
+}
+
+function GateMsgNode({ selected }: NodeProps) {
+  return (
+    <div className={`w-56 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-hidden cursor-pointer`}>
+      <Handle type="target" position={Position.Top} className="!bg-red-400 !w-3 !h-3" />
+      <div className="px-4 py-2 text-xs font-semibold text-red-500 flex items-center gap-1.5">⏳ Aguardando seguir</div>
+      <div className="mx-3 mb-3 rounded-xl bg-red-50 border border-red-100 p-2.5">
+        <p className="text-[11px] text-gray-600 leading-snug">A pessoa segue o perfil e toca em <strong>[JÁ SIGO ✅]</strong> → o sistema confere de novo e libera as mensagens.</p>
+      </div>
       <Handle type="source" position={Position.Right} className="!bg-emerald-500 !w-3 !h-3" />
     </div>
   )
@@ -120,7 +148,8 @@ function DmNode({ data, selected }: NodeProps) {
   )
 }
 
-const nodeTypes = { trigger: TriggerNode, reply: ReplyNode, dm: DmNode }
+const nodeTypes = { trigger: TriggerNode, reply: ReplyNode, dm: DmNode, gate: GateNode, gatemsg: GateMsgNode }
+const DEFAULT_GATE_MSG = 'Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá no perfil e toca no botão abaixo que eu libero na hora 👇'
 
 // ─── Editor ──────────────────────────────────────────────────────────────────
 
@@ -156,16 +185,22 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
 
   const nodes: Node[] = useMemo(() => {
     const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? def
+    // Com o gate ligado, as mensagens deslocam uma coluna pra direita
+    const dmBaseX = followGate ? 1000 : 680
     const list: Node[] = [
-      { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb, mediaLabel: mediaId ? 'um post específico' : 'qualquer post/Reel', followGate } },
+      { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb, mediaLabel: mediaId ? 'um post específico' : 'qualquer post/Reel' } },
       { id: 'reply', type: 'reply', position: pos('reply', { x: 340, y: 96 }), data: { replies: replyList } },
+      ...(followGate ? [
+        { id: 'gate', type: 'gate', position: pos('gate', { x: 680, y: 80 }), data: { message: followGateMsg || DEFAULT_GATE_MSG } },
+        { id: 'gatemsg', type: 'gatemsg', position: pos('gatemsg', { x: 690, y: 330 }), data: {} },
+      ] : []),
       ...steps.map((s, i) => ({
-        id: `dm-${i}`, type: 'dm', position: pos(`dm-${i}`, { x: 680 + i * 340, y: 60 }), data: { step: s, index: i },
+        id: `dm-${i}`, type: 'dm', position: pos(`dm-${i}`, { x: dmBaseX + i * 340, y: 60 }), data: { step: s, index: i },
       })),
     ]
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, selected])
+  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, followGateMsg, selected])
 
   // Sincroniza os nós computados com o estado interno do React Flow
   useEffect(() => {
@@ -177,16 +212,27 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     const e: Edge[] = [
       { id: 'e-t-r', source: 'trigger', target: 'reply', animated: true, label: 'Então', style: { stroke: '#94a3b8' } },
     ]
+    if (followGate) {
+      e.push(
+        { id: 'e-r-g', source: 'reply', target: 'gate', animated: true, label: 'e na DM…', labelStyle: { fontSize: 10, fill: '#d97706', fontWeight: 600 }, style: { stroke: '#fbbf24' } },
+        { id: 'e-g-no', source: 'gate', sourceHandle: 'no', target: 'gatemsg', animated: true, label: '❌ não segue', labelStyle: { fontSize: 10, fill: '#ef4444', fontWeight: 600 }, style: { stroke: '#fca5a5' } },
+        { id: 'e-gm-dm', source: 'gatemsg', target: 'dm-0', animated: true, label: 'seguiu ✅', labelStyle: { fontSize: 10, fill: '#10b981', fontWeight: 600 }, style: { stroke: '#6ee7b7' } },
+      )
+    }
     steps.forEach((s, i) => {
       e.push({
-        id: `e-${i}`, source: i === 0 ? 'reply' : `dm-${i - 1}`, target: `dm-${i}`,
-        animated: true, label: delayLabel(s),
+        id: `e-${i}`,
+        source: i === 0 ? (followGate ? 'gate' : 'reply') : `dm-${i - 1}`,
+        ...(i === 0 && followGate ? { sourceHandle: 'yes' } : {}),
+        target: `dm-${i}`,
+        animated: true,
+        label: i === 0 && followGate ? `✅ segue · ${delayLabel(s)}` : delayLabel(s),
         labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 },
         style: { stroke: '#a78bfa' },
       })
     })
     return e
-  }, [steps])
+  }, [steps, followGate])
 
   async function save() {
     setSaving(true)
@@ -296,16 +342,10 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
               </div>
               <div className="border-t pt-3 flex flex-col gap-2">
                 <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-800">
-                  <input type="checkbox" checked={followGate} onChange={e => setFollowGate(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-                  🔒 Exigir seguir o perfil antes de liberar
+                  <input type="checkbox" checked={followGate} onChange={e => { setFollowGate(e.target.checked); if (e.target.checked) setSelected('gate') }} className="w-4 h-4 accent-amber-500" />
+                  🔒 Exigir seguir o perfil (só na DM)
                 </label>
-                {followGate && (
-                  <>
-                    <p className="text-[11px] text-gray-500">Quem não segue recebe esta mensagem na DM com o botão &quot;JÁ SIGO ✅&quot;. Quando seguir e tocar, a sequência libera sozinha.</p>
-                    <textarea className={inputCls + ' h-20'} value={followGateMsg} onChange={e => setFollowGateMsg(e.target.value)}
-                      placeholder="Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá e toca no botão que eu libero na hora 👇" />
-                  </>
-                )}
+                <p className="text-[11px] text-gray-500">A resposta pública ao comentário SEMPRE sai. O cadeado segura só o conteúdo da DM — {followGate ? 'clique no nó 🔒 no canvas pra editar a mensagem.' : 'ligue pra ver a ramificação no canvas.'}</p>
               </div>
               <div className="border-t pt-3 flex flex-col gap-3">
                 <p className="text-sm font-medium text-gray-700">Depois do disparo</p>
@@ -325,6 +365,20 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   🤖 IA assume se a pessoa responder livre
                 </label>
               </div>
+            </>
+          )}
+
+          {(selected === 'gate' || selected === 'gatemsg') && (
+            <>
+              <h3 className="font-semibold text-gray-900">🔒 Filtro de seguidor</h3>
+              <p className="text-xs text-gray-500">Quem comenta mas <strong>não segue</strong> o perfil recebe esta mensagem na DM com o botão <strong>[JÁ SIGO ✅]</strong>. Quando seguir e tocar, o sistema confere na API e libera as mensagens sozinho. A resposta pública ao comentário sai normalmente pra todo mundo.</p>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Mensagem pra quem não segue</label>
+                <textarea className={inputCls + ' h-24'} value={followGateMsg} onChange={e => setFollowGateMsg(e.target.value)}
+                  placeholder={DEFAULT_GATE_MSG} />
+              </div>
+              <button onClick={() => { setFollowGate(false); setSelected('trigger') }}
+                className="text-xs text-red-500 hover:underline self-start">Remover filtro de seguidor</button>
             </>
           )}
 
