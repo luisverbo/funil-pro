@@ -1,0 +1,115 @@
+'use server'
+
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
+import { listRecentMedia, type IgMedia } from '@/lib/instagram'
+
+export interface IgAutomation {
+  id: string
+  name: string
+  status: string
+  media_id: string | null
+  media_caption: string | null
+  media_thumb: string | null
+  keywords: string[]
+  comment_replies: string[]
+  dm_message: string | null
+  dm_use_agent: boolean
+  triggers_count: number
+  created_at: string
+}
+
+export interface IgAutomationInput {
+  name: string
+  media_id?: string | null
+  media_caption?: string | null
+  media_thumb?: string | null
+  keywords?: string[]
+  comment_replies?: string[]
+  dm_message?: string | null
+  dm_use_agent?: boolean
+}
+
+async function getSupabase() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll() { return cookieStore.getAll() }, setAll(list) { try { list.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) } catch {} } } }
+  )
+}
+
+async function getTenantId(): Promise<string> {
+  const supabase = await getSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+  const { data } = await supabase.from('users_tenants').select('tenant_id').eq('user_id', user.id).single()
+  if (!data) redirect('/login')
+  return data.tenant_id
+}
+
+export async function listIgAutomations(): Promise<{ automations: IgAutomation[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data, error } = await supabase
+      .from('ig_automations').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false })
+    if (error) return { automations: [], error: error.message }
+    return { automations: (data ?? []) as IgAutomation[] }
+  } catch (err) { return { automations: [], error: String(err) } }
+}
+
+export async function createIgAutomation(input: IgAutomationInput): Promise<{ id?: string; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data, error } = await supabase.from('ig_automations').insert({
+      tenant_id: tenantId,
+      name: input.name?.trim() || 'Automação',
+      media_id: input.media_id || null,
+      media_caption: input.media_caption || null,
+      media_thumb: input.media_thumb || null,
+      keywords: (input.keywords ?? []).map(k => k.trim()).filter(Boolean),
+      comment_replies: (input.comment_replies ?? []).map(r => r.trim()).filter(Boolean),
+      dm_message: input.dm_message?.trim() || null,
+      dm_use_agent: input.dm_use_agent ?? true,
+      status: 'active',
+    }).select('id').single()
+    if (error) return { error: error.message }
+    revalidatePath('/instagram')
+    return { id: data?.id }
+  } catch (err) { return { error: String(err) } }
+}
+
+export async function updateIgAutomation(id: string, patch: Partial<IgAutomationInput> & { status?: string }): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { error } = await supabase.from('ig_automations').update(patch).eq('id', id).eq('tenant_id', tenantId)
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/instagram')
+    return { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
+export async function deleteIgAutomation(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { error } = await supabase.from('ig_automations').delete().eq('id', id).eq('tenant_id', tenantId)
+    if (error) return { success: false, error: error.message }
+    revalidatePath('/instagram')
+    return { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
+/** Posts recentes da conta conectada (para o seletor de post do modal) */
+export async function listInstagramPosts(): Promise<{ posts: IgMedia[]; error?: string }> {
+  try {
+    await getTenantId()   // exige sessão
+    const posts = await listRecentMedia(24)
+    return { posts }
+  } catch (err) { return { posts: [], error: String(err) } }
+}

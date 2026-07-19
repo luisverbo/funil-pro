@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
       const commentId = c.value?.id
       const text = c.value?.text?.trim()
       const fromId = c.value?.from?.id
+      const mediaId = c.value?.media?.id
       if (!commentId || !text) continue
       // Não responde aos próprios comentários (quando o dono responde)
       if (fromId && fromId === igAccountId) continue
@@ -123,15 +124,44 @@ export async function POST(request: NextRequest) {
         const agent = await findInstagramAgent(admin, igAccountId)
         if (!agent) continue
         const leadId = fromId ? await resolveLead(admin, agent.tenant_id, fromId, c.value?.from?.username) : null
+
+        // 1º: AUTOMAÇÕES (estilo ManyChat) — post + palavra-chave → resposta + DM
+        const { data: autos } = await admin
+          .from('ig_automations')
+          .select('id, media_id, keywords, comment_replies, dm_message, dm_use_agent')
+          .eq('tenant_id', agent.tenant_id)
+          .eq('status', 'active')
+        const lower = text.toLowerCase()
+        const matches = (autos ?? []).filter(a => {
+          if (a.media_id && a.media_id !== mediaId) return false
+          const kws: string[] = a.keywords ?? []
+          if (kws.length === 0) return true
+          return kws.some(k => k && lower.includes(k.toLowerCase()))
+        })
+        // Mais específica vence: automação com post definido > automação geral
+        const auto = matches.find(a => a.media_id) ?? matches[0]
+
+        if (auto) {
+          const replies: string[] = (auto.comment_replies ?? []).filter(Boolean)
+          if (replies.length > 0) {
+            // rotaciona por comentário para não parecer robô
+            const pick = replies[Math.abs(commentId.split('').reduce((s, ch) => s + ch.charCodeAt(0), 0)) % replies.length]
+            await replyToComment(commentId, pick.slice(0, 300)).catch(e => console.error('[ig] replyComment', String(e)))
+          }
+          if (auto.dm_message) {
+            await sendPrivateReplyToComment(commentId, auto.dm_message).catch(e => console.error('[ig] privateReply', String(e)))
+          }
+          await admin.rpc('increment_ig_automation_triggers', { p_id: auto.id }).then(() => {}, () => {})
+          continue
+        }
+
+        // 2º: fallback — agente IA responde o comentário (comportamento anterior)
         const parts = await dispatchToAgent(agent.id, leadId, text)
-        const reply = parts.join(' ').slice(0, 260)   // comentário público curto
+        const reply = parts.join(' ').slice(0, 260)
         if (reply) {
-          // Responde público E manda pra DM (padrão ManyChat) — DM pode falhar se
-          // o usuário nunca interagiu; o público sempre sai
           await replyToComment(commentId, reply).catch(e => console.error('[ig] replyComment', String(e)))
           if (parts.length > 1) {
-            const dm = parts.join('\n')
-            await sendPrivateReplyToComment(commentId, dm).catch(() => {})
+            await sendPrivateReplyToComment(commentId, parts.join('\n')).catch(() => {})
           }
         }
       } catch (err) {

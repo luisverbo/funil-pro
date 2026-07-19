@@ -47,3 +47,27 @@ export async function sendPrivateReplyToComment(commentId: string, text: string)
     throw new Error(`IG privateReply ${res.status}: ${body}`)
   }
 }
+
+export interface IgMedia {
+  id: string
+  caption?: string
+  media_type?: string
+  media_url?: string
+  thumbnail_url?: string
+  permalink?: string
+  timestamp?: string
+}
+
+/** Lista os posts recentes da conta conectada (para o seletor de post) */
+export async function listRecentMedia(limit = 24): Promise<IgMedia[]> {
+  const res = await fetch(
+    `${GRAPH}/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp&limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token()}` } }
+  )
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`IG listMedia ${res.status}: ${body}`)
+  }
+  const json = await res.json() as { data?: IgMedia[] }
+  return json.data ?? []
+}

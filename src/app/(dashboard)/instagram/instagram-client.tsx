@@ -1,0 +1,214 @@
+'use client'
+
+import React, { useState } from 'react'
+import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
+import type { IgMedia } from '@/lib/instagram'
+
+const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
+
+export default function InstagramClient({ initialAutomations }: { initialAutomations: IgAutomation[] }) {
+  const [automations, setAutomations] = useState(initialAutomations)
+  const [modalOpen, setModalOpen] = useState(false)
+
+  // form
+  const [name, setName] = useState('')
+  const [posts, setPosts] = useState<IgMedia[] | null>(null)
+  const [postsError, setPostsError] = useState<string | null>(null)
+  const [selectedPost, setSelectedPost] = useState<IgMedia | 'all' | null>(null)
+  const [keywordInput, setKeywordInput] = useState('')
+  const [keywords, setKeywords] = useState<string[]>([])
+  const [commentReplies, setCommentReplies] = useState('')
+  const [dmMessage, setDmMessage] = useState('')
+  const [dmUseAgent, setDmUseAgent] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  async function openModal() {
+    setModalOpen(true)
+    setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
+    setCommentReplies(''); setDmMessage(''); setDmUseAgent(true); setSaveError(null)
+    setPosts(null); setPostsError(null)
+    const { posts: p, error } = await listInstagramPosts()
+    if (error) setPostsError(error)
+    setPosts(p)
+  }
+
+  async function save() {
+    if (!dmMessage.trim() && !commentReplies.trim()) { setSaveError('Defina ao menos a resposta do comentário ou a mensagem de DM'); return }
+    setSaving(true); setSaveError(null)
+    const media = selectedPost && selectedPost !== 'all' ? selectedPost : null
+    const { id, error } = await createIgAutomation({
+      name: name || 'Automação',
+      media_id: media?.id ?? null,
+      media_caption: media?.caption?.slice(0, 120) ?? null,
+      media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
+      keywords,
+      comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
+      dm_message: dmMessage || null,
+      dm_use_agent: dmUseAgent,
+    })
+    setSaving(false)
+    if (error) { setSaveError(error); return }
+    setAutomations(a => [{
+      id: id!, name: name || 'Automação', status: 'active',
+      media_id: media?.id ?? null, media_caption: media?.caption?.slice(0, 120) ?? null,
+      media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
+      keywords, comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
+      dm_message: dmMessage || null, dm_use_agent: dmUseAgent, triggers_count: 0, created_at: new Date().toISOString(),
+    }, ...a])
+    setModalOpen(false)
+  }
+
+  async function toggle(a: IgAutomation) {
+    const status = a.status === 'active' ? 'paused' : 'active'
+    await updateIgAutomation(a.id, { status })
+    setAutomations(list => list.map(x => x.id === a.id ? { ...x, status } : x))
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Excluir esta automação?')) return
+    await deleteIgAutomation(id)
+    setAutomations(list => list.filter(x => x.id !== id))
+  }
+
+  return (
+    <div className="p-6 md:p-8 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Automações do Instagram</h1>
+          <p className="text-sm text-gray-500">Comentou a palavra-chave no post → responde o comentário e manda DM. A IA pode assumir a conversa.</p>
+        </div>
+        <button onClick={openModal}
+          className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200 transition-all hover:-translate-y-0.5">
+          + Nova automação
+        </button>
+      </div>
+
+      {automations.length === 0 ? (
+        <div className="border-2 border-dashed rounded-2xl p-12 text-center text-gray-500 mt-6">
+          <p className="text-3xl mb-2">📸</p>
+          <p className="font-medium">Nenhuma automação ainda</p>
+          <p className="text-sm mt-1">Ex: quem comentar <span className="font-semibold">&quot;EU QUERO&quot;</span> no seu post recebe o link na DM automaticamente.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+          {automations.map(a => (
+            <div key={a.id} className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                {a.media_thumb
+                  ? <img src={a.media_thumb} alt="" className="w-14 h-14 rounded-xl object-cover" />
+                  : <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center text-xl">📣</div>}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-semibold text-gray-900 truncate">{a.name}</h3>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${a.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {a.status === 'active' ? 'Ativa' : 'Pausada'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 truncate">{a.media_id ? (a.media_caption || 'Post específico') : 'Todos os posts'}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {a.keywords.length > 0
+                  ? a.keywords.map(k => <span key={k} className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium">{k}</span>)
+                  : <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">qualquer comentário</span>}
+              </div>
+              <div className="text-xs text-gray-500 flex flex-col gap-1">
+                {a.comment_replies.length > 0 && <p>💬 Responde: “{a.comment_replies[0]}”{a.comment_replies.length > 1 ? ` (+${a.comment_replies.length - 1})` : ''}</p>}
+                {a.dm_message && <p>📩 DM: “{a.dm_message.slice(0, 60)}{a.dm_message.length > 60 ? '…' : ''}”</p>}
+                {a.dm_use_agent && <p>🤖 IA assume a conversa na DM</p>}
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-gray-50 mt-auto">
+                <span className="text-xs text-gray-400">{a.triggers_count} disparo(s)</span>
+                <div className="flex gap-3">
+                  <button onClick={() => toggle(a)} className={`text-xs font-medium ${a.status === 'active' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {a.status === 'active' ? '⏸ Pausar' : '▶ Ativar'}
+                  </button>
+                  <button onClick={() => remove(a.id)} className="text-xs text-gray-300 hover:text-red-500">Excluir</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalOpen(false)}>
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-6 pt-5 pb-4 bg-gradient-to-r from-pink-500 to-purple-600 rounded-t-3xl flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">Nova automação do Instagram</h2>
+              <button onClick={() => setModalOpen(false)} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome da automação</label>
+                <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Lançamento — palavra EU QUERO" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Em qual post?</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <button type="button" onClick={() => setSelectedPost('all')}
+                    className={`text-xs px-3 py-1.5 rounded-full border ${selectedPost === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600'}`}>
+                    🌐 Todos os posts
+                  </button>
+                </div>
+                {posts === null && !postsError && <p className="text-xs text-gray-400">Carregando seus posts…</p>}
+                {postsError && <p className="text-xs text-amber-600">Não consegui listar os posts ({postsError.slice(0, 80)}). Você ainda pode usar &quot;Todos os posts&quot;.</p>}
+                {posts && posts.length > 0 && (
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-56 overflow-y-auto">
+                    {posts.map(p => (
+                      <button key={p.id} type="button" onClick={() => setSelectedPost(p)}
+                        className={`relative aspect-square rounded-xl overflow-hidden border-2 ${selectedPost !== 'all' && (selectedPost as IgMedia | null)?.id === p.id ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-transparent'}`}>
+                        {(p.thumbnail_url || p.media_url)
+                          ? <img src={p.thumbnail_url || p.media_url} alt="" className="w-full h-full object-cover" />
+                          : <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400 p-1 text-center">{p.caption?.slice(0, 30) || 'Post'}</div>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Palavras-chave (Enter para adicionar — vazio = qualquer comentário)</label>
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {keywords.map(k => (
+                    <span key={k} className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 flex items-center gap-1">
+                      {k}<button onClick={() => setKeywords(ks => ks.filter(x => x !== k))} className="text-indigo-300 hover:text-red-500">×</button>
+                    </span>
+                  ))}
+                </div>
+                <input className={inputCls} value={keywordInput} onChange={e => setKeywordInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && keywordInput.trim()) { e.preventDefault(); setKeywords(ks => [...ks, keywordInput.trim()]); setKeywordInput('') } }}
+                  placeholder="Ex: EU QUERO" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Resposta pública ao comentário (uma por linha — sorteia entre elas)</label>
+                <textarea className={inputCls + ' h-20'} value={commentReplies} onChange={e => setCommentReplies(e.target.value)}
+                  placeholder={'Te chamei na DM! 🚀\nAcabei de te mandar mensagem 📩\nOlha a DM 😉'} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mensagem enviada na DM</label>
+                <textarea className={inputCls + ' h-24'} value={dmMessage} onChange={e => setDmMessage(e.target.value)}
+                  placeholder="Oi! Vi seu comentário 👋 Aqui está o link que você pediu: https://..." />
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={dmUseAgent} onChange={e => setDmUseAgent(e.target.checked)} className="w-4 h-4 accent-purple-600" />
+                <span className="text-sm text-gray-700">🤖 Deixar o agente IA assumir a conversa se a pessoa responder a DM</span>
+              </label>
+
+              {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+              <button onClick={save} disabled={saving}
+                className="w-full px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-60">
+                {saving ? 'Salvando…' : 'Criar automação'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
