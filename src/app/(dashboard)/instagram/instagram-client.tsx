@@ -223,7 +223,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               <div className="flex items-center justify-between pt-2 border-t border-gray-50 mt-auto">
                 <span className="text-xs text-gray-400">{a.triggers_count} disparo(s)</span>
                 <div className="flex gap-3">
-                  <button onClick={() => openEdit(a)} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">✏️ Editar</button>
+                  <a href={`/instagram/${a.id}/editor`} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">🎨 Abrir no editor</a>
                   <button onClick={() => toggle(a)} className={`text-xs font-medium ${a.status === 'active' ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {a.status === 'active' ? '⏸ Pausar' : '▶ Ativar'}
                   </button>

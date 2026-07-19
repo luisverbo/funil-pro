@@ -67,6 +67,17 @@ export async function listIgAutomations(): Promise<{ automations: IgAutomation[]
   } catch (err) { return { automations: [], error: String(err) } }
 }
 
+export async function getIgAutomation(id: string): Promise<{ automation?: IgAutomation; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data, error } = await supabase
+      .from('ig_automations').select('*').eq('id', id).eq('tenant_id', tenantId).single()
+    if (error || !data) return { error: error?.message ?? 'not_found' }
+    return { automation: data as IgAutomation }
+  } catch (err) { return { error: String(err) } }
+}
+
 export async function createIgAutomation(input: IgAutomationInput): Promise<{ id?: string; error?: string }> {
   try {
     const tenantId = await getTenantId()
