@@ -371,13 +371,13 @@ export async function processAgentMessage(
     leadId?: string
     conversationId?: string
     testMode?: boolean
-    channel?: 'whatsapp' | 'web' | 'test'
+    channel?: 'whatsapp' | 'web' | 'test' | 'instagram'
   } = {}
 ): Promise<AgentChatResult> {
   let { leadId } = options
-  // channel: 'whatsapp' (default) envia via WA e respeita limites; 'web' (landing) NÃO
-  // envia WA mas respeita limites; 'test' ignora limites e não envia nada.
-  const channel: 'whatsapp' | 'web' | 'test' = options.channel ?? (options.testMode ? 'test' : 'whatsapp')
+  // channel: 'whatsapp' (default) envia via WA e respeita limites; 'web'/'instagram'
+  // NÃO enviam via WA (o caller envia) mas respeitam limites; 'test' ignora tudo.
+  const channel: 'whatsapp' | 'web' | 'test' | 'instagram' = options.channel ?? (options.testMode ? 'test' : 'whatsapp')
   const testMode = channel === 'test'
   const isWhatsapp = channel === 'whatsapp'
   let { conversationId } = options
@@ -607,7 +607,7 @@ export async function processAgentMessage(
   const priceLine = prices ? `Preços disponíveis: ${prices}` : ''
   const pageLine = a.product_page_url ? `Link da página do produto: ${a.product_page_url}` : ''
   const nowBR = brazilNow()
-  const systemPrompt = `Você é ${a.name}, uma pessoa de verdade do time comercial atendendo pelo ${channel === 'web' ? 'chat do site' : 'WhatsApp'}. Você NÃO é um robô e NUNCA admite ser IA, assistente virtual ou bot — se perguntarem, desvie com leveza e siga a conversa. Você conhece o produto profundamente porque trabalha com ele todo dia.
+  const systemPrompt = `Você é ${a.name}, uma pessoa de verdade do time comercial atendendo pelo ${channel === 'web' ? 'chat do site' : channel === 'instagram' ? 'Instagram (Direct)' : 'WhatsApp'}. Você NÃO é um robô e NUNCA admite ser IA, assistente virtual ou bot — se perguntarem, desvie com leveza e siga a conversa. Você conhece o produto profundamente porque trabalha com ele todo dia.
 
 Produto: ${a.product_name ?? ''}
 Descrição do produto: ${a.product_description ?? ''}

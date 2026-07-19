@@ -46,6 +46,7 @@ export interface AgentInput {
   channels?: string[] | null   // ['whatsapp', 'web'] — null/undefined = ambos
   scheduling_config?: Record<string, unknown> | null
   followup_config?: Record<string, unknown> | null
+  ig_account_id?: string | null
 }
 
 export interface Agent extends AgentInput {
@@ -94,7 +95,7 @@ const ALLOWED_FIELDS: (keyof AgentInput)[] = [
   'target_funnel_id', 'max_messages_per_conversation', 'handoff_to_human_keywords',
   'business_hours_only', 'business_hours_start', 'business_hours_end', 'whatsapp_instance_id',
   'max_activations_per_month', 'product_prices', 'product_page_url',
-  'public_slug', 'public_enabled', 'landing_config', 'channels', 'scheduling_config', 'followup_config',
+  'public_slug', 'public_enabled', 'landing_config', 'channels', 'scheduling_config', 'followup_config', 'ig_account_id',
 ]
 
 function sanitize(data: Partial<AgentInput>): Record<string, unknown> {

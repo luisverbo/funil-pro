@@ -87,6 +87,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
     channels: (agent as Agent & { channels?: string[] })?.channels ?? ['whatsapp', 'web'],
     scheduling_config: (agent as Agent & { scheduling_config?: Record<string, unknown> })?.scheduling_config ?? null,
     followup_config: (agent as Agent & { followup_config?: Record<string, unknown> })?.followup_config ?? null,
+    ig_account_id: (agent as Agent & { ig_account_id?: string })?.ig_account_id ?? null,
   })
 
   // kept for summary display of the first/main price
@@ -322,6 +323,7 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   {[
                     { key: 'whatsapp', label: '💬 WhatsApp', desc: 'Responde mensagens da instância conectada' },
                     { key: 'web', label: '🌐 Chat Web', desc: 'Página pública /a/slug para visitantes' },
+                    { key: 'instagram', label: '📸 Instagram', desc: 'Responde DM e comentários (requer conta conectada)' },
                   ].map(c => {
                     const ch = form.channels ?? ['whatsapp', 'web']
                     const active = ch.includes(c.key)
@@ -354,6 +356,14 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   </Field>
                 )
               })()}
+              {form.mode === 'standalone' && (form.channels ?? []).includes('instagram') && (
+                <Field label="ID da conta do Instagram (Business)">
+                  <input className={inputCls} value={(form as AgentInput & { ig_account_id?: string }).ig_account_id ?? ''}
+                    onChange={e => set('ig_account_id' as keyof AgentInput, e.target.value.trim() as never)}
+                    placeholder="Ex: 17841400000000000" />
+                  <p className="text-xs text-gray-400 mt-1">É este agente que responde as DMs e comentários desta conta. Se você só tem 1 conta conectada, pode deixar em branco.</p>
+                </Field>
+              )}
             </div>
           )}
 
