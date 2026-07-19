@@ -6,6 +6,37 @@ import type { IgMedia } from '@/lib/instagram'
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
+// Passo da sequência de DM (estado da UI)
+type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: { title: string; url: string }[] }
+const emptyStep = (): UiStep => ({ delay_value: 0, delay_unit: 'min', text: '', buttons: [] })
+
+function stepsToDb(steps: UiStep[]) {
+  return steps
+    .filter(s => s.text.trim() || s.buttons.some(b => b.title && b.url))
+    .map(s => ({
+      delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
+      text: s.text.trim(),
+      buttons: s.buttons.filter(b => b.title && b.url),
+    }))
+}
+
+function dbToSteps(a: IgAutomation): UiStep[] {
+  const src = (a.dm_steps && a.dm_steps.length > 0)
+    ? a.dm_steps
+    : (a.dm_message ? [{ delay_minutes: 0, text: a.dm_message, buttons: [] }] : [])
+  if (src.length === 0) return [emptyStep()]
+  return src.map(s => {
+    const min = s.delay_minutes ?? 0
+    const asHours = min >= 60 && min % 60 === 0
+    return {
+      delay_value: asHours ? min / 60 : min,
+      delay_unit: asHours ? 'h' as const : 'min' as const,
+      text: s.text ?? '',
+      buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: b.url })),
+    }
+  })
+}
+
 interface Connection { connected: boolean; username?: string; accountId?: string; error?: string }
 
 export default function InstagramClient({ initialAutomations, connection, funnels = [] }: { initialAutomations: IgAutomation[]; connection?: Connection; funnels?: { id: string; name: string }[] }) {
@@ -21,7 +52,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   const [keywordInput, setKeywordInput] = useState('')
   const [keywords, setKeywords] = useState<string[]>([])
   const [commentReplies, setCommentReplies] = useState('')
-  const [dmMessage, setDmMessage] = useState('')
+  const [dmSteps, setDmSteps] = useState<UiStep[]>([emptyStep()])
   const [dmUseAgent, setDmUseAgent] = useState(true)
   const [funnelId, setFunnelId] = useState('')
   const [leadTag, setLeadTag] = useState('')
@@ -38,7 +69,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   async function openModal() {
     setModalOpen(true); setEditingId(null)
     setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
-    setCommentReplies(''); setDmMessage(''); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
+    setCommentReplies(''); setDmSteps([emptyStep()]); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
     await loadPosts()
   }
 
@@ -48,7 +79,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     setSelectedPost(a.media_id ? { id: a.media_id, caption: a.media_caption ?? undefined, thumbnail_url: a.media_thumb ?? undefined } : 'all')
     setKeywords(a.keywords ?? []); setKeywordInput('')
     setCommentReplies((a.comment_replies ?? []).join('\n'))
-    setDmMessage(a.dm_message ?? '')
+    setDmSteps(dbToSteps(a))
     setDmUseAgent(a.dm_use_agent)
     setFunnelId(a.funnel_id ?? ''); setLeadTag(a.lead_tag ?? '')
     setSaveError(null)
@@ -56,7 +87,8 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   }
 
   async function save() {
-    if (!dmMessage.trim() && !commentReplies.trim()) { setSaveError('Defina ao menos a resposta do comentário ou a mensagem de DM'); return }
+    const steps = stepsToDb(dmSteps)
+    if (steps.length === 0 && !commentReplies.trim()) { setSaveError('Defina ao menos a resposta do comentário ou um passo de DM'); return }
     setSaving(true); setSaveError(null)
     const media = selectedPost && selectedPost !== 'all' ? selectedPost : null
     const payload = {
@@ -66,7 +98,8 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
       keywords,
       comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
-      dm_message: dmMessage || null,
+      dm_message: steps[0]?.text || null,
+      dm_steps: steps.length > 0 ? steps : null,
       dm_use_agent: dmUseAgent,
       funnel_id: funnelId || null,
       lead_tag: leadTag || null,
@@ -169,7 +202,11 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               </div>
               <div className="text-xs text-gray-500 flex flex-col gap-1">
                 {a.comment_replies.length > 0 && <p>💬 Responde: “{a.comment_replies[0]}”{a.comment_replies.length > 1 ? ` (+${a.comment_replies.length - 1})` : ''}</p>}
-                {a.dm_message && <p>📩 DM: “{a.dm_message.slice(0, 60)}{a.dm_message.length > 60 ? '…' : ''}”</p>}
+                {(() => {
+                  const n = a.dm_steps?.length ?? (a.dm_message ? 1 : 0)
+                  const first = a.dm_steps?.[0]?.text ?? a.dm_message
+                  return n > 0 ? <p>📩 Sequência: {n} passo(s){first ? ` — “${first.slice(0, 45)}${first.length > 45 ? '…' : ''}”` : ''}</p> : null
+                })()}
                 {a.dm_use_agent && <p>🤖 IA assume a conversa na DM</p>}
                 {a.funnel_id && <p>🔀 Lead entra num funil</p>}
                 {a.lead_tag && <p>🏷 Tag: {a.lead_tag}</p>}
@@ -247,9 +284,49 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mensagem enviada na DM</label>
-                <textarea className={inputCls + ' h-24'} value={dmMessage} onChange={e => setDmMessage(e.target.value)}
-                  placeholder="Oi! Vi seu comentário 👋 Aqui está o link que você pediu: https://..." />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sequência de DMs (com espera entre as mensagens)</label>
+                <div className="flex flex-col gap-3">
+                  {dmSteps.map((s, i) => (
+                    <div key={i} className="rounded-xl border border-purple-100 bg-purple-50/40 p-3 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <span className="font-semibold text-purple-700">Passo {i + 1}</span>
+                          {i === 0 ? <span className="text-xs text-gray-400">— espera após o comentário:</span> : <span className="text-xs text-gray-400">— espera após o passo anterior:</span>}
+                          <input type="number" min={0} className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm" value={s.delay_value}
+                            onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, delay_value: Math.max(0, Number(e.target.value)) } : x))} />
+                          <select className="px-2 py-1 border border-gray-200 rounded-lg text-sm" value={s.delay_unit}
+                            onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, delay_unit: e.target.value as 'min' | 'h' } : x))}>
+                            <option value="min">min</option>
+                            <option value="h">horas</option>
+                          </select>
+                        </div>
+                        {dmSteps.length > 1 && (
+                          <button type="button" onClick={() => setDmSteps(list => list.filter((_, xi) => xi !== i))} className="text-gray-300 hover:text-red-500">×</button>
+                        )}
+                      </div>
+                      <textarea className={inputCls + ' h-16 bg-white'} value={s.text}
+                        onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, text: e.target.value } : x))}
+                        placeholder={i === 0 ? 'Oi! Vi seu comentário 👋 Toma o link:' : 'E aí, conseguiu ver? Qualquer dúvida me chama!'} />
+                      {/* Botões com link */}
+                      {s.buttons.map((b, bi) => (
+                        <div key={bi} className="flex gap-2">
+                          <input className={inputCls + ' bg-white flex-1'} value={b.title} placeholder="Texto do botão (ex: ACESSAR)"
+                            onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.map((bb, bbi) => bbi === bi ? { ...bb, title: e.target.value } : bb) } : x))} />
+                          <input className={inputCls + ' bg-white flex-[2]'} value={b.url} placeholder="https://..."
+                            onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.map((bb, bbi) => bbi === bi ? { ...bb, url: e.target.value } : bb) } : x))} />
+                          <button type="button" onClick={() => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: x.buttons.filter((_, bbi) => bbi !== bi) } : x))}
+                            className="text-gray-300 hover:text-red-500 px-1">×</button>
+                        </div>
+                      ))}
+                      {s.buttons.length < 3 && (
+                        <button type="button" onClick={() => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, buttons: [...x.buttons, { title: '', url: '' }] } : x))}
+                          className="text-xs text-purple-600 hover:underline self-start">+ botão com link</button>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setDmSteps(list => [...list, { ...emptyStep(), delay_value: 5 }])}
+                    className="text-sm text-purple-600 font-medium hover:underline self-start">+ adicionar passo (mensagem com espera)</button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

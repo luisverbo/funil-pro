@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { processJob, type QueueJob } from '@/lib/queue/processor'
 import { sendMeetingReminders } from '@/lib/agents/remind'
 import { sendFollowups } from '@/lib/agents/followup'
+import { processIgSequenceJobs } from '@/lib/instagram/sequence'
 
 export const maxDuration = 60
 
@@ -21,6 +22,12 @@ async function run() {
     console.error('[queue/process] followups falharam:', String(err)); return { sent: 0 }
   })
   if (followups.sent > 0) console.log(`[queue/process] ${followups.sent} follow-up(s) enviados`)
+
+  // Passos agendados das sequências de DM do Instagram
+  const igSeq = await processIgSequenceJobs().catch(err => {
+    console.error('[queue/process] ig sequences falharam:', String(err)); return { sent: 0 }
+  })
+  if (igSeq.sent > 0) console.log(`[queue/process] ${igSeq.sent} DM(s) de sequência IG enviadas`)
 
   const now = new Date().toISOString()
   const { data: jobs, error: fetchError } = await admin

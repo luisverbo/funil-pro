@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
 import { sendInstagramDM, replyToComment, sendPrivateReplyToComment } from '@/lib/instagram'
+import { resolveSteps, startSequence } from '@/lib/instagram/sequence'
 
 export const maxDuration = 60
 
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
         // O tenant vem da própria automação (a conta conectada é única por instalação).
         const { data: autos } = await admin
           .from('ig_automations')
-          .select('id, tenant_id, media_id, keywords, comment_replies, dm_message, dm_use_agent, funnel_id, lead_tag')
+          .select('id, tenant_id, media_id, keywords, comment_replies, dm_message, dm_steps, dm_use_agent, funnel_id, lead_tag')
           .eq('status', 'active')
         const lower = text.toLowerCase()
         const matches = (autos ?? []).filter(a => {
@@ -164,8 +165,13 @@ export async function POST(request: NextRequest) {
             const pick = replies[Math.abs(commentId.split('').reduce((s, ch) => s + ch.charCodeAt(0), 0)) % replies.length]
             await replyToComment(commentId, pick.slice(0, 300)).catch(e => console.error('[ig] replyComment', String(e)))
           }
-          if (auto.dm_message) {
-            await sendPrivateReplyToComment(commentId, auto.dm_message).catch(e => console.error('[ig] privateReply', String(e)))
+          // Sequência de DMs: passo 0 pode sair já ou com espera; os demais são agendados
+          if (fromId) {
+            const steps = resolveSteps(auto)
+            await startSequence({
+              tenantId: auto.tenant_id, automationId: auto.id, igUserId: fromId,
+              commentId, steps, admin,
+            }).catch(e => console.error('[ig] startSequence', String(e)))
           }
           await admin.rpc('increment_ig_automation_triggers', { p_id: auto.id }).then(() => {}, () => {})
           continue

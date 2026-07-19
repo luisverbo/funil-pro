@@ -16,6 +16,7 @@ export interface IgAutomation {
   keywords: string[]
   comment_replies: string[]
   dm_message: string | null
+  dm_steps: { delay_minutes?: number; text?: string; buttons?: { title: string; url: string }[] }[] | null
   dm_use_agent: boolean
   funnel_id: string | null
   lead_tag: string | null
@@ -31,6 +32,7 @@ export interface IgAutomationInput {
   keywords?: string[]
   comment_replies?: string[]
   dm_message?: string | null
+  dm_steps?: { delay_minutes?: number; text?: string; buttons?: { title: string; url: string }[] }[] | null
   dm_use_agent?: boolean
   funnel_id?: string | null
   lead_tag?: string | null
@@ -78,6 +80,7 @@ export async function createIgAutomation(input: IgAutomationInput): Promise<{ id
       keywords: (input.keywords ?? []).map(k => k.trim()).filter(Boolean),
       comment_replies: (input.comment_replies ?? []).map(r => r.trim()).filter(Boolean),
       dm_message: input.dm_message?.trim() || null,
+      dm_steps: input.dm_steps ?? null,
       dm_use_agent: input.dm_use_agent ?? true,
       funnel_id: input.funnel_id || null,
       lead_tag: input.lead_tag?.trim() || null,

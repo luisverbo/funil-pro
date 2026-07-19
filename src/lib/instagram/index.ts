@@ -87,3 +87,33 @@ export async function getConnectedAccount(): Promise<{ connected: boolean; usern
     return { connected: false, error: String(err) }
   }
 }
+
+export interface IgButton { title: string; url: string }
+
+/** Envia DM com botões de link (button template); fallback: texto com os links */
+export async function sendInstagramButtons(recipientId: string, text: string, buttons: IgButton[]): Promise<void> {
+  const valid = buttons.filter(b => b.title && b.url).slice(0, 3)
+  if (valid.length === 0) return sendInstagramDM(recipientId, text)
+  const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    body: JSON.stringify({
+      recipient: { id: recipientId },
+      message: {
+        attachment: {
+          type: 'template',
+          payload: {
+            template_type: 'button',
+            text: text.slice(0, 640),
+            buttons: valid.map(b => ({ type: 'web_url', url: b.url, title: b.title.slice(0, 20) })),
+          },
+        },
+      },
+    }),
+  })
+  if (!res.ok) {
+    // Fallback: alguns tipos de conta não aceitam template — manda texto com links
+    const fallback = `${text}\n\n${valid.map(b => `${b.title}: ${b.url}`).join('\n')}`
+    await sendInstagramDM(recipientId, fallback)
+  }
+}
