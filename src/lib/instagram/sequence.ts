@@ -9,6 +9,7 @@ export interface DmButton {
   branch?: DmStep[]
 }
 export interface DmStep {
+  id?: string          // id estável do nó no editor visual (o motor ignora)
   delay_minutes?: number
   text?: string
   // url presente = botão de link; url vazio/ausente = botão de resposta rápida ("SIM")
