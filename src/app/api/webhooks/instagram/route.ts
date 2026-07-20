@@ -208,36 +208,55 @@ export async function POST(request: NextRequest) {
           .eq('ig_user_id', senderId).eq('status', 'pending')
           .order('scheduled_for', { ascending: true })
 
-        if (pendingJobs && pendingJobs.length > 0) {
-          const { data: auto } = await admin
-            .from('ig_automations').select('tenant_id, dm_steps').eq('id', pendingJobs[0].automation_id).single()
-          type Btn = { title?: string; url?: string; branch?: DmStep[] }
-          type St = { buttons?: Btn[] }
-          // Achata TODOS os botões da árvore (passos + ramificações aninhadas)
-          const flatten = (chain: St[]): Btn[] => (chain ?? []).flatMap(s =>
-            (s.buttons ?? []).flatMap(b => [b, ...(b.branch ? flatten(b.branch as St[]) : [])]))
-          const allBtns = Array.isArray(auto?.dm_steps) ? flatten(auto.dm_steps as St[]) : []
-          const norm = text.toLowerCase().trim()
-          const matchedBtn = allBtns.find(b => !b.url && b.title && b.title.toLowerCase().trim() === norm)
+        // Descobre em qual automação o lead está — MESMO sem passo pendente
+        // (ex.: tocou no SIM/NÃO da última mensagem, cujo próximo passo é o
+        //  próprio ramo, que só dispara ao tocar). Sem isso, o toque travava.
+        let curAutoId: string | undefined = pendingJobs?.[0]?.automation_id
+        if (!curAutoId) {
+          const { data: contact } = await admin.from('ig_automation_contacts')
+            .select('automation_id').eq('ig_user_id', senderId)
+            .order('last_at', { ascending: false }).limit(1).maybeSingle()
+          curAutoId = contact?.automation_id ?? undefined
+        }
 
-          if (matchedBtn) {
-            // RAMIFICAÇÃO: botão de resposta abre um fluxo próprio → cancela a sequência
-            // atual e dispara o fluxo do botão (SIM tem um caminho, NÃO outro)
-            if (matchedBtn.branch && matchedBtn.branch.length > 0) {
-              await admin.from('ig_sequence_jobs').update({ status: 'cancelled' }).eq('ig_user_id', senderId).eq('status', 'pending')
-              await startSequence({
-                tenantId: auto!.tenant_id, automationId: pendingJobs[0].automation_id, igUserId: senderId,
-                commentId: null, steps: matchedBtn.branch, admin,
-              }).catch(e => console.error('[ig] branch', String(e)))
-              console.log(`[ig] ramificação "${text}" → fluxo próprio (${matchedBtn.branch.length} msg) iniciado`)
+        if (curAutoId) {
+          const { data: auto } = await admin
+            .from('ig_automations').select('tenant_id, dm_steps, status').eq('id', curAutoId).single()
+          if (auto && auto.status === 'active') {
+            type Btn = { title?: string; url?: string; branch?: DmStep[] }
+            type St = { buttons?: Btn[] }
+            // Achata TODOS os botões da árvore (passos + ramificações aninhadas)
+            const flatten = (chain: St[]): Btn[] => (chain ?? []).flatMap(s =>
+              (s.buttons ?? []).flatMap(b => [b, ...(b.branch ? flatten(b.branch as St[]) : [])]))
+            const allBtns = Array.isArray(auto.dm_steps) ? flatten(auto.dm_steps as St[]) : []
+            const norm = text.toLowerCase().trim()
+            const matchedBtn = allBtns.find(b => !b.url && b.title && b.title.toLowerCase().trim() === norm)
+
+            if (matchedBtn) {
+              // RAMIFICAÇÃO: botão de resposta abre um fluxo próprio → cancela o que
+              // estiver agendado e dispara o fluxo do botão (SIM um caminho, NÃO outro)
+              if (matchedBtn.branch && matchedBtn.branch.length > 0) {
+                await admin.from('ig_sequence_jobs').update({ status: 'cancelled' }).eq('ig_user_id', senderId).eq('status', 'pending')
+                await startSequence({
+                  tenantId: auto.tenant_id, automationId: curAutoId, igUserId: senderId,
+                  commentId: null, steps: matchedBtn.branch, admin,
+                }).catch(e => console.error('[ig] branch', String(e)))
+                await recordAutomationContact(admin, auto.tenant_id, curAutoId, senderId).catch(() => {})
+                console.log(`[ig] ramificação "${text}" → fluxo (${matchedBtn.branch.length} msg) iniciado`)
+                continue
+              }
+              // botão de resposta sem fluxo próprio: adianta o próximo passo pendente
+              if (pendingJobs && pendingJobs.length > 0) {
+                await admin.from('ig_sequence_jobs').update({ scheduled_for: new Date().toISOString() }).eq('id', pendingJobs[0].id)
+                console.log(`[ig] quick reply "${text}" — próximo passo adiantado`)
+              }
               continue
             }
-            // sem branch: só adianta o próximo passo (comportamento antigo)
-            await admin.from('ig_sequence_jobs').update({ scheduled_for: new Date().toISOString() }).eq('id', pendingJobs[0].id)
-            console.log(`[ig] quick reply "${text}" — próximo passo adiantado`)
-            continue
           }
+        }
 
+        // resposta livre: cancela o que estiver agendado e o agente IA assume
+        if (pendingJobs && pendingJobs.length > 0) {
           await admin.from('ig_sequence_jobs').update({ status: 'cancelled' })
             .eq('ig_user_id', senderId).eq('status', 'pending')
           console.log(`[ig] ${pendingJobs.length} passo(s) cancelados — lead respondeu livre, agente assume`)
