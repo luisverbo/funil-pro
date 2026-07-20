@@ -36,7 +36,7 @@ export default function EmojiPicker({ onPick, up = false, align = 'right' }: { o
         className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-lg leading-none"
         title="Inserir emoji" aria-label="Inserir emoji">😊</button>
       {open && (
-        <div className={`absolute z-[60] w-64 bg-white rounded-xl shadow-2xl border border-gray-100 p-2 ${up ? 'bottom-full mb-1' : 'mt-1'} ${align === 'left' ? 'left-0' : 'right-0'}`}
+        <div className={`absolute z-[60] w-64 bg-white rounded-xl shadow-2xl border border-gray-100 p-2 ${up ? 'bottom-full mb-1' : 'mt-1'} ${align === 'left' ? 'left-0' : 'right-0'}`}>
           <div className="flex gap-1 mb-2">
             {CATEGORIES.map((c, i) => (
               <button key={c.label} type="button" onClick={() => { setCat(i); setQ('') }}
