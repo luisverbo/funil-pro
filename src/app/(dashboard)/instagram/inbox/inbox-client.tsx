@@ -229,7 +229,7 @@ export default function InboxClient({ initialThreads }: { initialThreads: IgThre
 
               {/* Composer */}
               <div className="px-3 py-3 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0">
-                <EmojiPicker onPick={e => setInput(v => v + e)} />
+                <EmojiPicker onPick={e => setInput(v => v + e)} up align="left" />
                 <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') send() }}
                   placeholder={active.human_mode ? 'Escreva sua resposta…' : 'Responder assume a conversa (a IA pausa)…'}

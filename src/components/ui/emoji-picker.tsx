@@ -13,7 +13,7 @@ const CATEGORIES: { label: string; icon: string; emojis: string[] }[] = [
   { label: 'Símbolos', icon: '❤️', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','❣️','💕','💞','💯','✅','❌','⁉️','❓','❗','⚠️','🚫','✔️','➡️','⬅️','⬆️','⬇️','🔝','🆕','🆓','🔥','🎉','🎊','👑'] },
 ]
 
-export default function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
+export default function EmojiPicker({ onPick, up = false, align = 'right' }: { onPick: (emoji: string) => void; up?: boolean; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false)
   const [cat, setCat] = useState(0)
   const [q, setQ] = useState('')
@@ -36,7 +36,7 @@ export default function EmojiPicker({ onPick }: { onPick: (emoji: string) => voi
         className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-lg leading-none"
         title="Inserir emoji" aria-label="Inserir emoji">😊</button>
       {open && (
-        <div className="absolute z-50 right-0 mt-1 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 p-2">
+        <div className={`absolute z-[60] w-64 bg-white rounded-xl shadow-2xl border border-gray-100 p-2 ${up ? 'bottom-full mb-1' : 'mt-1'} ${align === 'left' ? 'left-0' : 'right-0'}`}
           <div className="flex gap-1 mb-2">
             {CATEGORIES.map((c, i) => (
               <button key={c.label} type="button" onClick={() => { setCat(i); setQ('') }}
