@@ -53,98 +53,104 @@ function MediaField({ url, type, onChange }: { url?: string; type?: 'image' | 'v
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
-// ─── Modelo em ÁRVORE por ID ──────────────────────────────────────────────────
-// Cada mensagem tem um id estável. Botão de RESPOSTA (SIM/NÃO) tem uma saída própria
-// no card; ligar essa saída a uma mensagem move a mensagem (e o que vem depois dela)
-// para o fluxo daquele botão.
-type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch?: UiStep[] }
-type UiStep = { id: string; delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }
+// ─── Modelo por LIGAÇÕES EXPLÍCITAS ───────────────────────────────────────────
+// Cada mensagem é um nó solto. Nada se conecta sozinho: você arrasta as ligações.
+//  - next: id da próxima mensagem (saída "continua", bolinha roxa embaixo)
+//  - botão de resposta.branch_to: id da mensagem que abre o fluxo do botão (SIM/NÃO)
+//  - entryId: a mensagem ligada ao gatilho (a 1ª a disparar)
+type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch_to?: string }
+type UiStep = { id: string; delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio'; next?: string }
 const emptyStep = (delay = 5): UiStep => ({ id: newId(), delay_value: delay, delay_unit: 'min', text: '', buttons: [] })
 
-// ── helpers imutáveis sobre a árvore ──
-function getById(chain: UiStep[], id: string): UiStep | undefined {
-  for (const s of chain) {
-    if (s.id === id) return s
-    for (const b of s.buttons) if (b.branch) { const r = getById(b.branch, id); if (r) return r }
-  }
-}
-function containsId(node: UiStep, id: string): boolean {
-  if (node.id === id) return true
-  for (const b of node.buttons) if (b.branch) for (const c of b.branch) if (containsId(c, id)) return true
-  return false
-}
-function mapById(chain: UiStep[], id: string, fn: (s: UiStep) => UiStep): UiStep[] {
-  return chain.map(s => s.id === id ? fn(s) : { ...s, buttons: s.buttons.map(b => b.branch ? { ...b, branch: mapById(b.branch, id, fn) } : b) })
-}
-function removeNode(chain: UiStep[], id: string): { chain: UiStep[]; removed?: UiStep } {
-  let removed: UiStep | undefined
-  const out: UiStep[] = []
-  for (const s of chain) {
-    if (s.id === id) { removed = s; continue }
-    const buttons = s.buttons.map(b => {
-      if (!b.branch) return b
-      const r = removeNode(b.branch, id)
-      if (r.removed) removed = r.removed
-      return { ...b, branch: r.chain }
-    })
-    out.push({ ...s, buttons })
-  }
-  return { chain: out, removed }
-}
-function insertAfter(chain: UiStep[], afterId: string, node: UiStep): UiStep[] {
-  const idx = chain.findIndex(s => s.id === afterId)
-  if (idx >= 0) { const c = [...chain]; c.splice(idx + 1, 0, node); return c }
-  return chain.map(s => ({ ...s, buttons: s.buttons.map(b => b.branch ? { ...b, branch: insertAfter(b.branch, afterId, node) } : b) }))
-}
-function attachBranch(chain: UiStep[], parentId: string, btnIdx: number, node: UiStep): UiStep[] {
-  return mapById(chain, parentId, s => ({
+const byId = (list: UiStep[], id?: string) => id ? list.find(s => s.id === id) : undefined
+const mapById = (list: UiStep[], id: string, fn: (s: UiStep) => UiStep) => list.map(s => s.id === id ? fn(s) : s)
+// remove qualquer ligação que aponte pra `id` (usado ao mover/apagar um nó)
+function clearIncoming(list: UiStep[], id: string): UiStep[] {
+  return list.map(s => ({
     ...s,
-    buttons: s.buttons.map((b, j) => j === btnIdx ? { ...b, branch: [...(b.branch ?? []), node] } : b),
+    next: s.next === id ? undefined : s.next,
+    buttons: s.buttons.map(b => b.branch_to === id ? { ...b, branch_to: undefined } : b),
   }))
 }
+// existe caminho de `from` até `goal` seguindo as ligações? (evita ciclo)
+function reaches(list: UiStep[], from: string, goal: string): boolean {
+  const seen = new Set<string>(); const stack = [from]
+  while (stack.length) {
+    const id = stack.pop()!
+    if (id === goal) return true
+    if (seen.has(id)) continue
+    seen.add(id)
+    const s = byId(list, id); if (!s) continue
+    if (s.next) stack.push(s.next)
+    s.buttons.forEach(b => b.branch_to && stack.push(b.branch_to))
+  }
+  return false
+}
 
-// ─── Conversão árvore ⇄ banco ─────────────────────────────────────────────────
-function chainToDb(chain: UiStep[]): DmStep[] {
-  return chain
-    .filter(s => s.text.trim() || s.media_url || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
-    .map(s => ({
-      id: s.id,
-      delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
-      text: s.text.trim(),
-      buttons: s.buttons
-        .filter(b => b.title && (b.kind === 'reply' || b.url))
-        .map(b => {
-          if (b.kind !== 'reply') return { title: b.title, url: b.url }
-          const sub = b.branch ? chainToDb(b.branch) : []
-          return sub.length > 0 ? { title: b.title, branch: sub } : { title: b.title }
-        }),
-      ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
-    }))
-}
-function dbChainToUi(chain: DmStep[]): UiStep[] {
-  return chain.map(s => {
-    const min = s.delay_minutes ?? 0
-    const asHours = min >= 60 && min % 60 === 0
-    return {
-      id: s.id || newId(),
-      delay_value: asHours ? min / 60 : min,
-      delay_unit: asHours ? 'h' as const : 'min' as const,
-      text: s.text ?? '',
-      buttons: (s.buttons ?? []).map(b => ({
-        title: b.title, url: b.url ?? '',
-        kind: (b.url ? 'url' : 'reply') as 'url' | 'reply',
-        branch: b.branch ? dbChainToUi(b.branch) : undefined,
-      })),
-      media_url: s.media_url, media_type: s.media_type,
+// ─── Serialização árvore executável ⇄ nós soltos ─────────────────────────────
+function serialize(list: UiStep[], entryId?: string): DmStep[] {
+  if (!entryId) return []
+  const visited = new Set<string>()
+  const chainFrom = (startId?: string): DmStep[] => {
+    const out: DmStep[] = []
+    let cur = startId
+    while (cur && !visited.has(cur)) {
+      visited.add(cur)
+      const s = byId(list, cur); if (!s) break
+      out.push({
+        id: s.id,
+        delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
+        text: s.text.trim(),
+        buttons: s.buttons
+          .filter(b => b.title && (b.kind === 'reply' || b.url))
+          .map(b => {
+            if (b.kind !== 'reply') return { title: b.title, url: b.url }
+            const sub = b.branch_to && !visited.has(b.branch_to) ? chainFrom(b.branch_to) : []
+            return sub.length > 0 ? { title: b.title, branch: sub } : { title: b.title }
+          }),
+        ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
+      })
+      cur = s.next
     }
-  })
+    return out
+  }
+  return chainFrom(entryId)
 }
-function dbToSteps(a: IgAutomation): UiStep[] {
+function deserialize(chain: DmStep[]): { list: UiStep[]; entryId?: string } {
+  const list: UiStep[] = []
+  const build = (dmChain: DmStep[]): string | undefined => {
+    let prev: UiStep | undefined; let first: string | undefined
+    for (const s of dmChain) {
+      const min = s.delay_minutes ?? 0
+      const asHours = min >= 60 && min % 60 === 0
+      const step: UiStep = {
+        id: s.id || newId(),
+        delay_value: asHours ? min / 60 : min,
+        delay_unit: asHours ? 'h' : 'min',
+        text: s.text ?? '',
+        buttons: (s.buttons ?? []).map(b => ({
+          title: b.title, url: b.url ?? '',
+          kind: (b.url ? 'url' : 'reply') as 'url' | 'reply',
+          branch_to: b.branch && b.branch.length > 0 ? build(b.branch) : undefined,
+        })),
+        media_url: s.media_url, media_type: s.media_type,
+      }
+      list.push(step)
+      if (prev) prev.next = step.id
+      else first = step.id
+      prev = step
+    }
+    return first
+  }
+  const entryId = build(chain)
+  return { list, entryId }
+}
+function initial(a: IgAutomation): { list: UiStep[]; entryId?: string } {
   const src = (a.dm_steps && a.dm_steps.length > 0)
-    ? a.dm_steps
-    : (a.dm_message ? [{ delay_minutes: 0, text: a.dm_message, buttons: [] }] : [])
-  if (src.length === 0) return [emptyStep(0)]
-  return dbChainToUi(src as DmStep[])
+    ? a.dm_steps as DmStep[]
+    : (a.dm_message ? [{ delay_minutes: 0, text: a.dm_message, buttons: [] }] as DmStep[] : [])
+  if (src.length === 0) { const s = emptyStep(0); return { list: [s], entryId: s.id } }
+  return deserialize(src)
 }
 
 // ─── Nodes customizados (estilo ManyChat) ────────────────────────────────────
@@ -225,14 +231,17 @@ function ReplyNode({ data, selected }: NodeProps) {
 
 // Mensagem de DM — cada botão de resposta tem uma SAÍDA própria (arraste pra ligar)
 function DmNode({ data, selected }: NodeProps) {
-  const d = data as { step: UiStep; label: string }
+  const d = data as { step: UiStep; label: string; floating: boolean }
   const s = d.step
   return (
-    <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-visible cursor-pointer`}>
+    <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : d.floating ? 'border-dashed border-amber-300' : 'border-transparent'} overflow-visible cursor-pointer`}>
       <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
-      <div className="px-4 py-2 text-xs font-semibold text-purple-600 flex items-center gap-1.5">
-        <span className="w-4 h-4 rounded bg-gradient-to-br from-pink-500 to-purple-600 inline-flex items-center justify-center text-white text-[9px]">IG</span>
-        {d.label}
+      <div className="px-4 py-2 text-xs font-semibold text-purple-600 flex items-center justify-between gap-1.5">
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-4 rounded bg-gradient-to-br from-pink-500 to-purple-600 inline-flex items-center justify-center text-white text-[9px]">IG</span>
+          {d.label}
+        </span>
+        {d.floating && <span className="text-[9px] font-semibold text-amber-500">● solto</span>}
       </div>
       <div className="mx-3 mb-3 rounded-xl bg-purple-50 border border-purple-100 p-3">
         {s.media_url && (
@@ -276,6 +285,7 @@ const ROW_H = 230
 
 export default function IgFlowEditor({ automation, funnels }: { automation: IgAutomation; funnels: { id: string; name: string }[] }) {
   const router = useRouter()
+  const init = useMemo(() => initial(automation), [automation])
   const [name, setName] = useState(automation.name)
   const [status, setStatus] = useState(automation.status)
   const [mediaId, setMediaId] = useState(automation.media_id)
@@ -284,7 +294,8 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [keywords, setKeywords] = useState<string[]>(automation.keywords ?? [])
   const [keywordInput, setKeywordInput] = useState('')
   const [replies, setReplies] = useState((automation.comment_replies ?? []).join('\n'))
-  const [steps, setSteps] = useState<UiStep[]>(dbToSteps(automation))
+  const [steps, setSteps] = useState<UiStep[]>(init.list)
+  const [entryId, setEntryId] = useState<string | undefined>(init.entryId)
   const [funnelId, setFunnelId] = useState(automation.funnel_id ?? '')
   const [leadTag, setLeadTag] = useState(automation.lead_tag ?? '')
   const [dmUseAgent, setDmUseAgent] = useState(automation.dm_use_agent)
@@ -304,7 +315,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const replyList = replies.split('\n').map(s => s.trim()).filter(Boolean)
   const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
 
-  // Percorre a árvore gerando nós + arestas com layout automático (chains → direita, branches → baixo)
+  // Layout automático a partir do ponto de entrada; nós soltos ficam empilhados embaixo
   const { nodes, edges } = useMemo(() => {
     const isComment = triggerType === 'comment'
     const gateX = isComment ? 680 : 340
@@ -312,7 +323,28 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     const triggerLabel = triggerType === 'dm' ? 'manda a palavra-chave na DM'
       : triggerType === 'story_reply' ? 'responde a um Story seu'
       : `comenta em ${mediaId ? 'um post específico' : 'qualquer post/Reel'}`
-    const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? def
+
+    // posições calculadas por travessia (override manual sempre vence)
+    const auto: Record<string, { x: number; y: number }> = {}
+    let rowCursor = 0
+    const seen = new Set<string>()
+    const place = (id: string | undefined, depth: number) => {
+      if (!id || seen.has(id)) return
+      seen.add(id)
+      auto[id] = { x: dmBaseX + depth * COL_W, y: 40 + rowCursor++ * ROW_H }
+      const s = byId(steps, id); if (!s) return
+      s.buttons.forEach(b => { if (b.kind === 'reply' && b.branch_to) place(b.branch_to, depth + 1) })
+      if (s.next) place(s.next, depth + 1)
+    }
+    place(entryId, 0)
+    // soltos (não alcançados) empilham embaixo
+    steps.forEach(s => { if (!seen.has(s.id)) auto[s.id] = { x: dmBaseX, y: 40 + rowCursor++ * ROW_H } })
+    const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? auto[id] ?? def
+
+    // conjunto de nós que TÊM entrada (pra marcar os soltos)
+    const incoming = new Set<string>()
+    if (entryId) incoming.add(entryId)
+    steps.forEach(s => { if (s.next) incoming.add(s.next); s.buttons.forEach(b => b.branch_to && incoming.add(b.branch_to)) })
 
     const ns: Node[] = [
       { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb: isComment ? mediaThumb : null, mediaLabel: triggerLabel } },
@@ -321,7 +353,12 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         { id: 'gate', type: 'gate', position: pos('gate', { x: gateX, y: 80 }), data: { message: followGateMsg || DEFAULT_GATE_MSG } },
         { id: 'gatemsg', type: 'gatemsg', position: pos('gatemsg', { x: gateX + 10, y: 330 }), data: {} },
       ] : []),
+      ...steps.map(s => ({
+        id: s.id, type: 'dm', position: pos(s.id, { x: dmBaseX, y: 40 }),
+        data: { step: s, label: s.id === entryId ? 'Enviar Mensagem' : 'Mensagem', floating: !incoming.has(s.id) },
+      })),
     ]
+
     const es: Edge[] = []
     const preSource = isComment ? 'reply' : 'trigger'
     if (isComment) es.push({ id: 'e-t-r', source: 'trigger', target: 'reply', animated: true, label: 'Então', style: { stroke: '#94a3b8' } })
@@ -331,62 +368,58 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         { id: 'e-g-no', source: 'gate', sourceHandle: 'no', target: 'gatemsg', animated: true, label: '❌ não segue', labelStyle: { fontSize: 10, fill: '#ef4444', fontWeight: 600 }, style: { stroke: '#fca5a5' } },
       )
     }
-    const rootSourceId = followGate ? 'gate' : preSource
-    const rootSourceHandle: string | undefined = followGate ? 'yes' : undefined
-    const rootFirstLabel = followGate ? '✅ segue' : (isComment ? 'na DM' : 'dispara')
-
-    let rowCursor = 0
-    const walk = (chain: UiStep[], depth: number, parent: { id: string; handle?: string; label: string }) => {
-      chain.forEach((step, idx) => {
-        const id = step.id
-        const myRow = rowCursor++
-        const label = depth === 0 && idx === 0 ? 'Enviar Mensagem' : 'Mensagem'
-        ns.push({ id, type: 'dm', position: pos(id, { x: dmBaseX + depth * COL_W, y: 40 + myRow * ROW_H }), data: { step, label } })
-        const src = idx === 0 ? parent : { id: chain[idx - 1].id, handle: 'next' as string | undefined, label: delayLabel(step) }
-        const inLabel = idx === 0 ? parent.label : delayLabel(step)
-        es.push({
-          id: 'e-' + id, source: src.id, sourceHandle: src.handle, target: id, animated: true,
-          label: inLabel, labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 }, style: { stroke: '#a78bfa' },
-        })
-        step.buttons.forEach((b, bi) => {
-          if (b.kind === 'reply' && b.branch && b.branch.length > 0) {
-            walk(b.branch, depth + 1, { id, handle: `b${bi}`, label: `💬 ${b.title || 'resposta'}` })
-          }
+    const entrySource = followGate ? 'gate' : preSource
+    const entryHandle = followGate ? 'yes' : undefined
+    if (entryId) es.push({
+      id: 'e-entry', source: entrySource, sourceHandle: entryHandle, target: entryId, animated: true,
+      label: followGate ? '✅ segue' : (isComment ? 'na DM' : 'dispara'),
+      labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 }, style: { stroke: '#a78bfa' },
+    })
+    steps.forEach(s => {
+      if (s.next && byId(steps, s.next)) es.push({
+        id: `e-n-${s.id}`, source: s.id, sourceHandle: 'next', target: s.next, animated: true,
+        label: delayLabel(byId(steps, s.next)!), labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 }, style: { stroke: '#a78bfa' },
+      })
+      s.buttons.forEach((b, bi) => {
+        if (b.kind === 'reply' && b.branch_to && byId(steps, b.branch_to)) es.push({
+          id: `e-b-${s.id}-${bi}`, source: s.id, sourceHandle: `b${bi}`, target: b.branch_to, animated: true,
+          label: `💬 ${b.title || 'resposta'}`, labelStyle: { fontSize: 10, fill: '#059669', fontWeight: 600 }, style: { stroke: '#6ee7b7' },
         })
       })
-    }
-    walk(steps, 0, { id: rootSourceId, handle: rootSourceHandle, label: rootFirstLabel })
+    })
     return { nodes: ns, edges: es }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, followGateMsg, triggerType])
+  }, [keywords, mediaThumb, mediaId, replies, steps, entryId, positions, followGate, followGateMsg, triggerType])
 
   useEffect(() => {
     setRfNodes(nodes.map(n => ({ ...n, selected: n.id === selected })))
   }, [nodes, selected, setRfNodes])
 
-  // Arraste da saída de um botão (SIM/NÃO) até uma mensagem → move a mensagem
-  // (e o que vem depois) pro fluxo daquele botão. Da saída "continua" → encadeia.
+  // Arrastar uma ligação: da saída de um botão (SIM/NÃO) → fluxo do botão;
+  // da saída "continua" → próxima mensagem; do gatilho/gate → 1ª mensagem.
   const onConnect = useCallback((c: Connection) => {
     const { source, sourceHandle, target } = c
     if (!source || !target || source === target || SPECIAL.includes(target)) return
-    setSteps(st => {
-      const moved = getById(st, target)
-      if (!moved || containsId(moved, source)) return st   // evita ciclo
-      const { chain } = removeNode(st, target)
-      if (SPECIAL.includes(source)) return [...chain, moved]  // ligou do gatilho/gate → vira raiz
+    if (!SPECIAL.includes(source) && reaches(steps, target, source)) return  // evita ciclo
+    setSteps(list => {
+      const l = clearIncoming(list, target)  // desliga o alvo de onde estava
+      if (SPECIAL.includes(source)) return l
       if (sourceHandle && sourceHandle.startsWith('b')) {
-        return attachBranch(chain, source, Number(sourceHandle.slice(1)), moved)
+        const bi = Number(sourceHandle.slice(1))
+        return mapById(l, source, s => ({ ...s, buttons: s.buttons.map((b, j) => j === bi ? { ...b, branch_to: target } : b) }))
       }
-      return insertAfter(chain, source, moved)  // saída "continua"
+      return mapById(l, source, s => ({ ...s, next: target }))  // saída "continua"
     })
+    if (SPECIAL.includes(source)) setEntryId(target)
+    else if (entryId === target) setEntryId(undefined)  // deixou de ser a entrada
     setSelected(target)
-  }, [])
+  }, [steps, entryId])
 
   async function save() {
     setSaving(true)
     const finalKeywords = keywordInput.trim() && !keywords.includes(keywordInput.trim()) ? [...keywords, keywordInput.trim()] : keywords
     if (keywordInput.trim()) { setKeywords(finalKeywords); setKeywordInput('') }
-    const db = chainToDb(steps)
+    const db = serialize(steps, entryId)
     await updateIgAutomation(automation.id, {
       name, status,
       media_id: mediaId, media_thumb: mediaThumb, media_caption: mediaCaption,
@@ -406,18 +439,30 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     setSavedAt(Date.now())
   }
 
-  // ── operações na árvore (por id) ──
-  const selStep = selected.startsWith('dm-') || (!SPECIAL.includes(selected)) ? getById(steps, selected) : undefined
+  // ── operações ──
+  const selStep = !SPECIAL.includes(selected) ? byId(steps, selected) : undefined
   const patchStep = (id: string, patch: Partial<UiStep>) => setSteps(st => mapById(st, id, s => ({ ...s, ...patch })))
   const patchButtons = (id: string, fn: (btns: UiButton[]) => UiButton[]) => setSteps(st => mapById(st, id, s => ({ ...s, buttons: fn(s.buttons) })))
-  const addAfter = (id: string) => { const n = emptyStep(); setSteps(st => insertAfter(st, id, n)); setSelected(n.id) }
-  const removeStep = (id: string) => { setSteps(st => removeNode(st, id).chain); setSelected('trigger') }
+  // cria mensagem SOLTA (sem ligar em nada) — você conecta onde quiser
+  const addLoose = () => { const n = emptyStep(); setSteps(st => [...st, n]); setSelected(n.id) }
+  // cria mensagem já ligada como próxima desta (atalho do painel)
+  const addAfter = (id: string) => {
+    const n = emptyStep(); const cur = byId(steps, id)
+    if (cur?.next) n.next = cur.next
+    setSteps(st => mapById([...st, n], id, s => ({ ...s, next: n.id })))
+    setSelected(n.id)
+  }
+  const removeStep = (id: string) => {
+    setSteps(st => clearIncoming(st, id).filter(s => s.id !== id))
+    if (entryId === id) setEntryId(undefined)
+    setSelected('trigger')
+  }
   const openBranch = (parentId: string, btnIdx: number) => {
-    const cur = getById(steps, parentId); if (!cur) return
+    const cur = byId(steps, parentId); if (!cur) return
     const b = cur.buttons[btnIdx]
-    if (b.branch && b.branch.length > 0) { setSelected(b.branch[0].id); return }
+    if (b.branch_to && byId(steps, b.branch_to)) { setSelected(b.branch_to); return }
     const n = emptyStep(0)
-    setSteps(st => attachBranch(st, parentId, btnIdx, n))
+    setSteps(st => mapById([...st, n], parentId, s => ({ ...s, buttons: s.buttons.map((x, j) => j === btnIdx ? { ...x, branch_to: n.id } : x) })))
     setSelected(n.id)
   }
 
@@ -433,7 +478,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         </button>
         <div className="ml-auto flex items-center gap-3">
           {savedAt && <span className="text-xs text-gray-400">✓ Salvo</span>}
-          <button onClick={() => { const n = emptyStep(); setSteps(list => [...list, n]); setSelected(n.id) }}
+          <button onClick={addLoose}
             className="px-3 py-1.5 text-sm border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">+ Mensagem</button>
           <button onClick={save} disabled={saving}
             className="px-4 py-1.5 text-sm font-semibold text-white rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 disabled:opacity-60">
@@ -446,7 +491,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         {/* Canvas */}
         <div className="flex-1 relative">
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 text-[11px] text-gray-500 bg-white/90 border border-gray-200 rounded-full px-3 py-1 shadow-sm pointer-events-none">
-            💡 Arraste da bolinha verde do <b>SIM</b>/<b>NÃO</b> até uma mensagem pra ligar o fluxo
+            💡 Mensagem nova nasce <b>solta</b> — arraste da bolinha (SIM/NÃO ou 🟣 embaixo) até ela pra ligar
           </div>
           <ReactFlow
             nodes={rfNodes}
@@ -569,12 +614,18 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
             </>
           )}
 
-          {selStep && !SPECIAL.includes(selected) && (
+          {selStep && (
             <>
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">📩 Mensagem</h3>
                 <button onClick={() => removeStep(selStep.id)} className="text-xs text-red-500 hover:underline">Excluir</button>
               </div>
+              {selStep.id !== entryId && (
+                <button onClick={() => setEntryId(selStep.id)}
+                  className="text-[11px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-2 py-1.5 text-left font-medium">
+                  ▶ Tornar esta a 1ª mensagem (ligar no gatilho)
+                </button>
+              )}
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Espera antes de enviar</label>
                 <div className="flex gap-2">
@@ -617,9 +668,9 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                     {b.kind === 'reply' && (
                       <button onClick={() => openBranch(selStep.id, bi)}
                         className="text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2 py-1.5 text-left font-medium">
-                        {b.branch && b.branch.length > 0
-                          ? `▶ Ir para o fluxo do "${b.title || 'botão'}" (${b.branch.length} msg) →`
-                          : `▶ Criar/ligar fluxo do "${b.title || 'este botão'}" →`}
+                        {b.branch_to && byId(steps, b.branch_to)
+                          ? `▶ Ir para o fluxo do "${b.title || 'botão'}" →`
+                          : `▶ Criar fluxo do "${b.title || 'este botão'}" →`}
                       </button>
                     )}
                   </div>
@@ -633,12 +684,12 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   </div>
                 )}
                 {selStep.buttons.some(b => b.kind === 'reply') && (
-                  <p className="text-[11px] text-emerald-600/80">💡 No canvas, arraste da bolinha verde 👉 do botão até uma mensagem pra ligar o fluxo dele. Ou clique em “Criar/ligar fluxo” aqui.</p>
+                  <p className="text-[11px] text-emerald-600/80">💡 No canvas, arraste da bolinha verde 👉 do botão até uma mensagem pra ligar o fluxo dele. Ou clique em “Criar fluxo” aqui.</p>
                 )}
               </div>
 
               <button onClick={() => addAfter(selStep.id)}
-                className="text-sm text-purple-700 border border-purple-200 rounded-lg py-2 hover:bg-purple-50">+ Mensagem depois desta</button>
+                className="text-sm text-purple-700 border border-purple-200 rounded-lg py-2 hover:bg-purple-50">+ Mensagem ligada depois desta</button>
             </>
           )}
         </div>
