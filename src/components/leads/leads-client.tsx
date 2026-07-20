@@ -18,6 +18,7 @@ interface Lead {
   funnel_name: string | null
   created_at: string
   isPurchaser: boolean
+  metadata?: Record<string, unknown> | null
 }
 
 interface Props {
@@ -376,7 +377,7 @@ export default function LeadsClient({ leads, funnels, tenantId: _tenantId, waIns
                 <div key={lead.id} className={`bg-white rounded-xl border p-4 transition ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-gray-200'}`}>
                   <div className="flex items-start gap-3">
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(lead.id)} className="mt-1 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
-                    <div className="w-9 h-9 bg-indigo-100 rounded-full flex items-center justify-center shrink-0 text-indigo-700 font-bold text-xs">{getInitials(lead.name)}</div>
+                    {typeof lead.metadata?.ig_profile_pic === 'string' ? <img src={lead.metadata.ig_profile_pic as string} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" /> : <div className="w-9 h-9 bg-indigo-100 rounded-full flex items-center justify-center shrink-0 text-indigo-700 font-bold text-xs">{getInitials(lead.name)}</div>}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-gray-900 text-sm truncate">{lead.name ?? '—'}</p>
@@ -427,10 +428,15 @@ export default function LeadsClient({ leads, funnels, tenantId: _tenantId, waIns
                       <td className="px-4 py-3.5"><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(lead.id)} className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" /></td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0 text-indigo-700 font-bold text-xs select-none">{getInitials(lead.name)}</div>
+                          {typeof lead.metadata?.ig_profile_pic === 'string'
+                            ? <img src={lead.metadata.ig_profile_pic as string} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                            : <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0 text-indigo-700 font-bold text-xs select-none">{getInitials(lead.name)}</div>}
                           <div>
-                            <p className="font-medium text-gray-900 leading-none mb-0.5">{lead.name ?? '—'}</p>
-                            <p className="text-xs text-gray-400">{lead.phone ?? lead.email ?? ''}</p>
+                            <p className="font-medium text-gray-900 leading-none mb-0.5">
+                              {lead.name ?? '—'}
+                              {lead.metadata?.source === 'instagram' && <span className="ml-1.5 text-[10px] font-semibold text-pink-500">IG</span>}
+                            </p>
+                            <p className="text-xs text-gray-400">{lead.phone ?? lead.email ?? (typeof lead.metadata?.ig_username === 'string' ? `@${lead.metadata.ig_username}` : '')}</p>
                           </div>
                           {lead.isPurchaser && <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">🔥</span>}
                         </div>

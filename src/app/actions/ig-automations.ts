@@ -23,6 +23,7 @@ export interface IgAutomation {
   follow_gate: boolean
   follow_gate_message: string | null
   canvas: Record<string, { x: number; y: number }> | null
+  trigger_type: 'comment' | 'dm' | 'story_reply'
   triggers_count: number
   created_at: string
 }
@@ -42,6 +43,7 @@ export interface IgAutomationInput {
   follow_gate?: boolean
   follow_gate_message?: string | null
   canvas?: Record<string, { x: number; y: number }> | null
+  trigger_type?: 'comment' | 'dm' | 'story_reply'
 }
 
 async function getSupabase() {
@@ -103,6 +105,7 @@ export async function createIgAutomation(input: IgAutomationInput): Promise<{ id
       lead_tag: input.lead_tag?.trim() || null,
       follow_gate: input.follow_gate ?? false,
       follow_gate_message: input.follow_gate_message?.trim() || null,
+      trigger_type: input.trigger_type ?? 'comment',
       status: 'active',
     }).select('id').single()
     if (error) return { error: error.message }

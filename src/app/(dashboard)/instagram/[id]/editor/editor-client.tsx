@@ -167,6 +167,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [funnelId, setFunnelId] = useState(automation.funnel_id ?? '')
   const [leadTag, setLeadTag] = useState(automation.lead_tag ?? '')
   const [dmUseAgent, setDmUseAgent] = useState(automation.dm_use_agent)
+  const [triggerType, setTriggerType] = useState<'comment' | 'dm' | 'story_reply'>(automation.trigger_type ?? 'comment')
   const [followGate, setFollowGate] = useState(automation.follow_gate ?? false)
   const [followGateMsg, setFollowGateMsg] = useState(automation.follow_gate_message ?? '')
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(automation.canvas ?? {})
@@ -185,14 +186,19 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
 
   const nodes: Node[] = useMemo(() => {
     const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? def
-    // Com o gate ligado, as mensagens deslocam uma coluna pra direita
-    const dmBaseX = followGate ? 1000 : 680
+    const isComment = triggerType === 'comment'
+    // Colunas deslocam conforme os nós opcionais (resposta pública só em comentário; gate opcional)
+    const gateX = isComment ? 680 : 340
+    const dmBaseX = (isComment ? 680 : 340) + (followGate ? 320 : 0)
+    const triggerLabel = triggerType === 'dm' ? 'manda a palavra-chave na DM'
+      : triggerType === 'story_reply' ? 'responde a um Story seu'
+      : `comenta em ${mediaId ? 'um post específico' : 'qualquer post/Reel'}`
     const list: Node[] = [
-      { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb, mediaLabel: mediaId ? 'um post específico' : 'qualquer post/Reel' } },
-      { id: 'reply', type: 'reply', position: pos('reply', { x: 340, y: 96 }), data: { replies: replyList } },
+      { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb: isComment ? mediaThumb : null, mediaLabel: triggerLabel } },
+      ...(isComment ? [{ id: 'reply', type: 'reply', position: pos('reply', { x: 340, y: 96 }), data: { replies: replyList } }] : []),
       ...(followGate ? [
-        { id: 'gate', type: 'gate', position: pos('gate', { x: 680, y: 80 }), data: { message: followGateMsg || DEFAULT_GATE_MSG } },
-        { id: 'gatemsg', type: 'gatemsg', position: pos('gatemsg', { x: 690, y: 330 }), data: {} },
+        { id: 'gate', type: 'gate', position: pos('gate', { x: gateX, y: 80 }), data: { message: followGateMsg || DEFAULT_GATE_MSG } },
+        { id: 'gatemsg', type: 'gatemsg', position: pos('gatemsg', { x: gateX + 10, y: 330 }), data: {} },
       ] : []),
       ...steps.map((s, i) => ({
         id: `dm-${i}`, type: 'dm', position: pos(`dm-${i}`, { x: dmBaseX + i * 340, y: 60 }), data: { step: s, index: i },
@@ -200,7 +206,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     ]
     return list
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, followGateMsg, selected])
+  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, followGateMsg, selected, triggerType])
 
   // Sincroniza os nós computados com o estado interno do React Flow
   useEffect(() => {
@@ -209,12 +215,14 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
 
   const edges: Edge[] = useMemo(() => {
     const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ espera ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
-    const e: Edge[] = [
-      { id: 'e-t-r', source: 'trigger', target: 'reply', animated: true, label: 'Então', style: { stroke: '#94a3b8' } },
-    ]
+    const isComment = triggerType === 'comment'
+    const preGateSource = isComment ? 'reply' : 'trigger'
+    const e: Edge[] = isComment
+      ? [{ id: 'e-t-r', source: 'trigger', target: 'reply', animated: true, label: 'Então', style: { stroke: '#94a3b8' } }]
+      : []
     if (followGate) {
       e.push(
-        { id: 'e-r-g', source: 'reply', target: 'gate', animated: true, label: 'e na DM…', labelStyle: { fontSize: 10, fill: '#d97706', fontWeight: 600 }, style: { stroke: '#fbbf24' } },
+        { id: 'e-r-g', source: preGateSource, target: 'gate', animated: true, label: 'e na DM…', labelStyle: { fontSize: 10, fill: '#d97706', fontWeight: 600 }, style: { stroke: '#fbbf24' } },
         { id: 'e-g-no', source: 'gate', sourceHandle: 'no', target: 'gatemsg', animated: true, label: '❌ não segue', labelStyle: { fontSize: 10, fill: '#ef4444', fontWeight: 600 }, style: { stroke: '#fca5a5' } },
         { id: 'e-gm-dm', source: 'gatemsg', target: 'dm-0', animated: true, label: 'seguiu ✅', labelStyle: { fontSize: 10, fill: '#10b981', fontWeight: 600 }, style: { stroke: '#6ee7b7' } },
       )
@@ -222,7 +230,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     steps.forEach((s, i) => {
       e.push({
         id: `e-${i}`,
-        source: i === 0 ? (followGate ? 'gate' : 'reply') : `dm-${i - 1}`,
+        source: i === 0 ? (followGate ? 'gate' : preGateSource) : `dm-${i - 1}`,
         ...(i === 0 && followGate ? { sourceHandle: 'yes' } : {}),
         target: `dm-${i}`,
         animated: true,
@@ -232,7 +240,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
       })
     })
     return e
-  }, [steps, followGate])
+  }, [steps, followGate, triggerType])
 
   async function save() {
     setSaving(true)
@@ -249,6 +257,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
       dm_use_agent: dmUseAgent,
       funnel_id: funnelId || null,
       lead_tag: leadTag || null,
+      trigger_type: triggerType,
       follow_gate: followGate,
       follow_gate_message: followGateMsg || null,
       canvas: Object.keys(positions).length > 0 ? positions : null,
@@ -307,6 +316,18 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
             <>
               <h3 className="font-semibold text-gray-900">✨ Gatilho</h3>
               <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Quando disparar?</label>
+                <select className={inputCls} value={triggerType}
+                  onChange={e => setTriggerType(e.target.value as 'comment' | 'dm' | 'story_reply')}>
+                  <option value="comment">💬 Comentário em post/Reel</option>
+                  <option value="dm">📩 Palavra-chave na DM</option>
+                  <option value="story_reply">📱 Resposta a um Story</option>
+                </select>
+                {triggerType === 'dm' && <p className="text-[11px] text-gray-400 mt-1">Alguém manda a palavra-chave no seu Direct → a sequência dispara.</p>}
+                {triggerType === 'story_reply' && <p className="text-[11px] text-gray-400 mt-1">Alguém responde qualquer Story seu (ou com a palavra-chave, se definir) → dispara.</p>}
+              </div>
+              {triggerType === 'comment' && (
+              <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">Post</label>
                 <button onClick={() => { setMediaId(null); setMediaThumb(null); setMediaCaption(null) }}
                   className={`text-xs px-3 py-1.5 rounded-full border mb-2 ${!mediaId ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600'}`}>
@@ -325,6 +346,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   </div>
                 )}
               </div>
+              )}
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">Palavras-chave</label>
                 <div className="flex flex-wrap gap-1.5 mb-1.5">

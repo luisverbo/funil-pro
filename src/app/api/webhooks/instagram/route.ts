@@ -35,7 +35,7 @@ interface IgWebhook {
     messaging?: Array<{
       sender?: { id?: string }
       recipient?: { id?: string }
-      message?: { mid?: string; text?: string; is_echo?: boolean }
+      message?: { mid?: string; text?: string; is_echo?: boolean; reply_to?: { story?: { id?: string; url?: string } } }
     }>
     changes?: Array<{
       field?: string
@@ -60,15 +60,44 @@ async function findInstagramAgent(admin: ReturnType<typeof createAdminClient>, i
   return any ?? null
 }
 
-// Acha ou cria o lead pelo IGSID (guardado em metadata.ig_user_id)
+// Acha ou cria o lead pelo IGSID — enriquecido com o perfil do Instagram
+// (nome, @, foto, seguidores) via API
 async function resolveLead(admin: ReturnType<typeof createAdminClient>, tenantId: string, igUserId: string, username?: string) {
   const { data: existing } = await admin.from('leads')
-    .select('id').eq('tenant_id', tenantId).eq('metadata->>ig_user_id', igUserId).limit(1).maybeSingle()
-  if (existing) return existing.id
+    .select('id, name, metadata').eq('tenant_id', tenantId).eq('metadata->>ig_user_id', igUserId).limit(1).maybeSingle()
+
+  // Perfil (busca 1x; se o lead já tem foto no metadata, não repete a chamada)
+  const meta = (existing?.metadata ?? {}) as Record<string, unknown>
+  let profile: Awaited<ReturnType<typeof getIgUserProfile>> | null = null
+  if (!existing || !meta.ig_profile_pic) {
+    profile = await getIgUserProfile(igUserId).catch(() => null)
+  }
+
+  if (existing) {
+    if (profile && (profile.username || profile.profilePic)) {
+      await admin.from('leads').update({
+        name: existing.name || profile.name || (profile.username ? `@${profile.username}` : null) || undefined,
+        metadata: {
+          ...meta,
+          ig_username: profile.username ?? meta.ig_username,
+          ig_profile_pic: profile.profilePic ?? meta.ig_profile_pic,
+          ig_followers: profile.followers ?? meta.ig_followers,
+        },
+      }).eq('id', existing.id)
+    }
+    return existing.id
+  }
+
+  const displayName = profile?.name || (profile?.username ? `@${profile.username}` : null) || (username ? `@${username}` : null)
   const { data: created } = await admin.from('leads').insert({
     tenant_id: tenantId, funnel_id: null, status: 'active',
-    name: username ? `@${username}` : null,
-    metadata: { ig_user_id: igUserId, source: 'instagram' },
+    name: displayName,
+    metadata: {
+      ig_user_id: igUserId, source: 'instagram',
+      ig_username: profile?.username ?? username ?? null,
+      ig_profile_pic: profile?.profilePic ?? null,
+      ig_followers: profile?.followers ?? null,
+    },
   }).select('id').single()
   return created?.id ?? null
 }
@@ -159,6 +188,40 @@ export async function POST(request: NextRequest) {
             .eq('ig_user_id', senderId).eq('status', 'pending')
           console.log(`[ig] ${pendingJobs.length} passo(s) cancelados — lead respondeu livre, agente assume`)
         }
+        // GATILHOS DE DM (estilo ManyChat): palavra-chave na DM ou resposta a Story
+        const isStoryReply = !!m.message?.reply_to?.story
+        const { data: dmAutos } = await admin
+          .from('ig_automations')
+          .select('id, tenant_id, keywords, dm_message, dm_steps, funnel_id, lead_tag, trigger_type')
+          .eq('status', 'active')
+          .in('trigger_type', ['dm', 'story_reply'])
+        const lowerDm = text.toLowerCase()
+        const dmMatch = (dmAutos ?? []).find(a => {
+          if (a.trigger_type === 'story_reply' && !isStoryReply) return false
+          if (a.trigger_type === 'dm' && isStoryReply) return false
+          const kws: string[] = a.keywords ?? []
+          if (kws.length === 0) return a.trigger_type === 'story_reply'   // DM sem keyword só p/ story (senão dispara em tudo)
+          return kws.some(k => k && lowerDm.includes(k.toLowerCase()))
+        })
+        if (dmMatch) {
+          console.log(`[ig] gatilho de ${dmMatch.trigger_type === 'story_reply' ? 'story' : 'DM'} disparado: ${dmMatch.id}`)
+          const leadId = await resolveLead(admin, dmMatch.tenant_id, senderId)
+          if (leadId && dmMatch.lead_tag) {
+            const { data: l } = await admin.from('leads').select('tags').eq('id', leadId).single()
+            const tags: string[] = Array.isArray(l?.tags) ? l.tags : []
+            if (!tags.includes(dmMatch.lead_tag)) await admin.from('leads').update({ tags: [...tags, dmMatch.lead_tag] }).eq('id', leadId)
+          }
+          if (leadId && dmMatch.funnel_id) {
+            await enrollInFunnel(leadId, dmMatch.funnel_id, dmMatch.tenant_id, admin).catch(() => {})
+          }
+          await startSequence({
+            tenantId: dmMatch.tenant_id, automationId: dmMatch.id, igUserId: senderId,
+            commentId: null, steps: resolveSteps(dmMatch), admin,
+          }).catch(e => console.error('[ig] dm startSequence', String(e)))
+          await admin.rpc('increment_ig_automation_triggers', { p_id: dmMatch.id }).then(() => {}, () => {})
+          continue
+        }
+
         const agent = await findInstagramAgent(admin, igAccountId)
         if (!agent) continue
         const leadId = await resolveLead(admin, agent.tenant_id, senderId)

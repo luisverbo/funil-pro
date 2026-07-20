@@ -141,14 +141,21 @@ export async function sendInstagramQuickReplies(recipientId: string, text: strin
   }
 }
 
-/** Perfil do usuário que interagiu — inclui se ele SEGUE a conta (follow gate) */
-export async function getIgUserProfile(igsid: string): Promise<{ username?: string; follows: boolean | null }> {
+/** Perfil do usuário que interagiu — nome, @, foto, seguidores e se SEGUE a conta */
+export async function getIgUserProfile(igsid: string): Promise<{
+  name?: string; username?: string; profilePic?: string; followers?: number; follows: boolean | null
+}> {
   try {
-    const res = await fetch(`${GRAPH}/v21.0/${igsid}?fields=username,is_user_follow_business`, {
+    const res = await fetch(`${GRAPH}/v21.0/${igsid}?fields=name,username,profile_pic,follower_count,is_user_follow_business`, {
       headers: { Authorization: `Bearer ${token()}` },
     })
-    const json = await res.json().catch(() => null) as { username?: string; is_user_follow_business?: boolean } | null
+    const json = await res.json().catch(() => null) as {
+      name?: string; username?: string; profile_pic?: string; follower_count?: number; is_user_follow_business?: boolean
+    } | null
     if (!res.ok || !json) return { follows: null }
-    return { username: json.username, follows: json.is_user_follow_business ?? null }
+    return {
+      name: json.name, username: json.username, profilePic: json.profile_pic,
+      followers: json.follower_count, follows: json.is_user_follow_business ?? null,
+    }
   } catch { return { follows: null } }
 }
