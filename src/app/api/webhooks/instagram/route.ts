@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
 import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
 import { resolveSteps, startSequence } from '@/lib/instagram/sequence'
+import { logInbound, logOutbound } from '@/lib/instagram/inbox'
 
 export const maxDuration = 60
 
@@ -132,6 +133,30 @@ export async function POST(request: NextRequest) {
       const text = (m.message?.text ?? m.postback?.payload ?? m.postback?.title ?? '').trim()
       if (!senderId || !text) continue
       try {
+        // INBOX: registra a mensagem recebida na thread. Se você ASSUMIU a conversa
+        // (human_mode), IA e automações ficam de fora — só registra e segue.
+        let inboxTenant: string | null = null
+        {
+          const { data: th } = await admin.from('ig_threads')
+            .select('tenant_id').eq('ig_user_id', senderId).limit(1).maybeSingle()
+          inboxTenant = th?.tenant_id ?? null
+          if (!inboxTenant) {
+            const ag = await findInstagramAgent(admin, igAccountId)
+            inboxTenant = ag?.tenant_id ?? null
+          }
+          if (!inboxTenant) {
+            const { data: au } = await admin.from('ig_automations').select('tenant_id').eq('status', 'active').limit(1).maybeSingle()
+            inboxTenant = au?.tenant_id ?? null
+          }
+        }
+        if (inboxTenant) {
+          const logged = await logInbound(admin, inboxTenant, senderId, text).catch(() => null)
+          if (logged?.humanMode) {
+            console.log('[ig] thread em modo humano — automações/IA pausadas')
+            continue
+          }
+        }
+
         // FOLLOW GATE pendente? Pessoa respondeu — checa se agora está seguindo
         const { data: gated } = await admin
           .from('ig_sequence_jobs')
@@ -156,6 +181,7 @@ export async function POST(request: NextRequest) {
           } else {
             await sendInstagramActionButtons(senderId,
               'Ainda não achei seu follow 🥲 Me segue no perfil e toca de novo 👇', [{ title: 'JÁ SIGO ✅' }]).catch(() => {})
+            await logOutbound(admin, gated[0].tenant_id, senderId, 'Ainda não achei seu follow 🥲 Me segue no perfil e toca de novo 👇', 'gate').catch(() => {})
           }
           continue   // gate resolve a interação; agente não entra aqui
         }
@@ -228,7 +254,10 @@ export async function POST(request: NextRequest) {
         if (!agent) continue
         const leadId = await resolveLead(admin, agent.tenant_id, senderId)
         const parts = await dispatchToAgent(agent.id, leadId, text)
-        for (const p of parts) await sendInstagramDM(senderId, p).catch(e => console.error('[ig] sendDM', String(e)))
+        for (const p of parts) {
+          await sendInstagramDM(senderId, p).catch(e => console.error('[ig] sendDM', String(e)))
+          await logOutbound(admin, agent.tenant_id, senderId, p, 'agent').catch(() => {})
+        }
       } catch (err) {
         console.error('[ig] DM erro:', String(err))
       }
@@ -295,6 +324,7 @@ export async function POST(request: NextRequest) {
               const gateMsg = auto.follow_gate_message?.trim() ||
                 'Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá no perfil e toca no botão abaixo que eu libero na hora 👇'
               await sendPrivateReplyToComment(commentId, gateMsg).catch(e => console.error('[ig] gate privateReply', String(e)))
+              await logOutbound(admin, auto.tenant_id, fromId, gateMsg, 'gate').catch(() => {})
               await sendInstagramActionButtons(fromId, 'Quando seguir, me avisa 👇', [{ title: 'JÁ SIGO ✅' }]).catch(() => {})
               // marcador: quando a pessoa responder e estiver seguindo, a sequência libera
               await admin.from('ig_sequence_jobs').insert({

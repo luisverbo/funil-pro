@@ -157,10 +157,16 @@ export default function InstagramClient({ initialAutomations, connection, funnel
           <h1 className="text-2xl font-bold text-gray-900">Automações do Instagram</h1>
           <p className="text-sm text-gray-500">Comentou a palavra-chave no post → responde o comentário e manda DM. A IA pode assumir a conversa.</p>
         </div>
-        <button onClick={openModal}
-          className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200 transition-all hover:-translate-y-0.5">
-          + Nova automação
-        </button>
+        <div className="flex gap-2">
+          <a href="/instagram/inbox"
+            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all">
+            📥 Inbox
+          </a>
+          <button onClick={openModal}
+            className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200 transition-all hover:-translate-y-0.5">
+            + Nova automação
+          </button>
+        </div>
       </div>
 
       {/* Status da conexão */}

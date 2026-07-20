@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment } from '@/lib/instagram'
+import { logOutbound } from '@/lib/instagram/inbox'
 
 export interface DmStep {
   delay_minutes?: number
@@ -36,6 +37,7 @@ export async function startSequence(params: {
     if (i === 0 && cumulativeMin === 0) {
       // 1º passo sem espera: envia já (private reply abre a conversa a partir do comentário)
       await sendStep(igUserId, commentId ?? null, steps[i]).catch(e => console.error('[ig-seq] passo 0', String(e)))
+      await logOutbound(admin, tenantId, igUserId, steps[i].text || '(mensagem com botões)', 'automation').catch(() => {})
       continue
     }
     jobs.push({ step_index: i, scheduled_for: new Date(Date.now() + cumulativeMin * 60_000).toISOString() })
@@ -69,7 +71,7 @@ export async function processIgSequenceJobs(): Promise<{ sent: number }> {
   const admin = createAdminClient()
   const { data: jobs } = await admin
     .from('ig_sequence_jobs')
-    .select('id, automation_id, ig_user_id, comment_id, step_index')
+    .select('id, tenant_id, automation_id, ig_user_id, comment_id, step_index')
     .eq('status', 'pending')
     .lte('scheduled_for', new Date().toISOString())
     .limit(20)
@@ -89,6 +91,7 @@ export async function processIgSequenceJobs(): Promise<{ sent: number }> {
       if (step) {
         // passos > 0 vão direto pra DM (a conversa já foi aberta pelo passo 0)
         await sendStep(job.ig_user_id, job.step_index === 0 ? job.comment_id : null, step)
+        await logOutbound(admin, job.tenant_id, job.ig_user_id, step.text || '(mensagem com botões)', 'automation').catch(() => {})
         sent++
       }
       await admin.from('ig_sequence_jobs').update({ status: 'done' }).eq('id', job.id)
