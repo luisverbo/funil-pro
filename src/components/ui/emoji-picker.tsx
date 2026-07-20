@@ -47,7 +47,7 @@ export default function EmojiPicker({ onPick, up = false, align = 'right' }: { o
           <div className="grid grid-cols-8 gap-0.5 max-h-44 overflow-y-auto">
             {all.map((e, i) => (
               <button key={`${e}-${i}`} type="button"
-                onClick={() => { onPick(e) }}
+                onMouseDown={ev => { ev.preventDefault(); onPick(e) }}
                 className="w-7 h-7 rounded-md hover:bg-gray-100 text-lg leading-none flex items-center justify-center">
                 {e}
               </button>
