@@ -226,6 +226,7 @@ function previewInterpolate(text: string): string {
 
 const CONDITIONS = [
   { value: 'replied', label: 'Respondeu (qualquer coisa) ✓' },
+  { value: 'replied_number', label: 'Respondeu Sim ou Não (1/sim → Sim · 2/não → Não) ✓' },
   { value: 'replied_with', label: 'Respondeu com palavra específica ✓' },
   { value: 'purchased', label: 'Comprou ✓' },
   { value: 'clicked', label: 'Clicou no link ✓' },
@@ -654,6 +655,14 @@ export default function ConfigPanel({ selectedNodeId, nodes, onClose, funnelId, 
                 Saída <span className="text-red-500 font-semibold">Não</span> = condição falsa.
               </p>
             </FieldWrap>
+
+            {(config.condition as string) === 'replied_number' && (
+              <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2.5 text-xs text-gray-600 leading-relaxed">
+                💡 Na mensagem <strong>antes</strong> deste bloco, pergunte e ofereça as opções (ex: <em>&quot;Quer receber? Responda 1 para SIM ou 2 para NÃO&quot;</em>).
+                O lead responde e o funil segue: <span className="text-emerald-600 font-semibold">1 / sim / s → Sim</span> · <span className="text-red-500 font-semibold">2 / não / n → Não</span>.
+                Ligue mensagens diferentes em cada saída. No Instagram, use botões clicáveis com esses textos.
+              </div>
+            )}
 
             {(config.condition as string) === 'replied_with' && (
               <FieldWrap>
