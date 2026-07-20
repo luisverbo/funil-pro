@@ -57,6 +57,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   const [keywords, setKeywords] = useState<string[]>([])
   const [commentReplies, setCommentReplies] = useState('')
   const [dmSteps, setDmSteps] = useState<UiStep[]>([emptyStep()])
+  const [triggerType, setTriggerType] = useState<'comment' | 'dm' | 'story_reply'>('comment')
   const [dmUseAgent, setDmUseAgent] = useState(true)
   const [funnelId, setFunnelId] = useState('')
   const [leadTag, setLeadTag] = useState('')
@@ -73,7 +74,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   async function openModal() {
     setModalOpen(true); setEditingId(null)
     setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
-    setCommentReplies(''); setDmSteps([emptyStep()]); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
+    setCommentReplies(''); setDmSteps([emptyStep()]); setTriggerType('comment'); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
     await loadPosts()
   }
 
@@ -84,6 +85,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     setKeywords(a.keywords ?? []); setKeywordInput('')
     setCommentReplies((a.comment_replies ?? []).join('\n'))
     setDmSteps(dbToSteps(a))
+    setTriggerType(a.trigger_type ?? 'comment')
     setDmUseAgent(a.dm_use_agent)
     setFunnelId(a.funnel_id ?? ''); setLeadTag(a.lead_tag ?? '')
     setSaveError(null)
@@ -97,7 +99,8 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       ? [...keywords, keywordInput.trim()]
       : keywords
     if (keywordInput.trim()) { setKeywords(finalKeywords); setKeywordInput('') }
-    if (steps.length === 0 && !commentReplies.trim()) { setSaveError('Defina ao menos a resposta do comentário ou um passo de DM'); return }
+    if (steps.length === 0 && !(triggerType === 'comment' && commentReplies.trim())) { setSaveError('Defina ao menos um passo de mensagem (DM)'); return }
+    if (triggerType !== 'comment' && finalKeywords.length === 0 && triggerType === 'dm') { setSaveError('No gatilho de DM, defina ao menos uma palavra-chave'); return }
     setSaving(true); setSaveError(null)
     const media = selectedPost && selectedPost !== 'all' ? selectedPost : null
     const payload = {
@@ -112,6 +115,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       dm_use_agent: dmUseAgent,
       funnel_id: funnelId || null,
       lead_tag: leadTag || null,
+      trigger_type: triggerType,
     }
 
     if (editingId) {
@@ -128,7 +132,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     if (error) { setSaveError(error); return }
     setAutomations(a => [{
       id: id!, status: 'active', triggers_count: 0, created_at: new Date().toISOString(),
-      follow_gate: false, follow_gate_message: null, canvas: null, trigger_type: 'comment' as const, ...payload,
+      follow_gate: false, follow_gate_message: null, canvas: null, ...payload,
     }, ...a])
     setModalOpen(false)
   }
@@ -202,7 +206,11 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                       {a.status === 'active' ? 'Ativa' : 'Pausada'}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400 truncate">{a.media_id ? (a.media_caption || 'Post específico') : 'Todos os posts'}</p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {a.trigger_type === 'dm' ? '📩 Gatilho: DM'
+                      : a.trigger_type === 'story_reply' ? '📱 Gatilho: Story'
+                      : `💬 ${a.media_id ? (a.media_caption || 'Post específico') : 'Todos os posts'}`}
+                  </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -249,6 +257,26 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                 <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Lançamento — palavra EU QUERO" />
               </div>
 
+              {/* Seletor de GATILHO — o que dispara a automação */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Quando disparar?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'comment' as const, icon: '💬', label: 'Comentário', desc: 'em post/Reel' },
+                    { key: 'dm' as const, icon: '📩', label: 'Direct (DM)', desc: 'palavra-chave' },
+                    { key: 'story_reply' as const, icon: '📱', label: 'Story', desc: 'resposta' },
+                  ].map(t => (
+                    <button key={t.key} type="button" onClick={() => setTriggerType(t.key)}
+                      className={`rounded-xl border-2 p-2.5 text-center transition-all ${triggerType === t.key ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <div className="text-xl">{t.icon}</div>
+                      <p className="text-xs font-semibold text-gray-800 mt-0.5">{t.label}</p>
+                      <p className="text-[10px] text-gray-400">{t.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {triggerType === 'comment' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Em qual post?</label>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -272,9 +300,14 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                   </div>
                 )}
               </div>
+              )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Palavras-chave (Enter para adicionar — vazio = qualquer comentário)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {triggerType === 'comment' ? 'Palavras-chave (Enter — vazio = qualquer comentário)'
+                    : triggerType === 'dm' ? 'Palavras-chave da DM (Enter — obrigatório)'
+                    : 'Palavras-chave (Enter — vazio = qualquer resposta ao story)'}
+                </label>
                 <div className="flex flex-wrap gap-1.5 mb-1.5">
                   {keywords.map(k => (
                     <span key={k} className="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 flex items-center gap-1">
@@ -297,11 +330,13 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                   placeholder="Digite e aperte Enter (ex: EU QUERO)" />
               </div>
 
+              {triggerType === 'comment' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Resposta pública ao comentário (uma por linha — sorteia entre elas)</label>
                 <textarea className={inputCls + ' h-20'} value={commentReplies} onChange={e => setCommentReplies(e.target.value)}
                   placeholder={'Te chamei na DM! 🚀\nAcabei de te mandar mensagem 📩\nOlha a DM 😉'} />
               </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Sequência de DMs (com espera entre as mensagens)</label>
