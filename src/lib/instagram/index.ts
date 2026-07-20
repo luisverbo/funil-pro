@@ -90,6 +90,43 @@ export async function getConnectedAccount(): Promise<{ connected: boolean; usern
 
 export interface IgButton { title: string; url: string }
 
+/** Botões full-width no balão (como o "Acessar"): link (web_url) OU resposta (postback).
+ *  Botão sem url vira postback — visualmente idêntico ao de link, e ao tocar
+ *  manda um evento pro webhook (renova a janela de 24h, avança a sequência). */
+export async function sendInstagramActionButtons(recipientId: string, text: string, buttons: { title: string; url?: string }[]): Promise<void> {
+  const valid = buttons.filter(b => b.title).slice(0, 3)
+  if (valid.length === 0) return sendInstagramDM(recipientId, text)
+  const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    body: JSON.stringify({
+      recipient: { id: recipientId },
+      message: {
+        attachment: {
+          type: 'template',
+          payload: {
+            template_type: 'button',
+            text: (text || ' ').slice(0, 640),
+            buttons: valid.map(b => b.url
+              ? { type: 'web_url', url: b.url, title: b.title.slice(0, 20) }
+              : { type: 'postback', title: b.title.slice(0, 20), payload: b.title.slice(0, 20) }),
+          },
+        },
+      },
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`IG actionButtons ${res.status}: ${body}`)
+    // Fallback: links no texto + resposta rápida pros de postback
+    const links = valid.filter(b => b.url)
+    const replies = valid.filter(b => !b.url).map(b => b.title)
+    const withLinks = links.length > 0 ? `${text}\n\n${links.map(b => `${b.title}: ${b.url}`).join('\n')}` : text
+    if (replies.length > 0) await sendInstagramQuickReplies(recipientId, withLinks, replies)
+    else await sendInstagramDM(recipientId, withLinks)
+  }
+}
+
 /** Envia DM com botões de link (button template); fallback: texto com os links */
 export async function sendInstagramButtons(recipientId: string, text: string, buttons: IgButton[]): Promise<void> {
   const valid = buttons.filter(b => b.title && b.url).slice(0, 3)

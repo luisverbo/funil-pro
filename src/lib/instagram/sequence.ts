@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendInstagramDM, sendInstagramButtons, sendInstagramQuickReplies, sendPrivateReplyToComment } from '@/lib/instagram'
+import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment } from '@/lib/instagram'
 
 export interface DmStep {
   delay_minutes?: number
@@ -51,19 +51,11 @@ export async function startSequence(params: {
 
 async function sendStep(igUserId: string, commentId: string | null, step: DmStep): Promise<void> {
   const text = step.text ?? ''
-  const all = (step.buttons ?? []).filter(b => b.title)
-  const urlBtns = all.filter(b => b.url).map(b => ({ title: b.title, url: b.url! }))
-  const replyBtns = all.filter(b => !b.url).map(b => b.title)
+  const btns = (step.buttons ?? []).filter(b => b.title)
 
-  if (replyBtns.length > 0) {
-    // Quick replies (a pessoa toca em "SIM" → vira resposta dela → renova a janela de 24h).
-    // Links (se houver no mesmo passo) entram no texto.
-    const body = urlBtns.length > 0
-      ? `${text}${text ? '\n\n' : ''}${urlBtns.map(b => `${b.title}: ${b.url}`).join('\n')}`
-      : (text || 'Me diz 👇')
-    await sendInstagramQuickReplies(igUserId, body, replyBtns)
-  } else if (urlBtns.length > 0) {
-    await sendInstagramButtons(igUserId, text || 'Toca no botão 👇', urlBtns)
+  if (btns.length > 0) {
+    // Botões full-width (link e/ou resposta) — todos com o MESMO visual do "Acessar"
+    await sendInstagramActionButtons(igUserId, text || 'Toca no botão 👇', btns)
   } else if (commentId) {
     // private reply (via comentário) é o que garante a entrega da 1ª mensagem
     await sendPrivateReplyToComment(commentId, text).catch(async () => { await sendInstagramDM(igUserId, text) })

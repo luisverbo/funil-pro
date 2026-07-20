@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
-import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramQuickReplies, getIgUserProfile } from '@/lib/instagram'
+import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
 import { resolveSteps, startSequence } from '@/lib/instagram/sequence'
 
 export const maxDuration = 60
@@ -36,6 +36,7 @@ interface IgWebhook {
       sender?: { id?: string }
       recipient?: { id?: string }
       message?: { mid?: string; text?: string; is_echo?: boolean; reply_to?: { story?: { id?: string; url?: string } } }
+      postback?: { mid?: string; title?: string; payload?: string }
     }>
     changes?: Array<{
       field?: string
@@ -127,7 +128,8 @@ export async function POST(request: NextRequest) {
     for (const m of entry.messaging ?? []) {
       if (m.message?.is_echo) continue          // ignora ecos das próprias mensagens
       const senderId = m.sender?.id
-      const text = m.message?.text?.trim()
+      // Toque em botão (postback) conta como resposta: usa o payload/título como texto
+      const text = (m.message?.text ?? m.postback?.payload ?? m.postback?.title ?? '').trim()
       if (!senderId || !text) continue
       try {
         // FOLLOW GATE pendente? Pessoa respondeu — checa se agora está seguindo
@@ -152,8 +154,8 @@ export async function POST(request: NextRequest) {
             }
             console.log('[ig] follow gate liberado — sequência iniciada')
           } else {
-            await sendInstagramQuickReplies(senderId,
-              'Ainda não achei seu follow 🥲 Me segue no perfil e toca de novo 👇', ['JÁ SIGO ✅']).catch(() => {})
+            await sendInstagramActionButtons(senderId,
+              'Ainda não achei seu follow 🥲 Me segue no perfil e toca de novo 👇', [{ title: 'JÁ SIGO ✅' }]).catch(() => {})
           }
           continue   // gate resolve a interação; agente não entra aqui
         }
@@ -293,7 +295,7 @@ export async function POST(request: NextRequest) {
               const gateMsg = auto.follow_gate_message?.trim() ||
                 'Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá no perfil e toca no botão abaixo que eu libero na hora 👇'
               await sendPrivateReplyToComment(commentId, gateMsg).catch(e => console.error('[ig] gate privateReply', String(e)))
-              await sendInstagramQuickReplies(fromId, 'Quando seguir, me avisa 👇', ['JÁ SIGO ✅']).catch(() => {})
+              await sendInstagramActionButtons(fromId, 'Quando seguir, me avisa 👇', [{ title: 'JÁ SIGO ✅' }]).catch(() => {})
               // marcador: quando a pessoa responder e estiver seguindo, a sequência libera
               await admin.from('ig_sequence_jobs').insert({
                 tenant_id: auto.tenant_id, automation_id: auto.id, ig_user_id: fromId,
