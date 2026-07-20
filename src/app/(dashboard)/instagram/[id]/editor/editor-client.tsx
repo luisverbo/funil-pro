@@ -8,13 +8,50 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { updateIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
+import { uploadIgMedia } from '@/app/actions/upload'
 import type { IgMedia } from '@/lib/instagram'
 import EmojiPicker from '@/components/ui/emoji-picker'
+
+// Campo de mídia reutilizável (upload ou remover)
+function MediaField({ url, type, onChange }: { url?: string; type?: 'image' | 'video' | 'audio'; onChange: (u?: string, t?: 'image' | 'video' | 'audio') => void }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = ''
+    if (!file) return
+    setBusy(true); setErr(null)
+    const fd = new FormData(); fd.append('file', file)
+    const r = await uploadIgMedia(fd)
+    setBusy(false)
+    if (r.error) setErr(r.error)
+    else onChange(r.url, r.kind)
+  }
+  return (
+    <div>
+      <label className="text-xs text-gray-500 block mb-1">Mídia (imagem, vídeo ou áudio) — opcional</label>
+      {url ? (
+        <div className="flex items-center gap-2 rounded-lg border border-gray-200 p-2 bg-gray-50">
+          {type === 'image' ? <img src={url} alt="" className="w-12 h-12 rounded object-cover" />
+            : type === 'video' ? <video src={url} className="w-12 h-12 rounded object-cover" />
+            : <span className="w-12 h-12 rounded bg-purple-100 flex items-center justify-center text-lg">🎵</span>}
+          <span className="text-xs text-gray-500 flex-1 truncate">{type} anexado</span>
+          <button type="button" onClick={() => onChange(undefined, undefined)} className="text-xs text-red-500 hover:underline">remover</button>
+        </div>
+      ) : (
+        <label className={`flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-200 py-3 text-xs cursor-pointer hover:border-purple-300 ${busy ? 'opacity-60 pointer-events-none' : ''}`}>
+          {busy ? 'Enviando…' : '📎 Anexar imagem / vídeo / áudio'}
+          <input type="file" accept="image/*,video/mp4,video/quicktime,audio/*" className="hidden" onChange={pick} />
+        </label>
+      )}
+      {err && <p className="text-xs text-red-500 mt-1">{err}</p>}
+    </div>
+  )
+}
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
 type UiButton = { title: string; url: string; kind: 'url' | 'reply' }
-type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[] }
+type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }
 const emptyStep = (): UiStep => ({ delay_value: 5, delay_unit: 'min', text: '', buttons: [] })
 
 function dbToSteps(a: IgAutomation): UiStep[] {
@@ -30,19 +67,21 @@ function dbToSteps(a: IgAutomation): UiStep[] {
       delay_unit: asHours ? 'h' as const : 'min' as const,
       text: s.text ?? '',
       buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: (b as { url?: string }).url ?? '', kind: ((b as { url?: string }).url ? 'url' : 'reply') as 'url' | 'reply' })),
+      media_url: s.media_url, media_type: s.media_type,
     }
   })
 }
 
 function stepsToDb(steps: UiStep[]) {
   return steps
-    .filter(s => s.text.trim() || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
+    .filter(s => s.text.trim() || s.media_url || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
     .map(s => ({
       delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
       text: s.text.trim(),
       buttons: s.buttons
         .filter(b => b.title && (b.kind === 'reply' || b.url))
         .map(b => b.kind === 'reply' ? { title: b.title } : { title: b.title, url: b.url }),
+      ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
     }))
 }
 
@@ -133,7 +172,14 @@ function DmNode({ data, selected }: NodeProps) {
         Enviar Mensagem
       </div>
       <div className="mx-3 mb-3 rounded-xl bg-purple-50 border border-purple-100 p-3">
-        <p className="text-xs text-gray-700 whitespace-pre-wrap leading-snug">{s.text ? (s.text.length > 140 ? s.text.slice(0, 140) + '…' : s.text) : <span className="italic text-gray-400">mensagem vazia</span>}</p>
+        {s.media_url && (
+          <div className="mb-2">
+            {s.media_type === 'image' ? <img src={s.media_url} alt="" className="w-full h-24 rounded-lg object-cover" />
+              : s.media_type === 'video' ? <video src={s.media_url} className="w-full h-24 rounded-lg object-cover" />
+              : <div className="w-full py-3 rounded-lg bg-purple-100 flex items-center justify-center text-sm">🎵 áudio</div>}
+          </div>
+        )}
+        <p className="text-xs text-gray-700 whitespace-pre-wrap leading-snug">{s.text ? (s.text.length > 140 ? s.text.slice(0, 140) + '…' : s.text) : (s.media_url ? '' : <span className="italic text-gray-400">mensagem vazia</span>)}</p>
         {s.buttons.length > 0 && (
           <div className="flex flex-col gap-1 mt-2">
             {s.buttons.map((b, i) => (
@@ -444,6 +490,8 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => setStep(selStepIdx, { text: steps[selStepIdx].text + emoji })} /></div>
                 </div>
               </div>
+              <MediaField url={steps[selStepIdx].media_url} type={steps[selStepIdx].media_type}
+                onChange={(u, t) => setStep(selStepIdx, { media_url: u, media_type: t })} />
               <div className="flex flex-col gap-2">
                 <label className="text-xs text-gray-500">Botões (até 3)</label>
                 {steps[selStepIdx].buttons.map((b, bi) => (

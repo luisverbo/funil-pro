@@ -196,3 +196,19 @@ export async function getIgUserProfile(igsid: string): Promise<{
     }
   } catch { return { follows: null } }
 }
+
+/** Envia mídia (imagem/vídeo/áudio) por DM a partir de uma URL pública */
+export async function sendInstagramMedia(recipientId: string, mediaUrl: string, type: 'image' | 'video' | 'audio'): Promise<void> {
+  const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    body: JSON.stringify({
+      recipient: { id: recipientId },
+      message: { attachment: { type, payload: { url: mediaUrl } } },
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`IG sendMedia ${res.status}: ${body}`)
+  }
+}

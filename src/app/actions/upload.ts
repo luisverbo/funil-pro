@@ -58,3 +58,35 @@ export async function uploadQuizImage(formData: FormData): Promise<{ url?: strin
     return { error: String(err) }
   }
 }
+
+const IG_MEDIA_MAX = 25 * 1024 * 1024 // 25MB
+const IG_MEDIA_TYPES: Record<string, { kind: 'image' | 'video' | 'audio'; ext: string }> = {
+  'image/jpeg': { kind: 'image', ext: 'jpg' }, 'image/png': { kind: 'image', ext: 'png' },
+  'image/webp': { kind: 'image', ext: 'webp' }, 'image/gif': { kind: 'image', ext: 'gif' },
+  'video/mp4': { kind: 'video', ext: 'mp4' }, 'video/quicktime': { kind: 'video', ext: 'mov' },
+  'audio/mpeg': { kind: 'audio', ext: 'mp3' }, 'audio/mp4': { kind: 'audio', ext: 'm4a' },
+  'audio/ogg': { kind: 'audio', ext: 'ogg' },
+}
+
+/** Upload de mídia (imagem/vídeo/áudio) para o bucket público ig-media */
+export async function uploadIgMedia(formData: FormData): Promise<{ url?: string; kind?: 'image' | 'video' | 'audio'; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!tenantId) return { error: 'Não autenticado' }
+    const file = formData.get('file') as File | null
+    if (!file) return { error: 'Nenhum arquivo enviado' }
+    if (file.size > IG_MEDIA_MAX) return { error: 'Arquivo muito grande (máx 25MB)' }
+    const meta = IG_MEDIA_TYPES[file.type]
+    if (!meta) return { error: 'Formato não suportado (imagem, vídeo MP4 ou áudio)' }
+
+    const path = `${tenantId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${meta.ext}`
+    const admin = createAdminClient()
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const { error } = await admin.storage.from('ig-media').upload(path, buffer, { contentType: file.type, upsert: false })
+    if (error) return { error: `Falha no upload: ${error.message}` }
+    const { data: pub } = admin.storage.from('ig-media').getPublicUrl(path)
+    return { url: pub.publicUrl, kind: meta.kind }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}

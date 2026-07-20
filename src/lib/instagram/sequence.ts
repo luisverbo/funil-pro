@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment } from '@/lib/instagram'
+import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment, sendInstagramMedia } from '@/lib/instagram'
 import { logOutbound } from '@/lib/instagram/inbox'
 
 export interface DmStep {
@@ -7,11 +7,13 @@ export interface DmStep {
   text?: string
   // url presente = botão de link; url vazio/ausente = botão de resposta rápida ("SIM")
   buttons?: { title: string; url?: string }[]
+  media_url?: string
+  media_type?: 'image' | 'video' | 'audio'
 }
 
 /** Passos da sequência de uma automação (compat: dm_message vira passo único) */
 export function resolveSteps(auto: { dm_steps?: unknown; dm_message?: string | null }): DmStep[] {
-  const steps = Array.isArray(auto.dm_steps) ? (auto.dm_steps as DmStep[]).filter(s => s && (s.text || (s.buttons?.length ?? 0) > 0)) : []
+  const steps = Array.isArray(auto.dm_steps) ? (auto.dm_steps as DmStep[]).filter(s => s && (s.text || s.media_url || (s.buttons?.length ?? 0) > 0)) : []
   if (steps.length > 0) return steps
   if (auto.dm_message) return [{ delay_minutes: 0, text: auto.dm_message }]
   return []
@@ -37,7 +39,7 @@ export async function startSequence(params: {
     if (i === 0 && cumulativeMin === 0) {
       // 1º passo sem espera: envia já (private reply abre a conversa a partir do comentário)
       await sendStep(igUserId, commentId ?? null, steps[i]).catch(e => console.error('[ig-seq] passo 0', String(e)))
-      await logOutbound(admin, tenantId, igUserId, steps[i].text || '(mensagem com botões)', 'automation').catch(() => {})
+      await logOutbound(admin, tenantId, igUserId, steps[i].text || (steps[i].media_type ? `[${steps[i].media_type}]` : '(mensagem com botões)'), 'automation').catch(() => {})
       continue
     }
     jobs.push({ step_index: i, scheduled_for: new Date(Date.now() + cumulativeMin * 60_000).toISOString() })
@@ -54,6 +56,14 @@ export async function startSequence(params: {
 async function sendStep(igUserId: string, commentId: string | null, step: DmStep): Promise<void> {
   const text = step.text ?? ''
   const btns = (step.buttons ?? []).filter(b => b.title)
+
+  // Mídia primeiro (imagem/vídeo/áudio), depois o texto/botões
+  if (step.media_url && step.media_type) {
+    await sendInstagramMedia(igUserId, step.media_url, step.media_type).catch(e => console.error('[ig-seq] media', String(e)))
+    if (text) await sendInstagramDM(igUserId, text).catch(() => {})
+    if (btns.length > 0) await sendInstagramActionButtons(igUserId, ' ', btns).catch(() => {})
+    return
+  }
 
   if (btns.length > 0) {
     // Botões full-width (link e/ou resposta) — todos com o MESMO visual do "Acessar"
@@ -91,7 +101,7 @@ export async function processIgSequenceJobs(): Promise<{ sent: number }> {
       if (step) {
         // passos > 0 vão direto pra DM (a conversa já foi aberta pelo passo 0)
         await sendStep(job.ig_user_id, job.step_index === 0 ? job.comment_id : null, step)
-        await logOutbound(admin, job.tenant_id, job.ig_user_id, step.text || '(mensagem com botões)', 'automation').catch(() => {})
+        await logOutbound(admin, job.tenant_id, job.ig_user_id, step.text || (step.media_type ? `[${step.media_type}]` : '(mensagem com botões)'), 'automation').catch(() => {})
         sent++
       }
       await admin.from('ig_sequence_jobs').update({ status: 'done' }).eq('id', job.id)

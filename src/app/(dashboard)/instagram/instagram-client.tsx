@@ -4,24 +4,52 @@ import React, { useState } from 'react'
 import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
 import EmojiPicker from '@/components/ui/emoji-picker'
+import { uploadIgMedia } from '@/app/actions/upload'
+
+function StepMedia({ url, type, onChange }: { url?: string; type?: 'image' | 'video' | 'audio'; onChange: (u?: string, t?: 'image' | 'video' | 'audio') => void }) {
+  const [busy, setBusy] = useState(false)
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    const fd = new FormData(); fd.append('file', file)
+    const r = await uploadIgMedia(fd)
+    setBusy(false)
+    if (!r.error) onChange(r.url, r.kind)
+    else alert(r.error)
+  }
+  return url ? (
+    <div className="flex items-center gap-2 rounded-lg border border-gray-200 p-1.5 bg-white text-xs">
+      {type === 'image' ? <img src={url} alt="" className="w-8 h-8 rounded object-cover" /> : <span className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">{type === 'video' ? '🎬' : '🎵'}</span>}
+      <span className="text-gray-500 flex-1 truncate">{type} anexado</span>
+      <button type="button" onClick={() => onChange(undefined, undefined)} className="text-red-500 hover:underline">remover</button>
+    </div>
+  ) : (
+    <label className={`text-xs text-purple-600 hover:underline cursor-pointer ${busy ? 'opacity-60 pointer-events-none' : ''}`}>
+      {busy ? 'enviando…' : '📎 anexar mídia (img/vídeo/áudio)'}
+      <input type="file" accept="image/*,video/mp4,video/quicktime,audio/*" className="hidden" onChange={pick} />
+    </label>
+  )
+}
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
 // Passo da sequência de DM (estado da UI)
 // kind 'url' = botão de link; kind 'reply' = resposta rápida ("SIM") — renova a janela de 24h
 type UiButton = { title: string; url: string; kind: 'url' | 'reply' }
-type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[] }
+type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }
 const emptyStep = (): UiStep => ({ delay_value: 0, delay_unit: 'min', text: '', buttons: [] })
 
 function stepsToDb(steps: UiStep[]) {
   return steps
-    .filter(s => s.text.trim() || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
+    .filter(s => s.text.trim() || s.media_url || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
     .map(s => ({
       delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
       text: s.text.trim(),
       buttons: s.buttons
         .filter(b => b.title && (b.kind === 'reply' || b.url))
         .map(b => b.kind === 'reply' ? { title: b.title } : { title: b.title, url: b.url }),
+      ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
     }))
 }
 
@@ -38,6 +66,7 @@ function dbToSteps(a: IgAutomation): UiStep[] {
       delay_unit: asHours ? 'h' as const : 'min' as const,
       text: s.text ?? '',
       buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: (b as { url?: string }).url ?? '', kind: ((b as { url?: string }).url ? 'url' : 'reply') as 'url' | 'reply' })),
+      media_url: s.media_url, media_type: s.media_type,
     }
   })
 }
@@ -375,6 +404,8 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                           placeholder={i === 0 ? 'Oi! Vi seu comentário 👋 Toma o link:' : 'E aí, conseguiu ver? Qualquer dúvida me chama!'} />
                         <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, text: x.text + emoji } : x))} /></div>
                       </div>
+                      <StepMedia url={s.media_url} type={s.media_type}
+                        onChange={(u, t) => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, media_url: u, media_type: t } : x))} />
                       {/* Botões: link (abre URL) ou resposta rápida ("SIM" — renova a janela de 24h) */}
                       {s.buttons.map((b, bi) => (
                         <div key={bi} className="flex gap-2 items-center">
