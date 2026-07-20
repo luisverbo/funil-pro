@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
+import EmojiPicker from '@/components/ui/emoji-picker'
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
@@ -359,9 +360,12 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                           <button type="button" onClick={() => setDmSteps(list => list.filter((_, xi) => xi !== i))} className="text-gray-300 hover:text-red-500">×</button>
                         )}
                       </div>
-                      <textarea className={inputCls + ' h-16 bg-white'} value={s.text}
-                        onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, text: e.target.value } : x))}
-                        placeholder={i === 0 ? 'Oi! Vi seu comentário 👋 Toma o link:' : 'E aí, conseguiu ver? Qualquer dúvida me chama!'} />
+                      <div className="relative">
+                        <textarea className={inputCls + ' h-16 bg-white pr-9'} value={s.text}
+                          onChange={e => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, text: e.target.value } : x))}
+                          placeholder={i === 0 ? 'Oi! Vi seu comentário 👋 Toma o link:' : 'E aí, conseguiu ver? Qualquer dúvida me chama!'} />
+                        <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => setDmSteps(list => list.map((x, xi) => xi === i ? { ...x, text: x.text + emoji } : x))} /></div>
+                      </div>
                       {/* Botões: link (abre URL) ou resposta rápida ("SIM" — renova a janela de 24h) */}
                       {s.buttons.map((b, bi) => (
                         <div key={bi} className="flex gap-2 items-center">

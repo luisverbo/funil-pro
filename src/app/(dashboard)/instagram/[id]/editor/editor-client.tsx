@@ -9,6 +9,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { updateIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
+import EmojiPicker from '@/components/ui/emoji-picker'
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
@@ -436,9 +437,12 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Texto da mensagem</label>
-                <textarea className={inputCls + ' h-28'} value={steps[selStepIdx].text}
-                  onChange={e => setStep(selStepIdx, { text: e.target.value })}
-                  placeholder="Oi! Vi seu comentário 👋" />
+                <div className="relative">
+                  <textarea className={inputCls + ' h-28 pr-9'} value={steps[selStepIdx].text}
+                    onChange={e => setStep(selStepIdx, { text: e.target.value })}
+                    placeholder="Oi! Vi seu comentário 👋" />
+                  <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => setStep(selStepIdx, { text: steps[selStepIdx].text + emoji })} /></div>
+                </div>
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-xs text-gray-500">Botões (até 3)</label>
