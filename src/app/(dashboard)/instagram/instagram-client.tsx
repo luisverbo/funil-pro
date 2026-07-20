@@ -334,8 +334,11 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               {triggerType === 'comment' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Resposta pública ao comentário (uma por linha — sorteia entre elas)</label>
-                <textarea className={inputCls + ' h-20'} value={commentReplies} onChange={e => setCommentReplies(e.target.value)}
-                  placeholder={'Te chamei na DM! 🚀\nAcabei de te mandar mensagem 📩\nOlha a DM 😉'} />
+                <div className="relative">
+                  <textarea className={inputCls + ' h-20 pr-9'} value={commentReplies} onChange={e => setCommentReplies(e.target.value)}
+                    placeholder={'Te chamei na DM! 🚀\nAcabei de te mandar mensagem 📩\nOlha a DM 😉'} />
+                  <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => setCommentReplies(t => t + emoji)} /></div>
+                </div>
               </div>
               )}
 

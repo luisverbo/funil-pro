@@ -7,6 +7,7 @@ import AgentTestChat from './agent-test-chat'
 import { THEME_PRESETS } from '@/lib/quiz/theme'
 import { AGENT_TEMPLATES, type AgentTemplate } from '@/lib/agents/templates'
 import ImageUploadField from '@/components/quiz/image-upload-field'
+import EmojiPicker from '@/components/ui/emoji-picker'
 
 interface Props {
   agent?: Agent | null
@@ -451,7 +452,10 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                 )}
               </Field>
               <Field label="Mensagem de saudação">
-                <textarea className={inputCls + ' h-24'} value={form.greeting_message ?? ''} onChange={e => set('greeting_message', e.target.value)} placeholder="Olá! Como posso ajudar você hoje?" />
+                <div className="relative">
+                  <textarea className={inputCls + ' h-24 pr-9'} value={form.greeting_message ?? ''} onChange={e => set('greeting_message', e.target.value)} placeholder="Olá! Como posso ajudar você hoje?" />
+                  <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => set('greeting_message', (form.greeting_message ?? '') + emoji)} /></div>
+                </div>
               </Field>
               <div>
                 <span className="text-xs text-gray-500">Pré-visualização</span>
