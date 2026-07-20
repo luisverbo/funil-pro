@@ -104,6 +104,18 @@ async function resolveLead(admin: ReturnType<typeof createAdminClient>, tenantId
   return created?.id ?? null
 }
 
+// Registra o contato que entrou numa automação (aparece no card "ver contatos")
+async function recordAutomationContact(admin: ReturnType<typeof createAdminClient>, tenantId: string, automationId: string, igUserId: string) {
+  try {
+    const p = await getIgUserProfile(igUserId).catch(() => null)
+    await admin.from('ig_automation_contacts').upsert({
+      tenant_id: tenantId, automation_id: automationId, ig_user_id: igUserId,
+      name: p?.name ?? null, username: p?.username ?? null, profile_pic: p?.profilePic ?? null,
+      last_at: new Date().toISOString(),
+    }, { onConflict: 'automation_id,ig_user_id' })
+  } catch (e) { console.error('[ig] recordContact', String(e)) }
+}
+
 async function dispatchToAgent(agentId: string, leadId: string | null, text: string): Promise<string[]> {
   const result = await processAgentMessage(agentId, text, { leadId: leadId ?? undefined, channel: 'instagram' })
   return result.parts?.length ? result.parts : (result.reply ? [result.reply] : [])
@@ -198,18 +210,27 @@ export async function POST(request: NextRequest) {
 
         if (pendingJobs && pendingJobs.length > 0) {
           const { data: auto } = await admin
-            .from('ig_automations').select('dm_steps').eq('id', pendingJobs[0].automation_id).single()
-          const steps = Array.isArray(auto?.dm_steps) ? auto.dm_steps as { buttons?: { title?: string; url?: string }[] }[] : []
-          const replyTitles = steps.flatMap(s => (s.buttons ?? []).filter(b => !b.url && b.title).map(b => b.title!.toLowerCase().trim()))
-          const isQuickReply = replyTitles.includes(text.toLowerCase().trim())
+            .from('ig_automations').select('tenant_id, dm_steps').eq('id', pendingJobs[0].automation_id).single()
+          type Btn = { title?: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }
+          const steps = Array.isArray(auto?.dm_steps) ? auto.dm_steps as { buttons?: Btn[] }[] : []
+          const norm = text.toLowerCase().trim()
+          const matchedBtn = steps.flatMap(s => s.buttons ?? []).find(b => !b.url && b.title && b.title.toLowerCase().trim() === norm)
 
-          if (isQuickReply) {
-            // continua a sequência: próximo passo sai agora
-            await admin.from('ig_sequence_jobs')
-              .update({ scheduled_for: new Date().toISOString() })
-              .eq('id', pendingJobs[0].id)
+          if (matchedBtn) {
+            // RAMIFICAÇÃO: botão tem mensagem própria → cancela a sequência e envia o branch
+            if (matchedBtn.branch && (matchedBtn.branch.text || matchedBtn.branch.media_url || (matchedBtn.branch.buttons?.length ?? 0) > 0)) {
+              await admin.from('ig_sequence_jobs').update({ status: 'cancelled' }).eq('ig_user_id', senderId).eq('status', 'pending')
+              await startSequence({
+                tenantId: auto!.tenant_id, automationId: pendingJobs[0].automation_id, igUserId: senderId,
+                commentId: null, steps: [{ delay_minutes: 0, ...matchedBtn.branch }], admin,
+              }).catch(e => console.error('[ig] branch', String(e)))
+              console.log(`[ig] ramificação "${text}" → mensagem própria enviada`)
+              continue
+            }
+            // sem branch: só adianta o próximo passo (comportamento antigo)
+            await admin.from('ig_sequence_jobs').update({ scheduled_for: new Date().toISOString() }).eq('id', pendingJobs[0].id)
             console.log(`[ig] quick reply "${text}" — próximo passo adiantado`)
-            continue   // não chama o agente: a sequência responde
+            continue
           }
 
           await admin.from('ig_sequence_jobs').update({ status: 'cancelled' })
@@ -247,6 +268,7 @@ export async function POST(request: NextRequest) {
             commentId: null, steps: resolveSteps(dmMatch), admin,
           }).catch(e => console.error('[ig] dm startSequence', String(e)))
           await admin.rpc('increment_ig_automation_triggers', { p_id: dmMatch.id }).then(() => {}, () => {})
+          await recordAutomationContact(admin, dmMatch.tenant_id, dmMatch.id, senderId)
           continue
         }
 
@@ -345,6 +367,7 @@ export async function POST(request: NextRequest) {
             }).catch(e => console.error('[ig] startSequence', String(e)))
           }
           await admin.rpc('increment_ig_automation_triggers', { p_id: auto.id }).then(() => {}, () => {})
+          if (fromId) await recordAutomationContact(admin, auto.tenant_id, auto.id, fromId)
           continue
         }
 

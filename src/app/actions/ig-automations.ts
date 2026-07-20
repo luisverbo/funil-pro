@@ -16,7 +16,7 @@ export interface IgAutomation {
   keywords: string[]
   comment_replies: string[]
   dm_message: string | null
-  dm_steps: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string }[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }[] | null
+  dm_steps: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }[] | null
   dm_use_agent: boolean
   funnel_id: string | null
   lead_tag: string | null
@@ -36,7 +36,7 @@ export interface IgAutomationInput {
   keywords?: string[]
   comment_replies?: string[]
   dm_message?: string | null
-  dm_steps?: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string }[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }[] | null
+  dm_steps?: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }[] | null
   dm_use_agent?: boolean
   funnel_id?: string | null
   lead_tag?: string | null
@@ -142,6 +142,23 @@ export async function getIgConnection(): Promise<{ connected: boolean; username?
     await getTenantId()
     return await getConnectedAccount()
   } catch (err) { return { connected: false, error: String(err) } }
+}
+
+export interface IgAutomationContact {
+  ig_user_id: string; name: string | null; username: string | null; profile_pic: string | null; last_at: string
+}
+/** Contatos que entraram numa automação */
+export async function listAutomationContacts(automationId: string): Promise<{ contacts: IgAutomationContact[] }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data } = await supabase
+      .from('ig_automation_contacts')
+      .select('ig_user_id, name, username, profile_pic, last_at')
+      .eq('automation_id', automationId).eq('tenant_id', tenantId)
+      .order('last_at', { ascending: false }).limit(200)
+    return { contacts: (data ?? []) as IgAutomationContact[] }
+  } catch { return { contacts: [] } }
 }
 
 /** Posts recentes da conta conectada (para o seletor de post do modal) */

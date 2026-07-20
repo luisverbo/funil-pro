@@ -50,7 +50,8 @@ function MediaField({ url, type, onChange }: { url?: string; type?: 'image' | 'v
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
-type UiButton = { title: string; url: string; kind: 'url' | 'reply' }
+type UiBranch = { text: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; link_title?: string; link_url?: string }
+type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch?: UiBranch }
 type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }
 const emptyStep = (): UiStep => ({ delay_value: 5, delay_unit: 'min', text: '', buttons: [] })
 
@@ -66,7 +67,14 @@ function dbToSteps(a: IgAutomation): UiStep[] {
       delay_value: asHours ? min / 60 : min,
       delay_unit: asHours ? 'h' as const : 'min' as const,
       text: s.text ?? '',
-      buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: (b as { url?: string }).url ?? '', kind: ((b as { url?: string }).url ? 'url' : 'reply') as 'url' | 'reply' })),
+      buttons: (s.buttons ?? []).map(b => {
+        const bb = b as { title: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }
+        const link = bb.branch?.buttons?.[0]
+        return {
+          title: bb.title, url: bb.url ?? '', kind: (bb.url ? 'url' : 'reply') as 'url' | 'reply',
+          branch: bb.branch ? { text: bb.branch.text ?? '', media_url: bb.branch.media_url, media_type: bb.branch.media_type, link_title: link?.title, link_url: link?.url } : undefined,
+        }
+      }),
       media_url: s.media_url, media_type: s.media_type,
     }
   })
@@ -80,7 +88,18 @@ function stepsToDb(steps: UiStep[]) {
       text: s.text.trim(),
       buttons: s.buttons
         .filter(b => b.title && (b.kind === 'reply' || b.url))
-        .map(b => b.kind === 'reply' ? { title: b.title } : { title: b.title, url: b.url }),
+        .map(b => {
+          if (b.kind !== 'reply') return { title: b.title, url: b.url }
+          const br = b.branch
+          const hasBranch = br && (br.text?.trim() || br.media_url || (br.link_title && br.link_url))
+          return hasBranch
+            ? { title: b.title, branch: {
+                text: br!.text?.trim() || undefined,
+                ...(br!.media_url ? { media_url: br!.media_url, media_type: br!.media_type } : {}),
+                ...(br!.link_title && br!.link_url ? { buttons: [{ title: br!.link_title, url: br!.link_url }] } : {}),
+              } }
+            : { title: b.title }
+        }),
       ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
     }))
 }
@@ -494,19 +513,45 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                 onChange={(u, t) => setStep(selStepIdx, { media_url: u, media_type: t })} />
               <div className="flex flex-col gap-2">
                 <label className="text-xs text-gray-500">Botões (até 3)</label>
-                {steps[selStepIdx].buttons.map((b, bi) => (
-                  <div key={bi} className="flex gap-1.5 items-center">
-                    <span className={`text-[10px] px-1.5 py-1 rounded ${b.kind === 'reply' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>{b.kind === 'reply' ? '💬' : '🔗'}</span>
-                    <input className={inputCls} value={b.title} placeholder={b.kind === 'reply' ? 'SIM' : 'ACESSAR'}
-                      onChange={e => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.map((bb, bbi) => bbi === bi ? { ...bb, title: e.target.value } : bb) })} />
-                    {b.kind === 'url' && (
-                      <input className={inputCls} value={b.url} placeholder="https://…"
-                        onChange={e => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.map((bb, bbi) => bbi === bi ? { ...bb, url: e.target.value } : bb) })} />
+                {steps[selStepIdx].buttons.map((b, bi) => {
+                  const patchBtn = (patch: Partial<UiButton>) => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.map((bb, bbi) => bbi === bi ? { ...bb, ...patch } : bb) })
+                  const patchBranch = (patch: Partial<UiBranch>) => patchBtn({ branch: { text: '', ...(b.branch ?? {}), ...patch } })
+                  return (
+                  <div key={bi} className="flex flex-col gap-1.5">
+                    <div className="flex gap-1.5 items-center">
+                      <span className={`text-[10px] px-1.5 py-1 rounded ${b.kind === 'reply' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>{b.kind === 'reply' ? '💬' : '🔗'}</span>
+                      <input className={inputCls} value={b.title} placeholder={b.kind === 'reply' ? 'SIM' : 'ACESSAR'}
+                        onChange={e => patchBtn({ title: e.target.value })} />
+                      {b.kind === 'url' && (
+                        <input className={inputCls} value={b.url} placeholder="https://…"
+                          onChange={e => patchBtn({ url: e.target.value })} />
+                      )}
+                      <button onClick={() => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.filter((_, bbi) => bbi !== bi) })}
+                        className="text-gray-300 hover:text-red-500">×</button>
+                    </div>
+                    {/* Ramificação: mensagem própria quando o lead toca neste botão de resposta */}
+                    {b.kind === 'reply' && (
+                      b.branch ? (
+                        <div className="ml-4 pl-3 border-l-2 border-emerald-200 flex flex-col gap-1.5 pb-1">
+                          <p className="text-[11px] font-medium text-emerald-700">↳ Se tocar em &quot;{b.title || 'este'}&quot;, responde:</p>
+                          <div className="relative">
+                            <textarea className={inputCls + ' h-16 pr-9'} value={b.branch.text}
+                              onChange={e => patchBranch({ text: e.target.value })} placeholder="Mensagem quando escolher esta opção…" />
+                            <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => patchBranch({ text: (b.branch?.text ?? '') + emoji })} /></div>
+                          </div>
+                          <MediaField url={b.branch.media_url} type={b.branch.media_type} onChange={(u, t) => patchBranch({ media_url: u, media_type: t })} />
+                          <div className="flex gap-1.5">
+                            <input className={inputCls} value={b.branch.link_title ?? ''} placeholder="Botão (ex: ACESSAR)" onChange={e => patchBranch({ link_title: e.target.value })} />
+                            <input className={inputCls} value={b.branch.link_url ?? ''} placeholder="https://…" onChange={e => patchBranch({ link_url: e.target.value })} />
+                          </div>
+                          <button onClick={() => patchBtn({ branch: undefined })} className="text-[11px] text-red-400 hover:underline self-start">remover resposta</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => patchBranch({ text: '' })} className="ml-4 text-[11px] text-emerald-600 hover:underline self-start">↳ + resposta ao tocar em &quot;{b.title || 'este botão'}&quot;</button>
+                      )
                     )}
-                    <button onClick={() => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.filter((_, bbi) => bbi !== bi) })}
-                      className="text-gray-300 hover:text-red-500">×</button>
                   </div>
-                ))}
+                )})}
                 {steps[selStepIdx].buttons.length < 3 && (
                   <div className="flex gap-3">
                     <button onClick={() => setStep(selStepIdx, { buttons: [...steps[selStepIdx].buttons, { title: '', url: '', kind: 'url' }] })}

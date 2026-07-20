@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
+import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, type IgAutomation, type IgAutomationContact } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
 import EmojiPicker from '@/components/ui/emoji-picker'
 import { uploadIgMedia } from '@/app/actions/upload'
@@ -93,6 +93,13 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   const [leadTag, setLeadTag] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [contactsOf, setContactsOf] = useState<{ name: string; loading: boolean; list: IgAutomationContact[] } | null>(null)
+
+  async function openContacts(a: IgAutomation) {
+    setContactsOf({ name: a.name, loading: true, list: [] })
+    const { contacts } = await listAutomationContacts(a.id)
+    setContactsOf({ name: a.name, loading: false, list: contacts })
+  }
 
   async function loadPosts() {
     setPosts(null); setPostsError(null)
@@ -266,7 +273,9 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                 {a.lead_tag && <p>🏷 Tag: {a.lead_tag}</p>}
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-gray-50 mt-auto">
-                <span className="text-xs text-gray-400">{a.triggers_count} disparo(s)</span>
+                <button onClick={() => openContacts(a)} className="text-xs text-gray-400 hover:text-indigo-600">
+                  {a.triggers_count} disparo(s) · 👥 ver contatos
+                </button>
                 <div className="flex gap-3">
                   <a href={`/instagram/${a.id}/editor`} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">🎨 Abrir no editor</a>
                   <button onClick={() => toggle(a)} className={`text-xs font-medium ${a.status === 'active' ? 'text-amber-600' : 'text-emerald-600'}`}>
@@ -468,6 +477,42 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                 className="w-full px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-60">
                 {saving ? 'Salvando…' : editingId ? 'Salvar alterações' : 'Criar automação'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contactsOf && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setContactsOf(null)}>
+          <div className="bg-white rounded-3xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 bg-gradient-to-r from-pink-500 to-purple-600 flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-bold">👥 Contatos da automação</h2>
+                <p className="text-white/70 text-xs">{contactsOf.name}</p>
+              </div>
+              <button onClick={() => setContactsOf(null)} className="text-white/70 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {contactsOf.loading ? (
+                <p className="text-center text-sm text-gray-400 py-10">Carregando…</p>
+              ) : contactsOf.list.length === 0 ? (
+                <p className="text-center text-sm text-gray-400 py-10">Ninguém entrou nesta automação ainda.</p>
+              ) : contactsOf.list.map(c => (
+                <a key={c.ig_user_id} href={c.username ? `https://instagram.com/${c.username}` : undefined} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50">
+                  {c.profile_pic
+                    ? <img src={c.profile_pic} alt="" className="w-10 h-10 rounded-full object-cover" />
+                    : <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 text-white flex items-center justify-center font-bold">{(c.name ?? c.username ?? '?').charAt(0).toUpperCase()}</div>}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{c.name ?? (c.username ? `@${c.username}` : 'Contato')}</p>
+                    {c.username && <p className="text-xs text-purple-500 truncate">@{c.username}</p>}
+                  </div>
+                  <span className="ml-auto text-[10px] text-gray-400">{new Date(c.last_at).toLocaleDateString('pt-BR')}</span>
+                </a>
+              ))}
+            </div>
+            <div className="px-4 py-2 border-t border-gray-100 text-center">
+              <a href="/instagram/inbox" className="text-xs text-indigo-600 hover:underline">Abrir no Inbox para conversar →</a>
             </div>
           </div>
         </div>
