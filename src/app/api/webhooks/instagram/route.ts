@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
 import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
-import { resolveSteps, startSequence } from '@/lib/instagram/sequence'
+import { resolveSteps, startSequence, type DmStep } from '@/lib/instagram/sequence'
 import { logInbound, logOutbound } from '@/lib/instagram/inbox'
 
 export const maxDuration = 60
@@ -211,20 +211,25 @@ export async function POST(request: NextRequest) {
         if (pendingJobs && pendingJobs.length > 0) {
           const { data: auto } = await admin
             .from('ig_automations').select('tenant_id, dm_steps').eq('id', pendingJobs[0].automation_id).single()
-          type Btn = { title?: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }
-          const steps = Array.isArray(auto?.dm_steps) ? auto.dm_steps as { buttons?: Btn[] }[] : []
+          type Btn = { title?: string; url?: string; branch?: DmStep[] }
+          type St = { buttons?: Btn[] }
+          // Achata TODOS os botões da árvore (passos + ramificações aninhadas)
+          const flatten = (chain: St[]): Btn[] => (chain ?? []).flatMap(s =>
+            (s.buttons ?? []).flatMap(b => [b, ...(b.branch ? flatten(b.branch as St[]) : [])]))
+          const allBtns = Array.isArray(auto?.dm_steps) ? flatten(auto.dm_steps as St[]) : []
           const norm = text.toLowerCase().trim()
-          const matchedBtn = steps.flatMap(s => s.buttons ?? []).find(b => !b.url && b.title && b.title.toLowerCase().trim() === norm)
+          const matchedBtn = allBtns.find(b => !b.url && b.title && b.title.toLowerCase().trim() === norm)
 
           if (matchedBtn) {
-            // RAMIFICAÇÃO: botão tem mensagem própria → cancela a sequência e envia o branch
-            if (matchedBtn.branch && (matchedBtn.branch.text || matchedBtn.branch.media_url || (matchedBtn.branch.buttons?.length ?? 0) > 0)) {
+            // RAMIFICAÇÃO: botão de resposta abre um fluxo próprio → cancela a sequência
+            // atual e dispara o fluxo do botão (SIM tem um caminho, NÃO outro)
+            if (matchedBtn.branch && matchedBtn.branch.length > 0) {
               await admin.from('ig_sequence_jobs').update({ status: 'cancelled' }).eq('ig_user_id', senderId).eq('status', 'pending')
               await startSequence({
                 tenantId: auto!.tenant_id, automationId: pendingJobs[0].automation_id, igUserId: senderId,
-                commentId: null, steps: [{ delay_minutes: 0, ...matchedBtn.branch }], admin,
+                commentId: null, steps: matchedBtn.branch, admin,
               }).catch(e => console.error('[ig] branch', String(e)))
-              console.log(`[ig] ramificação "${text}" → mensagem própria enviada`)
+              console.log(`[ig] ramificação "${text}" → fluxo próprio (${matchedBtn.branch.length} msg) iniciado`)
               continue
             }
             // sem branch: só adianta o próximo passo (comportamento antigo)

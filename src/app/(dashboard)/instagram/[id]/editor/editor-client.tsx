@@ -10,6 +10,7 @@ import '@xyflow/react/dist/style.css'
 import { updateIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
 import { uploadIgMedia } from '@/app/actions/upload'
 import type { IgMedia } from '@/lib/instagram'
+import type { DmStep } from '@/lib/instagram/sequence'
 import EmojiPicker from '@/components/ui/emoji-picker'
 
 // Campo de mídia reutilizável (upload ou remover)
@@ -50,38 +51,37 @@ function MediaField({ url, type, onChange }: { url?: string; type?: 'image' | 'v
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
 
-type UiBranch = { text: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; link_title?: string; link_url?: string }
-type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch?: UiBranch }
+// ─── Modelo em ÁRVORE ─────────────────────────────────────────────────────────
+// Cada botão de RESPOSTA (SIM/NÃO) pode abrir um fluxo próprio (branch = lista de
+// mensagens). O caminho até uma mensagem é um array de números de tamanho ímpar:
+// [i]            → mensagem i da raiz
+// [i, b, j]      → mensagem j do fluxo do botão b da mensagem i
+// [i, b, j, c, k]→ e assim por diante (aninhado)
+type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch?: UiStep[] }
 type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }
-const emptyStep = (): UiStep => ({ delay_value: 5, delay_unit: 'min', text: '', buttons: [] })
+const emptyStep = (delay = 5): UiStep => ({ delay_value: delay, delay_unit: 'min', text: '', buttons: [] })
 
-function dbToSteps(a: IgAutomation): UiStep[] {
-  const src = (a.dm_steps && a.dm_steps.length > 0)
-    ? a.dm_steps
-    : (a.dm_message ? [{ delay_minutes: 0, text: a.dm_message, buttons: [] }] : [])
-  if (src.length === 0) return [{ ...emptyStep(), delay_value: 0 }]
-  return src.map(s => {
-    const min = s.delay_minutes ?? 0
-    const asHours = min >= 60 && min % 60 === 0
-    return {
-      delay_value: asHours ? min / 60 : min,
-      delay_unit: asHours ? 'h' as const : 'min' as const,
-      text: s.text ?? '',
-      buttons: (s.buttons ?? []).map(b => {
-        const bb = b as { title: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }
-        const link = bb.branch?.buttons?.[0]
-        return {
-          title: bb.title, url: bb.url ?? '', kind: (bb.url ? 'url' : 'reply') as 'url' | 'reply',
-          branch: bb.branch ? { text: bb.branch.text ?? '', media_url: bb.branch.media_url, media_type: bb.branch.media_type, link_title: link?.title, link_url: link?.url } : undefined,
-        }
-      }),
-      media_url: s.media_url, media_type: s.media_type,
-    }
+const pathId = (path: number[]) => 'dm-' + path.join('-')
+const parsePath = (id: string): number[] => id.slice(3).split('-').map(Number)
+
+// Atualiza a lista (chain) num prefixo de caminho de tamanho PAR ([]=raiz, [i,b]=branch do botão b da msg i)
+function updateChain(steps: UiStep[], chainPath: number[], fn: (chain: UiStep[]) => UiStep[]): UiStep[] {
+  if (chainPath.length === 0) return fn(steps)
+  const [si, bi, ...rest] = chainPath
+  return steps.map((s, i) => i !== si ? s : {
+    ...s,
+    buttons: s.buttons.map((b, j) => j !== bi ? b : { ...b, branch: updateChain(b.branch ?? [], rest, fn) }),
   })
 }
+const getStep = (steps: UiStep[], path: number[]): UiStep | undefined => {
+  let chain: UiStep[] | undefined = steps
+  for (let k = 0; k + 2 < path.length; k += 2) chain = chain?.[path[k]]?.buttons?.[path[k + 1]]?.branch
+  return chain?.[path[path.length - 1]]
+}
 
-function stepsToDb(steps: UiStep[]) {
-  return steps
+// ─── Conversão árvore ⇄ banco ─────────────────────────────────────────────────
+function chainToDb(chain: UiStep[]): DmStep[] {
+  return chain
     .filter(s => s.text.trim() || s.media_url || s.buttons.some(b => b.title && (b.kind === 'reply' || b.url)))
     .map(s => ({
       delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
@@ -90,24 +90,41 @@ function stepsToDb(steps: UiStep[]) {
         .filter(b => b.title && (b.kind === 'reply' || b.url))
         .map(b => {
           if (b.kind !== 'reply') return { title: b.title, url: b.url }
-          const br = b.branch
-          const hasBranch = br && (br.text?.trim() || br.media_url || (br.link_title && br.link_url))
-          return hasBranch
-            ? { title: b.title, branch: {
-                text: br!.text?.trim() || undefined,
-                ...(br!.media_url ? { media_url: br!.media_url, media_type: br!.media_type } : {}),
-                ...(br!.link_title && br!.link_url ? { buttons: [{ title: br!.link_title, url: br!.link_url }] } : {}),
-              } }
-            : { title: b.title }
+          const sub = b.branch ? chainToDb(b.branch) : []
+          return sub.length > 0 ? { title: b.title, branch: sub } : { title: b.title }
         }),
       ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
     }))
+}
+function dbChainToUi(chain: DmStep[]): UiStep[] {
+  return chain.map(s => {
+    const min = s.delay_minutes ?? 0
+    const asHours = min >= 60 && min % 60 === 0
+    return {
+      delay_value: asHours ? min / 60 : min,
+      delay_unit: asHours ? 'h' as const : 'min' as const,
+      text: s.text ?? '',
+      buttons: (s.buttons ?? []).map(b => ({
+        title: b.title, url: b.url ?? '',
+        kind: (b.url ? 'url' : 'reply') as 'url' | 'reply',
+        branch: b.branch ? dbChainToUi(b.branch) : undefined,
+      })),
+      media_url: s.media_url, media_type: s.media_type,
+    }
+  })
+}
+function dbToSteps(a: IgAutomation): UiStep[] {
+  const src = (a.dm_steps && a.dm_steps.length > 0)
+    ? a.dm_steps
+    : (a.dm_message ? [{ delay_minutes: 0, text: a.dm_message, buttons: [] }] : [])
+  if (src.length === 0) return [emptyStep(0)]
+  return dbChainToUi(src as DmStep[])
 }
 
 // ─── Nodes customizados (estilo ManyChat) ────────────────────────────────────
 
 function TriggerNode({ data, selected }: NodeProps) {
-  const d = data as { keywords: string[]; mediaThumb: string | null; mediaLabel: string; followGate?: boolean }
+  const d = data as { keywords: string[]; mediaThumb: string | null; mediaLabel: string }
   return (
     <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-hidden cursor-pointer`}>
       <div className="px-4 py-2 text-xs font-semibold text-gray-500 flex items-center gap-1.5">✨ Quando…</div>
@@ -116,12 +133,12 @@ function TriggerNode({ data, selected }: NodeProps) {
           {d.mediaThumb
             ? <img src={d.mediaThumb} alt="" className="w-9 h-9 rounded-lg object-cover" />
             : <span className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">📣</span>}
-          <p className="text-xs text-gray-700 leading-snug">O usuário comenta em <strong>{d.mediaLabel}</strong></p>
+          <p className="text-xs text-gray-700 leading-snug">O usuário {d.mediaLabel}</p>
         </div>
         <div className="flex flex-wrap gap-1 mt-2">
           {d.keywords.length > 0
             ? d.keywords.map(k => <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-200/60 text-emerald-800 font-medium">{k}</span>)
-            : <span className="text-[10px] text-gray-400">qualquer comentário</span>}
+            : <span className="text-[10px] text-gray-400">qualquer</span>}
         </div>
       </div>
       <div className="px-4 pb-2 text-right text-[10px] text-gray-400">Então ⟶</div>
@@ -180,15 +197,17 @@ function ReplyNode({ data, selected }: NodeProps) {
   )
 }
 
+// Mensagem de DM — agora com uma SAÍDA por botão de resposta (ramificação real)
 function DmNode({ data, selected }: NodeProps) {
-  const d = data as { step: UiStep; index: number }
+  const d = data as { step: UiStep; label: string }
   const s = d.step
+  const replyBtns = s.buttons.map((b, i) => ({ b, i })).filter(x => x.b.kind === 'reply')
   return (
-    <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-hidden cursor-pointer`}>
+    <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : 'border-transparent'} overflow-visible cursor-pointer`}>
       <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
       <div className="px-4 py-2 text-xs font-semibold text-purple-600 flex items-center gap-1.5">
         <span className="w-4 h-4 rounded bg-gradient-to-br from-pink-500 to-purple-600 inline-flex items-center justify-center text-white text-[9px]">IG</span>
-        Enviar Mensagem
+        {d.label}
       </div>
       <div className="mx-3 mb-3 rounded-xl bg-purple-50 border border-purple-100 p-3">
         {s.media_url && (
@@ -201,21 +220,34 @@ function DmNode({ data, selected }: NodeProps) {
         <p className="text-xs text-gray-700 whitespace-pre-wrap leading-snug">{s.text ? (s.text.length > 140 ? s.text.slice(0, 140) + '…' : s.text) : (s.media_url ? '' : <span className="italic text-gray-400">mensagem vazia</span>)}</p>
         {s.buttons.length > 0 && (
           <div className="flex flex-col gap-1 mt-2">
-            {s.buttons.map((b, i) => (
-              <div key={i} className={`text-[10px] text-center py-1 rounded-lg border font-medium ${b.kind === 'reply' ? 'border-emerald-300 text-emerald-700 bg-white' : 'border-sky-300 text-sky-700 bg-white'}`}>
-                {b.kind === 'reply' ? '💬' : '🔗'} {b.title || '(sem texto)'}
-              </div>
-            ))}
+            {s.buttons.map((b, i) => {
+              const ri = replyBtns.findIndex(x => x.i === i)
+              return (
+                <div key={i} className="relative">
+                  <div className={`text-[10px] text-center py-1 rounded-lg border font-medium ${b.kind === 'reply' ? 'border-emerald-300 text-emerald-700 bg-white' : 'border-sky-300 text-sky-700 bg-white'}`}>
+                    {b.kind === 'reply' ? '💬' : '🔗'} {b.title || '(sem texto)'}
+                  </div>
+                  {/* saída própria pra cada botão de resposta → seu fluxo (SIM aqui, NÃO ali) */}
+                  {b.kind === 'reply' && (
+                    <Handle id={`b${ri}`} type="source" position={Position.Right}
+                      style={{ right: -14, top: '50%' }} className="!bg-emerald-500 !w-3 !h-3" />
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-purple-500 !w-3 !h-3" />
+      {/* saída "continua" (se ninguém tocar em nada, a sequência segue) */}
+      <Handle id="next" type="source" position={Position.Bottom} className="!bg-purple-300 !w-3 !h-3" />
     </div>
   )
 }
 
 const nodeTypes = { trigger: TriggerNode, reply: ReplyNode, dm: DmNode, gate: GateNode, gatemsg: GateMsgNode }
 const DEFAULT_GATE_MSG = 'Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá no perfil e toca no botão abaixo que eu libero na hora 👇'
+const COL_W = 300
+const ROW_H = 230
 
 // ─── Editor ──────────────────────────────────────────────────────────────────
 
@@ -242,77 +274,85 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
 
-  // useNodesState cuida das mudanças internas do React Flow (medição + arrasto);
-  // ao soltar o nó, gravamos a posição em `positions` (persistida no Salvar)
   const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState<Node>([])
 
   useEffect(() => { listInstagramPosts().then(r => setPosts(r.posts)) }, [])
 
   const replyList = replies.split('\n').map(s => s.trim()).filter(Boolean)
+  const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
 
-  const nodes: Node[] = useMemo(() => {
-    const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? def
+  // Percorre a árvore gerando nós + arestas com layout automático (chains → direita, branches → baixo)
+  const { nodes, edges } = useMemo(() => {
     const isComment = triggerType === 'comment'
-    // Colunas deslocam conforme os nós opcionais (resposta pública só em comentário; gate opcional)
     const gateX = isComment ? 680 : 340
     const dmBaseX = (isComment ? 680 : 340) + (followGate ? 320 : 0)
     const triggerLabel = triggerType === 'dm' ? 'manda a palavra-chave na DM'
       : triggerType === 'story_reply' ? 'responde a um Story seu'
       : `comenta em ${mediaId ? 'um post específico' : 'qualquer post/Reel'}`
-    const list: Node[] = [
+    const pos = (id: string, def: { x: number; y: number }) => positions[id] ?? def
+
+    const ns: Node[] = [
       { id: 'trigger', type: 'trigger', position: pos('trigger', { x: 0, y: 80 }), data: { keywords, mediaThumb: isComment ? mediaThumb : null, mediaLabel: triggerLabel } },
       ...(isComment ? [{ id: 'reply', type: 'reply', position: pos('reply', { x: 340, y: 96 }), data: { replies: replyList } }] : []),
       ...(followGate ? [
         { id: 'gate', type: 'gate', position: pos('gate', { x: gateX, y: 80 }), data: { message: followGateMsg || DEFAULT_GATE_MSG } },
         { id: 'gatemsg', type: 'gatemsg', position: pos('gatemsg', { x: gateX + 10, y: 330 }), data: {} },
       ] : []),
-      ...steps.map((s, i) => ({
-        id: `dm-${i}`, type: 'dm', position: pos(`dm-${i}`, { x: dmBaseX + i * 340, y: 60 }), data: { step: s, index: i },
-      })),
     ]
-    return list
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, followGateMsg, selected, triggerType])
+    const es: Edge[] = []
+    const preSource = isComment ? 'reply' : 'trigger'
+    if (isComment) es.push({ id: 'e-t-r', source: 'trigger', target: 'reply', animated: true, label: 'Então', style: { stroke: '#94a3b8' } })
+    if (followGate) {
+      es.push(
+        { id: 'e-r-g', source: preSource, target: 'gate', animated: true, label: 'e na DM…', labelStyle: { fontSize: 10, fill: '#d97706', fontWeight: 600 }, style: { stroke: '#fbbf24' } },
+        { id: 'e-g-no', source: 'gate', sourceHandle: 'no', target: 'gatemsg', animated: true, label: '❌ não segue', labelStyle: { fontSize: 10, fill: '#ef4444', fontWeight: 600 }, style: { stroke: '#fca5a5' } },
+      )
+    }
+    const rootSource = followGate ? { id: 'gate', handle: 'yes' as string | undefined } : { id: (followGate ? 'gate' : preSource), handle: undefined as string | undefined }
+    const rootFirstLabel = followGate ? '✅ segue' : (isComment ? 'na DM' : 'dispara')
 
-  // Sincroniza os nós computados com o estado interno do React Flow
+    let rowCursor = 0
+    const walk = (chain: UiStep[], chainPath: number[], depth: number, parent: { id: string; handle?: string; label: string }) => {
+      chain.forEach((step, idx) => {
+        const path = [...chainPath, idx]
+        const id = pathId(path)
+        const myRow = rowCursor++
+        const label = chainPath.length === 0 && idx === 0 ? 'Enviar Mensagem' : `Mensagem`
+        ns.push({ id, type: 'dm', position: pos(id, { x: dmBaseX + depth * COL_W, y: 40 + myRow * ROW_H }), data: { step, label } })
+        // aresta de entrada
+        const src = idx === 0
+          ? parent
+          : { id: pathId([...chainPath, idx - 1]), handle: 'next', label: delayLabel(step) }
+        const inLabel = idx === 0 ? parent.label : delayLabel(step)
+        es.push({
+          id: 'e-' + id, source: src.id, sourceHandle: src.handle, target: id, animated: true,
+          label: inLabel, labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 }, style: { stroke: '#a78bfa' },
+        })
+        // ramificações: cada botão de resposta com fluxo próprio vira uma sub-árvore
+        let ri = -1
+        step.buttons.forEach((b, bi) => {
+          if (b.kind !== 'reply') return
+          ri++
+          if (b.branch && b.branch.length > 0) {
+            walk(b.branch, [...path, bi], depth + 1, { id, handle: `b${ri}`, label: `💬 ${b.title || 'resposta'}` })
+          }
+        })
+      })
+    }
+    walk(steps, [], 0, { id: rootSource.id, handle: rootSource.handle, label: rootFirstLabel })
+    return { nodes: ns, edges: es }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywords, mediaThumb, mediaId, replies, steps, positions, followGate, followGateMsg, triggerType])
+
   useEffect(() => {
     setRfNodes(nodes.map(n => ({ ...n, selected: n.id === selected })))
   }, [nodes, selected, setRfNodes])
-
-  const edges: Edge[] = useMemo(() => {
-    const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ espera ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
-    const isComment = triggerType === 'comment'
-    const preGateSource = isComment ? 'reply' : 'trigger'
-    const e: Edge[] = isComment
-      ? [{ id: 'e-t-r', source: 'trigger', target: 'reply', animated: true, label: 'Então', style: { stroke: '#94a3b8' } }]
-      : []
-    if (followGate) {
-      e.push(
-        { id: 'e-r-g', source: preGateSource, target: 'gate', animated: true, label: 'e na DM…', labelStyle: { fontSize: 10, fill: '#d97706', fontWeight: 600 }, style: { stroke: '#fbbf24' } },
-        { id: 'e-g-no', source: 'gate', sourceHandle: 'no', target: 'gatemsg', animated: true, label: '❌ não segue', labelStyle: { fontSize: 10, fill: '#ef4444', fontWeight: 600 }, style: { stroke: '#fca5a5' } },
-        { id: 'e-gm-dm', source: 'gatemsg', target: 'dm-0', animated: true, label: 'seguiu ✅', labelStyle: { fontSize: 10, fill: '#10b981', fontWeight: 600 }, style: { stroke: '#6ee7b7' } },
-      )
-    }
-    steps.forEach((s, i) => {
-      e.push({
-        id: `e-${i}`,
-        source: i === 0 ? (followGate ? 'gate' : preGateSource) : `dm-${i - 1}`,
-        ...(i === 0 && followGate ? { sourceHandle: 'yes' } : {}),
-        target: `dm-${i}`,
-        animated: true,
-        label: i === 0 && followGate ? `✅ segue · ${delayLabel(s)}` : delayLabel(s),
-        labelStyle: { fontSize: 10, fill: '#7c3aed', fontWeight: 600 },
-        style: { stroke: '#a78bfa' },
-      })
-    })
-    return e
-  }, [steps, followGate, triggerType])
 
   async function save() {
     setSaving(true)
     const finalKeywords = keywordInput.trim() && !keywords.includes(keywordInput.trim()) ? [...keywords, keywordInput.trim()] : keywords
     if (keywordInput.trim()) { setKeywords(finalKeywords); setKeywordInput('') }
-    const db = stepsToDb(steps)
+    const db = chainToDb(steps)
     await updateIgAutomation(automation.id, {
       name, status,
       media_id: mediaId, media_thumb: mediaThumb, media_caption: mediaCaption,
@@ -332,8 +372,37 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     setSavedAt(Date.now())
   }
 
-  const selStepIdx = selected.startsWith('dm-') ? Number(selected.slice(3)) : -1
-  const setStep = (i: number, patch: Partial<UiStep>) => setSteps(list => list.map((x, xi) => xi === i ? { ...x, ...patch } : x))
+  // ── operações na árvore ──
+  const selPath = selected.startsWith('dm-') ? parsePath(selected) : null
+  const selStep = selPath ? getStep(steps, selPath) : undefined
+  const chainOf = (p: number[]) => p.slice(0, -1)
+  const idxOf = (p: number[]) => p[p.length - 1]
+
+  const patchStep = (path: number[], patch: Partial<UiStep>) =>
+    setSteps(st => updateChain(st, chainOf(path), ch => ch.map((s, i) => i === idxOf(path) ? { ...s, ...patch } : s)))
+  const patchButtons = (path: number[], fn: (btns: UiButton[]) => UiButton[]) => {
+    const cur = getStep(steps, path); if (!cur) return
+    patchStep(path, { buttons: fn(cur.buttons) })
+  }
+  const addAfter = (path: number[]) => {
+    const cp = chainOf(path), at = idxOf(path)
+    setSteps(st => updateChain(st, cp, ch => [...ch.slice(0, at + 1), emptyStep(), ...ch.slice(at + 1)]))
+    setSelected(pathId([...cp, at + 1]))
+  }
+  const removeStep = (path: number[]) => {
+    const cp = chainOf(path), at = idxOf(path)
+    setSteps(st => updateChain(st, cp, ch => ch.filter((_, i) => i !== at)))
+    setSelected(cp.length === 0 ? (at > 0 ? pathId([at - 1]) : 'trigger') : pathId(cp))
+  }
+  // abre/entra no fluxo de um botão de resposta (branch)
+  const openBranch = (path: number[], btnIdx: number) => {
+    const cur = getStep(steps, path); if (!cur) return
+    const b = cur.buttons[btnIdx]
+    if (!b.branch || b.branch.length === 0) {
+      patchButtons(path, bs => bs.map((x, j) => j === btnIdx ? { ...x, branch: [emptyStep(0)] } : x))
+    }
+    setSelected(pathId([...path, btnIdx, 0]))
+  }
 
   return (
     <div className="fixed inset-0 md:left-0 flex flex-col bg-gray-50" style={{ zIndex: 30 }}>
@@ -347,7 +416,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         </button>
         <div className="ml-auto flex items-center gap-3">
           {savedAt && <span className="text-xs text-gray-400">✓ Salvo</span>}
-          <button onClick={() => setSteps(list => [...list, emptyStep()])}
+          <button onClick={() => { setSteps(list => [...list, emptyStep()]); setSelected(pathId([steps.length])) }}
             className="px-3 py-1.5 text-sm border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">+ Mensagem</button>
           <button onClick={save} disabled={saving}
             className="px-4 py-1.5 text-sm font-semibold text-white rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 disabled:opacity-60">
@@ -479,22 +548,22 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
             </>
           )}
 
-          {selStepIdx >= 0 && steps[selStepIdx] && (
+          {selPath && selStep && (
             <>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">📩 Mensagem {selStepIdx + 1}</h3>
-                {steps.length > 1 && (
-                  <button onClick={() => { setSteps(list => list.filter((_, i) => i !== selStepIdx)); setSelected('reply') }}
-                    className="text-xs text-red-500 hover:underline">Excluir</button>
-                )}
+                <h3 className="font-semibold text-gray-900">📩 {selPath.length > 1 ? 'Mensagem do fluxo' : `Mensagem ${idxOf(selPath) + 1}`}</h3>
+                <button onClick={() => removeStep(selPath)} className="text-xs text-red-500 hover:underline">Excluir</button>
               </div>
+              {selPath.length > 1 && (
+                <p className="text-[11px] text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1.5">↳ Esta mensagem faz parte de um fluxo de resposta (ramo SIM/NÃO). Continue adicionando mensagens aqui que elas seguem só neste caminho.</p>
+              )}
               <div>
-                <label className="text-xs text-gray-500 block mb-1">{selStepIdx === 0 ? 'Espera após o comentário' : 'Espera após a mensagem anterior'}</label>
+                <label className="text-xs text-gray-500 block mb-1">{idxOf(selPath) === 0 && selPath.length === 1 ? 'Espera após o gatilho' : 'Espera após a mensagem anterior'}</label>
                 <div className="flex gap-2">
-                  <input type="number" min={0} className={inputCls + ' w-24'} value={steps[selStepIdx].delay_value}
-                    onChange={e => setStep(selStepIdx, { delay_value: Math.max(0, Number(e.target.value)) })} />
-                  <select className={inputCls + ' w-28'} value={steps[selStepIdx].delay_unit}
-                    onChange={e => setStep(selStepIdx, { delay_unit: e.target.value as 'min' | 'h' })}>
+                  <input type="number" min={0} className={inputCls + ' w-24'} value={selStep.delay_value}
+                    onChange={e => patchStep(selPath, { delay_value: Math.max(0, Number(e.target.value)) })} />
+                  <select className={inputCls + ' w-28'} value={selStep.delay_unit}
+                    onChange={e => patchStep(selPath, { delay_unit: e.target.value as 'min' | 'h' })}>
                     <option value="min">minutos</option>
                     <option value="h">horas</option>
                   </select>
@@ -503,67 +572,56 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Texto da mensagem</label>
                 <div className="relative">
-                  <textarea className={inputCls + ' h-28 pr-9'} value={steps[selStepIdx].text}
-                    onChange={e => setStep(selStepIdx, { text: e.target.value })}
+                  <textarea className={inputCls + ' h-28 pr-9'} value={selStep.text}
+                    onChange={e => patchStep(selPath, { text: e.target.value })}
                     placeholder="Oi! Vi seu comentário 👋" />
-                  <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => setStep(selStepIdx, { text: steps[selStepIdx].text + emoji })} /></div>
+                  <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => patchStep(selPath, { text: selStep.text + emoji })} /></div>
                 </div>
               </div>
-              <MediaField url={steps[selStepIdx].media_url} type={steps[selStepIdx].media_type}
-                onChange={(u, t) => setStep(selStepIdx, { media_url: u, media_type: t })} />
+              <MediaField url={selStep.media_url} type={selStep.media_type}
+                onChange={(u, t) => patchStep(selPath, { media_url: u, media_type: t })} />
+
               <div className="flex flex-col gap-2">
                 <label className="text-xs text-gray-500">Botões (até 3)</label>
-                {steps[selStepIdx].buttons.map((b, bi) => {
-                  const patchBtn = (patch: Partial<UiButton>) => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.map((bb, bbi) => bbi === bi ? { ...bb, ...patch } : bb) })
-                  const patchBranch = (patch: Partial<UiBranch>) => patchBtn({ branch: { text: '', ...(b.branch ?? {}), ...patch } })
-                  return (
-                  <div key={bi} className="flex flex-col gap-1.5">
+                {selStep.buttons.map((b, bi) => (
+                  <div key={bi} className="flex flex-col gap-1.5 border border-gray-100 rounded-lg p-2">
                     <div className="flex gap-1.5 items-center">
                       <span className={`text-[10px] px-1.5 py-1 rounded ${b.kind === 'reply' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>{b.kind === 'reply' ? '💬' : '🔗'}</span>
                       <input className={inputCls} value={b.title} placeholder={b.kind === 'reply' ? 'SIM' : 'ACESSAR'}
-                        onChange={e => patchBtn({ title: e.target.value })} />
-                      {b.kind === 'url' && (
-                        <input className={inputCls} value={b.url} placeholder="https://…"
-                          onChange={e => patchBtn({ url: e.target.value })} />
-                      )}
-                      <button onClick={() => setStep(selStepIdx, { buttons: steps[selStepIdx].buttons.filter((_, bbi) => bbi !== bi) })}
+                        onChange={e => patchButtons(selPath, bs => bs.map((x, j) => j === bi ? { ...x, title: e.target.value } : x))} />
+                      <button onClick={() => patchButtons(selPath, bs => bs.filter((_, j) => j !== bi))}
                         className="text-gray-300 hover:text-red-500">×</button>
                     </div>
-                    {/* Ramificação: mensagem própria quando o lead toca neste botão de resposta */}
+                    {b.kind === 'url' && (
+                      <input className={inputCls} value={b.url} placeholder="https://…"
+                        onChange={e => patchButtons(selPath, bs => bs.map((x, j) => j === bi ? { ...x, url: e.target.value } : x))} />
+                    )}
+                    {/* Ramificação real: cada botão de resposta abre seu próprio fluxo no canvas */}
                     {b.kind === 'reply' && (
-                      b.branch ? (
-                        <div className="ml-4 pl-3 border-l-2 border-emerald-200 flex flex-col gap-1.5 pb-1">
-                          <p className="text-[11px] font-medium text-emerald-700">↳ Se tocar em &quot;{b.title || 'este'}&quot;, responde:</p>
-                          <div className="relative">
-                            <textarea className={inputCls + ' h-16 pr-9'} value={b.branch.text}
-                              onChange={e => patchBranch({ text: e.target.value })} placeholder="Mensagem quando escolher esta opção…" />
-                            <div className="absolute top-1 right-1"><EmojiPicker onPick={emoji => patchBranch({ text: (b.branch?.text ?? '') + emoji })} /></div>
-                          </div>
-                          <MediaField url={b.branch.media_url} type={b.branch.media_type} onChange={(u, t) => patchBranch({ media_url: u, media_type: t })} />
-                          <div className="flex gap-1.5">
-                            <input className={inputCls} value={b.branch.link_title ?? ''} placeholder="Botão (ex: ACESSAR)" onChange={e => patchBranch({ link_title: e.target.value })} />
-                            <input className={inputCls} value={b.branch.link_url ?? ''} placeholder="https://…" onChange={e => patchBranch({ link_url: e.target.value })} />
-                          </div>
-                          <button onClick={() => patchBtn({ branch: undefined })} className="text-[11px] text-red-400 hover:underline self-start">remover resposta</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => patchBranch({ text: '' })} className="ml-4 text-[11px] text-emerald-600 hover:underline self-start">↳ + resposta ao tocar em &quot;{b.title || 'este botão'}&quot;</button>
-                      )
+                      <button onClick={() => openBranch(selPath, bi)}
+                        className="text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2 py-1.5 text-left font-medium">
+                        {b.branch && b.branch.length > 0
+                          ? `▶ Ir para o fluxo do "${b.title || 'botão'}" (${b.branch.length} msg) →`
+                          : `▶ Criar fluxo pra quem tocar em "${b.title || 'este botão'}" →`}
+                      </button>
                     )}
                   </div>
-                )})}
-                {steps[selStepIdx].buttons.length < 3 && (
+                ))}
+                {selStep.buttons.length < 3 && (
                   <div className="flex gap-3">
-                    <button onClick={() => setStep(selStepIdx, { buttons: [...steps[selStepIdx].buttons, { title: '', url: '', kind: 'url' }] })}
+                    <button onClick={() => patchButtons(selPath, bs => [...bs, { title: '', url: '', kind: 'url' }])}
                       className="text-xs text-sky-600 hover:underline">+ 🔗 link</button>
-                    <button onClick={() => setStep(selStepIdx, { buttons: [...steps[selStepIdx].buttons, { title: '', url: '', kind: 'reply' }] })}
-                      className="text-xs text-emerald-600 hover:underline">+ 💬 resposta (SIM)</button>
+                    <button onClick={() => patchButtons(selPath, bs => [...bs, { title: '', url: '', kind: 'reply' }])}
+                      className="text-xs text-emerald-600 hover:underline">+ 💬 resposta (SIM/NÃO)</button>
                   </div>
                 )}
-                {steps[selStepIdx].buttons.some(b => b.kind === 'reply') && (
-                  <p className="text-[11px] text-emerald-600/80">💡 Botão de resposta renova a janela de 24h — o próximo passo dispara na hora quando a pessoa toca.</p>
+                {selStep.buttons.some(b => b.kind === 'reply') && (
+                  <p className="text-[11px] text-emerald-600/80">💡 Cada botão de resposta tem uma saída no card 👉 — abra o fluxo dele pra montar o que acontece se a pessoa tocar. Sem fluxo, o botão só adianta a próxima mensagem.</p>
                 )}
               </div>
+
+              <button onClick={() => addAfter(selPath)}
+                className="text-sm text-purple-700 border border-purple-200 rounded-lg py-2 hover:bg-purple-50">+ Mensagem depois desta</button>
             </>
           )}
         </div>

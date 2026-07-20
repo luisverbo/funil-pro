@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { listRecentMedia, getConnectedAccount, type IgMedia } from '@/lib/instagram'
+import type { DmStep } from '@/lib/instagram/sequence'
 
 export interface IgAutomation {
   id: string
@@ -16,7 +17,7 @@ export interface IgAutomation {
   keywords: string[]
   comment_replies: string[]
   dm_message: string | null
-  dm_steps: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }[] | null
+  dm_steps: DmStep[] | null
   dm_use_agent: boolean
   funnel_id: string | null
   lead_tag: string | null
@@ -36,7 +37,7 @@ export interface IgAutomationInput {
   keywords?: string[]
   comment_replies?: string[]
   dm_message?: string | null
-  dm_steps?: { delay_minutes?: number; text?: string; buttons?: { title: string; url?: string; branch?: { text?: string; media_url?: string; media_type?: 'image' | 'video' | 'audio'; buttons?: { title: string; url?: string }[] } }[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }[] | null
+  dm_steps?: DmStep[] | null
   dm_use_agent?: boolean
   funnel_id?: string | null
   lead_tag?: string | null

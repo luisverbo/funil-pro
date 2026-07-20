@@ -2,11 +2,17 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment, sendInstagramMedia } from '@/lib/instagram'
 import { logOutbound } from '@/lib/instagram/inbox'
 
+export interface DmButton {
+  title: string
+  url?: string
+  // branch presente = botão de resposta que abre um fluxo próprio (SIM → estas mensagens)
+  branch?: DmStep[]
+}
 export interface DmStep {
   delay_minutes?: number
   text?: string
   // url presente = botão de link; url vazio/ausente = botão de resposta rápida ("SIM")
-  buttons?: { title: string; url?: string }[]
+  buttons?: DmButton[]
   media_url?: string
   media_type?: 'image' | 'video' | 'audio'
 }
@@ -55,7 +61,7 @@ export async function startSequence(params: {
 
 async function sendStep(igUserId: string, commentId: string | null, step: DmStep): Promise<void> {
   const text = step.text ?? ''
-  const btns = (step.buttons ?? []).filter(b => b.title)
+  const btns = (step.buttons ?? []).filter(b => b.title).map(b => ({ title: b.title, url: b.url }))
 
   // Mídia primeiro (imagem/vídeo/áudio), depois o texto/botões
   if (step.media_url && step.media_type) {

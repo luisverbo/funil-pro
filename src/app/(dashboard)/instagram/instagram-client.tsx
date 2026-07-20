@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, type IgAutomation, type IgAutomationContact } from '@/app/actions/ig-automations'
+import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, type IgAutomation, type IgAutomationContact, type IgAutomationInput } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
 import EmojiPicker from '@/components/ui/emoji-picker'
 import { uploadIgMedia } from '@/app/actions/upload'
@@ -36,7 +36,7 @@ const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm out
 
 // Passo da sequência de DM (estado da UI)
 // kind 'url' = botão de link; kind 'reply' = resposta rápida ("SIM") — renova a janela de 24h
-type UiButton = { title: string; url: string; kind: 'url' | 'reply' }
+type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch?: unknown }
 type UiStep = { delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio' }
 const emptyStep = (): UiStep => ({ delay_value: 0, delay_unit: 'min', text: '', buttons: [] })
 
@@ -48,7 +48,7 @@ function stepsToDb(steps: UiStep[]) {
       text: s.text.trim(),
       buttons: s.buttons
         .filter(b => b.title && (b.kind === 'reply' || b.url))
-        .map(b => b.kind === 'reply' ? { title: b.title } : { title: b.title, url: b.url }),
+        .map(b => b.kind === 'reply' ? { title: b.title, ...(b.branch ? { branch: b.branch } : {}) } : { title: b.title, url: b.url }),
       ...(s.media_url ? { media_url: s.media_url, media_type: s.media_type } : {}),
     }))
 }
@@ -65,7 +65,7 @@ function dbToSteps(a: IgAutomation): UiStep[] {
       delay_value: asHours ? min / 60 : min,
       delay_unit: asHours ? 'h' as const : 'min' as const,
       text: s.text ?? '',
-      buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: (b as { url?: string }).url ?? '', kind: ((b as { url?: string }).url ? 'url' : 'reply') as 'url' | 'reply' })),
+      buttons: (s.buttons ?? []).map(b => ({ title: b.title, url: (b as { url?: string }).url ?? '', kind: ((b as { url?: string }).url ? 'url' : 'reply') as 'url' | 'reply', branch: (b as { branch?: unknown }).branch })),
       media_url: s.media_url, media_type: s.media_type,
     }
   })
@@ -148,7 +148,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       keywords: finalKeywords,
       comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
       dm_message: steps[0]?.text || null,
-      dm_steps: steps.length > 0 ? steps : null,
+      dm_steps: (steps.length > 0 ? steps : null) as IgAutomationInput['dm_steps'],
       dm_use_agent: dmUseAgent,
       funnel_id: funnelId || null,
       lead_tag: leadTag || null,
@@ -159,7 +159,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       const { success, error } = await updateIgAutomation(editingId, payload)
       setSaving(false)
       if (!success) { setSaveError(error ?? 'Erro ao salvar'); return }
-      setAutomations(a => a.map(x => x.id === editingId ? { ...x, ...payload } : x))
+      setAutomations(a => a.map(x => x.id === editingId ? { ...x, ...payload } as IgAutomation : x))
       setModalOpen(false)
       return
     }
@@ -170,7 +170,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     setAutomations(a => [{
       id: id!, status: 'active', triggers_count: 0, created_at: new Date().toISOString(),
       follow_gate: false, follow_gate_message: null, canvas: null, ...payload,
-    }, ...a])
+    } as IgAutomation, ...a])
     setModalOpen(false)
   }
 
