@@ -7,7 +7,7 @@ import {
   type Node, type Edge, type NodeProps, type Connection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { updateIgAutomation, listInstagramPosts, type IgAutomation } from '@/app/actions/ig-automations'
+import { updateIgAutomation, listInstagramPosts, getIgBlockStats, type IgAutomation, type IgBlockStat } from '@/app/actions/ig-automations'
 import { uploadIgMedia } from '@/app/actions/upload'
 import type { IgMedia } from '@/lib/instagram'
 import type { DmStep } from '@/lib/instagram/sequence'
@@ -59,7 +59,7 @@ const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm out
 //  - botão de resposta.branch_to: id da mensagem que abre o fluxo do botão (SIM/NÃO)
 //  - entryId: a mensagem ligada ao gatilho (a 1ª a disparar)
 type UiButton = { title: string; url: string; kind: 'url' | 'reply'; branch_to?: string }
-type UiStep = { id: string; delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio'; next?: string }
+type UiStep = { id: string; label?: string; delay_value: number; delay_unit: 'min' | 'h'; text: string; buttons: UiButton[]; media_url?: string; media_type?: 'image' | 'video' | 'audio'; next?: string }
 const emptyStep = (delay = 5): UiStep => ({ id: newId(), delay_value: delay, delay_unit: 'min', text: '', buttons: [] })
 
 const byId = (list: UiStep[], id?: string) => id ? list.find(s => s.id === id) : undefined
@@ -99,6 +99,7 @@ function serialize(list: UiStep[], entryId?: string): DmStep[] {
       const s = byId(list, cur); if (!s) break
       out.push({
         id: s.id,
+        label: s.label?.trim() || undefined,
         delay_minutes: s.delay_unit === 'h' ? s.delay_value * 60 : s.delay_value,
         text: s.text.trim(),
         buttons: s.buttons
@@ -125,6 +126,7 @@ function deserialize(chain: DmStep[]): { list: UiStep[]; entryId?: string } {
       const asHours = min >= 60 && min % 60 === 0
       const step: UiStep = {
         id: s.id || newId(),
+        label: s.label,
         delay_value: asHours ? min / 60 : min,
         delay_unit: asHours ? 'h' : 'min',
         text: s.text ?? '',
@@ -231,18 +233,33 @@ function ReplyNode({ data, selected }: NodeProps) {
 
 // Mensagem de DM — cada botão de resposta tem uma SAÍDA própria (arraste pra ligar)
 function DmNode({ data, selected }: NodeProps) {
-  const d = data as { step: UiStep; label: string; floating: boolean }
+  const d = data as { step: UiStep; label: string; floating: boolean; stat?: IgBlockStat; showMetrics?: boolean }
   const s = d.step
+  const title = s.label?.trim() || d.label
+  const hasBtns = s.buttons.some(b => b.kind === 'reply')
   return (
     <div className={`w-64 rounded-2xl bg-white shadow-lg border-2 ${selected ? 'border-indigo-500' : d.floating ? 'border-dashed border-amber-300' : 'border-transparent'} overflow-visible cursor-pointer`}>
       <Handle type="target" position={Position.Left} className="!bg-purple-500 !w-3 !h-3" />
       <div className="px-4 py-2 text-xs font-semibold text-purple-600 flex items-center justify-between gap-1.5">
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded bg-gradient-to-br from-pink-500 to-purple-600 inline-flex items-center justify-center text-white text-[9px]">IG</span>
-          {d.label}
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className="w-4 h-4 rounded bg-gradient-to-br from-pink-500 to-purple-600 inline-flex items-center justify-center text-white text-[9px] shrink-0">IG</span>
+          <span className="truncate">{title}</span>
         </span>
-        {d.floating && <span className="text-[9px] font-semibold text-amber-500">● solto</span>}
+        {d.floating && <span className="text-[9px] font-semibold text-amber-500 shrink-0">● solto</span>}
       </div>
+      {/* Métricas do bloco (modo visualização, estilo ManyChat) */}
+      {d.showMetrics && (
+        <div className="mx-3 mb-2 grid grid-cols-2 gap-1 text-center">
+          <div className="rounded-lg bg-purple-50 py-1">
+            <p className="text-sm font-bold text-purple-700 leading-none">{d.stat?.sent ?? 0}</p>
+            <p className="text-[9px] text-purple-500 mt-0.5">Enviado</p>
+          </div>
+          <div className="rounded-lg bg-emerald-50 py-1">
+            <p className="text-sm font-bold text-emerald-700 leading-none">{d.stat?.clicks ?? 0}</p>
+            <p className="text-[9px] text-emerald-500 mt-0.5">{hasBtns ? 'Cliques' : 'Respostas'}</p>
+          </div>
+        </div>
+      )}
       <div className="mx-3 mb-3 rounded-xl bg-purple-50 border border-purple-100 p-3">
         {s.media_url && (
           <div className="mb-2">
@@ -307,10 +324,13 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [posts, setPosts] = useState<IgMedia[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [showMetrics, setShowMetrics] = useState(true)
+  const [stats, setStats] = useState<Record<string, IgBlockStat>>({})
 
   const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState<Node>([])
 
   useEffect(() => { listInstagramPosts().then(r => setPosts(r.posts)) }, [])
+  useEffect(() => { getIgBlockStats(automation.id).then(r => setStats(r.stats)) }, [automation.id])
 
   const replyList = replies.split('\n').map(s => s.trim()).filter(Boolean)
   const delayLabel = (s: UiStep) => s.delay_value > 0 ? `⏱ ${s.delay_value}${s.delay_unit === 'h' ? 'h' : 'min'}` : 'na hora'
@@ -355,7 +375,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
       ] : []),
       ...steps.map(s => ({
         id: s.id, type: 'dm', position: pos(s.id, { x: dmBaseX, y: 40 }),
-        data: { step: s, label: s.id === entryId ? 'Enviar Mensagem' : 'Mensagem', floating: !incoming.has(s.id) },
+        data: { step: s, label: s.id === entryId ? 'Enviar Mensagem' : 'Mensagem', floating: !incoming.has(s.id), stat: stats[s.id], showMetrics },
       })),
     ]
 
@@ -389,7 +409,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     })
     return { nodes: ns, edges: es }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keywords, mediaThumb, mediaId, replies, steps, entryId, positions, followGate, followGateMsg, triggerType])
+  }, [keywords, mediaThumb, mediaId, replies, steps, entryId, positions, followGate, followGateMsg, triggerType, stats, showMetrics])
 
   useEffect(() => {
     setRfNodes(nodes.map(n => ({ ...n, selected: n.id === selected })))
@@ -478,6 +498,10 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         </button>
         <div className="ml-auto flex items-center gap-3">
           {savedAt && <span className="text-xs text-gray-400">✓ Salvo</span>}
+          <button onClick={() => setShowMetrics(m => !m)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${showMetrics ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+            📊 Métricas
+          </button>
           <button onClick={addLoose}
             className="px-3 py-1.5 text-sm border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">+ Mensagem</button>
           <button onClick={save} disabled={saving}
@@ -626,6 +650,17 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   ▶ Tornar esta a 1ª mensagem (ligar no gatilho)
                 </button>
               )}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Nome do bloco <span className="text-gray-300">(só pra você se achar)</span></label>
+                <input className={inputCls} value={selStep.label ?? ''} placeholder="Ex: Pergunta quer o link"
+                  onChange={e => patchStep(selStep.id, { label: e.target.value })} />
+              </div>
+              {(stats[selStep.id]?.sent || stats[selStep.id]?.clicks) ? (
+                <div className="flex gap-2 text-center">
+                  <div className="flex-1 rounded-lg bg-purple-50 py-2"><p className="text-base font-bold text-purple-700 leading-none">{stats[selStep.id]?.sent ?? 0}</p><p className="text-[10px] text-purple-500 mt-1">Enviado</p></div>
+                  <div className="flex-1 rounded-lg bg-emerald-50 py-2"><p className="text-base font-bold text-emerald-700 leading-none">{stats[selStep.id]?.clicks ?? 0}</p><p className="text-[10px] text-emerald-500 mt-1">Cliques/Respostas</p></div>
+                </div>
+              ) : null}
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Espera antes de enviar</label>
                 <div className="flex gap-2">

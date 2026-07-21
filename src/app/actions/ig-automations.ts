@@ -162,6 +162,20 @@ export async function listAutomationContacts(automationId: string): Promise<{ co
   } catch { return { contacts: [] } }
 }
 
+export interface IgBlockStat { sent: number; clicks: number }
+/** Métricas por bloco de uma automação (envios/cliques) — mapa block_id → stat */
+export async function getIgBlockStats(automationId: string): Promise<{ stats: Record<string, IgBlockStat> }> {
+  try {
+    await getTenantId()
+    const supabase = await getSupabase()
+    const { data } = await supabase
+      .from('ig_block_stats').select('block_id, sent, clicks').eq('automation_id', automationId)
+    const stats: Record<string, IgBlockStat> = {}
+    for (const r of data ?? []) stats[r.block_id as string] = { sent: r.sent as number, clicks: r.clicks as number }
+    return { stats }
+  } catch { return { stats: {} } }
+}
+
 /** Posts recentes da conta conectada (para o seletor de post do modal) */
 export async function listInstagramPosts(): Promise<{ posts: IgMedia[]; error?: string }> {
   try {

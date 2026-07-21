@@ -10,12 +10,19 @@ export interface DmButton {
 }
 export interface DmStep {
   id?: string          // id estável do nó no editor visual (o motor ignora)
+  label?: string       // nome do bloco (só pra organização no editor)
   delay_minutes?: number
   text?: string
   // url presente = botão de link; url vazio/ausente = botão de resposta rápida ("SIM")
   buttons?: DmButton[]
   media_url?: string
   media_type?: 'image' | 'video' | 'audio'
+}
+
+/** Conta +1 envio de um bloco (métrica por bloco, estilo ManyChat) */
+async function countSent(admin: ReturnType<typeof createAdminClient>, automationId: string, blockId?: string) {
+  if (!blockId) return
+  await admin.rpc('increment_ig_block_stat', { p_automation: automationId, p_block: blockId, p_sent: 1, p_clicks: 0 }).then(() => {}, () => {})
 }
 
 /** Passos da sequência de uma automação (compat: dm_message vira passo único) */
@@ -47,6 +54,7 @@ export async function startSequence(params: {
       // 1º passo sem espera: envia já (private reply abre a conversa a partir do comentário)
       await sendStep(igUserId, commentId ?? null, steps[i]).catch(e => console.error('[ig-seq] passo 0', String(e)))
       await logOutbound(admin, tenantId, igUserId, steps[i].text || (steps[i].media_type ? `[${steps[i].media_type}]` : '(mensagem com botões)'), 'automation').catch(() => {})
+      await countSent(admin, automationId, steps[i].id)
       continue
     }
     jobs.push({ step_index: i, scheduled_for: new Date(Date.now() + cumulativeMin * 60_000).toISOString() })
@@ -109,6 +117,7 @@ export async function processIgSequenceJobs(): Promise<{ sent: number }> {
         // passos > 0 vão direto pra DM (a conversa já foi aberta pelo passo 0)
         await sendStep(job.ig_user_id, job.step_index === 0 ? job.comment_id : null, step)
         await logOutbound(admin, job.tenant_id, job.ig_user_id, step.text || (step.media_type ? `[${step.media_type}]` : '(mensagem com botões)'), 'automation').catch(() => {})
+        await countSent(admin, job.automation_id, step.id)
         sent++
       }
       await admin.from('ig_sequence_jobs').update({ status: 'done' }).eq('id', job.id)

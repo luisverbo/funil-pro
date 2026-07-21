@@ -224,15 +224,24 @@ export async function POST(request: NextRequest) {
             .from('ig_automations').select('tenant_id, dm_steps, status').eq('id', curAutoId).single()
           if (auto && auto.status === 'active') {
             type Btn = { title?: string; url?: string; branch?: DmStep[] }
-            type St = { buttons?: Btn[] }
-            // Achata TODOS os botões da árvore (passos + ramificações aninhadas)
-            const flatten = (chain: St[]): Btn[] => (chain ?? []).flatMap(s =>
-              (s.buttons ?? []).flatMap(b => [b, ...(b.branch ? flatten(b.branch as St[]) : [])]))
-            const allBtns = Array.isArray(auto.dm_steps) ? flatten(auto.dm_steps as St[]) : []
+            type St = { id?: string; buttons?: Btn[] }
             const norm = text.toLowerCase().trim()
-            const matchedBtn = allBtns.find(b => !b.url && b.title && b.title.toLowerCase().trim() === norm)
+            // Acha o botão tocado na árvore inteira + o bloco dono (pra métrica de clique)
+            const findBtn = (chain: St[]): { btn: Btn; ownerId?: string } | null => {
+              for (const s of chain ?? []) {
+                for (const b of s.buttons ?? []) {
+                  if (!b.url && b.title && b.title.toLowerCase().trim() === norm) return { btn: b, ownerId: s.id }
+                  if (b.branch) { const r = findBtn(b.branch as St[]); if (r) return r }
+                }
+              }
+              return null
+            }
+            const found = Array.isArray(auto.dm_steps) ? findBtn(auto.dm_steps as St[]) : null
+            const matchedBtn = found?.btn
 
             if (matchedBtn) {
+              // conta o clique no bloco que tinha o botão (métrica por bloco)
+              if (found?.ownerId) await admin.rpc('increment_ig_block_stat', { p_automation: curAutoId, p_block: found.ownerId, p_sent: 0, p_clicks: 1 }).then(() => {}, () => {})
               // RAMIFICAÇÃO: botão de resposta abre um fluxo próprio → cancela o que
               // estiver agendado e dispara o fluxo do botão (SIM um caminho, NÃO outro)
               if (matchedBtn.branch && matchedBtn.branch.length > 0) {
