@@ -486,7 +486,13 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
       </div>
     )
   } else if (block.type === 'text_block') {
-    const text = config.content?.replace(/<[^>]+>/g, ' ').trim() || ''
+    // decodifica HTML (tira tags E entidades como &nbsp;) pra prévia não mostrar código
+    const text = (() => {
+      const raw = config.content ?? ''
+      if (typeof document === 'undefined') return raw.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').trim()
+      const d = document.createElement('div'); d.innerHTML = raw
+      return (d.textContent || '').trim()
+    })()
     summary = <p className="text-sm text-gray-700 line-clamp-3">{text || <span className="italic text-gray-400">Texto vazio</span>}</p>
   } else if (block.type === 'image') {
     summary = config.image_url
