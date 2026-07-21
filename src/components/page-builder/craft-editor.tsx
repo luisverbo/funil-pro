@@ -23,6 +23,8 @@ import { PriceSection, PriceSectionSettings } from './sections/price-section'
 import { FullwidthBanner, FullwidthBannerSettings } from './sections/fullwidth-banner'
 import { ThankYouHero, ThankYouHeroSettings } from './sections/thank-you-hero'
 import { Columns, Column, ColumnsSettings } from './sections/columns'
+import { ExitPopup, ExitPopupSettings } from './sections/exit-popup'
+import { StickyCta, StickyCtaSettings } from './sections/sticky-cta'
 import { HeroSimpleSettings } from './sections/hero-simple'
 import { CaptureFormSettings } from './sections/capture-form'
 import { VideoPlayerSettings } from './sections/video-player'
@@ -118,6 +120,8 @@ const PageRoot = PageRootNode
 
 const ALL_SECTIONS = [
   { label: 'Colunas', component: Columns, settings: ColumnsSettings, icon: '🧱', description: '2-3 colunas lado a lado' },
+  { label: 'Pop-up de Saída', component: ExitPopup, settings: ExitPopupSettings, icon: '🚪', description: 'Overlay ao tentar sair' },
+  { label: 'Barra Fixa de CTA', component: StickyCta, settings: StickyCtaSettings, icon: '📌', description: 'Botão que segue a rolagem' },
   { label: 'Hero Simples', component: HeroSimple, settings: HeroSimpleSettings, icon: '🦸', description: 'Headline + CTA' },
   { label: 'Formulário de Captura', component: CaptureForm, settings: CaptureFormSettings, icon: '📝', description: 'Nome, e-mail, telefone' },
   { label: 'Player de Vídeo', component: VideoPlayer, settings: VideoPlayerSettings, icon: '▶️', description: 'YouTube ou Vimeo' },
@@ -541,7 +545,7 @@ export default function CraftEditor({ pageId, published, slug, initialJson }: Cr
     HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial,
     CtaButton, DeliveryCard, CountdownTimer, Guarantee, FaqAccordion, AuthorBio,
     ScarcityBar, BeforeAfter, BonusSection, PartnerLogos, RichText, PriceSection,
-    FullwidthBanner, ThankYouHero, Columns, Column, PageRootNode, PageRoot,
+    FullwidthBanner, ThankYouHero, Columns, Column, ExitPopup, StickyCta, PageRootNode, PageRoot,
   }
 
   return (

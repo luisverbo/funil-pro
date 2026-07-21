@@ -4,7 +4,7 @@ import { useNode, useEditor } from '@craftjs/core'
 import React, { useState, useEffect, useRef } from 'react'
 
 interface CountdownTimerProps {
-  mode?: 'duration' | 'datetime'
+  mode?: 'duration' | 'datetime' | 'evergreen'
   durationMinutes?: number
   targetDate?: string
   title?: string
@@ -65,6 +65,17 @@ export const CountdownTimer = ({
 
     if (mode === 'datetime' && targetDate) {
       endTs = new Date(targetDate).getTime()
+    } else if (mode === 'evergreen') {
+      // EVERGREEN: o prazo é POR VISITANTE e sobrevive a recarregar/fechar o
+      // navegador (localStorage). Cada pessoa tem seu próprio relógio.
+      const storageKey = `countdown_eg_${window.location.pathname}_${durationMinutes}`
+      const stored = localStorage.getItem(storageKey)
+      if (stored && Number(stored) > Date.now() - 30 * 86400000) {
+        endTs = Number(stored)
+      } else {
+        endTs = Date.now() + durationMinutes * 60 * 1000
+        localStorage.setItem(storageKey, String(endTs))
+      }
     } else {
       const storageKey = `countdown_end_${durationMinutes}`
       const stored = sessionStorage.getItem(storageKey)
@@ -148,13 +159,15 @@ export const CountdownTimerSettings = () => {
         <select
           className="w-full border border-gray-200 rounded-lg p-2 text-sm"
           value={props.mode}
-          onChange={(e) => setProp((p: CountdownTimerProps) => { p.mode = e.target.value as 'duration' | 'datetime' })}
+          onChange={(e) => setProp((p: CountdownTimerProps) => { p.mode = e.target.value as CountdownTimerProps['mode'] })}
         >
-          <option value="duration">Duração (minutos)</option>
+          <option value="duration">Duração (reinicia por aba)</option>
+          <option value="evergreen">⏳ Evergreen (por visitante, não reinicia)</option>
           <option value="datetime">Data/hora específica</option>
         </select>
+        {props.mode === 'evergreen' && <p className="text-[11px] text-gray-400 mt-1">Cada visitante tem seu próprio prazo — sobrevive a recarregar e voltar depois. Ideal pra oferta com escassez real.</p>}
       </div>
-      {props.mode === 'duration' ? (
+      {props.mode !== 'datetime' ? (
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Duração (minutos)</label>
           <input type="number" min={1} className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.durationMinutes} onChange={(e) => setProp((p: CountdownTimerProps) => { p.durationMinutes = Number(e.target.value) })} />

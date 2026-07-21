@@ -23,6 +23,8 @@ import { PriceSection } from '@/components/page-builder/sections/price-section'
 import { FullwidthBanner } from '@/components/page-builder/sections/fullwidth-banner'
 import { ThankYouHero } from '@/components/page-builder/sections/thank-you-hero'
 import { Columns, Column } from '@/components/page-builder/sections/columns'
+import { ExitPopup } from '@/components/page-builder/sections/exit-popup'
+import { StickyCta } from '@/components/page-builder/sections/sticky-cta'
 
 interface PageRootProps {
   children?: React.ReactNode
@@ -123,7 +125,7 @@ const KNOWN_COMPONENTS = new Set([
   'Testimonial', 'CtaButton', 'DeliveryCard', 'CountdownTimer', 'Guarantee',
   'FaqAccordion', 'AuthorBio', 'ScarcityBar', 'BeforeAfter', 'BonusSection',
   'PartnerLogos', 'RichText', 'PriceSection', 'FullwidthBanner', 'ThankYouHero',
-  'Columns', 'Column',
+  'Columns', 'Column', 'ExitPopup', 'StickyCta',
 ])
 
 function cleanCraftJson(json: object): object {
@@ -157,7 +159,7 @@ export default function CraftViewer({ craftJson, pageId, variables }: { craftJso
     HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial,
     CtaButton, DeliveryCard, CountdownTimer, Guarantee, FaqAccordion, AuthorBio,
     ScarcityBar, BeforeAfter, BonusSection, PartnerLogos, RichText, PriceSection,
-    FullwidthBanner, ThankYouHero, Columns, Column, PageRootNode, PageRoot,
+    FullwidthBanner, ThankYouHero, Columns, Column, ExitPopup, StickyCta, PageRootNode, PageRoot,
   }
 
   const hasContent = craftJson && Object.keys(craftJson).length > 0
