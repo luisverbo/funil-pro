@@ -84,6 +84,24 @@ export default function InstanceCard({ instance }: Props) {
     fetchQr()
   }
 
+  // Sessão fantasma: Evolution diz "conectado" mas o celular caiu.
+  // Desloga a sessão no servidor e libera QR novo.
+  const [reconnecting, setReconnecting] = useState(false)
+  const handleForceReconnect = async () => {
+    if (!confirm('Isso vai desconectar a sessão atual e gerar um QR Code novo. Continuar?')) return
+    setReconnecting(true)
+    try {
+      await fetch(`/api/whatsapp/${instance.id}/reconnect`, { method: 'POST' })
+      setStatus('disconnected')
+      setQrBase64(null)
+      // pequena espera pra Evolution reiniciar a instância antes de pedir o QR
+      await new Promise(r => setTimeout(r, 2500))
+      await fetchQr()
+    } finally {
+      setReconnecting(false)
+    }
+  }
+
   const handleCopyNumber = () => {
     setMenuOpen(false)
     const num = instance.phone_number ?? instance.instance_name
@@ -144,6 +162,13 @@ export default function InstanceCard({ instance }: Props) {
                     <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                   </svg>
                   Copiar número
+                </button>
+                <button onClick={() => { setMenuOpen(false); setQrModalOpen(true); handleForceReconnect() }} disabled={reconnecting}
+                  className="w-full px-4 py-2 text-left text-amber-600 hover:bg-amber-50 flex items-center gap-2.5 transition-colors disabled:opacity-50">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 shrink-0">
+                    <path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/>
+                  </svg>
+                  {reconnecting ? 'Reconectando…' : 'Forçar reconexão'}
                 </button>
                 <div className="border-t border-gray-100 my-1"/>
                 <button onClick={handleDelete} disabled={deleting} className="w-full px-4 py-2 text-left text-red-500 hover:bg-red-50 flex items-center gap-2.5 transition-colors disabled:opacity-50">
@@ -224,6 +249,10 @@ export default function InstanceCard({ instance }: Props) {
                 <p className="font-semibold text-emerald-600 text-lg">Conectado!</p>
                 <button onClick={() => setQrModalOpen(false)} className="mt-2 px-6 py-2 rounded-lg bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors">
                   Fechar
+                </button>
+                <button onClick={handleForceReconnect} disabled={reconnecting}
+                  className="text-xs text-amber-600 hover:text-amber-700 underline disabled:opacity-50">
+                  {reconnecting ? 'Desconectando…' : 'Diz conectado mas não está? Forçar reconexão (gera QR novo)'}
                 </button>
               </div>
             ) : loadingQr ? (

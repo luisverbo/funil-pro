@@ -95,6 +95,25 @@ export async function getInstanceStatus(instanceName: string): Promise<{ instanc
   return res.json()
 }
 
+/** Desloga a sessão do WhatsApp (limpa sessão fantasma) — a instância continua
+ *  existindo e volta a gerar QR Code novo */
+export async function logoutInstance(instanceName: string) {
+  const res = await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
+    method: 'DELETE',
+    headers: { apikey: EVOLUTION_API_KEY },
+  })
+  return res.ok
+}
+
+/** Reinicia a instância na Evolution (força nova conexão) */
+export async function restartInstance(instanceName: string) {
+  const res = await fetch(`${EVOLUTION_API_URL}/instance/restart/${instanceName}`, {
+    method: 'POST',
+    headers: { apikey: EVOLUTION_API_KEY },
+  })
+  return res.ok
+}
+
 export async function deleteInstance(instanceName: string) {
   const res = await fetch(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
     method: 'DELETE',
