@@ -3,8 +3,9 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { savePage, publishPage, unpublishPage } from '@/app/actions/pages'
-import { BIO_THEMES, emptyBio, type BioData, type BioButton } from '@/lib/bio/types'
+import { BIO_THEMES, buttonStyle, emptyBio, type BioData, type BioButton } from '@/lib/bio/types'
 import { ImageInput } from '@/components/page-builder/image-input'
+import { SocialIcon } from '@/app/pg/[slug]/bio-renderer'
 
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'b' + Math.random().toString(36).slice(2))
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-200'
@@ -91,12 +92,14 @@ export default function BioEditorClient({ page, clicks }: { page: any; clicks: R
           </div>
 
           <div>
-            <h3 className="text-sm font-bold text-gray-900 mb-2">🎨 Tema</h3>
-            <div className="grid grid-cols-5 gap-2">
+            <h3 className="text-sm font-bold text-gray-900 mb-2">🎨 Tema <span className="font-normal text-gray-400">({Object.keys(BIO_THEMES).length} opções)</span></h3>
+            <div className="grid grid-cols-6 gap-2">
               {Object.entries(BIO_THEMES).map(([key, th]) => (
-                <button key={key} onClick={() => patch({ theme: key as BioData['theme'] })}
-                  className={`h-14 rounded-xl border-2 ${bio.theme === key ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-transparent'}`}
-                  style={{ background: th.bg }} title={key} />
+                <button key={key} onClick={() => patch({ theme: key })}
+                  className={`h-12 rounded-xl border-2 relative overflow-hidden ${bio.theme === key ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-transparent'}`}
+                  style={{ background: th.bg }} title={key}>
+                  <span className="absolute inset-x-1.5 bottom-1.5 h-2 rounded-full" style={{ background: th.btnBg, border: `1px solid ${th.btnBorder}` }} />
+                </button>
               ))}
             </div>
           </div>
@@ -142,11 +145,44 @@ export default function BioEditorClient({ page, clicks }: { page: any; clicks: R
                   </div>
                   <input className={inputCls} value={b.url} onChange={e => patchBtn(b.id, { url: e.target.value })}
                     placeholder="https://… (link do quiz, página, wa.me, chat da IA)" />
+                  {/* 🎨 personalização do botão (cor, texto, borda, canto) */}
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-0.5">Cor</label>
+                      <input type="color" value={b.bg_color || '#ffffff'} onChange={e => patchBtn(b.id, { bg_color: e.target.value })}
+                        className="w-full h-8 border border-gray-200 rounded-lg cursor-pointer" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-0.5">Texto</label>
+                      <input type="color" value={b.text_color || '#111827'} onChange={e => patchBtn(b.id, { text_color: e.target.value })}
+                        className="w-full h-8 border border-gray-200 rounded-lg cursor-pointer" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-0.5">Borda</label>
+                      <input type="color" value={b.border_color || '#e5e7eb'} onChange={e => patchBtn(b.id, { border_color: e.target.value })}
+                        className="w-full h-8 border border-gray-200 rounded-lg cursor-pointer" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 block mb-0.5">Canto</label>
+                      <select value={b.radius ?? 'xl'} onChange={e => patchBtn(b.id, { radius: e.target.value as BioButton['radius'] })}
+                        className="w-full h-8 text-xs border border-gray-200 rounded-lg bg-white">
+                        <option value="md">Reto</option>
+                        <option value="xl">Suave</option>
+                        <option value="full">Redondo</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className="flex items-center justify-between">
-                    <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
-                      <input type="checkbox" checked={b.highlight ?? false} onChange={e => patchBtn(b.id, { highlight: e.target.checked })} className="accent-pink-500" />
-                      ✨ Destacar (pulsa)
-                    </label>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
+                        <input type="checkbox" checked={b.highlight ?? false} onChange={e => patchBtn(b.id, { highlight: e.target.checked })} className="accent-pink-500" />
+                        ✨ Destacar (pulsa)
+                      </label>
+                      {(b.bg_color || b.text_color || b.border_color) && (
+                        <button onClick={() => patchBtn(b.id, { bg_color: undefined, text_color: undefined, border_color: undefined })}
+                          className="text-[11px] text-gray-400 hover:text-gray-600 underline">usar cores do tema</button>
+                      )}
+                    </div>
                     <span className="text-[11px] text-gray-400">👆 {clicks[b.id] ?? 0} clique{(clicks[b.id] ?? 0) === 1 ? '' : 's'}</span>
                   </div>
                 </div>
@@ -174,9 +210,8 @@ export default function BioEditorClient({ page, clicks }: { page: any; clicks: R
                 {Object.values(bio.socials ?? {}).some(Boolean) && (
                   <div className="flex gap-3 mt-4">
                     {Object.entries(bio.socials ?? {}).filter(([, v]) => v).map(([key]) => (
-                      <span key={key} className="w-11 h-11 rounded-full flex items-center justify-center text-xl"
-                        style={{ background: t.btnBg, border: `1px solid ${t.btnBorder}` }}>
-                        {key === 'instagram' ? '📷' : key === 'youtube' ? '▶️' : key === 'tiktok' ? '🎵' : '💬'}
+                      <span key={key} className="w-11 h-11 rounded-full flex items-center justify-center shadow-md bg-white">
+                        <SocialIcon network={key} />
                       </span>
                     ))}
                   </div>
@@ -184,8 +219,8 @@ export default function BioEditorClient({ page, clicks }: { page: any; clicks: R
                 <div className="w-full flex flex-col gap-3.5 mt-7">
                   {bio.buttons.filter(b => b.label).map(b => (
                     <div key={b.id}
-                      className={`w-full py-4 px-5 rounded-2xl text-center font-semibold shadow-lg flex items-center justify-center gap-2 ${b.highlight ? 'animate-pulse' : ''}`}
-                      style={{ background: t.btnBg, color: t.btnText, border: `1px solid ${t.btnBorder}` }}>
+                      className={`w-full py-4 px-5 text-center font-semibold shadow-lg flex items-center justify-center gap-2 ${b.highlight ? 'animate-pulse' : ''}`}
+                      style={buttonStyle(b, t)}>
                       {b.emoji && <span className="text-lg">{b.emoji}</span>}
                       <span>{b.label}</span>
                     </div>

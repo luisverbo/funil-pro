@@ -243,7 +243,7 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
                   <button onClick={() => setStep(1)} className="flex-1 py-3 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50">← Voltar</button>
                   <button onClick={handleCreate} disabled={!pageName.trim() || isPending}
                     className="flex-1 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-50">
-                    {isPending ? 'Criando...' : '🧠 Criar Quiz'}
+                    {isPending ? 'Criando...' : selectedType === 'biolink' ? '🔗 Criar Bio Link' : '🧠 Criar Quiz'}
                   </button>
                 </div>
               </div>
