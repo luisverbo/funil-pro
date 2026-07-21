@@ -39,6 +39,7 @@ const BLOCK_META: Record<BlockType, { label: string; icon: string; category: str
   yes_no:         { label: 'Sim / Não',        icon: '👍', category: 'Quiz' },
   scale:          { label: 'Escala 1-10',      icon: '📊', category: 'Quiz' },
   video_answer:   { label: 'Vídeo resposta',   icon: '🎬', category: 'Quiz' },
+  heading:        { label: 'Título',           icon: '🔠', category: 'Mídia e conteúdo' },
   text_block:     { label: 'Texto',            icon: '📰', category: 'Mídia e conteúdo' },
   image:          { label: 'Imagem',           icon: '🖼️', category: 'Mídia e conteúdo' },
   video:          { label: 'Vídeo',            icon: '▶️',  category: 'Mídia e conteúdo' },
@@ -98,6 +99,7 @@ function defaultConfig(type: BlockType): BlockConfig {
     case 'field_phone':   return { label: 'Seu telefone',        placeholder: '(11) 99999-9999', required: false }
     case 'field_number':  return { label: 'Número',              placeholder: '0', required: false }
     case 'field_textarea':return { label: 'Sua mensagem',        placeholder: 'Digite aqui...', required: false }
+    case 'heading':       return { heading_text: 'Seu título aqui', heading_size: 'lg', heading_align: 'center' }
     case 'text_block':    return { content: '<p>Digite seu texto aqui...</p>' }
     case 'image':         return { image_url: '', image_size: 'medium', image_align: 'center' }
     case 'video':         return { video_url: '' }
@@ -485,6 +487,9 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
         </div>
       </div>
     )
+  } else if (block.type === 'heading') {
+    const sizeCls = config.heading_size === 'sm' ? 'text-lg' : config.heading_size === 'md' ? 'text-2xl' : config.heading_size === 'xl' ? 'text-4xl' : 'text-3xl'
+    summary = <p className={`${sizeCls} font-bold text-gray-900 leading-tight`} style={{ textAlign: config.heading_align ?? 'center', color: config.heading_color || undefined }}>{config.heading_text || <span className="italic text-gray-400 text-base font-normal">Título vazio</span>}</p>
   } else if (block.type === 'text_block') {
     // decodifica HTML (tira tags E entidades como &nbsp;) pra prévia não mostrar código
     const text = (() => {
@@ -709,7 +714,12 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
       </div>
     )
   } else if (block.type === 'spacer') {
-    summary = <div className="text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded py-2">Espaço · {config.spacer_height ?? 40}px</div>
+    // mostra o espaço REAL no construtor (antes só via texto)
+    summary = (
+      <div className="relative border border-dashed border-gray-300 rounded bg-[repeating-linear-gradient(45deg,#f9fafb,#f9fafb_6px,#f3f4f6_6px,#f3f4f6_12px)]" style={{ height: config.spacer_height ?? 40 }}>
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-400">↕ {config.spacer_height ?? 40}px</span>
+      </div>
+    )
   } else if (block.type === 'html_embed') {
     summary = <div className="text-xs text-gray-500 font-mono bg-gray-50 rounded px-2 py-1.5 truncate">{'</> '}{(config.html_content || 'HTML').slice(0, 40)}</div>
   }
@@ -835,6 +845,8 @@ function CenterPanel({
   onSelectBlock: (blockId: string) => void
   onDeleteBlock: (blockId: string) => void
 }) {
+  const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
+
   if (!activePage) {
     return (
       <div className="flex-1 bg-gray-100 flex items-center justify-center">
@@ -851,10 +863,20 @@ function CenterPanel({
           <span className="text-[10px] font-bold text-indigo-600">{activePage.order + 1}</span>
         </div>
         <p className="text-sm font-semibold text-gray-800 truncate">{activePage.title}</p>
-        <span className="text-xs text-gray-400 ml-auto">{activePage.blocks.length} {activePage.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
+        {/* Toggle mobile / desktop */}
+        <div className="ml-auto flex items-center bg-white border border-gray-200 rounded-lg p-0.5">
+          <button onClick={() => setDevice('desktop')} title="Computador"
+            className={`px-2 py-1 rounded-md text-xs transition-colors ${device === 'desktop' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600'}`}>🖥️</button>
+          <button onClick={() => setDevice('mobile')} title="Celular"
+            className={`px-2 py-1 rounded-md text-xs transition-colors ${device === 'mobile' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600'}`}>📱</button>
+        </div>
+        <span className="text-xs text-gray-400">{activePage.blocks.length} {activePage.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
       </div>
 
-      <div className="max-w-xl mx-auto p-6">
+      <div className={`mx-auto p-6 transition-all duration-200 ${device === 'mobile' ? 'max-w-[380px]' : 'max-w-xl'}`}>
+        {device === 'mobile' && (
+          <div className="text-center text-[11px] text-gray-400 mb-2">📱 Prévia no celular (largura real ~380px)</div>
+        )}
         <ActivePageView
           page={activePage}
           pages={pages}
@@ -1173,6 +1195,42 @@ function BlockEditor({
         </>
       )}
 
+      {/* Heading (Título) */}
+      {block.type === 'heading' && (
+        <>
+          <div>
+            <label className={labelCls}>Texto do título</label>
+            <input value={config.heading_text ?? ''} onChange={e => setConfigKey('heading_text', e.target.value)} className={inputCls} placeholder="Seu título aqui" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Tamanho</label>
+              <select value={config.heading_size ?? 'lg'} onChange={e => setConfigKey('heading_size', e.target.value as 'sm' | 'md' | 'lg' | 'xl')} className={inputCls}>
+                <option value="sm">Pequeno</option>
+                <option value="md">Médio</option>
+                <option value="lg">Grande</option>
+                <option value="xl">Enorme</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Alinhamento</label>
+              <select value={config.heading_align ?? 'center'} onChange={e => setConfigKey('heading_align', e.target.value as 'left' | 'center' | 'right')} className={inputCls}>
+                <option value="left">Esquerda</option>
+                <option value="center">Centro</option>
+                <option value="right">Direita</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Cor (vazio = cor do tema)</label>
+            <div className="flex gap-2 items-center">
+              <input type="color" value={config.heading_color || '#111827'} onChange={e => setConfigKey('heading_color', e.target.value)} className="h-9 w-16 border border-gray-200 rounded-lg cursor-pointer" />
+              <button onClick={() => setConfigKey('heading_color', '')} className="text-xs text-gray-500 underline">Usar cor do tema</button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Form fields */}
       {['field_text','field_email','field_phone','field_number','field_textarea','field_date','field_height','field_weight'].includes(block.type) && (
         <>
@@ -1393,6 +1451,19 @@ function BlockEditor({
       {/* Carousel */}
       {block.type === 'carousel' && (
         <div>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div>
+              <label className={labelCls}>Ajuste da imagem</label>
+              <select value={config.carousel_fit ?? 'contain'} onChange={e => setConfigKey('carousel_fit', e.target.value as 'cover' | 'contain')} className={inputCls}>
+                <option value="contain">Mostrar inteira (não corta)</option>
+                <option value="cover">Preencher (pode cortar)</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Altura: {config.carousel_height ?? 320}px</label>
+              <input type="range" min={160} max={520} value={config.carousel_height ?? 320} onChange={e => setConfigKey('carousel_height', Number(e.target.value))} className="w-full mt-2" />
+            </div>
+          </div>
           <div className="flex items-center justify-between mb-2">
             <label className={labelCls.replace('mb-1.5','')}>Imagens do carrossel</label>
             <button onClick={() => setConfigKey('carousel_items', [...(config.carousel_items ?? []), { id: newId(), image_url: '' }])} className="text-xs text-indigo-600 font-medium">+ Adicionar</button>

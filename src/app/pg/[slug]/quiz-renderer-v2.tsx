@@ -16,13 +16,13 @@ declare global {
 
 // Blocos que NÃO são perguntas/inputs — usados para validação, auto-advance e detecção de landing
 const NON_INPUT_BLOCKS = new Set([
-  'result','text_block','image','video','audio','button',
+  'result','heading','text_block','image','video','audio','button',
   'hero','testimonials','features','faq','countdown','pricing',
   'alert','notification','loading','level','checklist','before_after','carousel',
   'metrics','chart','spacer','html_embed',
 ])
 const LANDING_BLOCKS = new Set([
-  'hero','testimonials','features','faq','countdown','text_block','image','video','audio',
+  'hero','testimonials','features','faq','countdown','heading','text_block','image','video','audio',
   'pricing','alert','notification','loading','level','checklist','before_after','carousel',
   'metrics','chart','spacer','html_embed',
 ])
@@ -191,13 +191,13 @@ function LoadingBlock({ config, onDone, theme, primaryColor }: { config: BlockCo
 }
 
 // Carrossel de imagens
-function CarouselBlock({ items, theme }: { items: CarouselItem[]; theme: ThemeShape }) {
+function CarouselBlock({ items, theme, fit = 'contain', height = 320 }: { items: CarouselItem[]; theme: ThemeShape; fit?: 'cover' | 'contain'; height?: number }) {
   const [idx, setIdx] = useState(0)
   if (items.length === 0) return null
   const go = (d: number) => setIdx(i => (i + d + items.length) % items.length)
   return (
-    <div className="relative rounded-2xl overflow-hidden" style={{ border: theme.cardBorder }}>
-      <img src={items[idx].image_url} alt="" className="w-full h-56 object-cover" />
+    <div className="relative rounded-2xl overflow-hidden" style={{ border: theme.cardBorder, background: fit === 'contain' ? (theme.isDark ? '#0f172a' : '#f1f5f9') : undefined }}>
+      <img src={items[idx].image_url} alt="" className="w-full" style={{ height, objectFit: fit }} />
       {items[idx].caption && <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-sm px-4 py-2">{items[idx].caption}</div>}
       {items.length > 1 && (
         <>
@@ -732,6 +732,17 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
+        {block.type === 'heading' && (
+          <h2 className="font-bold leading-tight"
+            style={{
+              textAlign: config.heading_align ?? 'center',
+              color: config.heading_color || theme.textColor,
+              fontSize: config.heading_size === 'sm' ? '1.375rem' : config.heading_size === 'md' ? '1.75rem' : config.heading_size === 'xl' ? '2.75rem' : '2.125rem',
+            }}>
+            {config.heading_text}
+          </h2>
+        )}
+
         {block.type === 'text_block' && config.content && (
           <div className="prose max-w-none"
             style={{ color: theme.textColor, textAlign: config.text_align ?? 'center' }}
@@ -1032,7 +1043,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         )}
 
         {/* Carousel */}
-        {block.type === 'carousel' && <CarouselBlock items={config.carousel_items ?? []} theme={theme} />}
+        {block.type === 'carousel' && <CarouselBlock items={config.carousel_items ?? []} theme={theme} fit={config.carousel_fit ?? 'contain'} height={config.carousel_height ?? 320} />}
 
         {/* Metrics */}
         {block.type === 'metrics' && (

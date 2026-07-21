@@ -12,7 +12,7 @@ export type BlockType =
   | 'field_text' | 'field_email' | 'field_phone' | 'field_number' | 'field_textarea'
   | 'field_date' | 'field_height' | 'field_weight'
   | 'single_choice' | 'multi_choice' | 'yes_no' | 'scale' | 'video_answer'
-  | 'text_block' | 'image' | 'video' | 'audio'
+  | 'heading' | 'text_block' | 'image' | 'video' | 'audio'
   | 'button' | 'final_capture' | 'result'
   | 'hero' | 'testimonials' | 'features' | 'faq' | 'countdown'
   | 'alert' | 'notification' | 'loading' | 'level'
@@ -105,6 +105,12 @@ export interface BlockConfig {
   options?: BlockOption[]
   scale_min?: number
   scale_max?: number
+
+  // Heading (Título)
+  heading_text?: string
+  heading_size?: 'sm' | 'md' | 'lg' | 'xl'
+  heading_align?: 'left' | 'center' | 'right'
+  heading_color?: string
 
   // Text block
   content?: string
@@ -230,6 +236,8 @@ export interface BlockConfig {
 
   // Carousel
   carousel_items?: CarouselItem[]
+  carousel_fit?: 'cover' | 'contain'   // 'contain' = mostra a imagem inteira (não corta)
+  carousel_height?: number
 
   // Metrics
   metrics_items?: MetricItem[]
