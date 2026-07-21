@@ -10,6 +10,7 @@ const PUBLIC_PREFIXES = [
   '/privacidade',
   '/api/track',
   '/api/quiz',
+  '/api/pages/',
   '/api/agents/public/',
   '/p/',
   '/f/',

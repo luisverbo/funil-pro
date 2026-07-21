@@ -52,14 +52,19 @@ function HtmlEmbed({ html }: { html: string }) {
   const [height, setHeight] = useState(120)
   const srcDoc = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:system-ui,sans-serif}</style></head><body>${html}</body></html>`
   useEffect(() => {
+    // mede a altura por ~10s após montar (scripts terminam de renderizar) e para —
+    // antes o intervalo rodava pra sempre em cada embed (vazamento)
+    let ticks = 0
     const iv = setInterval(() => {
+      ticks++
       try {
         const h = ref.current?.contentWindow?.document?.body?.scrollHeight
-        if (h && Math.abs(h - height) > 4) setHeight(h)
+        if (h) setHeight(prev => Math.abs(h - prev) > 4 ? h : prev)
       } catch { /* cross-origin */ }
+      if (ticks >= 20) clearInterval(iv)
     }, 500)
     return () => clearInterval(iv)
-  }, [height])
+  }, [])
   return (
     <iframe ref={ref} srcDoc={srcDoc} sandbox="allow-scripts allow-popups allow-forms"
       style={{ width: '100%', height, border: 'none' }} title="embed" />
@@ -331,6 +336,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           for (const lbl of (ans[block.id] as string[]) ?? []) {
             total += (block.config.options ?? []).find(o => o.label === lbl)?.points ?? 0
           }
+        } else if (block.type === 'scale') {
+          // escala soma o valor escolhido na pontuação (NPS/diagnóstico)
+          const v = ans[block.id]
+          if (typeof v === 'number') total += v
         }
       }
     }
@@ -393,7 +402,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
   const currentPage = pages[pageIdx]
   const totalPages = pages.length
-  const progressPct = Math.round((pageIdx / totalPages) * 100)
+  const progressPct = Math.round(((pageIdx + 1) / Math.max(1, totalPages)) * 100)
 
   function setAnswer(blockId: string, value: unknown, quizPageId: string, eventType = 'choice_selected') {
     setAnswers(a => ({ ...a, [blockId]: value }))
@@ -410,6 +419,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         const opts = block.config.options ?? []
         if (block.type === 'single_choice' || block.type === 'yes_no') {
           const chosen = opts.find(o => o.label === ans)
+          if (chosen?.goto_page_id) {
+            const idx = pages.findIndex(p => p.id === chosen.goto_page_id)
+            if (idx >= 0) return idx
+          }
+        } else if (block.type === 'multi_choice') {
+          // múltipla escolha também ramifica: a 1ª opção marcada com destino vence
+          const selected = Array.isArray(ans) ? ans as string[] : []
+          const chosen = opts.find(o => selected.includes(o.label) && o.goto_page_id)
           if (chosen?.goto_page_id) {
             const idx = pages.findIndex(p => p.id === chosen.goto_page_id)
             if (idx >= 0) return idx
@@ -689,10 +706,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               value={(val as string) ?? ''}
               onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
               placeholder={config.placeholder}
-              className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white transition"
-              style={{ borderColor: err ? '#ef4444' : undefined }}
+              className="w-full px-5 py-4 text-lg border-2 rounded-2xl focus:outline-none transition"
+              style={{
+                borderColor: err ? '#ef4444' : (theme.isDark ? '#334155' : '#e5e7eb'),
+                background: theme.isDark ? '#1e293b' : '#ffffff',
+                color: theme.textColor,
+              }}
               onFocus={e => e.target.style.borderColor = primaryColor}
-              onBlur={e => e.target.style.borderColor = err ? '#ef4444' : '#e5e7eb'}
+              onBlur={e => e.target.style.borderColor = err ? '#ef4444' : (theme.isDark ? '#334155' : '#e5e7eb')}
             />
           </div>
         )}
@@ -705,7 +726,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
               placeholder={config.placeholder}
               rows={4}
-              className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white resize-none"
+              className="w-full px-5 py-4 text-lg border-2 rounded-2xl focus:outline-none resize-none"
+              style={{ borderColor: theme.isDark ? '#334155' : '#e5e7eb', background: theme.isDark ? '#1e293b' : '#ffffff', color: theme.textColor }}
             />
           </div>
         )}
@@ -713,7 +735,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         {block.type === 'text_block' && config.content && (
           <div className="prose max-w-none"
             style={{ color: theme.textColor, textAlign: config.text_align ?? 'center' }}
-            dangerouslySetInnerHTML={{ __html: config.content }} />
+            dangerouslySetInnerHTML={{ __html: config.content.replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }} />
         )}
 
         {block.type === 'image' && config.image_url && (
@@ -755,26 +777,30 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           )
         })()}
 
-        {block.type === 'final_capture' && (
+        {block.type === 'final_capture' && (() => {
+          const inputStyle = { borderColor: theme.isDark ? '#334155' : '#e5e7eb', background: theme.isDark ? '#1e293b' : '#ffffff', color: theme.textColor }
+          const inputCls = 'w-full px-5 py-4 text-lg border-2 rounded-2xl focus:outline-none'
+          return (
           <div className="space-y-3">
             {config.show_name && (
-              <input type="text" placeholder="Seu nome"
+              <input type="text" placeholder="Seu nome" defaultValue={captureRef.current.name ?? ''}
                 onChange={e => { captureRef.current.name = e.target.value }}
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white" />
+                className={inputCls} style={inputStyle} />
             )}
             {config.show_email && (
-              <input type="email" placeholder="seu@email.com"
+              <input type="email" placeholder="seu@email.com" defaultValue={captureRef.current.email ?? ''}
                 onChange={e => { captureRef.current.email = e.target.value }}
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white" />
+                className={inputCls} style={inputStyle} />
             )}
             {config.show_phone && (
-              <input type="tel" placeholder="(11) 99999-9999"
+              <input type="tel" placeholder="(11) 99999-9999" defaultValue={captureRef.current.phone ?? ''}
                 onChange={e => { captureRef.current.phone = e.target.value }}
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white" />
+                className={inputCls} style={inputStyle} />
             )}
             {err && <p className="text-sm text-red-500 font-medium">{err}</p>}
           </div>
-        )}
+          )
+        })()}
 
         {block.type === 'hero' && (
           <div className={config.hero_align === 'left' ? 'text-left' : 'text-center'}>
@@ -883,7 +909,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                 value={(val as string) ?? ''}
                 onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
                 placeholder={config.placeholder}
-                className="w-full px-5 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:outline-none bg-white transition"
+                className="w-full px-5 py-4 text-lg border-2 rounded-2xl focus:outline-none transition"
+                style={{ borderColor: theme.isDark ? '#334155' : '#e5e7eb', background: theme.isDark ? '#1e293b' : '#ffffff', color: theme.textColor }}
               />
               {block.type !== 'field_date' && (
                 <span className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{block.type === 'field_height' ? 'cm' : 'kg'}</span>
@@ -1081,13 +1108,22 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     const newScore = computeScore(updated)
     setScore(newScore)
 
+    // Mescla contato preenchido nesta página (email/telefone) — o caminho de
+    // auto-avanço usava o leadData de estado antigo e podia submeter sem contato
+    let newLeadData = { ...leadData }
+    for (const block of page.blocks) {
+      if (block.type === 'field_email' && updated[block.id]) newLeadData = { ...newLeadData, email: String(updated[block.id]) }
+      if (block.type === 'field_phone' && updated[block.id]) newLeadData = { ...newLeadData, phone: String(updated[block.id]) }
+    }
+    setLeadData(newLeadData)
+
     const resultBlk = page.blocks.find(b => b.type === 'result')
-    if (resultBlk) { setResultBlock(resultBlk); submitResult(resultBlk, newScore, leadData); return }
+    if (resultBlk) { setResultBlock(resultBlk); submitResult(resultBlk, newScore, newLeadData); return }
 
     const next = resolveNextPage(pageIdx, updated, newScore)
     if (next === 'result') {
       const rb = resultBlock ?? pages.flatMap(p => p.blocks).find(b => b.type === 'result')
-      if (rb) { setResultBlock(rb); submitResult(rb, newScore, leadData) }
+      if (rb) { setResultBlock(rb); submitResult(rb, newScore, newLeadData) }
       return
     }
     if (next === 'end') { setPhase('done'); return }

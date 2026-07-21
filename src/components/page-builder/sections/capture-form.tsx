@@ -15,6 +15,9 @@ interface CaptureFormProps {
   bgColor?: string
   paddingY?: number
   textAlign?: 'center' | 'left'
+  redirectUrl?: string
+  successTitle?: string
+  successMessage?: string
 }
 
 export const CaptureForm = ({
@@ -28,27 +31,56 @@ export const CaptureForm = ({
   bgColor = '#F8FAFC',
   paddingY = 60,
   textAlign = 'center',
+  redirectUrl = '',
+  successTitle = 'Recebemos seus dados!',
+  successMessage = 'Em breve entraremos em contato.',
 }: CaptureFormProps) => {
   const { connectors: { connect, drag } } = useNode()
   const { enabled: editorEnabled } = useEditor((state) => ({ enabled: state.options.enabled }))
-  const { track } = usePageTracking()
+  const { pageId, track } = usePageTracking()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (editorEnabled) return
+    setError(null)
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())
+    const phoneDigits = phone.replace(/\D/g, '')
+    if (!emailOk && !(showPhone && phoneDigits.length >= 10)) {
+      setError(showPhone ? 'Informe um e-mail ou WhatsApp válido' : 'Informe um e-mail válido')
+      return
+    }
     setSubmitting(true)
     try {
-      track('form_submitted', { name, email, phone })
+      // UTM da URL atual (ou capturada na entrada da página)
+      let utm: Record<string, string> = {}
+      try { utm = JSON.parse(localStorage.getItem('funil_utm') ?? '{}') } catch {}
+      const sp = new URLSearchParams(window.location.search)
+      for (const k of ['utm_source', 'utm_campaign', 'utm_campaign_id', 'utm_adset_id', 'utm_ad_id', 'utm_content']) {
+        const v = sp.get(k); if (v) utm[k] = v
+      }
+      const res = await fetch(`/api/pages/${pageId}/capture`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(), email: email.trim(), phone: phoneDigits, utm,
+          referrer: document.referrer, landing_url: window.location.href,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(json.error ?? 'Erro ao enviar, tente de novo'); return }
+      if (json.leadId) localStorage.setItem('funil_lid', json.leadId)
+      track('form_submitted', { name, email })
       if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).fbq) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(window as any).fbq('track', 'Lead', { name, email, phone })
+        ;(window as any).fbq('track', 'Lead')
       }
+      if (redirectUrl) { window.location.href = redirectUrl; return }
       setSubmitted(true)
     } finally {
       setSubmitting(false)
@@ -68,8 +100,8 @@ export const CaptureForm = ({
         {submitted && !editorEnabled ? (
           <div className="text-center py-8">
             <div className="text-5xl mb-4">✅</div>
-            <p className="text-lg font-semibold text-gray-800">Recebemos seus dados!</p>
-            <p className="text-sm text-gray-500 mt-2">Em breve entraremos em contato.</p>
+            <p className="text-lg font-semibold text-gray-800">{successTitle}</p>
+            <p className="text-sm text-gray-500 mt-2">{successMessage}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -99,6 +131,7 @@ export const CaptureForm = ({
                 className="w-full border border-gray-300 rounded-xl px-4 py-3 text-base text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
             )}
+            {error && <p className="text-sm text-red-500 text-center">{error}</p>}
             <button
               type={editorEnabled ? 'button' : 'submit'}
               disabled={submitting}
@@ -161,6 +194,19 @@ export const CaptureFormSettings = () => {
         <label className="block text-xs font-medium text-gray-500 mb-1">Espaçamento vertical (px)</label>
         <input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.paddingY} onChange={(e) => setProp((p: CaptureFormProps) => { p.paddingY = Number(e.target.value) })} />
       </div>
+      <div className="border-t pt-3">
+        <label className="block text-xs font-medium text-gray-500 mb-1">Redirecionar após enviar (URL)</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://… ou /pg/obrigado (vazio = mensagem)" value={props.redirectUrl ?? ''} onChange={(e) => setProp((p: CaptureFormProps) => { p.redirectUrl = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Título de sucesso</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.successTitle ?? ''} onChange={(e) => setProp((p: CaptureFormProps) => { p.successTitle = e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Mensagem de sucesso</label>
+        <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.successMessage ?? ''} onChange={(e) => setProp((p: CaptureFormProps) => { p.successMessage = e.target.value })} />
+      </div>
+      <p className="text-[11px] text-emerald-600 bg-emerald-50 rounded-lg p-2">✅ O lead é salvo no CRM automaticamente. Se a página estiver ligada a um funil (⚙️ Configurações), ele entra no funil na hora.</p>
     </div>
   )
 }
@@ -178,6 +224,9 @@ CaptureForm.craft = {
     bgColor: '#F8FAFC',
     paddingY: 60,
     textAlign: 'center',
+    redirectUrl: '',
+    successTitle: 'Recebemos seus dados!',
+    successMessage: 'Em breve entraremos em contato.',
   },
   related: { toolbar: CaptureFormSettings },
 }

@@ -98,7 +98,12 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
       <Btn title="Alinhar à direita" onClick={() => exec('justifyRight')}>➡</Btn>
       <div className="w-px h-5 bg-gray-200 mx-0.5 self-center" />
       <Btn title="Lista" onClick={() => exec('insertUnorderedList')}>•</Btn>
-      <Btn title="Link" onClick={() => { const url = prompt('URL do link:'); if (url) exec('createLink', url) }}>🔗</Btn>
+      <Btn title="Link" onClick={() => {
+        const url = prompt('URL do link:')?.trim()
+        // só http(s) — bloqueia javascript:/data: (XSS armazenado na página publicada)
+        if (url && /^https?:\/\//i.test(url)) exec('createLink', url)
+        else if (url) alert('Use um link começando com http:// ou https://')
+      }}>🔗</Btn>
       <select
         title="Tamanho"
         onMouseDown={e => e.stopPropagation()}

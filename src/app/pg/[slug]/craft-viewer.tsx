@@ -74,6 +74,14 @@ function TrackingProvider({ pageId, children }: { pageId?: string; children: Rea
     const params = new URLSearchParams(window.location.search)
     const lid = params.get('lid')
     if (lid) localStorage.setItem('funil_lid', lid)
+    // guarda os UTMs da entrada — o formulário de captura envia junto (atribuição)
+    const utm: Record<string, string> = {}
+    for (const k of ['utm_source', 'utm_campaign', 'utm_campaign_id', 'utm_adset_id', 'utm_ad_id', 'utm_content']) {
+      const v = params.get(k); if (v) utm[k] = v
+    }
+    if (Object.keys(utm).length > 0) {
+      try { localStorage.setItem('funil_utm', JSON.stringify(utm)) } catch {}
+    }
     track('page_viewed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -112,9 +120,11 @@ function applyVariables(craftJson: object, variables: Record<string, string>): o
   if (!variables || Object.keys(variables).length === 0) return craftJson
   let str = JSON.stringify(craftJson)
   for (const [key, value] of Object.entries(variables)) {
-    str = str.replaceAll(`{${key}}`, value)
+    // escapa o valor pra não quebrar o JSON (aspas, barras, quebras de linha)
+    const safe = JSON.stringify(String(value)).slice(1, -1)
+    str = str.replaceAll(`{${key}}`, safe)
   }
-  return JSON.parse(str)
+  try { return JSON.parse(str) } catch { return craftJson }
 }
 
 export default function CraftViewer({ craftJson, pageId, variables }: { craftJson: object; pageId?: string; variables?: Record<string, string> }) {

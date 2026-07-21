@@ -44,15 +44,8 @@ export async function POST(req: NextRequest) {
         })
       } catch { /* ignore */ }
 
-      // Increment counters
-      if (event_type === 'page_viewed') {
-        try {
-          const { data: p } = await admin.from('pages').select('views_count').eq('id', page_id).single()
-          if (p) {
-            await admin.from('pages').update({ views_count: (p.views_count ?? 0) + 1 }).eq('id', page_id)
-          }
-        } catch { /* ignore */ }
-      }
+      // views_count é contado no render do servidor (pg/[slug]) — aqui não,
+      // senão cada visita com lid contava 2x
       if (event_type === 'button_clicked') {
         try {
           const { data: p } = await admin.from('pages').select('clicks_count').eq('id', page_id).single()

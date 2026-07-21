@@ -10,8 +10,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pag
     const admin = createAdminClient()
 
     // Verify funnel is published and belongs to same tenant as the quiz page
-    const { data: page } = await admin.from('pages').select('tenant_id').eq('id', pageId).single()
-    if (!page) return NextResponse.json({ error: 'page not found' }, { status: 404 })
+    const { data: page } = await admin.from('pages').select('tenant_id, published, quiz_data').eq('id', pageId).single()
+    if (!page || !page.published) return NextResponse.json({ error: 'page not found' }, { status: 404 })
+
+    // SEGURANÇA: o funil precisa estar configurado NESTE quiz (body não manda)
+    const configured = new Set<string>()
+    const collect = (o: unknown) => {
+      if (Array.isArray(o)) { o.forEach(collect); return }
+      if (o && typeof o === 'object') {
+        for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+          if ((k === 'funnel_id' || k === 'target_funnel_id' || k === 'enroll_funnel_id') && typeof v === 'string' && v) configured.add(v)
+          else collect(v)
+        }
+      }
+    }
+    collect(page.quiz_data)
+    if (!configured.has(String(funnelId))) {
+      return NextResponse.json({ error: 'funil não configurado neste quiz' }, { status: 403 })
+    }
 
     const { data: funnel } = await admin.from('funnels').select('id, tenant_id, status').eq('id', funnelId).single()
     if (!funnel || funnel.tenant_id !== page.tenant_id || funnel.status !== 'published') {

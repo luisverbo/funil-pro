@@ -7,9 +7,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pag
     const { blockId, leadId, url, payload } = await req.json()
     const admin = createAdminClient()
 
-    // Verify page exists
-    const { data: page } = await admin.from('pages').select('id, tenant_id').eq('id', pageId).single()
-    if (!page) return NextResponse.json({ error: 'not found' }, { status: 404 })
+    // Verify page exists and is published
+    const { data: page } = await admin.from('pages').select('id, tenant_id, published, quiz_data').eq('id', pageId).single()
+    if (!page || !page.published) return NextResponse.json({ error: 'not found' }, { status: 404 })
+
+    // ANTI-SSRF: só dispara URLs que estão de fato configuradas nos blocos deste
+    // quiz — nunca uma URL vinda do body do visitante
+    const configured = new Set<string>()
+    const collect = (o: unknown) => {
+      if (Array.isArray(o)) { o.forEach(collect); return }
+      if (o && typeof o === 'object') {
+        for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+          if (k === 'webhook_url' && typeof v === 'string' && v.startsWith('http')) configured.add(v)
+          else collect(v)
+        }
+      }
+    }
+    collect(page.quiz_data)
+    if (!configured.has(String(url))) {
+      return NextResponse.json({ error: 'webhook não configurado neste quiz' }, { status: 403 })
+    }
 
     // Fire webhook
     let statusCode: number | null = null

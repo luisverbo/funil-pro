@@ -13,11 +13,12 @@ export async function POST(
     // Get quiz page info (need tenant_id)
     const { data: page } = await admin
       .from('pages')
-      .select('id, tenant_id')
+      .select('id, tenant_id, published')
       .eq('id', pageId)
       .single()
 
-    if (!page) return NextResponse.json({ error: 'quiz not found' }, { status: 404 })
+    // só quiz publicado aceita tracking (evita flood em rascunhos)
+    if (!page || !page.published) return NextResponse.json({ error: 'quiz not found' }, { status: 404 })
 
     const action = body.action as string
 

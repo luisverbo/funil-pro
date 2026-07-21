@@ -20,13 +20,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Isso impede que um visitante forje um tenantId e escreva em outro tenant.
     const { data: page } = await admin
       .from('pages')
-      .select('tenant_id')
+      .select('tenant_id, published, quiz_data')
       .eq('id', pageId)
       .single()
-    if (!page) {
+    if (!page || !page.published) {
       return NextResponse.json({ success: false, error: 'page_not_found' }, { status: 404 })
     }
     const tenantId: string = page.tenant_id
+
+    // SEGURANÇA: só aceita funnel_id que está de fato configurado neste quiz
+    // (antes um visitante podia disparar QUALQUER funil do tenant via body forjado)
+    let safeFunnelId: string | null = null
+    if (funnel_id) {
+      const configured = new Set<string>()
+      const collect = (o: unknown) => {
+        if (Array.isArray(o)) { o.forEach(collect); return }
+        if (o && typeof o === 'object') {
+          for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+            if ((k === 'funnel_id' || k === 'target_funnel_id' || k === 'enroll_funnel_id') && typeof v === 'string' && v) configured.add(v)
+            else collect(v)
+          }
+        }
+      }
+      collect(page.quiz_data)
+      if (configured.has(funnel_id)) safeFunnelId = funnel_id
+    }
 
     // Find or create lead
     let leadId: string | null = null
@@ -81,7 +99,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Activate funnel if configured
-    if (leadId && funnel_id) {
+    if (leadId && safeFunnelId) {
+      const funnel_id = safeFunnelId
       const { data: allBlocks } = await admin.from('funnel_blocks').select('id, block_type').eq('funnel_id', funnel_id).eq('tenant_id', tenantId)
       const { data: allEdges } = await admin.from('funnel_edges').select('target_block_id').eq('funnel_id', funnel_id)
       const targetIds = new Set((allEdges ?? []).map((e: { target_block_id: string }) => e.target_block_id))

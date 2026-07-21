@@ -30,7 +30,7 @@ import { BenefitsListSettings } from './sections/benefits-list'
 import { TestimonialSettings } from './sections/testimonial'
 import { CtaButtonSettings } from './sections/cta-button'
 import { DeliveryCardSettings } from './sections/delivery-card'
-import { savePage, publishPage, unpublishPage } from '@/app/actions/pages'
+import { savePage, publishPage, unpublishPage, getPage, savePageSettings, listTenantFunnels } from '@/app/actions/pages'
 import { savePageVersion, listPageVersions, restorePageVersion } from '@/app/actions/page-versions'
 
 interface PageRootProps { children?: React.ReactNode; backgroundColor?: string }
@@ -80,9 +80,9 @@ type PreviewMode = 'desktop' | 'mobile'
 
 interface VersionEntry { id: string; version_number: number; label: string | null; created_at: string }
 
-function EditorToolbar({ pageId, published, slug, previewMode, onPreviewToggle, onOpenVersions, lastSaved }: {
+function EditorToolbar({ pageId, published, slug, previewMode, onPreviewToggle, onOpenVersions, onOpenSettings, lastSaved }: {
   pageId: string; published: boolean; slug?: string | null
-  previewMode: PreviewMode; onPreviewToggle: () => void; onOpenVersions: () => void; lastSaved: Date | null
+  previewMode: PreviewMode; onPreviewToggle: () => void; onOpenVersions: () => void; onOpenSettings: () => void; lastSaved: Date | null
 }) {
   const { query, actions } = useEditor()
   const [saving, setSaving] = useState(false)
@@ -160,6 +160,9 @@ function EditorToolbar({ pageId, published, slug, previewMode, onPreviewToggle, 
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/></svg>
       </button>
 
+      <button onClick={onOpenSettings} className="p-2 text-gray-400 hover:text-white" title="Configurações (SEO, slug, funil)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008.6 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 110-4h.09A1.65 1.65 0 004.6 8.6a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      </button>
       <button onClick={onOpenVersions} className="p-2 text-gray-400 hover:text-white" title="Histórico de versões">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
       </button>
@@ -318,17 +321,119 @@ function Canvas({ initialJson, previewMode }: { initialJson?: object; previewMod
 
 function useAutoSave(pageId: string, query: ReturnType<typeof useEditor>['query'], intervalMs = 45000) {
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const lastSerialized = React.useRef<string | null>(null)
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const json = JSON.parse(query.serialize())
-        await savePage(pageId, json)
+        const serialized = query.serialize()
+        // só salva se realmente mudou (evita sobrescrever restaurações/estado antigo)
+        if (serialized === lastSerialized.current) return
+        await savePage(pageId, JSON.parse(serialized))
+        lastSerialized.current = serialized
         setLastSaved(new Date())
-      } catch {}
+      } catch (err) { console.error('[autosave]', err) }
     }, intervalMs)
     return () => clearInterval(timer)
   }, [pageId, query, intervalMs])
+  // aviso ao sair com alterações não salvas
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      try {
+        const cur = query.serialize()
+        if (lastSerialized.current !== null && cur !== lastSerialized.current) e.preventDefault()
+      } catch {}
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [query])
+  // baseline inicial (pra não disparar autosave logo ao abrir)
+  useEffect(() => {
+    const t = setTimeout(() => { try { lastSerialized.current = query.serialize() } catch {} }, 1500)
+    return () => clearTimeout(t)
+  }, [query])
   return lastSaved
+}
+
+// ⚙️ Configurações da página: SEO, slug e funil conectado
+function PageSettingsModal({ pageId, onClose }: { pageId: string; onClose: () => void }) {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [funnels, setFunnels] = useState<{ id: string; name: string }[]>([])
+  const [form, setForm] = useState({ title: '', slug: '', meta_title: '', meta_description: '', og_image_url: '', funnel_id: '' })
+
+  useEffect(() => {
+    Promise.all([getPage(pageId), listTenantFunnels()]).then(([p, fs]) => {
+      setForm({
+        title: p.title ?? '', slug: p.slug ?? '',
+        meta_title: p.meta_title ?? '', meta_description: p.meta_description ?? '',
+        og_image_url: p.og_image_url ?? '', funnel_id: p.funnel_id ?? '',
+      })
+      setFunnels(fs as { id: string; name: string }[])
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [pageId])
+
+  const save = async () => {
+    setSaving(true); setErr(null)
+    const r = await savePageSettings(pageId, {
+      title: form.title, slug: form.slug,
+      meta_title: form.meta_title, meta_description: form.meta_description,
+      og_image_url: form.og_image_url, funnel_id: form.funnel_id || null,
+    })
+    setSaving(false)
+    if (r?.error) { setErr(r.error); return }
+    onClose()
+  }
+
+  const field = 'w-full border border-gray-200 rounded-lg p-2 text-sm'
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-gray-900">⚙️ Configurações da página</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        {loading ? <p className="text-sm text-gray-400 py-6 text-center">Carregando…</p> : (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Nome da página</label>
+              <input className={field} value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Slug (URL: /pg/…)</label>
+              <input className={field} value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} />
+            </div>
+            <div className="border-t pt-3">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Título SEO (aba do navegador / Google)</label>
+              <input className={field} value={form.meta_title} onChange={e => setForm(f => ({ ...f, meta_title: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Descrição SEO</label>
+              <textarea className={field + ' h-16'} value={form.meta_description} onChange={e => setForm(f => ({ ...f, meta_description: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Imagem de compartilhamento (OG image URL)</label>
+              <input className={field} placeholder="https://…" value={form.og_image_url} onChange={e => setForm(f => ({ ...f, og_image_url: e.target.value }))} />
+            </div>
+            <div className="border-t pt-3">
+              <label className="block text-xs font-medium text-gray-500 mb-1">🔀 Funil conectado</label>
+              <select className={field} value={form.funnel_id} onChange={e => setForm(f => ({ ...f, funnel_id: e.target.value }))}>
+                <option value="">Nenhum</option>
+                {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">Quem preencher o formulário de captura desta página entra automaticamente neste funil (WhatsApp/e-mail).</p>
+            </div>
+            {err && <p className="text-sm text-red-500">{err}</p>}
+            <button onClick={save} disabled={saving}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl disabled:opacity-60">
+              {saving ? 'Salvando…' : 'Salvar configurações'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 interface CraftEditorProps { pageId: string; published: boolean; slug?: string | null; initialJson?: object }
@@ -337,6 +442,7 @@ function EditorInner({ pageId, published, slug, initialJson }: CraftEditorProps)
   const { query, actions } = useEditor()
   const [previewMode, setPreviewMode] = useState<PreviewMode>('desktop')
   const [showVersions, setShowVersions] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const lastSaved = useAutoSave(pageId, query)
 
   return (
@@ -346,6 +452,7 @@ function EditorInner({ pageId, published, slug, initialJson }: CraftEditorProps)
         previewMode={previewMode}
         onPreviewToggle={() => setPreviewMode((m) => m === 'desktop' ? 'mobile' : 'desktop')}
         onOpenVersions={() => setShowVersions(true)}
+        onOpenSettings={() => setShowSettings(true)}
         lastSaved={lastSaved}
       />
       <div className="flex-1 flex overflow-hidden relative">
@@ -360,6 +467,7 @@ function EditorInner({ pageId, published, slug, initialJson }: CraftEditorProps)
           onClose={() => setShowVersions(false)}
         />
       )}
+      {showSettings && <PageSettingsModal pageId={pageId} onClose={() => setShowSettings(false)} />}
     </div>
   )
 }
