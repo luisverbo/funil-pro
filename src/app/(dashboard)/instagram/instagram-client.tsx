@@ -188,18 +188,22 @@ export default function InstagramClient({ initialAutomations, connection, funnel
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Automações do Instagram</h1>
-          <p className="text-sm text-gray-500">Comentou a palavra-chave no post → responde o comentário e manda DM. A IA pode assumir a conversa.</p>
+      {/* Cabeçalho */}
+      <div className="flex items-start justify-between mb-5 flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 via-fuchsia-500 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg shadow-pink-200/60">📸</div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Instagram</h1>
+            <p className="text-sm text-gray-500">Comentário ou DM com a palavra-chave → responde e conversa sozinho.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <a href="/instagram/inbox"
-            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all">
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all">
             📥 Inbox
           </a>
           <button onClick={openModal}
-            className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200 transition-all hover:-translate-y-0.5">
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200 transition-all hover:-translate-y-0.5">
             + Nova automação
           </button>
         </div>
@@ -207,15 +211,18 @@ export default function InstagramClient({ initialAutomations, connection, funnel
 
       {/* Status da conexão */}
       {connection?.connected ? (
-        <div className="mt-4 mb-2 flex items-center gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+        <div className="mb-6 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/70 px-4 py-3">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+          </span>
           <p className="text-sm text-emerald-800">
             Conectado como <strong>@{connection.username}</strong>
-            {connection.accountId ? <span className="text-emerald-600/70"> · ID {connection.accountId}</span> : null}
+            {connection.accountId ? <span className="text-emerald-600/60"> · ID {connection.accountId}</span> : null}
           </p>
         </div>
       ) : (
-        <div className="mt-4 mb-2 rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4">
+        <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4">
           <p className="text-sm font-semibold text-amber-800 mb-2">⚠️ Instagram ainda não conectado</p>
           <ol className="text-sm text-amber-800/90 flex flex-col gap-1.5 list-decimal list-inside">
             <li>No painel da Meta (developers.facebook.com → seu app → caso de uso do Instagram), vá no passo <strong>&quot;2. Gerar tokens de acesso&quot;</strong>, conecte sua conta profissional e clique em <strong>Gerar token</strong>.</li>
@@ -229,63 +236,92 @@ export default function InstagramClient({ initialAutomations, connection, funnel
       )}
 
       {automations.length === 0 ? (
-        <div className="border-2 border-dashed rounded-2xl p-12 text-center text-gray-500 mt-6">
-          <p className="text-3xl mb-2">📸</p>
-          <p className="font-medium">Nenhuma automação ainda</p>
+        <div className="border-2 border-dashed border-gray-200 rounded-3xl p-14 text-center text-gray-500">
+          <p className="text-4xl mb-3">📸</p>
+          <p className="font-semibold text-gray-700">Nenhuma automação ainda</p>
           <p className="text-sm mt-1">Ex: quem comentar <span className="font-semibold">&quot;EU QUERO&quot;</span> no seu post recebe o link na DM automaticamente.</p>
+          <button onClick={openModal} className="mt-5 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200">+ Criar primeira automação</button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-          {automations.map(a => (
-            <div key={a.id} className="rounded-2xl bg-white border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
-              <div className="flex items-start gap-3">
-                {a.media_thumb
-                  ? <img src={a.media_thumb} alt="" className="w-14 h-14 rounded-xl object-cover" />
-                  : <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center text-xl">📣</div>}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-semibold text-gray-900 truncate">{a.name}</h3>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${a.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {a.status === 'active' ? 'Ativa' : 'Pausada'}
-                    </span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {automations.map(a => {
+            const seqN = a.dm_steps?.length ?? (a.dm_message ? 1 : 0)
+            const trigger = a.trigger_type === 'dm' ? { icon: '📩', label: 'DM com palavra-chave' }
+              : a.trigger_type === 'story_reply' ? { icon: '📱', label: 'Resposta a Story' }
+              : { icon: '💬', label: a.media_id ? 'Comentário em post' : 'Comentário em qualquer post' }
+            const active = a.status === 'active'
+            return (
+            <div key={a.id} className="group relative rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-gray-200/60 hover:-translate-y-1 transition-all duration-200 flex flex-col overflow-hidden">
+              {/* faixa superior */}
+              <div className="h-1.5 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-purple-600" />
+              <div className="p-5 flex flex-col gap-4 flex-1">
+                {/* topo: thumb + nome + status */}
+                <div className="flex items-start gap-3">
+                  {a.media_thumb
+                    ? <img src={a.media_thumb} alt="" className="w-12 h-12 rounded-2xl object-cover ring-1 ring-gray-100 shrink-0" />
+                    : <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center text-xl shrink-0">{trigger.icon}</div>}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-gray-900 truncate leading-tight">{a.name}</h3>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{trigger.icon} {trigger.label}</p>
                   </div>
-                  <p className="text-xs text-gray-400 truncate">
-                    {a.trigger_type === 'dm' ? '📩 Gatilho: DM'
-                      : a.trigger_type === 'story_reply' ? '📱 Gatilho: Story'
-                      : `💬 ${a.media_id ? (a.media_caption || 'Post específico') : 'Todos os posts'}`}
-                  </p>
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${active ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                    {active ? 'Ativa' : 'Pausada'}
+                  </span>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {a.keywords.length > 0
-                  ? a.keywords.map(k => <span key={k} className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium">{k}</span>)
-                  : <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">qualquer comentário</span>}
-              </div>
-              <div className="text-xs text-gray-500 flex flex-col gap-1">
-                {a.comment_replies.length > 0 && <p>💬 Responde: “{a.comment_replies[0]}”{a.comment_replies.length > 1 ? ` (+${a.comment_replies.length - 1})` : ''}</p>}
+
+                {/* palavras-chave */}
+                <div className="flex flex-wrap gap-1.5">
+                  {a.keywords.length > 0
+                    ? a.keywords.slice(0, 4).map(k => <span key={k} className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-medium">{k}</span>)
+                    : <span className="text-[11px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">qualquer comentário</span>}
+                  {a.keywords.length > 4 && <span className="text-[11px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-400">+{a.keywords.length - 4}</span>}
+                </div>
+
+                {/* o que faz — badges organizadas */}
+                <div className="flex flex-wrap gap-1.5">
+                  {a.comment_replies.length > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-pink-50 text-pink-600 font-medium">💬 Responde comentário</span>
+                  )}
+                  {seqN > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-purple-50 text-purple-600 font-medium">📨 {seqN} mensagem{seqN > 1 ? 's' : ''} na DM</span>
+                  )}
+                  {a.dm_use_agent && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-violet-50 text-violet-600 font-medium">🤖 IA assume</span>
+                  )}
+                  {a.funnel_id && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-sky-50 text-sky-600 font-medium">🔀 Funil</span>
+                  )}
+                  {a.lead_tag && (
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium">🏷 {a.lead_tag}</span>
+                  )}
+                </div>
+
+                {/* prévia da 1ª mensagem */}
                 {(() => {
-                  const n = a.dm_steps?.length ?? (a.dm_message ? 1 : 0)
                   const first = a.dm_steps?.[0]?.text ?? a.dm_message
-                  return n > 0 ? <p>📩 Sequência: {n} passo(s){first ? ` — “${first.slice(0, 45)}${first.length > 45 ? '…' : ''}”` : ''}</p> : null
+                  return first ? (
+                    <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2 line-clamp-2 leading-relaxed">“{first.slice(0, 90)}{first.length > 90 ? '…' : ''}”</p>
+                  ) : null
                 })()}
-                {a.dm_use_agent && <p>🤖 IA assume a conversa na DM</p>}
-                {a.funnel_id && <p>🔀 Lead entra num funil</p>}
-                {a.lead_tag && <p>🏷 Tag: {a.lead_tag}</p>}
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t border-gray-50 mt-auto">
-                <button onClick={() => openContacts(a)} className="text-xs text-gray-400 hover:text-indigo-600">
-                  {a.triggers_count} disparo(s) · 👥 ver contatos
+
+                {/* stat: disparos + contatos */}
+                <button onClick={() => openContacts(a)} className="mt-auto flex items-center gap-2 text-xs text-gray-500 hover:text-indigo-600 transition-colors self-start group/stat">
+                  <span className="inline-flex items-center justify-center min-w-[26px] h-6 px-2 rounded-lg bg-gray-100 text-gray-700 font-bold group-hover/stat:bg-indigo-50 group-hover/stat:text-indigo-600 transition-colors">{a.triggers_count}</span>
+                  disparo{a.triggers_count === 1 ? '' : 's'} · 👥 ver contatos
                 </button>
-                <div className="flex gap-3">
-                  <a href={`/instagram/${a.id}/editor`} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">🎨 Abrir no editor</a>
-                  <button onClick={() => toggle(a)} className={`text-xs font-medium ${a.status === 'active' ? 'text-amber-600' : 'text-emerald-600'}`}>
-                    {a.status === 'active' ? '⏸ Pausar' : '▶ Ativar'}
-                  </button>
-                  <button onClick={() => remove(a.id)} className="text-xs text-gray-300 hover:text-red-500">Excluir</button>
-                </div>
+              </div>
+
+              {/* barra de ações */}
+              <div className="flex items-stretch border-t border-gray-100 divide-x divide-gray-100 text-xs font-semibold">
+                <a href={`/instagram/${a.id}/editor`} className="flex-1 py-3 text-center text-indigo-600 hover:bg-indigo-50 transition-colors">🎨 Editor</a>
+                <button onClick={() => toggle(a)} className={`flex-1 py-3 text-center transition-colors ${active ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}>
+                  {active ? '⏸ Pausar' : '▶ Ativar'}
+                </button>
+                <button onClick={() => remove(a.id)} className="px-4 py-3 text-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">🗑</button>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 
