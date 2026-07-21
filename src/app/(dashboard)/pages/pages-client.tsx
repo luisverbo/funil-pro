@@ -14,7 +14,7 @@ const TEMPLATE_ICONS: Record<string, string> = {
   'capture-premium': '✨', 'lead-magnet': '📕', webinar: '🔴',
 }
 
-type PageType = 'capture' | 'vsl' | 'delivery' | 'thankyou' | 'sales' | 'interactive'
+type PageType = 'capture' | 'vsl' | 'delivery' | 'thankyou' | 'sales' | 'interactive' | 'biolink'
 
 const PAGE_TYPES: { type: PageType; label: string; icon: string; description: string; color: string }[] = [
   { type: 'capture',     label: 'Captura',    icon: '📝', description: 'Formulário para coletar leads',      color: 'indigo'  },
@@ -23,6 +23,7 @@ const PAGE_TYPES: { type: PageType; label: string; icon: string; description: st
   { type: 'thankyou',    label: 'Obrigado',   icon: '🙏', description: 'Confirmação após conversão',        color: 'green'   },
   { type: 'sales',       label: 'Vendas',     icon: '💰', description: 'Carta de vendas longa',             color: 'orange'  },
   { type: 'interactive', label: 'Quiz',       icon: '🧠', description: 'Formulário interativo estilo quiz', color: 'pink'    },
+  { type: 'biolink',     label: 'Bio Link',   icon: '🔗', description: 'Página de links do Instagram',      color: 'violet'  },
 ]
 
 const TYPE_COLORS: Record<string, string> = {
@@ -32,6 +33,7 @@ const TYPE_COLORS: Record<string, string> = {
   thankyou:    'bg-green-100 text-green-700',
   sales:       'bg-orange-100 text-orange-700',
   interactive: 'bg-pink-100 text-pink-700',
+  biolink:     'bg-violet-100 text-violet-700',
 }
 
 const TEMPLATE_OPTIONS = [
@@ -55,7 +57,8 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   const [isPending, startTransition] = useTransition()
 
   const filtered = filter === 'all' ? pages : pages.filter((p) => p.page_type === filter)
-  const isQuiz = selectedType === 'interactive'
+  // Quiz e Bio Link pulam a etapa de template (têm editor próprio)
+  const isQuiz = selectedType === 'interactive' || selectedType === 'biolink'
 
   function handleOpen() {
     setStep(1); setSelectedType('capture'); setSelectedTemplate('blank'); setPageName(''); setShowModal(true)
@@ -64,7 +67,11 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   function handleCreate() {
     if (!pageName.trim()) return
     startTransition(async () => {
-      if (isQuiz) {
+      if (selectedType === 'biolink') {
+        const page = await createPage({ name: pageName, page_type: 'biolink', craft_json: { version: 1, display_name: pageName, theme: 'gradient', buttons: [] } })
+        setShowModal(false)
+        router.push(`/bio-editor/${page.id}`)
+      } else if (isQuiz) {
         const page = await createPage({ name: pageName, page_type: 'interactive', craft_json: {} })
         setShowModal(false)
         router.push(`/quiz-editor/${page.id}`)
@@ -90,7 +97,9 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   }
 
   function getEditorPath(page: { id: string; page_type: string }) {
-    return page.page_type === 'interactive' ? `/quiz-editor/${page.id}` : `/page-editor/${page.id}`
+    if (page.page_type === 'interactive') return `/quiz-editor/${page.id}`
+    if (page.page_type === 'biolink') return `/bio-editor/${page.id}`
+    return `/page-editor/${page.id}`
   }
 
   return (

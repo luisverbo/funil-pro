@@ -111,6 +111,16 @@ export async function savePageSettings(id: string, s: {
   return { ok: true }
 }
 
+/** Cliques por botão de uma Bio Link */
+export async function getBioClicks(pageId: string): Promise<Record<string, number>> {
+  const supabase = await getSupabase()
+  await getTenantId(supabase)
+  const { data } = await supabase.from('bio_clicks').select('button_id, clicks').eq('page_id', pageId)
+  const out: Record<string, number> = {}
+  for (const r of data ?? []) out[r.button_id as string] = r.clicks as number
+  return out
+}
+
 /** Funis do tenant (pro seletor de funil das configurações da página) */
 export async function listTenantFunnels() {
   const supabase = await getSupabase()

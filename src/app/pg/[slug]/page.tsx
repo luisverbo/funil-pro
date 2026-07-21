@@ -4,7 +4,9 @@ import Script from 'next/script'
 import PageRenderer from './page-renderer'
 import QuizRenderer from './quiz-renderer'
 import QuizRendererV2 from './quiz-renderer-v2'
+import BioRenderer from './bio-renderer'
 import type { QuizData } from '@/app/actions/quiz-v2'
+import type { BioData } from '@/lib/bio/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +54,19 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
     .eq('id', page.tenant_id)
     .single()
   const pixelId = quizPixelId || ((tenantData as unknown as { meta_pixel_id?: string } | null)?.meta_pixel_id ?? null)
+
+  if (page.page_type === 'biolink') {
+    const bio = (page.craft_json ?? {}) as BioData
+    return (
+      <>
+        <title>{page.meta_title || bio.display_name || page.title || 'Links'}</title>
+        {page.meta_description && <meta name="description" content={page.meta_description} />}
+        {(page.og_image_url || bio.avatar_url) && <meta property="og:image" content={page.og_image_url || bio.avatar_url} />}
+        {pixelId && <MetaPixel pixelId={pixelId} />}
+        <BioRenderer data={bio} pageId={page.id} />
+      </>
+    )
+  }
 
   if (page.page_type === 'interactive') {
     // v2 format: quiz_data column with pages/blocks structure
