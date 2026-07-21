@@ -22,6 +22,7 @@ import { RichText, RichTextSettings } from './sections/rich-text'
 import { PriceSection, PriceSectionSettings } from './sections/price-section'
 import { FullwidthBanner, FullwidthBannerSettings } from './sections/fullwidth-banner'
 import { ThankYouHero, ThankYouHeroSettings } from './sections/thank-you-hero'
+import { Columns, Column, ColumnsSettings } from './sections/columns'
 import { HeroSimpleSettings } from './sections/hero-simple'
 import { CaptureFormSettings } from './sections/capture-form'
 import { VideoPlayerSettings } from './sections/video-player'
@@ -33,27 +34,90 @@ import { DeliveryCardSettings } from './sections/delivery-card'
 import { savePage, publishPage, unpublishPage, getPage, savePageSettings, listTenantFunnels } from '@/app/actions/pages'
 import { savePageVersion, listPageVersions, restorePageVersion } from '@/app/actions/page-versions'
 
-interface PageRootProps { children?: React.ReactNode; backgroundColor?: string }
+interface PageRootProps {
+  children?: React.ReactNode
+  backgroundColor?: string
+  bgGradient?: boolean
+  bgGradientTo?: string
+  fontFamily?: string
+}
 
-const PageRootNode = ({ children, backgroundColor = '#ffffff' }: PageRootProps) => {
+const PAGE_FONTS: Record<string, string> = {
+  '': '',
+  Inter: 'Inter:wght@400;600;700;800',
+  Poppins: 'Poppins:wght@400;600;700;800',
+  Montserrat: 'Montserrat:wght@400;600;700;800',
+  'Playfair Display': 'Playfair+Display:wght@400;600;700;800',
+}
+
+const PageRootNode = ({ children, backgroundColor = '#ffffff', bgGradient = false, bgGradientTo = '#eef2ff', fontFamily = '' }: PageRootProps) => {
   const { connectors: { connect } } = useNode()
+  const fontSpec = PAGE_FONTS[fontFamily]
   return (
-    <div ref={(ref) => { if (ref) connect(ref) }} style={{ backgroundColor, minHeight: '100vh' }} className="w-full">
+    <div ref={(ref) => { if (ref) connect(ref) }}
+      style={{
+        background: bgGradient ? `linear-gradient(160deg, ${backgroundColor} 0%, ${bgGradientTo} 100%)` : backgroundColor,
+        minHeight: '100vh',
+        fontFamily: fontFamily ? `'${fontFamily}', system-ui, sans-serif` : undefined,
+      }} className="w-full">
+      {fontSpec && (
+        // eslint-disable-next-line @next/next/no-page-custom-font
+        <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?family=${fontSpec}&display=swap`} />
+      )}
       {children}
+    </div>
+  )
+}
+
+// ⚙️ Estilo global da página — aparece ao clicar no fundo (nó raiz)
+const PageRootSettings = () => {
+  const { actions: { setProp }, props } = useNode((n) => ({ props: n.data.props as PageRootProps }))
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400">🎨 Estilo global — vale pra página inteira.</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Cor de fundo da página</label>
+        <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.backgroundColor ?? '#ffffff'}
+          onChange={(e) => setProp((p: PageRootProps) => { p.backgroundColor = e.target.value })} />
+      </div>
+      <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+        <input type="checkbox" checked={props.bgGradient ?? false} onChange={(e) => setProp((p: PageRootProps) => { p.bgGradient = e.target.checked })} className="accent-indigo-600" />
+        Fundo em gradiente
+      </label>
+      {props.bgGradient && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Cor final do gradiente</label>
+          <input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.bgGradientTo ?? '#eef2ff'}
+            onChange={(e) => setProp((p: PageRootProps) => { p.bgGradientTo = e.target.value })} />
+        </div>
+      )}
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Fonte da página</label>
+        <select className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.fontFamily ?? ''}
+          onChange={(e) => setProp((p: PageRootProps) => { p.fontFamily = e.target.value })}>
+          <option value="">Padrão do sistema</option>
+          <option value="Inter">Inter (moderna)</option>
+          <option value="Poppins">Poppins (arredondada)</option>
+          <option value="Montserrat">Montserrat (imponente)</option>
+          <option value="Playfair Display">Playfair (elegante/serifada)</option>
+        </select>
+      </div>
     </div>
   )
 }
 
 PageRootNode.craft = {
   displayName: 'Página',
-  props: { backgroundColor: '#ffffff' },
+  props: { backgroundColor: '#ffffff', bgGradient: false, bgGradientTo: '#eef2ff', fontFamily: '' },
   isCanvas: true,
   rules: { canMoveIn: () => true, canMoveOut: () => false, canDrag: () => false, canDrop: () => true },
+  related: { toolbar: PageRootSettings },
 }
 
 const PageRoot = PageRootNode
 
 const ALL_SECTIONS = [
+  { label: 'Colunas', component: Columns, settings: ColumnsSettings, icon: '🧱', description: '2-3 colunas lado a lado' },
   { label: 'Hero Simples', component: HeroSimple, settings: HeroSimpleSettings, icon: '🦸', description: 'Headline + CTA' },
   { label: 'Formulário de Captura', component: CaptureForm, settings: CaptureFormSettings, icon: '📝', description: 'Nome, e-mail, telefone' },
   { label: 'Player de Vídeo', component: VideoPlayer, settings: VideoPlayerSettings, icon: '▶️', description: 'YouTube ou Vimeo' },
@@ -477,7 +541,7 @@ export default function CraftEditor({ pageId, published, slug, initialJson }: Cr
     HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial,
     CtaButton, DeliveryCard, CountdownTimer, Guarantee, FaqAccordion, AuthorBio,
     ScarcityBar, BeforeAfter, BonusSection, PartnerLogos, RichText, PriceSection,
-    FullwidthBanner, ThankYouHero, PageRootNode, PageRoot,
+    FullwidthBanner, ThankYouHero, Columns, Column, PageRootNode, PageRoot,
   }
 
   return (

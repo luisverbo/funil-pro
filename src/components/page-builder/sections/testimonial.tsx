@@ -2,11 +2,13 @@
 
 import { useNode } from '@craftjs/core'
 import React from 'react'
+import { ImageInput } from '../image-input'
 
 interface TestimonialProps {
   quote?: string
   name?: string
   role?: string
+  avatarUrl?: string
   avatarInitials?: string
   avatarColor?: string
   bgColor?: string
@@ -18,6 +20,7 @@ export const Testimonial = ({
   quote = 'Este produto mudou completamente minha vida. Em apenas 30 dias consegui resultados que nunca imaginei serem possíveis. Recomendo de olhos fechados!',
   name = 'Maria Silva',
   role = 'Empreendedora Digital',
+  avatarUrl = '',
   avatarInitials = 'MS',
   avatarColor = '#6366F1',
   bgColor = '#ffffff',
@@ -42,12 +45,17 @@ export const Testimonial = ({
           </div>
           <blockquote className="text-gray-700 text-lg leading-relaxed mb-6 italic">"{quote}"</blockquote>
           <div className="flex flex-col md:flex-row items-center md:items-start gap-3">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
-              style={{ backgroundColor: avatarColor }}
-            >
-              {avatarInitials}
-            </div>
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt={name} className="w-12 h-12 rounded-full object-cover shrink-0" />
+            ) : (
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0"
+                style={{ backgroundColor: avatarColor }}
+              >
+                {avatarInitials}
+              </div>
+            )}
             <div className="text-center md:text-left">
               <p className="font-semibold text-gray-900">{name}</p>
               {role && <p className="text-sm text-gray-500">{role}</p>}
@@ -76,7 +84,8 @@ export const TestimonialSettings = () => {
         <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.role} onChange={(e) => setProp((p: TestimonialProps) => { p.role = e.target.value })} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Iniciais do avatar</label>
+        <ImageInput label="Foto da pessoa (opcional)" value={props.avatarUrl} onChange={(url) => setProp((p: TestimonialProps) => { p.avatarUrl = url })} />
+        <label className="block text-xs font-medium text-gray-500 mb-1 mt-3">Iniciais do avatar (sem foto)</label>
         <input className="w-full border border-gray-200 rounded-lg p-2 text-sm" maxLength={2} value={props.avatarInitials} onChange={(e) => setProp((p: TestimonialProps) => { p.avatarInitials = e.target.value })} />
       </div>
       <div>
@@ -97,6 +106,6 @@ export const TestimonialSettings = () => {
 
 Testimonial.craft = {
   displayName: 'Depoimento',
-  props: { quote: 'Este produto mudou completamente minha vida. Em apenas 30 dias consegui resultados que nunca imaginei serem possíveis.', name: 'Maria Silva', role: 'Empreendedora Digital', avatarInitials: 'MS', avatarColor: '#6366F1', bgColor: '#ffffff', paddingY: 60, stars: 5 },
+  props: { quote: 'Este produto mudou completamente minha vida. Em apenas 30 dias consegui resultados que nunca imaginei serem possíveis.', name: 'Maria Silva', role: 'Empreendedora Digital', avatarUrl: '', avatarInitials: 'MS', avatarColor: '#6366F1', bgColor: '#ffffff', paddingY: 60, stars: 5 },
   related: { toolbar: TestimonialSettings },
 }

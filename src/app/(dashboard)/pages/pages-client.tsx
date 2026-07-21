@@ -3,12 +3,15 @@
 import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPage, deletePage, duplicatePage } from '@/app/actions/pages'
-import { captureTemplate, vslTemplate, deliveryTemplate } from '@/lib/page-templates'
+import { PAGE_TEMPLATES } from '@/lib/page-templates'
 
-const TEMPLATE_JSON: Record<string, object> = {
-  capture: captureTemplate,
-  vsl: vslTemplate,
-  delivery: deliveryTemplate,
+const TEMPLATE_JSON: Record<string, object> = Object.fromEntries(
+  PAGE_TEMPLATES.map(t => [t.id, t.craft_json])
+)
+
+const TEMPLATE_ICONS: Record<string, string> = {
+  capture: '📝', vsl: '🎬', delivery: '🎁', thankyou: '🙏', sales: '💰',
+  'capture-premium': '✨', 'lead-magnet': '📕', webinar: '🔴',
 }
 
 type PageType = 'capture' | 'vsl' | 'delivery' | 'thankyou' | 'sales' | 'interactive'
@@ -32,10 +35,8 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 const TEMPLATE_OPTIONS = [
-  { id: 'blank',   label: 'Em branco',           description: 'Comece do zero',       icon: '⬜' },
-  { id: 'capture', label: 'Captura Minimalista', description: 'Hero + Formulário',    icon: '📝' },
-  { id: 'vsl',     label: 'VSL Clássica',        description: 'Hero + Vídeo + CTA',   icon: '🎬' },
-  { id: 'delivery',label: 'Entrega Simples',      description: 'Hero + Card de acesso', icon: '🎁' },
+  { id: 'blank', label: 'Em branco', description: 'Comece do zero', icon: '⬜' },
+  ...PAGE_TEMPLATES.map(t => ({ id: t.id, label: t.name, description: t.description, icon: TEMPLATE_ICONS[t.id] ?? '📄' })),
 ]
 
 function generateSlug(name: string): string {

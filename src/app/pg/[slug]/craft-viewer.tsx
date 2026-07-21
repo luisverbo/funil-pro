@@ -22,19 +22,43 @@ import { RichText } from '@/components/page-builder/sections/rich-text'
 import { PriceSection } from '@/components/page-builder/sections/price-section'
 import { FullwidthBanner } from '@/components/page-builder/sections/fullwidth-banner'
 import { ThankYouHero } from '@/components/page-builder/sections/thank-you-hero'
+import { Columns, Column } from '@/components/page-builder/sections/columns'
 
 interface PageRootProps {
   children?: React.ReactNode
   backgroundColor?: string
+  bgGradient?: boolean
+  bgGradientTo?: string
+  fontFamily?: string
 }
 
-const PageRootNode = ({ children, backgroundColor = '#ffffff' }: PageRootProps) => (
-  <div style={{ backgroundColor, minHeight: '100vh' }} className="w-full">{children}</div>
-)
+const PAGE_FONTS: Record<string, string> = {
+  Inter: 'Inter:wght@400;600;700;800',
+  Poppins: 'Poppins:wght@400;600;700;800',
+  Montserrat: 'Montserrat:wght@400;600;700;800',
+  'Playfair Display': 'Playfair+Display:wght@400;600;700;800',
+}
+
+const PageRootNode = ({ children, backgroundColor = '#ffffff', bgGradient = false, bgGradientTo = '#eef2ff', fontFamily = '' }: PageRootProps) => {
+  const fontSpec = fontFamily ? PAGE_FONTS[fontFamily] : undefined
+  return (
+    <div style={{
+      background: bgGradient ? `linear-gradient(160deg, ${backgroundColor} 0%, ${bgGradientTo} 100%)` : backgroundColor,
+      minHeight: '100vh',
+      fontFamily: fontFamily ? `'${fontFamily}', system-ui, sans-serif` : undefined,
+    }} className="w-full">
+      {fontSpec && (
+        // eslint-disable-next-line @next/next/no-page-custom-font
+        <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?family=${fontSpec}&display=swap`} />
+      )}
+      {children}
+    </div>
+  )
+}
 
 PageRootNode.craft = {
   displayName: 'Página',
-  props: { backgroundColor: '#ffffff' },
+  props: { backgroundColor: '#ffffff', bgGradient: false, bgGradientTo: '#eef2ff', fontFamily: '' },
   isCanvas: true,
 }
 
@@ -99,6 +123,7 @@ const KNOWN_COMPONENTS = new Set([
   'Testimonial', 'CtaButton', 'DeliveryCard', 'CountdownTimer', 'Guarantee',
   'FaqAccordion', 'AuthorBio', 'ScarcityBar', 'BeforeAfter', 'BonusSection',
   'PartnerLogos', 'RichText', 'PriceSection', 'FullwidthBanner', 'ThankYouHero',
+  'Columns', 'Column',
 ])
 
 function cleanCraftJson(json: object): object {
@@ -132,7 +157,7 @@ export default function CraftViewer({ craftJson, pageId, variables }: { craftJso
     HeroSimple, CaptureForm, VideoPlayer, VslTimed, BenefitsList, Testimonial,
     CtaButton, DeliveryCard, CountdownTimer, Guarantee, FaqAccordion, AuthorBio,
     ScarcityBar, BeforeAfter, BonusSection, PartnerLogos, RichText, PriceSection,
-    FullwidthBanner, ThankYouHero, PageRootNode, PageRoot,
+    FullwidthBanner, ThankYouHero, Columns, Column, PageRootNode, PageRoot,
   }
 
   const hasContent = craftJson && Object.keys(craftJson).length > 0

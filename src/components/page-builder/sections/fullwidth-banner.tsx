@@ -2,6 +2,7 @@
 
 import { useNode } from '@craftjs/core'
 import React from 'react'
+import { ImageInput } from '../image-input'
 
 interface FullwidthBannerProps { imageUrl?: string; overlayColor?: string; overlayOpacity?: number; text?: string; textColor?: string; heightPx?: number; bgColor?: string }
 
@@ -28,7 +29,7 @@ export const FullwidthBannerSettings = () => {
   const { actions: { setProp }, props } = useNode((n) => ({ props: n.data.props as FullwidthBannerProps }))
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">URL da imagem de fundo</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://..." value={props.imageUrl} onChange={(e) => setProp((p: FullwidthBannerProps) => { p.imageUrl = e.target.value })} /></div>
+      <ImageInput label="Imagem de fundo" value={props.imageUrl} onChange={(url) => setProp((p: FullwidthBannerProps) => { p.imageUrl = url })} />
       <div><label className="block text-xs font-medium text-gray-500 mb-1">Altura (px)</label><input type="number" className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.heightPx} onChange={(e) => setProp((p: FullwidthBannerProps) => { p.heightPx = Number(e.target.value) })} /></div>
       <div><label className="block text-xs font-medium text-gray-500 mb-1">Texto sobreposto</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.text} onChange={(e) => setProp((p: FullwidthBannerProps) => { p.text = e.target.value })} /></div>
       <div><label className="block text-xs font-medium text-gray-500 mb-1">Cor do overlay</label><input type="color" className="w-full h-9 border border-gray-200 rounded-lg cursor-pointer" value={props.overlayColor} onChange={(e) => setProp((p: FullwidthBannerProps) => { p.overlayColor = e.target.value })} /></div>

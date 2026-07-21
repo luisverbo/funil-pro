@@ -2,6 +2,7 @@
 
 import { useNode } from '@craftjs/core'
 import React from 'react'
+import { ImageInput } from '../image-input'
 
 interface AuthorBioProps {
   photoUrl?: string
@@ -62,7 +63,7 @@ export const AuthorBioSettings = () => {
   const { actions: { setProp }, props } = useNode((n) => ({ props: n.data.props as AuthorBioProps }))
   return (
     <div className="space-y-3">
-      <div><label className="block text-xs font-medium text-gray-500 mb-1">URL da foto</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" placeholder="https://..." value={props.photoUrl} onChange={(e) => setProp((p: AuthorBioProps) => { p.photoUrl = e.target.value })} /></div>
+      <ImageInput label="Foto" value={props.photoUrl} onChange={(url) => setProp((p: AuthorBioProps) => { p.photoUrl = url })} />
       <div><label className="block text-xs font-medium text-gray-500 mb-1">Nome</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.name} onChange={(e) => setProp((p: AuthorBioProps) => { p.name = e.target.value })} /></div>
       <div><label className="block text-xs font-medium text-gray-500 mb-1">Cargo</label><input className="w-full border border-gray-200 rounded-lg p-2 text-sm" value={props.jobTitle} onChange={(e) => setProp((p: AuthorBioProps) => { p.jobTitle = e.target.value })} /></div>
       <div><label className="block text-xs font-medium text-gray-500 mb-1">Bio</label><textarea className="w-full border border-gray-200 rounded-lg p-2 text-sm resize-none" rows={4} value={props.bio} onChange={(e) => setProp((p: AuthorBioProps) => { p.bio = e.target.value })} /></div>

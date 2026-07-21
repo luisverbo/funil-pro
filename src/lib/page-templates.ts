@@ -6,10 +6,10 @@ export interface PageTemplate {
   craft_json: object
 }
 
-const makeRoot = (bgColor: string, nodes: string[]) => ({
+const makeRoot = (bgColor: string, nodes: string[], extraProps: object = {}) => ({
   type: { resolvedName: 'PageRootNode' },
   isCanvas: true,
-  props: { backgroundColor: bgColor },
+  props: { backgroundColor: bgColor, ...extraProps },
   displayName: 'Página',
   custom: {},
   hidden: false,
@@ -334,6 +334,37 @@ export const salesTemplate = {
   },
 }
 
+// ─── CAPTURA PREMIUM (gradiente + selo + prova social) ───────────────────────
+
+export const capturePremiumTemplate = {
+  ROOT: makeRoot('#0f172a', ['hero1', 'benefits1', 'testimonial1', 'form1', 'faq1'], { bgGradient: true, bgGradientTo: '#1e1b4b', fontFamily: 'Poppins' }),
+  hero1: { ...makeNode('HeroSimple', { badge: '🎁 100% GRATUITO — VAGAS LIMITADAS', headline: 'A Estratégia Que Está Gerando Leads Todos os Dias no Automático', subheadline: 'Aula gratuita de 40 minutos revelando o passo a passo — sem enrolação e sem precisar aparecer', ctaText: 'QUERO ASSISTIR AGORA →', ctaColor: '#8B5CF6', ctaLink: '#form', align: 'center', bgColor: '#0f172a', bgGradient: true, bgGradientTo: '#312e81', textColor: '#ffffff', paddingY: 90 }, 'ROOT') },
+  benefits1: { ...makeNode('BenefitsList', { title: 'O que você vai descobrir nesta aula:', items: ['✅ O funil de 3 mensagens que converte seguidor em cliente', '✅ Como automatizar o atendimento sem parecer robô', '✅ O erro nº 1 que faz você perder vendas no WhatsApp', '✅ Como escalar sem contratar equipe'], iconColor: '#8B5CF6', bgColor: '#ffffff', paddingY: 64 }, 'ROOT') },
+  testimonial1: { ...makeNode('Testimonial', { quote: 'Apliquei o que aprendi na aula e em 2 semanas dobrei minha taxa de resposta. Conteúdo direto ao ponto.', name: 'Renata Lima', role: 'Gestora de tráfego', stars: 5, bgColor: '#f5f3ff', paddingY: 56 }, 'ROOT') },
+  form1: { ...makeNode('CaptureForm', { title: '🎟 Garanta seu acesso gratuito', namePlaceholder: 'Seu nome', emailPlaceholder: 'Seu melhor e-mail', phonePlaceholder: 'Seu WhatsApp', showPhone: true, btnText: 'GARANTIR MINHA VAGA →', btnColor: '#8B5CF6', bgColor: '#ffffff', paddingY: 64 }, 'ROOT') },
+  faq1: { ...makeNode('FaqAccordion', { title: 'Perguntas frequentes', items: [ { question: 'A aula é realmente gratuita?', answer: 'Sim, 100% gratuita. Você só precisa se inscrever com seu e-mail.' }, { question: 'Quando recebo o acesso?', answer: 'Imediatamente após a inscrição, no seu e-mail e WhatsApp.' }, { question: 'Serve pra quem está começando?', answer: 'Sim — o conteúdo foi pensado pra funcionar mesmo pra quem está no zero.' } ], onlyOneOpen: true, bgColor: '#f8fafc', textColor: '#111827', paddingY: 56 }, 'ROOT') },
+}
+
+// ─── ISCA DIGITAL / E-BOOK ───────────────────────────────────────────────────
+
+export const leadMagnetTemplate = {
+  ROOT: makeRoot('#f8fafc', ['hero1', 'benefits1', 'form1', 'author1'], { fontFamily: 'Inter' }),
+  hero1: { ...makeNode('HeroSimple', { badge: '📕 E-BOOK GRATUITO', headline: 'Baixe o Guia Completo e Comece Hoje', subheadline: 'O material que já ajudou centenas de pessoas a dar o primeiro passo — direto no seu e-mail', ctaText: 'BAIXAR AGORA →', ctaColor: '#0EA5E9', ctaLink: '#form', align: 'center', bgColor: '#ffffff', paddingY: 80, imageUrl: '' }, 'ROOT') },
+  benefits1: { ...makeNode('BenefitsList', { title: 'Dentro do guia você encontra:', items: ['✅ Checklist pronto pra aplicar hoje', '✅ Os 5 erros que travam seus resultados', '✅ Modelos e exemplos reais', '✅ Plano de ação de 7 dias'], iconColor: '#0EA5E9', bgColor: '#f8fafc', paddingY: 56 }, 'ROOT') },
+  form1: { ...makeNode('CaptureForm', { title: 'Receba o e-book no seu e-mail', namePlaceholder: 'Seu nome', emailPlaceholder: 'Seu melhor e-mail', showPhone: false, btnText: 'QUERO O E-BOOK →', btnColor: '#0EA5E9', bgColor: '#ffffff', paddingY: 56 }, 'ROOT') },
+  author1: { ...makeNode('AuthorBio', { photoUrl: '', name: 'Seu Nome', jobTitle: 'Autor(a) do guia', bio: 'Escreva aqui uma bio curta que gere autoridade: sua experiência, seus resultados e por que vale a pena baixar o material.', bgColor: '#f8fafc', paddingY: 56 }, 'ROOT') },
+}
+
+// ─── WEBINÁRIO / EVENTO AO VIVO ──────────────────────────────────────────────
+
+export const webinarTemplate = {
+  ROOT: makeRoot('#022c22', ['hero1', 'countdown1', 'benefits1', 'form1'], { bgGradient: true, bgGradientTo: '#064e3b', fontFamily: 'Montserrat' }),
+  hero1: { ...makeNode('HeroSimple', { badge: '🔴 EVENTO AO VIVO E GRATUITO', headline: 'Workshop: Do Zero à Primeira Venda em 7 Dias', subheadline: 'Uma noite, um plano completo. Participe ao vivo e saia com o passo a passo pronto pra aplicar', ctaText: 'QUERO PARTICIPAR →', ctaColor: '#10B981', ctaLink: '#form', align: 'center', bgColor: '#022c22', bgGradient: true, bgGradientTo: '#065f46', textColor: '#ffffff', paddingY: 90 }, 'ROOT') },
+  countdown1: { ...makeNode('CountdownTimer', { mode: 'duration', durationMinutes: 60 * 24, title: '⏳ O evento começa em:', subtitle: 'Inscreva-se antes que as vagas acabem', onZeroAction: 'message', onZeroMessage: 'As inscrições deste lote encerraram.', bgColor: '#064e3b', textColor: '#ffffff', boxBg: '#065f46', paddingY: 48 }, 'ROOT') },
+  benefits1: { ...makeNode('BenefitsList', { title: 'No evento você vai aprender:', items: ['✅ Como escolher o produto certo pra começar', '✅ O script de oferta que converte no primeiro contato', '✅ Como gerar os primeiros leads sem investir em anúncio', '✅ O plano de 7 dias completo, slide a slide'], iconColor: '#10B981', bgColor: '#ffffff', paddingY: 64 }, 'ROOT') },
+  form1: { ...makeNode('CaptureForm', { title: '🎟 Inscrição gratuita', namePlaceholder: 'Seu nome', emailPlaceholder: 'Seu melhor e-mail', phonePlaceholder: 'WhatsApp (receba o link por lá)', showPhone: true, btnText: 'CONFIRMAR MINHA VAGA →', btnColor: '#10B981', bgColor: '#f0fdf4', paddingY: 64 }, 'ROOT') },
+}
+
 // ─── EXPORTS ──────────────────────────────────────────────────────────────────
 
 export const PAGE_TEMPLATES: PageTemplate[] = [
@@ -371,5 +402,26 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
     page_type: 'sales',
     description: 'Página de vendas profissional de alta conversão — 15 seções',
     craft_json: salesTemplate,
+  },
+  {
+    id: 'capture-premium',
+    name: 'Captura Premium (aula gratuita)',
+    page_type: 'capture',
+    description: 'Gradiente escuro + selo + prova social + FAQ — visual de lançamento',
+    craft_json: capturePremiumTemplate,
+  },
+  {
+    id: 'lead-magnet',
+    name: 'Isca Digital (e-book)',
+    page_type: 'capture',
+    description: 'Página de download de material gratuito com bio de autoridade',
+    craft_json: leadMagnetTemplate,
+  },
+  {
+    id: 'webinar',
+    name: 'Webinário / Evento ao Vivo',
+    page_type: 'capture',
+    description: 'Evento com contagem regressiva e inscrição via WhatsApp',
+    craft_json: webinarTemplate,
   },
 ]
