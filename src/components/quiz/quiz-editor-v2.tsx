@@ -63,6 +63,7 @@ const BLOCK_META: Record<BlockType, { label: string; icon: string; category: str
   metrics:        { label: 'Métricas',         icon: '🔢', category: 'Gráficos' },
   chart:          { label: 'Gráficos',         icon: '📈', category: 'Gráficos' },
   spacer:         { label: 'Espaço',           icon: '↕️',  category: 'Personalização' },
+  divider:        { label: 'Separador',        icon: '➖', category: 'Personalização' },
   html_embed:     { label: 'HTML / Script',    icon: '</>', category: 'Personalização' },
 }
 
@@ -200,6 +201,7 @@ function defaultConfig(type: BlockType): BlockConfig {
       ],
     }
     case 'spacer': return { spacer_height: 40 }
+    case 'divider': return { divider_style: 'solid', divider_thickness: 1, divider_color: '#e5e7eb', divider_width: 100 }
     case 'html_embed': return { html_content: '<!-- Cole seu código HTML/embed aqui -->' }
     default: return {}
   }
@@ -726,6 +728,12 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
     summary = (
       <div className="relative border border-dashed border-gray-300 rounded bg-[repeating-linear-gradient(45deg,#f9fafb,#f9fafb_6px,#f3f4f6_6px,#f3f4f6_12px)]" style={{ height: config.spacer_height ?? 40 }}>
         <span className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-400">↕ {config.spacer_height ?? 40}px</span>
+      </div>
+    )
+  } else if (block.type === 'divider') {
+    summary = (
+      <div className="flex justify-center py-2">
+        <div style={{ width: `${config.divider_width ?? 100}%`, borderTopWidth: config.divider_thickness ?? 1, borderTopStyle: config.divider_style ?? 'solid', borderTopColor: config.divider_color ?? '#e5e7eb' }} />
       </div>
     )
   } else if (block.type === 'html_embed') {
@@ -1657,6 +1665,45 @@ function BlockEditor({
           <label className={labelCls}>Altura: {config.spacer_height ?? 40}px</label>
           <input type="range" min={8} max={200} value={config.spacer_height ?? 40} onChange={e => setConfigKey('spacer_height', Number(e.target.value))} className="w-full" />
         </div>
+      )}
+
+      {/* Separador (linha) */}
+      {block.type === 'divider' && (
+        <>
+          <div>
+            <label className={labelCls}>Estilo da linha</label>
+            <div className="flex gap-2">
+              {(['solid','dashed','dotted'] as const).map(s => (
+                <button key={s} onClick={() => setConfigKey('divider_style', s)}
+                  className={`flex-1 py-1.5 rounded-lg border transition ${(config.divider_style ?? 'solid') === s ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200'}`}>
+                  <div style={{ borderTopWidth: 2, borderTopStyle: s, borderTopColor: '#6b7280' }} className="w-full" />
+                  <span className="text-[10px] text-gray-500">{s === 'solid' ? 'Contínua' : s === 'dashed' ? 'Tracejada' : 'Pontilhada'}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Espessura: {config.divider_thickness ?? 1}px</label>
+            <input type="range" min={1} max={12} value={config.divider_thickness ?? 1} onChange={e => setConfigKey('divider_thickness', Number(e.target.value))} className="w-full" />
+          </div>
+          <div>
+            <label className={labelCls}>Largura: {config.divider_width ?? 100}%</label>
+            <input type="range" min={10} max={100} step={5} value={config.divider_width ?? 100} onChange={e => setConfigKey('divider_width', Number(e.target.value))} className="w-full" />
+          </div>
+          <div>
+            <label className={labelCls}>Cor</label>
+            <div className="flex gap-1.5 items-center flex-wrap">
+              {['#e5e7eb','#9ca3af','#111827','#6366f1','#10b981','#f59e0b','#ef4444'].map(c => (
+                <button key={c} onClick={() => setConfigKey('divider_color', c)}
+                  style={{ background: c, borderColor: (config.divider_color || '#e5e7eb') === c ? '#111827' : '#e5e7eb' }}
+                  className="w-7 h-7 rounded-full border-2" />
+              ))}
+              <label className="w-7 h-7 rounded-full cursor-pointer relative overflow-hidden border-2 border-gray-200" style={{ background: 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)' }} title="Qualquer cor">
+                <input type="color" value={config.divider_color || '#e5e7eb'} onChange={e => setConfigKey('divider_color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+              </label>
+            </div>
+          </div>
+        </>
       )}
 
       {/* HTML embed */}

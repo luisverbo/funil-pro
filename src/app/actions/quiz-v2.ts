@@ -18,7 +18,7 @@ export type BlockType =
   | 'alert' | 'notification' | 'loading' | 'level'
   | 'pricing' | 'checklist' | 'before_after' | 'carousel'
   | 'metrics' | 'chart'
-  | 'spacer' | 'html_embed'
+  | 'spacer' | 'divider' | 'html_embed'
 
 export interface BlockOption {
   id: string
@@ -259,6 +259,11 @@ export interface BlockConfig {
 
   // Spacer
   spacer_height?: number          // px
+  // Separador (linha)
+  divider_style?: 'solid' | 'dashed' | 'dotted'
+  divider_thickness?: number      // px
+  divider_color?: string
+  divider_width?: number          // % da largura (default 100)
 
   // HTML embed
   html_content?: string

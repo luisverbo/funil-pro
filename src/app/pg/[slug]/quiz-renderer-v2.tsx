@@ -19,12 +19,12 @@ const NON_INPUT_BLOCKS = new Set([
   'result','heading','text_block','image','video','audio','button',
   'hero','testimonials','features','faq','countdown','pricing',
   'alert','notification','loading','level','checklist','before_after','carousel',
-  'metrics','chart','spacer','html_embed',
+  'metrics','chart','spacer','divider','html_embed',
 ])
 const LANDING_BLOCKS = new Set([
   'hero','testimonials','features','faq','countdown','heading','text_block','image','video','audio',
   'pricing','alert','notification','loading','level','checklist','before_after','carousel',
-  'metrics','chart','spacer','html_embed',
+  'metrics','chart','spacer','divider','html_embed',
 ])
 
 // Envolve um bloco para aparecer só depois de `delay` segundos (com fade-in).
@@ -1197,6 +1197,18 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {/* Spacer */}
         {block.type === 'spacer' && <div style={{ height: config.spacer_height ?? 40 }} />}
+
+        {/* Divider (separador) */}
+        {block.type === 'divider' && (
+          <div className="flex justify-center">
+            <div style={{
+              width: `${config.divider_width ?? 100}%`,
+              borderTopWidth: config.divider_thickness ?? 1,
+              borderTopStyle: config.divider_style ?? 'solid',
+              borderTopColor: config.divider_color ?? '#e5e7eb',
+            }} />
+          </div>
+        )}
 
         {/* HTML embed — iframe sandbox: isola do domínio compartilhado (sem acesso a
             cookies/DOM do app) E permite <script> de terceiros (pixels), que não executa via innerHTML */}
