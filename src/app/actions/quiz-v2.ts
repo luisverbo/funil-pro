@@ -98,6 +98,7 @@ export interface BlockConfig {
   placeholder?: string
   required?: boolean
   bg_color?: string          // cor dos cards de opção (escolha única/múltipla)
+  border_color?: string      // cor do contorno dos cards de opção
   next_button_text?: string  // texto do botão "Próximo" da múltipla escolha
 
   // Choice/scale blocks

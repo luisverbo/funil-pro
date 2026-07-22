@@ -622,7 +622,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                       return (
                         <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
                           className={`rounded-2xl border-2 overflow-hidden text-left transition-all duration-150 shadow-sm ${isSelected ? 'scale-[0.98]' : 'hover:scale-[1.02]'}`}
-                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, border: theme.cardBorder }}>
+                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.cardBorder }) }}>
                           {opt.image_url
                             ? <img src={opt.image_url} alt="" className="w-full h-28 object-cover" />
                             : <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-4xl">{opt.emoji || '🎯'}</div>}
@@ -649,7 +649,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                         className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
                           isSelected ? 'scale-[0.99]' : 'hover:scale-[1.01]'
                         }`}
-                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, border: theme.cardBorder }}
+                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.cardBorder }) }}
                       >
                         {block.type === 'multi_choice' && (
                           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${isSelected ? 'text-white' : 'border-gray-300'}`}

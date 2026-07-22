@@ -2123,6 +2123,22 @@ function BlockEditor({
               <input type="color" value={config.bg_color || '#ffffff'} onChange={e => setConfigKey('bg_color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
             </label>
           </div>
+          {/* Cor do contorno */}
+          <div className="flex items-center justify-between mt-3 mb-1.5">
+            <label className={labelCls.replace('mb-1.5','')}>Cor do contorno</label>
+            {config.border_color && <button onClick={() => setConfigKey('border_color', undefined)} className="text-[11px] text-gray-400 underline">usar cor do tema</button>}
+          </div>
+          <div className="flex gap-2 flex-wrap items-center">
+            {['#e5e7eb','#111827','#6366f1','#10b981','#f59e0b','#ef4444','#ec4899','#0ea5e9'].map(c => (
+              <button key={c} onClick={() => setConfigKey('border_color', c)}
+                style={{ background: c, borderColor: config.border_color === c ? '#6366f1' : '#e5e7eb' }}
+                className="w-7 h-7 rounded-full border-2 transition" />
+            ))}
+            <label className="w-7 h-7 rounded-full cursor-pointer relative overflow-hidden border-2 border-gray-200" title="Qualquer cor"
+              style={{ background: 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)' }}>
+              <input type="color" value={config.border_color || '#e5e7eb'} onChange={e => setConfigKey('border_color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+            </label>
+          </div>
         </div>
       )}
 
