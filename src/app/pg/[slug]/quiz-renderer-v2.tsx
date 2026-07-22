@@ -1240,7 +1240,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         </div>
       )}
 
-      <div key={transitionKey} className="flex-1 flex items-center justify-center px-4 py-8"
+      <div key={transitionKey} className="flex-1 flex items-start justify-center px-4 pt-6 pb-8"
         style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
         <div className="w-full max-w-xl space-y-6">
           {currentPage?.blocks.map(renderBlock)}
