@@ -750,7 +750,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
 // ─── Sortable Block ───────────────────────────────────────────────────────────
 
 function SortableBlock({
-  block, pageId, pages, isSelected, onSelect, onDelete,
+  block, pageId, pages, isSelected, onSelect, onDelete, onDuplicate,
 }: {
   block: QuizBlock
   pageId: string
@@ -758,6 +758,7 @@ function SortableBlock({
   isSelected: boolean
   onSelect: () => void
   onDelete: () => void
+  onDuplicate: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -786,13 +787,23 @@ function SortableBlock({
           <circle cx="2" cy="12" r="1.5"/><circle cx="6" cy="12" r="1.5"/>
         </svg>
       </div>
-      <div className="pl-8 pr-10 py-3">
+      <div className="pl-8 pr-16 py-3">
         <BlockPreview block={block} pages={pages} />
       </div>
-      <button
-        onClick={e => { e.stopPropagation(); onDelete() }}
-        className="absolute right-2 top-2 w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-base leading-none"
-      >×</button>
+      <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+        <button
+          title="Duplicar bloco"
+          onClick={e => { e.stopPropagation(); onDuplicate() }}
+          className="w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+        <button
+          title="Excluir bloco"
+          onClick={e => { e.stopPropagation(); onDelete() }}
+          className="w-6 h-6 rounded-lg bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center text-base leading-none"
+        >×</button>
+      </div>
     </div>
   )
 }
@@ -800,13 +811,14 @@ function SortableBlock({
 // ─── Center Panel (active page blocks) ───────────────────────────────────────
 
 function ActivePageView({
-  page, pages, selectedId, onSelectBlock, onDeleteBlock,
+  page, pages, selectedId, onSelectBlock, onDeleteBlock, onDuplicateBlock,
 }: {
   page: QuizPage
   pages: QuizPage[]
   selectedId: string | null
   onSelectBlock: (blockId: string) => void
   onDeleteBlock: (blockId: string) => void
+  onDuplicateBlock: (blockId: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `page:${page.id}`, data: { type: 'page', pageId: page.id } })
 
@@ -824,6 +836,7 @@ function ActivePageView({
                 isSelected={selectedId === block.id}
                 onSelect={() => onSelectBlock(block.id)}
                 onDelete={() => onDeleteBlock(block.id)}
+                onDuplicate={() => onDuplicateBlock(block.id)}
               />
             ))}
           </div>
@@ -840,13 +853,14 @@ function ActivePageView({
 }
 
 function CenterPanel({
-  activePage, pages, selectedId, onSelectBlock, onDeleteBlock,
+  activePage, pages, selectedId, onSelectBlock, onDeleteBlock, onDuplicateBlock,
 }: {
   activePage: QuizPage | null
   pages: QuizPage[]
   selectedId: string | null
   onSelectBlock: (blockId: string) => void
   onDeleteBlock: (blockId: string) => void
+  onDuplicateBlock: (blockId: string) => void
 }) {
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
 
@@ -886,6 +900,7 @@ function CenterPanel({
           selectedId={selectedId}
           onSelectBlock={onSelectBlock}
           onDeleteBlock={onDeleteBlock}
+          onDuplicateBlock={onDuplicateBlock}
         />
       </div>
     </div>
@@ -2322,6 +2337,26 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
     setSelectedBlockId(prev => prev === blockId ? null : prev)
   }, [])
 
+  const duplicateBlock = useCallback((blockId: string) => {
+    const newBlockId = newId()
+    updatePages(pages => pages.map(p => {
+      const idx = p.blocks.findIndex(b => b.id === blockId)
+      if (idx < 0) return p
+      const clone = JSON.parse(JSON.stringify(p.blocks[idx])) as QuizBlock
+      clone.id = newBlockId
+      // regenera ids de itens aninhados (opções, depoimentos, etc.) pra não colidir
+      const cfg = clone.config as Record<string, unknown>
+      for (const key of Object.keys(cfg)) {
+        const v = cfg[key]
+        if (Array.isArray(v)) cfg[key] = v.map(item => (item && typeof item === 'object' && 'id' in item) ? { ...item, id: newId() } : item)
+      }
+      const blocks = [...p.blocks]
+      blocks.splice(idx + 1, 0, clone)
+      return { ...p, blocks: blocks.map((b, i) => ({ ...b, order: i })) }
+    }))
+    setSelectedBlockId(newBlockId)
+  }, [])
+
   const updateBlock = useCallback((blockId: string, configPatch: Partial<BlockConfig>) => {
     updatePages(pages => pages.map(p => ({
       ...p,
@@ -2507,6 +2542,7 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
             selectedId={selectedBlockId}
             onSelectBlock={setSelectedBlockId}
             onDeleteBlock={deleteBlock}
+            onDuplicateBlock={duplicateBlock}
           />
           <RightPanel
             selectedBlockId={selectedBlockId}
