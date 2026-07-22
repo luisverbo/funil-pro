@@ -764,7 +764,8 @@ function SortableBlock({
     id: block.id,
     data: { type: 'block', blockId: block.id, pageId },
   })
-  const style = { transform: CSS.Transform.toString(transform), transition }
+  // espaçamento abaixo reflete o da página publicada (WYSIWYG)
+  const style = { transform: CSS.Transform.toString(transform), transition, marginBottom: block.config.space_after ?? 24 }
 
   return (
     <div
@@ -826,7 +827,7 @@ function ActivePageView({
     <div ref={setNodeRef} className={`min-h-40 transition-colors rounded-2xl ${isOver ? 'bg-indigo-50 ring-2 ring-indigo-200' : ''}`}>
       <SortableContext items={page.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
         {page.blocks.length > 0 ? (
-          <div className="space-y-2">
+          <div>
             {page.blocks.map(block => (
               <SortableBlock
                 key={block.id}
