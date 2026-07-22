@@ -1170,23 +1170,21 @@ function OptionList({
                 <button onClick={() => removeOpt(opt.id)} className="p-0.5 text-red-400 hover:text-red-600">×</button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5">
-                <label className="text-[10px] text-gray-400">Pts:</label>
-                <input type="number" value={opt.points ?? 0} onChange={e => updateOpt(opt.id, { points: Number(e.target.value) })}
-                  className="w-16 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none" />
-              </div>
-              {pages.length > 0 && (
-                <div className="flex items-center gap-1.5 flex-1">
-                  <label className="text-[10px] text-gray-400 shrink-0">→ Ir para:</label>
-                  <select value={opt.goto_page_id ?? ''} onChange={e => updateOpt(opt.id, { goto_page_id: e.target.value || null })}
-                    className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none min-w-0">
-                    <option value="">Próxima página</option>
-                    {pages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                  </select>
-                </div>
-              )}
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-gray-400 shrink-0">Pontos:</label>
+              <input type="number" value={opt.points ?? 0} onChange={e => updateOpt(opt.id, { points: Number(e.target.value) })}
+                className="w-16 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none" />
             </div>
+            {pages.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-gray-400 shrink-0">→ Ir para:</label>
+                <select value={opt.goto_page_id ?? ''} onChange={e => updateOpt(opt.id, { goto_page_id: e.target.value || null })}
+                  className="flex-1 min-w-0 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none">
+                  <option value="">Próxima página</option>
+                  {pages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+            )}
             <ImageUploadField compact value={opt.image_url ?? ''} onChange={url => updateOpt(opt.id, { image_url: url || undefined })} />
           </div>
         ))}
@@ -2180,7 +2178,7 @@ function RightPanel({
             <span className="text-base">{meta!.icon}</span>
             <p className="text-sm font-semibold text-gray-800">{meta!.label}</p>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
             <BlockEditor
               block={selectedBlock}
               pages={pages}
