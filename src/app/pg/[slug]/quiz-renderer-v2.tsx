@@ -712,7 +712,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                       return (
                         <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
                           className={`rounded-2xl border-2 overflow-hidden text-left transition-all duration-150 shadow-sm ${isSelected ? 'scale-[0.98]' : 'hover:scale-[1.02]'}`}
-                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.cardBorder }) }}>
+                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.surfaceBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.surfaceBorder }) }}>
                           {opt.image_url
                             ? <img src={opt.image_url} alt="" className="w-full h-28 object-cover" />
                             : <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-4xl">{opt.emoji || '🎯'}</div>}
@@ -739,7 +739,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                         className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
                           isSelected ? 'scale-[0.99]' : 'hover:scale-[1.01]'
                         }`}
-                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.cardBorder }) }}
+                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.surfaceBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.surfaceBorder }) }}
                       >
                         {block.type === 'multi_choice' && (
                           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${isSelected ? 'text-white' : 'border-gray-300'}`}
@@ -962,7 +962,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             <div className="grid gap-4 md:grid-cols-2">
               {(config.testimonials ?? []).map(t => (
                 <div key={t.id} className="rounded-2xl p-5"
-                  style={{ background: theme.cardBg, border: theme.cardBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
+                  style={{ background: theme.surfaceBg, border: theme.surfaceBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
                   <div className="text-amber-400 text-sm mb-2">{'★'.repeat(t.stars ?? 5)}</div>
                   <p className="text-sm leading-relaxed mb-3" style={{ color: theme.textColor }}>&ldquo;{t.text}&rdquo;</p>
                   <div className="flex items-center gap-2">
@@ -985,7 +985,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             <div className={`grid gap-4 ${(config.features_columns ?? 3) === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
               {(config.features ?? []).map(f => (
                 <div key={f.id} className="rounded-2xl p-5 text-center"
-                  style={{ background: theme.cardBg, border: theme.cardBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
+                  style={{ background: theme.surfaceBg, border: theme.surfaceBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
                   <div className="text-3xl mb-2">{f.icon || '✨'}</div>
                   <p className="text-base font-bold mb-1" style={{ color: theme.textColor }}>{f.title}</p>
                   {f.description && <p className="text-sm" style={{ color: theme.mutedColor }}>{f.description}</p>}
@@ -1003,7 +1003,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             <div className="space-y-2">
               {(config.faq_items ?? []).map(f => (
                 <details key={f.id} className="rounded-xl overflow-hidden group"
-                  style={{ background: theme.cardBg, border: theme.cardBorder }}>
+                  style={{ background: theme.surfaceBg, border: theme.surfaceBorder }}>
                   <summary className="px-5 py-4 cursor-pointer font-semibold text-sm flex items-center justify-between list-none" style={{ color: theme.textColor }}>
                     {f.question}
                     <span className="transition group-open:rotate-180" style={{ color: theme.mutedColor }}>▾</span>
@@ -1052,7 +1052,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                   return (
                     <button key={opt.id} onClick={() => setAnswer(block.id, opt.label, page.id, 'choice_selected')}
                       className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl border-2 text-left transition ${isSel ? 'scale-[0.99]' : 'hover:scale-[1.01]'}`}
-                      style={isSel ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.cardBg, border: theme.cardBorder }}>
+                      style={isSel ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.surfaceBg, border: theme.surfaceBorder }}>
                       {opt.emoji && <span className="text-2xl">{opt.emoji}</span>}
                       <span className="font-medium" style={{ color: theme.textColor }}>{opt.label}</span>
                     </button>
@@ -1065,7 +1065,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {/* Audio */}
         {block.type === 'audio' && config.audio_url && (
-          <div className="rounded-2xl p-4" style={{ background: theme.cardBg, border: theme.cardBorder }}>
+          <div className="rounded-2xl p-4" style={{ background: theme.surfaceBg, border: theme.surfaceBorder }}>
             {config.audio_title && <p className="text-sm font-semibold mb-2" style={{ color: theme.textColor }}>{config.audio_title}</p>}
             <audio controls src={config.audio_url} className="w-full" />
           </div>
@@ -1108,7 +1108,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {/* Pricing */}
         {block.type === 'pricing' && (
-          <div className="rounded-2xl p-6 text-center" style={{ background: theme.cardBg, border: config.pricing_highlight ? `2px solid ${primaryColor}` : theme.cardBorder, boxShadow: theme.cardShadow }}>
+          <div className="rounded-2xl p-6 text-center" style={{ background: theme.surfaceBg, border: config.pricing_highlight ? `2px solid ${primaryColor}` : theme.surfaceBorder, boxShadow: theme.cardShadow }}>
             <p className="text-lg font-bold" style={{ color: theme.textColor }}>{config.pricing_title}</p>
             <p className="my-2"><span className="text-4xl font-extrabold" style={{ color: theme.textColor }}>{config.pricing_price}</span><span className="text-sm" style={{ color: theme.mutedColor }}>{config.pricing_period}</span></p>
             <div className="space-y-2 my-4 text-left">
@@ -1174,7 +1174,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {/* Chart */}
         {block.type === 'chart' && (
-          <div className="rounded-2xl p-5" style={{ background: theme.cardBg, border: theme.cardBorder }}>
+          <div className="rounded-2xl p-5" style={{ background: theme.surfaceBg, border: theme.surfaceBorder }}>
             {config.chart_title && <p className="text-sm font-bold mb-4 text-center" style={{ color: theme.textColor }}>{config.chart_title}</p>}
             {(config.chart_type ?? 'bar') === 'bar' ? (
               <div className="flex items-end justify-around gap-2 h-48">

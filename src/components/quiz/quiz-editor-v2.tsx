@@ -1100,17 +1100,16 @@ function RightPanelEmpty({ settings, onUpdateSettings }: {
           <div className="border-t border-gray-100 pt-3">
             <div className="flex items-center justify-between mb-2">
               <label className={labelCls.replace('mb-1.5','')}>🎨 Cores personalizadas</label>
-              {(theme.text_color || theme.muted_color || theme.card_color) && (
-                <button onClick={() => setTheme({ text_color: undefined, muted_color: undefined, card_color: undefined })}
+              {(theme.text_color || theme.muted_color) && (
+                <button onClick={() => setTheme({ text_color: undefined, muted_color: undefined })}
                   className="text-[11px] text-gray-400 hover:text-gray-600 underline">resetar</button>
               )}
             </div>
-            <p className="text-[10px] text-gray-400 mb-2">Vazio = usa as cores do tema/modo escuro.</p>
+            <p className="text-[10px] text-gray-400 mb-2">Vazio = usa as cores do tema/modo escuro. (A cor dos cards segue claro/escuro automaticamente.)</p>
             {([
               { key: 'primary_color', label: 'Cor principal (botões)', val: settings.primary_color || '#6366f1', settingLevel: true, def: '#6366f1' },
               { key: 'text_color', label: 'Cor do texto', val: theme.text_color || (theme.dark_mode ? '#f1f5f9' : '#111827'), def: theme.dark_mode ? '#f1f5f9' : '#111827' },
               { key: 'muted_color', label: 'Cor secundária (subtítulos)', val: theme.muted_color || (theme.dark_mode ? '#94a3b8' : '#6b7280'), def: theme.dark_mode ? '#94a3b8' : '#6b7280' },
-              { key: 'card_color', label: 'Cor dos cards', val: theme.card_color || (theme.dark_mode ? '#1e293b' : '#ffffff'), def: theme.dark_mode ? '#1e293b' : '#ffffff' },
             ] as const).map(row => (
               <div key={row.key} className="flex items-center gap-2 mb-2">
                 <input type="color" value={row.val}

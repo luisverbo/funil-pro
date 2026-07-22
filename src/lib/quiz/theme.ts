@@ -35,6 +35,11 @@ export interface ResolvedTheme {
   cardBorder: string
   cardShadow: string
   cardBackdrop: string | null
+  // Superfície dos blocos de conteúdo (Benefícios, Depoimentos, Preço, FAQ…):
+  // segue SEMPRE o modo claro/escuro, ignorando a "cor dos cards" personalizada
+  // (que é só pros cards de opção) — evita fundo preto em página clara.
+  surfaceBg: string
+  surfaceBorder: string
   buttonRadius: string
   // Campos usados pelo chat do agente (ChatLanding) — cor de destaque e balões
   accent: string          // botões, cabeçalho, envio
@@ -62,9 +67,11 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
   }
 
   const cardStyle = merged.card_style ?? 'shadow'
-  const cardBg = merged.card_color || (cardStyle === 'glass'
+  // card_color (personalização antiga) NÃO entra mais aqui — vazava fundo escuro
+  // pra todos os blocos. Cards seguem o modo claro/escuro.
+  const cardBg = cardStyle === 'glass'
     ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.7)')
-    : (isDark ? '#1e293b' : '#ffffff'))
+    : (isDark ? '#1e293b' : '#ffffff')
   const cardBorder = cardStyle === 'glass'
     ? (isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.6)')
     : (isDark ? '1px solid #334155' : '1px solid #e5e7eb')
@@ -97,6 +104,8 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
     cardBorder,
     cardShadow,
     cardBackdrop,
+    surfaceBg: isDark ? '#1e293b' : '#ffffff',
+    surfaceBorder: isDark ? '1px solid #334155' : '1px solid #e5e7eb',
     buttonRadius,
     accent,
     userBubbleBg,
