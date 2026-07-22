@@ -13,11 +13,16 @@ export function ImageInput({ label, value, onChange }: { label: string; value?: 
     const file = e.target.files?.[0]; e.target.value = ''
     if (!file) return
     setBusy(true); setErr(null)
-    const fd = new FormData(); fd.append('file', file)
-    const r = await uploadQuizImage(fd)
-    setBusy(false)
-    if (r.error) setErr(r.error)
-    else if (r.url) onChange(r.url)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await uploadQuizImage(fd)
+      if (r.error) setErr(r.error)
+      else if (r.url) onChange(r.url)
+    } catch {
+      setErr('Falha ao enviar. Tente uma imagem menor (até 5MB).')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
