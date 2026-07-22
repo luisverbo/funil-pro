@@ -1058,6 +1058,35 @@ function RightPanelEmpty({ settings, onUpdateSettings }: {
 
           <Toggle on={!!theme.dark_mode} onToggle={() => setTheme({ dark_mode: !theme.dark_mode })} label="Modo escuro (texto claro)" />
 
+          {/* Cores personalizadas — controle fino como na Inlead */}
+          <div className="border-t border-gray-100 pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className={labelCls.replace('mb-1.5','')}>🎨 Cores personalizadas</label>
+              {(theme.text_color || theme.muted_color || theme.card_color) && (
+                <button onClick={() => setTheme({ text_color: undefined, muted_color: undefined, card_color: undefined })}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 underline">resetar</button>
+              )}
+            </div>
+            <p className="text-[10px] text-gray-400 mb-2">Vazio = usa as cores do tema/modo escuro.</p>
+            {([
+              { key: 'primary_color', label: 'Cor principal (botões)', val: settings.primary_color || '#6366f1', settingLevel: true, def: '#6366f1' },
+              { key: 'text_color', label: 'Cor do texto', val: theme.text_color || (theme.dark_mode ? '#f1f5f9' : '#111827'), def: theme.dark_mode ? '#f1f5f9' : '#111827' },
+              { key: 'muted_color', label: 'Cor secundária (subtítulos)', val: theme.muted_color || (theme.dark_mode ? '#94a3b8' : '#6b7280'), def: theme.dark_mode ? '#94a3b8' : '#6b7280' },
+              { key: 'card_color', label: 'Cor dos cards', val: theme.card_color || (theme.dark_mode ? '#1e293b' : '#ffffff'), def: theme.dark_mode ? '#1e293b' : '#ffffff' },
+            ] as const).map(row => (
+              <div key={row.key} className="flex items-center gap-2 mb-2">
+                <input type="color" value={row.val}
+                  onChange={e => {
+                    if ('settingLevel' in row && row.settingLevel) onUpdateSettings({ primary_color: e.target.value })
+                    else setTheme({ [row.key]: e.target.value } as Partial<QuizTheme>)
+                  }}
+                  className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer p-0.5 shrink-0" />
+                <span className="text-xs text-gray-600 flex-1">{row.label}</span>
+                <span className="text-[10px] text-gray-400 font-mono">{row.val}</span>
+              </div>
+            ))}
+          </div>
+
           <div className="border-t border-gray-100 pt-3">
             <ImageUploadField label="Logo (topo do quiz)" value={settings.logo_url ?? ''} onChange={url => onUpdateSettings({ logo_url: url || undefined })} />
           </div>

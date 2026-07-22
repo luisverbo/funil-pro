@@ -62,9 +62,9 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
   }
 
   const cardStyle = merged.card_style ?? 'shadow'
-  const cardBg = cardStyle === 'glass'
+  const cardBg = merged.card_color || (cardStyle === 'glass'
     ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.7)')
-    : (isDark ? '#1e293b' : '#ffffff')
+    : (isDark ? '#1e293b' : '#ffffff'))
   const cardBorder = cardStyle === 'glass'
     ? (isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.6)')
     : (isDark ? '1px solid #334155' : '1px solid #e5e7eb')
@@ -91,8 +91,8 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
     background,
     backgroundImage,
     isDark,
-    textColor: isDark ? '#f1f5f9' : '#111827',
-    mutedColor: isDark ? '#94a3b8' : '#6b7280',
+    textColor: merged.text_color || (isDark ? '#f1f5f9' : '#111827'),
+    mutedColor: merged.muted_color || (isDark ? '#94a3b8' : '#6b7280'),
     cardBg,
     cardBorder,
     cardShadow,

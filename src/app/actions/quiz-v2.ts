@@ -286,6 +286,10 @@ export interface QuizTheme {
   card_style?: 'flat' | 'shadow' | 'glass'
   button_radius?: 'none' | 'md' | 'full'
   dark_mode?: boolean
+  // overrides de cor (vazio = derivado do tema/modo escuro)
+  text_color?: string     // cor do texto principal
+  muted_color?: string    // cor secundária (subtítulos, textos apagados)
+  card_color?: string     // cor de fundo dos cards
 }
 
 export interface QuizSettings {
