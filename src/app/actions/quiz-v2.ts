@@ -194,6 +194,7 @@ export interface BlockConfig {
 
   // ─── Universal: aparição temporizada (todos os blocos) ───
   appear_delay?: number           // segundos até o bloco aparecer (0/undefined = imediato)
+  space_after?: number            // espaço (px) abaixo do bloco (default 24)
 
   // Text block: estilo/alinhamento herdado
   text_align?: 'left' | 'center' | 'right'

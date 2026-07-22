@@ -29,7 +29,7 @@ const LANDING_BLOCKS = new Set([
 
 // Envolve um bloco para aparecer só depois de `delay` segundos (com fade-in).
 // Avisa o pai (onReveal) quando revela, para a validação só considerar blocos visíveis.
-function TimedBlock({ delay, onReveal, children }: { delay?: number; onReveal?: () => void; children: React.ReactNode }) {
+function TimedBlock({ delay, onReveal, spaceAfter, children }: { delay?: number; onReveal?: () => void; spaceAfter?: number; children: React.ReactNode }) {
   const [show, setShow] = useState(!delay || delay <= 0)
   const revealCb = useRef(onReveal)
   revealCb.current = onReveal
@@ -39,7 +39,7 @@ function TimedBlock({ delay, onReveal, children }: { delay?: number; onReveal?: 
     return () => clearTimeout(t)
   }, [delay])
   if (!show) return null
-  return <div style={{ animation: 'fadeInUp 400ms cubic-bezier(0.4,0,0.2,1)' }}>{children}</div>
+  return <div style={{ animation: 'fadeInUp 400ms cubic-bezier(0.4,0,0.2,1)', marginBottom: spaceAfter ?? 24 }}>{children}</div>
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -582,7 +582,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     if (block.type === 'result' || phase !== 'answering') return null
 
     return (
-      <TimedBlock key={block.id} delay={config.appear_delay} onReveal={() => markRevealed(block.id)}>
+      <TimedBlock key={block.id} delay={config.appear_delay} onReveal={() => markRevealed(block.id)} spaceAfter={config.space_after}>
       <div>
         {['single_choice', 'multi_choice', 'yes_no'].includes(block.type) && (
           <div style={{ background: config.bg_color || undefined }}>
@@ -770,20 +770,39 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           ) : null
         })()}
 
-        {block.type === 'button' && config.button_action === 'external_url' && (() => {
+        {block.type === 'button' && (() => {
           const btnSize = config.button_size === 'sm'
-            ? 'px-4 py-2 text-sm self-auto'
+            ? 'px-4 py-2 text-sm'
             : config.button_size === 'lg'
             ? 'px-10 py-5 text-lg w-full'
             : 'px-8 py-4 text-base'
+          const align = `flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`
+          const cls = `font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${btnSize}`
+          const st = { background: config.button_color || primaryColor }
+          // Botão de link externo abre a URL; os demais avançam o quiz (na posição)
+          if (config.button_action === 'external_url') {
+            return (
+              <div className={align}>
+                <a href={config.button_url || '#'} target="_blank" rel="noopener noreferrer"
+                  onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.button_url })}
+                  className={cls} style={st}>{config.button_text || 'Acessar'}</a>
+              </div>
+            )
+          }
           return (
-            <div className={`flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
-              <a href={config.button_url || '#'} target="_blank" rel="noopener noreferrer"
-                onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.button_url })}
-                className={`font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${btnSize}`}
-                style={{ background: config.button_color || primaryColor }}>
-                {config.button_text || 'Acessar'}
-              </a>
+            <div className={align}>
+              <button
+                onClick={() => {
+                  tracker.track('button_clicked', page.id, block.id, {})
+                  fireIntegrations(block.id, config, {
+                    answers, score,
+                    name: captureRef.current.name || leadData.name,
+                    email: captureRef.current.email || leadData.email,
+                    phone: captureRef.current.phone || leadData.phone,
+                  })
+                  handleNext()
+                }}
+                className={cls} style={st}>{config.button_text || 'Próximo →'}</button>
             </div>
           )
         })()}
@@ -1246,7 +1265,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
       <div key={transitionKey} className={`flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-8 ${currentPage?.blocks[0]?.type === 'image' ? 'pt-2' : 'pt-6'}`}
         style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
-        <div className="w-full max-w-xl min-w-0 space-y-6">
+        <div className="w-full max-w-xl min-w-0">
           {currentPage?.blocks.map(renderBlock)}
 
           {shouldShowNextButton && !hasExplicitButton && (
@@ -1268,33 +1287,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             </button>
           )}
 
-          {hasExplicitButton && currentPage.blocks.filter(b => b.type === 'button' && b.config.button_action !== 'external_url').map(b => {
-            const bSize = b.config.button_size === 'sm'
-              ? 'px-4 py-2 text-sm'
-              : b.config.button_size === 'lg'
-              ? 'px-10 py-5 text-lg w-full'
-              : 'px-8 py-4 text-base'
-            return (
-              <div key={b.id} className={`flex ${b.config.button_align === 'left' ? 'justify-start' : b.config.button_align === 'right' ? 'justify-end' : 'justify-center'}`}>
-                <button
-                  onClick={() => {
-                    tracker.track('button_clicked', currentPage.id, b.id, {})
-                    fireIntegrations(b.id, b.config, {
-                      answers,
-                      score,
-                      name: captureRef.current.name || leadData.name,
-                      email: captureRef.current.email || leadData.email,
-                      phone: captureRef.current.phone || leadData.phone,
-                    })
-                    handleNext()
-                  }}
-                  className={`font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${bSize}`}
-                  style={{ background: b.config.button_color || primaryColor }}>
-                  {b.config.button_text || 'Próximo →'}
-                </button>
-              </div>
-            )
-          })}
+          {/* Botões explícitos agora renderizam na posição em que foram colocados
+              (dentro de renderBlock), respeitando a ordem dos blocos. */}
         </div>
       </div>
     </div>

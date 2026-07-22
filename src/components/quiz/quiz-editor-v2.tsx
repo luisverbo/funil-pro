@@ -2122,6 +2122,14 @@ function BlockEditor({
         <p className="text-[10px] text-gray-400 mt-1">0 ou vazio = aparece imediatamente</p>
       </div>
 
+      <div>
+        <label className={labelCls}>↕ Espaço abaixo do bloco: {config.space_after ?? 24}px</label>
+        <input type="range" min={0} max={80} step={2} value={config.space_after ?? 24}
+          onChange={e => setConfigKey('space_after', Number(e.target.value))}
+          className="w-full" />
+        <p className="text-[10px] text-gray-400 mt-1">Diminua pra colar no próximo bloco, aumente pra afastar.</p>
+      </div>
+
       {/* Move to page */}
       {otherPages.length > 0 && (
         <div className="border-t border-gray-100 pt-3">
