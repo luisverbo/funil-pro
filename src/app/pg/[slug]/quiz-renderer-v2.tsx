@@ -349,6 +349,29 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     return total
   }
 
+  // Personalização: substitui {{nome}}, {{email}}, {{telefone}}, {{score}} pelo
+  // que a pessoa já respondeu (nome/telefone de páginas anteriores).
+  function resolveVars(text: string): string {
+    if (!text || !text.includes('{{')) return text
+    let name = leadData.name || captureRef.current.name || ''
+    let email = leadData.email || captureRef.current.email || ''
+    let phone = leadData.phone || captureRef.current.phone || ''
+    for (const p of pages) for (const b of p.blocks) {
+      const a = answers[b.id]
+      if (a == null || a === '') continue
+      if (b.type === 'field_text' && !name) name = String(a)
+      if (b.type === 'field_email' && !email) email = String(a)
+      if (b.type === 'field_phone' && !phone) phone = String(a)
+    }
+    const firstName = name.trim().split(/\s+/)[0] || ''
+    return text
+      .replace(/\{\{\s*(primeiro_nome|nome|name)\s*\}\}/gi, firstName)
+      .replace(/\{\{\s*(nome_completo|full_name)\s*\}\}/gi, name)
+      .replace(/\{\{\s*(email|e-mail)\s*\}\}/gi, email)
+      .replace(/\{\{\s*(telefone|whatsapp|phone)\s*\}\}/gi, phone)
+      .replace(/\{\{\s*score\s*\}\}/gi, String(score))
+  }
+
   const tracker = useTracker(pageId)
 
   function fireIntegrations(
@@ -500,6 +523,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     const newScore = computeScore(answers)
     let newLeadData = { ...leadData }
     for (const block of page.blocks) {
+      if (block.type === 'field_text' && answers[block.id] && !newLeadData.name) {
+        newLeadData = { ...newLeadData, name: String(answers[block.id]) }
+        tracker.trackContact(String(answers[block.id]), undefined, undefined)
+      }
       if (block.type === 'field_email' && answers[block.id]) {
         newLeadData = { ...newLeadData, email: String(answers[block.id]) }
         tracker.trackContact(undefined, String(answers[block.id]), undefined)
@@ -591,8 +618,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           <div>
             {config.question && (
               <div className="text-center mb-6">
-                <h2 className="text-2xl md:text-3xl font-bold" style={{ color: theme.textColor }}>{config.question}</h2>
-                {config.subtitle && <p className="mt-1" style={{ color: theme.mutedColor }}>{config.subtitle}</p>}
+                <h2 className="text-2xl md:text-3xl font-bold" style={{ color: theme.textColor }}>{resolveVars(config.question)}</h2>
+                {config.subtitle && <p className="mt-1" style={{ color: theme.mutedColor }}>{resolveVars(config.subtitle)}</p>}
               </div>
             )}
             {(() => {
@@ -742,14 +769,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               color: config.heading_color || theme.textColor,
               fontSize: config.heading_size === 'sm' ? '1.375rem' : config.heading_size === 'md' ? '1.75rem' : config.heading_size === 'xl' ? '2.75rem' : '2.125rem',
             }}
-            dangerouslySetInnerHTML={{ __html: config.heading_text.replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }}
+            dangerouslySetInnerHTML={{ __html: resolveVars(config.heading_text).replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }}
           />
         )}
 
         {block.type === 'text_block' && config.content && (
           <div className="prose max-w-none"
             style={{ color: theme.textColor, textAlign: config.text_align ?? 'center' }}
-            dangerouslySetInnerHTML={{ __html: config.content.replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }} />
+            dangerouslySetInnerHTML={{ __html: resolveVars(config.content).replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }} />
         )}
 
         {block.type === 'image' && config.image_url && (
@@ -841,10 +868,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               <img src={config.hero_image_url} alt="" className="w-full max-h-72 object-cover rounded-2xl mb-6" />
             )}
             <h1 className="text-3xl md:text-5xl font-extrabold leading-tight" style={{ color: theme.textColor }}>
-              {config.hero_headline}
+              {resolveVars(config.hero_headline ?? '')}
             </h1>
             {config.hero_subheadline && (
-              <p className="text-lg md:text-xl mt-4" style={{ color: theme.mutedColor }}>{config.hero_subheadline}</p>
+              <p className="text-lg md:text-xl mt-4" style={{ color: theme.mutedColor }}>{resolveVars(config.hero_subheadline)}</p>
             )}
             {config.hero_cta_text && (
               <div className={`mt-8 ${config.hero_align === 'left' ? '' : 'flex justify-center'}`}>
@@ -1145,6 +1172,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     // auto-avanço usava o leadData de estado antigo e podia submeter sem contato
     let newLeadData = { ...leadData }
     for (const block of page.blocks) {
+      if (block.type === 'field_text' && updated[block.id] && !newLeadData.name) newLeadData = { ...newLeadData, name: String(updated[block.id]) }
       if (block.type === 'field_email' && updated[block.id]) newLeadData = { ...newLeadData, email: String(updated[block.id]) }
       if (block.type === 'field_phone' && updated[block.id]) newLeadData = { ...newLeadData, phone: String(updated[block.id]) }
     }

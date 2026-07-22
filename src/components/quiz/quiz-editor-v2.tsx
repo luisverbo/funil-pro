@@ -1272,6 +1272,7 @@ function BlockEditor({
             <label className={labelCls}>Texto do título</label>
             <RichTextField key={block.id} value={config.heading_text ?? ''} onChange={html => setConfigKey('heading_text', html)} placeholder="Seu título aqui" />
             <p className="text-[11px] text-emerald-600 mt-1">🖍️ Selecione uma palavra/trecho e use a cor ou o marca-texto na barra pra destacar só ela.</p>
+            <p className="text-[11px] text-indigo-600 bg-indigo-50 rounded-lg p-2 mt-1">✨ Digite <b>{'{{nome}}'}</b> pra começar com o nome da pessoa (ex: &quot;Olá, {'{{nome}}'}!&quot;). Vale também <b>{'{{email}}'}</b>, <b>{'{{telefone}}'}</b>, <b>{'{{score}}'}</b>.</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -1318,6 +1319,7 @@ function BlockEditor({
           <label className={labelCls}>Conteúdo</label>
           {/* key={block.id} força remontar ao trocar de bloco — senão o innerHTML (inicializado só no mount) mantém o texto do bloco anterior e o grava no novo */}
           <RichTextField key={block.id} value={config.content ?? ''} onChange={html => setConfigKey('content', html)} placeholder="Digite seu texto..." />
+          <p className="text-[11px] text-indigo-600 bg-indigo-50 rounded-lg p-2 mt-1">✨ Personalize: digite <b>{'{{nome}}'}</b> pra inserir o nome que a pessoa deu antes. Também vale <b>{'{{email}}'}</b>, <b>{'{{telefone}}'}</b> e <b>{'{{score}}'}</b>.</p>
         </div>
       )}
 
