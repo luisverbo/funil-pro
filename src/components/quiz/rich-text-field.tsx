@@ -15,8 +15,8 @@ const FONT_SIZES = [
   { label: 'Grande', size: '6' },
 ]
 
-const COLORS = ['#111827', '#6366f1', '#ef4444', '#10b981', '#f59e0b', '#3b82f6', '#a855f7', '#ffffff']
-const HIGHLIGHTS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff']
+const COLORS = ['#111827', '#6b7280', '#ffffff', '#ef4444', '#f97316', '#f59e0b', '#eab308', '#22c55e', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e']
+const HIGHLIGHTS = ['#fef08a', '#fde68a', '#bbf7d0', '#a7f3d0', '#bfdbfe', '#bae6fd', '#fbcfe8', '#fecaca', '#fed7aa', '#e9d5ff', '#c7d2fe', '#d9f99d']
 
 export default function RichTextField({ value, onChange, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -44,6 +44,20 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
     try { document.execCommand('styleWithCSS', false, 'true') } catch {}
     document.execCommand('hiliteColor', false, color) || document.execCommand('backColor', false, color)
     emit()
+  }
+
+  // O seletor de cor nativo rouba o foco e apaga a seleção — salvamos e restauramos
+  const savedRange = useRef<Range | null>(null)
+  const saveSel = () => {
+    const s = window.getSelection()
+    if (s && s.rangeCount && ref.current?.contains(s.anchorNode)) savedRange.current = s.getRangeAt(0).cloneRange()
+  }
+  const applyCustom = (kind: 'text' | 'mark', color: string) => {
+    const r = savedRange.current
+    ref.current?.focus()
+    if (r) { const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r) }
+    if (kind === 'text') exec('foreColor', color)
+    else highlight(color)
   }
 
   // onMouseDown+preventDefault mantém a seleção do texto ao clicar num botão
@@ -86,12 +100,19 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
           {FONT_SIZES.map(f => <option key={f.size} value={f.size}>{f.label}</option>)}
         </select>
         <div className="flex items-center gap-0.5 flex-wrap ml-0.5">
+          <span className="text-[11px] text-gray-400 flex-shrink-0" title="Cor do texto">A</span>
           {COLORS.map(c => (
             <button key={c} type="button" title={`Cor do texto ${c}`}
               onMouseDown={e => { e.preventDefault(); exec('foreColor', c) }}
               style={{ background: c }}
               className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0" />
           ))}
+          {/* cor livre do texto */}
+          <label className="w-4 h-4 rounded-full flex-shrink-0 cursor-pointer relative overflow-hidden border border-gray-300"
+            style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }} title="Qualquer cor do texto">
+            <input type="color" onMouseDown={saveSel} onChange={e => applyCustom('text', e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer" />
+          </label>
         </div>
         <div className="w-px h-5 bg-gray-200 mx-0.5 self-center" />
         <span className="text-[11px] text-gray-400 flex-shrink-0" title="Marca-texto">🖍️</span>
@@ -102,6 +123,12 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
               style={{ background: c }}
               className="w-4 h-4 rounded border border-gray-300 flex-shrink-0" />
           ))}
+          {/* cor livre do marca-texto */}
+          <label className="w-4 h-4 rounded flex-shrink-0 cursor-pointer relative overflow-hidden border border-gray-300"
+            style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }} title="Qualquer cor de marca-texto">
+            <input type="color" onMouseDown={saveSel} onChange={e => applyCustom('mark', e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer" />
+          </label>
           <button type="button" title="Remover marca-texto"
             onMouseDown={e => { e.preventDefault(); highlight('transparent') }}
             className="w-4 h-4 rounded border border-gray-300 bg-white text-gray-400 text-[10px] leading-none flex items-center justify-center flex-shrink-0">⊘</button>
