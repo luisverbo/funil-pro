@@ -9,6 +9,7 @@ interface HeroSimpleProps {
   headline?: string
   subheadline?: string
   ctaText?: string
+  ctaSubtext?: string
   ctaColor?: string
   ctaLink?: string
   align?: 'center' | 'left'
@@ -25,6 +26,7 @@ export const HeroSimple = ({
   headline = 'Sua headline poderosa aqui',
   subheadline = 'Seu subtítulo explicando o benefício principal',
   ctaText = 'Quero Começar Agora →',
+  ctaSubtext = '',
   ctaColor = '#6366F1',
   ctaLink = '#form',
   align = 'center',
@@ -74,6 +76,9 @@ export const HeroSimple = ({
             {ctaText}
           </a>
         )}
+        {ctaSubtext && (
+          <p className="text-sm mt-3" style={{ color: subColor }}>{ctaSubtext}</p>
+        )}
         {imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt="" className="mt-10 w-full rounded-2xl shadow-2xl" />
@@ -119,6 +124,15 @@ export const HeroSimpleSettings = () => {
           className="w-full border border-gray-200 rounded-lg p-2 text-sm"
           value={props.ctaText}
           onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaText = e.target.value })}
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Texto pequeno abaixo do botão</label>
+        <input
+          className="w-full border border-gray-200 rounded-lg p-2 text-sm"
+          placeholder="🔒 Pagamento seguro · Garantia de 7 dias"
+          value={props.ctaSubtext ?? ''}
+          onChange={(e) => setProp((p: HeroSimpleProps) => { p.ctaSubtext = e.target.value })}
         />
       </div>
       <div>
@@ -206,6 +220,7 @@ HeroSimple.craft = {
     headline: 'Sua headline poderosa aqui',
     subheadline: 'Seu subtítulo explicando o benefício principal',
     ctaText: 'Quero Começar Agora →',
+    ctaSubtext: '',
     ctaColor: '#6366F1',
     ctaLink: '#form',
     align: 'center',
