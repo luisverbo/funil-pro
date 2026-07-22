@@ -134,6 +134,7 @@ export interface BlockConfig {
   button_color?: string
   button_align?: 'left' | 'center' | 'right'
   button_size?: 'sm' | 'md' | 'lg'
+  button_pulse?: boolean      // efeito de pulsar (chama atenção pro CTA)
 
   // Final capture
   show_name?: boolean

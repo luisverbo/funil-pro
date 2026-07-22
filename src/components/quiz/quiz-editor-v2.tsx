@@ -1765,6 +1765,7 @@ function BlockEditor({
               ))}
             </div>
           </div>
+          <Toggle on={!!config.button_pulse} onToggle={() => setConfigKey('button_pulse', !config.button_pulse)} label="💓 Efeito pulsar (chama atenção)" />
         </>
       )}
 

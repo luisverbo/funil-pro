@@ -868,7 +868,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             : 'px-8 py-4 text-base'
           const align = `flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`
           const cls = `font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${btnSize}`
-          const st = { background: config.button_color || primaryColor }
+          const st = { background: config.button_color || primaryColor, ...(config.button_pulse ? { animation: 'pulseCta 1.2s ease-in-out infinite' } : {}) }
           // Botão de link externo abre a URL; os demais avançam o quiz (na posição)
           if (config.button_action === 'external_url') {
             return (
@@ -1340,7 +1340,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         fontFamily: theme.fontFamily,
       }}>
       {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
-      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } } @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }`}</style>
+      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } } @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } } @keyframes pulseCta { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }`}</style>
 
       {logoUrl && (
         <div className="flex justify-center pt-6 shrink-0">
