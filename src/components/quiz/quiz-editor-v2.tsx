@@ -1405,6 +1405,9 @@ function BlockEditor({
             <input type="number" min={1} value={config.loading_seconds ?? 3} onChange={e => setConfigKey('loading_seconds', Number(e.target.value))} className={inputCls} />
           </div>
           <Toggle on={!!config.loading_auto_advance} onToggle={() => setConfigKey('loading_auto_advance', !config.loading_auto_advance)} label="Avançar para próxima página ao terminar" />
+          <p className="text-[11px] text-indigo-600 bg-indigo-50 rounded-lg p-2 leading-relaxed">
+            💡 <b>Encadear vários:</b> coloque outro Loading com <b>&quot;Aparecer após&quot;</b> = à duração deste (ex: 1º aparece após 0s dura 2s; 2º aparece após 2s; 3º após 4s). Cada um some quando termina e o próximo entra no lugar. Deixe <b>&quot;Avançar…&quot;</b> ligado só no <b>último</b>.
+          </p>
         </>
       )}
 

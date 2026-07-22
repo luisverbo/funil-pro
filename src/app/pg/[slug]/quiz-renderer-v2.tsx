@@ -178,14 +178,17 @@ function LoadingBlock({ config, onDone, theme, primaryColor }: { config: BlockCo
     return () => clearInterval(iv)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Ao terminar, se NÃO for o loading que avança a página, some de cena — assim
+  // dá pra encadear vários (um aparece via "Aparecer após", roda a duração e sai,
+  // e o próximo entra no lugar). O que avança a página mantém-se até trocar.
+  if (done && !config.loading_auto_advance) return null
   return (
-    <div className="text-center py-6">
+    <div className="text-center py-6" style={{ animation: 'fadeInUp 300ms ease' }}>
       <div className="inline-block w-10 h-10 border-4 rounded-full animate-spin mb-4" style={{ borderColor: theme.isDark ? '#334155' : '#e5e7eb', borderTopColor: primaryColor }} />
       <p className="text-base font-medium mb-3" style={{ color: theme.textColor }}>{config.loading_text || 'Carregando...'}</p>
       <div className="max-w-xs mx-auto h-2 rounded-full overflow-hidden" style={{ background: theme.isDark ? '#334155' : '#e5e7eb' }}>
         <div className="h-full transition-all" style={{ width: `${pct}%`, background: primaryColor }} />
       </div>
-      {done && <p className="text-xs mt-2" style={{ color: theme.mutedColor }}>Pronto!</p>}
     </div>
   )
 }
