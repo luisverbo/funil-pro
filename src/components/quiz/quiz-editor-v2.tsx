@@ -914,7 +914,9 @@ const THEME_PRESET_PREVIEWS: Record<string, { bg: string; card: string; dark: bo
   gradient: { bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', card: 'rgba(255,255,255,0.15)', dark: true },
   minimal:  { bg: '#ffffff', card: '#ffffff', dark: false },
   bold:     { bg: 'linear-gradient(160deg, #111827 0%, #1f2937 60%, #6366f1 140%)', card: '#1f2937', dark: true },
+  whatsapp: { bg: '#efeae2', card: '#ffffff', dark: false },
 }
+const FALLBACK_PREVIEW = { bg: '#f8fafc', card: '#ffffff', dark: false }
 
 function RightPanelEmpty({ settings, onUpdateSettings }: {
   settings: QuizData['settings']
@@ -971,7 +973,7 @@ function RightPanelEmpty({ settings, onUpdateSettings }: {
             <label className={labelCls}>Tema</label>
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(THEME_PRESETS).map(([key, preset]) => {
-                const pv = THEME_PRESET_PREVIEWS[key]
+                const pv = THEME_PRESET_PREVIEWS[key] ?? FALLBACK_PREVIEW
                 const active = theme.preset === key
                 return (
                   <button key={key} onClick={() => setTheme({ ...preset, preset: preset.preset })}
