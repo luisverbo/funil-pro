@@ -585,7 +585,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       <TimedBlock key={block.id} delay={config.appear_delay} onReveal={() => markRevealed(block.id)} spaceAfter={config.space_after}>
       <div>
         {['single_choice', 'multi_choice', 'yes_no'].includes(block.type) && (
-          <div style={{ background: config.bg_color || undefined }}>
+          <div>
             {config.question && (
               <div className="text-center mb-6">
                 <h2 className="text-2xl md:text-3xl font-bold" style={{ color: theme.textColor }}>{config.question}</h2>
@@ -621,8 +621,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                         : val === opt.label
                       return (
                         <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
-                          className={`rounded-2xl border-2 overflow-hidden text-left transition-all duration-150 shadow-sm ${isSelected ? 'scale-[0.98]' : 'border-gray-200 bg-white hover:scale-[1.02]'}`}
-                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.cardBg }}>
+                          className={`rounded-2xl border-2 overflow-hidden text-left transition-all duration-150 shadow-sm ${isSelected ? 'scale-[0.98]' : 'hover:scale-[1.02]'}`}
+                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, border: theme.cardBorder }}>
                           {opt.image_url
                             ? <img src={opt.image_url} alt="" className="w-full h-28 object-cover" />
                             : <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-4xl">{opt.emoji || '🎯'}</div>}
@@ -647,9 +647,9 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                     return (
                       <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
                         className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
-                          isSelected ? 'scale-[0.99]' : 'border-gray-200 hover:scale-[1.01]'
+                          isSelected ? 'scale-[0.99]' : 'hover:scale-[1.01]'
                         }`}
-                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: theme.cardBg, border: theme.cardBorder }}
+                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.cardBg, border: theme.cardBorder }}
                       >
                         {block.type === 'multi_choice' && (
                           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${isSelected ? 'text-white' : 'border-gray-300'}`}
@@ -667,9 +667,9 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             })()}
             {block.type === 'multi_choice' && (
               <button onClick={handleNext} disabled={!Array.isArray(val) || (val as string[]).length === 0}
-                style={{ background: primaryColor }}
+                style={{ background: config.button_color || primaryColor }}
                 className="w-full mt-4 py-4 text-white text-base font-semibold rounded-2xl shadow transition disabled:opacity-40 hover:opacity-90">
-                Próximo →
+                {config.next_button_text || 'Próximo →'}
               </button>
             )}
           </div>
@@ -1171,8 +1171,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   // força botão — quem monta decide se coloca um bloco Botão.
   // Rede de segurança: página COM campos de resposta e sem botão ganha o
   // "Próximo" automático pra não travar o visitante.
-  const hasInputNeedingSubmit = nonChoiceInputs.length > 0 || hasFinalCapture
-  const shouldShowNextButton = !hasResultBlock && !isLandingOnly && (!hasChoiceAutoAdvance || hasInputNeedingSubmit)
+  // Múltipla escolha já renderiza o próprio botão "Próximo" — não força o auto
+  const hasMultiChoice = currentPage?.blocks.some(b => b.type === 'multi_choice')
+  const inputsNeedingButton = nonChoiceInputs.filter(b => b.type !== 'multi_choice')
+  const hasInputNeedingSubmit = inputsNeedingButton.length > 0 || hasFinalCapture
+  const shouldShowNextButton = !hasResultBlock && !isLandingOnly && !hasMultiChoice && (!hasChoiceAutoAdvance || hasInputNeedingSubmit)
+  const autoNextText = currentPage?.blocks.map(b => b.config.next_button_text).find(Boolean)
 
   if (phase !== 'answering' && resultBlock) {
     const cfg = resultBlock.config
@@ -1283,7 +1287,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               style={{ background: primaryColor }}
               className="w-full py-4 text-white text-base font-semibold rounded-2xl shadow transition hover:opacity-90"
             >
-              {hasFinalCapture ? (currentPage.blocks.find(b => b.type === 'final_capture')?.config.submit_text || 'Ver meu resultado →') : 'Próximo →'}
+              {hasFinalCapture ? (currentPage.blocks.find(b => b.type === 'final_capture')?.config.submit_text || 'Ver meu resultado →') : (autoNextText || 'Próximo →')}
             </button>
           )}
 

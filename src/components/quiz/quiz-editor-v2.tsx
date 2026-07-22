@@ -1161,9 +1161,9 @@ function OptionList({
           <div key={opt.id} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
             <div className="flex items-center gap-1.5">
               <input value={opt.emoji ?? ''} onChange={e => updateOpt(opt.id, { emoji: e.target.value })}
-                className="w-9 text-center text-sm border border-gray-200 rounded py-1 bg-white focus:outline-none" placeholder="😀" maxLength={2} />
+                className="w-9 shrink-0 text-center text-sm border border-gray-200 rounded py-1 bg-white focus:outline-none" placeholder="😀" maxLength={2} />
               <input value={opt.label} onChange={e => updateOpt(opt.id, { label: e.target.value })}
-                className="flex-1 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300" placeholder="Texto da opção" />
+                className="flex-1 min-w-0 text-sm border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300" placeholder="Texto da opção" />
               <div className="flex gap-0.5">
                 <button onClick={() => moveOpt(i, -1)} className="p-0.5 text-gray-400 hover:text-gray-600 text-xs">↑</button>
                 <button onClick={() => moveOpt(i, 1)}  className="p-0.5 text-gray-400 hover:text-gray-600 text-xs">↓</button>
@@ -1230,6 +1230,13 @@ function BlockEditor({
               className={inputCls} placeholder="Ex: Escolha uma opção" />
           </div>
           <OptionList options={config.options ?? []} pages={pages} onChange={opts => setConfigKey('options', opts)} />
+          {block.type === 'multi_choice' && (
+            <div className={sectionCls}>
+              <label className={labelCls}>Texto do botão</label>
+              <input value={config.next_button_text ?? ''} onChange={e => setConfigKey('next_button_text', e.target.value || undefined)}
+                className={inputCls} placeholder="Próximo →" />
+            </div>
+          )}
           <div className={sectionCls}>
             <Toggle on={!!config.required} onToggle={() => setConfigKey('required', !config.required)} label="Resposta obrigatória" />
           </div>
@@ -2098,16 +2105,23 @@ function BlockEditor({
         )
       })()}
 
-      {/* Background color */}
+      {/* Cor dos cards de opção */}
       {(isChoice || block.type === 'scale') && (
         <div className={sectionCls}>
-          <label className={labelCls}>Cor de fundo</label>
-          <div className="flex gap-2 flex-wrap">
-            {['#ffffff','#f8f7ff','#f0fdf4','#fffbeb','#fdf2f8','#f0f9ff'].map(c => (
+          <div className="flex items-center justify-between mb-1.5">
+            <label className={labelCls.replace('mb-1.5','')}>Cor dos cards de opção</label>
+            {config.bg_color && <button onClick={() => setConfigKey('bg_color', undefined)} className="text-[11px] text-gray-400 underline">usar cor do tema</button>}
+          </div>
+          <div className="flex gap-2 flex-wrap items-center">
+            {['#ffffff','#f8f7ff','#f0fdf4','#fffbeb','#fdf2f8','#f0f9ff','#0f172a','#1e293b'].map(c => (
               <button key={c} onClick={() => setConfigKey('bg_color', c)}
                 style={{ background: c, borderColor: config.bg_color === c ? '#6366f1' : '#e5e7eb' }}
                 className="w-7 h-7 rounded-full border-2 transition" />
             ))}
+            <label className="w-7 h-7 rounded-full cursor-pointer relative overflow-hidden border-2 border-gray-200" title="Qualquer cor"
+              style={{ background: 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)' }}>
+              <input type="color" value={config.bg_color || '#ffffff'} onChange={e => setConfigKey('bg_color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+            </label>
           </div>
         </div>
       )}
