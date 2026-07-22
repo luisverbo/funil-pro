@@ -25,6 +25,8 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
     if (ref.current && ref.current.innerHTML !== value) {
       ref.current.innerHTML = value || ''
     }
+    // Enter cria PARÁGRAFO (<p>) com espaço, em vez de <div> colado
+    try { document.execCommand('defaultParagraphSeparator', false, 'p') } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

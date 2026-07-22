@@ -834,7 +834,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         )}
 
         {block.type === 'text_block' && config.content && (
-          <div className="prose max-w-none"
+          <div className="prose max-w-none [&_p]:my-3 [&_div]:my-1"
             style={{ color: theme.textColor, textAlign: config.text_align ?? 'center' }}
             dangerouslySetInnerHTML={{ __html: resolveVars(config.content).replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }} />
         )}
