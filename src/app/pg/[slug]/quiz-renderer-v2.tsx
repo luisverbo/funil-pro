@@ -349,27 +349,40 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     return total
   }
 
-  // Personalização: substitui {{nome}}, {{email}}, {{telefone}}, {{score}} pelo
-  // que a pessoa já respondeu (nome/telefone de páginas anteriores).
+  // Personalização: {{identificador}} puxa a resposta do campo com aquele
+  // "identificador" (definido no editor). Também há atalhos prontos:
+  // {{nome}}, {{email}}, {{telefone}}, {{score}}.
   function resolveVars(text: string): string {
     if (!text || !text.includes('{{')) return text
-    let name = leadData.name || captureRef.current.name || ''
-    let email = leadData.email || captureRef.current.email || ''
-    let phone = leadData.phone || captureRef.current.phone || ''
+    // mapa: identificador do campo (minúsculo) → resposta
+    const map: Record<string, string> = {}
     for (const p of pages) for (const b of p.blocks) {
       const a = answers[b.id]
       if (a == null || a === '') continue
+      const key = (b.config.field_key || '').trim().toLowerCase()
+      if (key) map[key] = Array.isArray(a) ? a.join(', ') : String(a)
+    }
+    // valores "inteligentes": campo marcado com esse identificador > leadData >
+    // 1º campo do tipo (fallback pra funcionar sem configurar nada)
+    let name = leadData.name || captureRef.current.name || map['nome'] || map['name'] || ''
+    let email = leadData.email || captureRef.current.email || map['email'] || ''
+    let phone = leadData.phone || captureRef.current.phone || map['telefone'] || map['whatsapp'] || ''
+    for (const p of pages) for (const b of p.blocks) {
+      const a = answers[b.id]; if (a == null || a === '') continue
       if (b.type === 'field_text' && !name) name = String(a)
       if (b.type === 'field_email' && !email) email = String(a)
       if (b.type === 'field_phone' && !phone) phone = String(a)
     }
     const firstName = name.trim().split(/\s+/)[0] || ''
-    return text
-      .replace(/\{\{\s*(primeiro_nome|nome|name)\s*\}\}/gi, firstName)
-      .replace(/\{\{\s*(nome_completo|full_name)\s*\}\}/gi, name)
-      .replace(/\{\{\s*(email|e-mail)\s*\}\}/gi, email)
-      .replace(/\{\{\s*(telefone|whatsapp|phone)\s*\}\}/gi, phone)
-      .replace(/\{\{\s*score\s*\}\}/gi, String(score))
+    return text.replace(/\{\{\s*([\w-]+)\s*\}\}/g, (m, raw) => {
+      const k = String(raw).toLowerCase()
+      if (k === 'nome' || k === 'name' || k === 'primeiro_nome') return firstName || (map[k] ?? m)
+      if (k === 'nome_completo' || k === 'full_name') return name
+      if (k === 'email' || k === 'e-mail') return email
+      if (k === 'telefone' || k === 'whatsapp' || k === 'phone') return phone
+      if (k === 'score') return String(score)
+      return map[k] ?? m   // identificador personalizado; se não achar, mantém o texto
+    })
   }
 
   const tracker = useTracker(pageId)

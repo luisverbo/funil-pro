@@ -1309,6 +1309,13 @@ function BlockEditor({
               <input value={config.placeholder ?? ''} onChange={e => setConfigKey('placeholder', e.target.value)} className={inputCls} placeholder="Texto de exemplo..." />
             </div>
           )}
+          <div>
+            <label className={labelCls}>🔖 Identificador (para personalizar depois)</label>
+            <input value={config.field_key ?? ''}
+              onChange={e => setConfigKey('field_key', e.target.value.replace(/[^\w-]/g, '').toLowerCase() || undefined)}
+              className={inputCls} placeholder={block.type === 'field_text' ? 'nome' : block.type === 'field_email' ? 'email' : block.type === 'field_phone' ? 'telefone' : 'ex: cidade'} />
+            <p className="text-[10px] text-gray-400 mt-1">Depois use <b>{'{{'}{config.field_key || 'nome'}{'}}'}</b> num Título/Texto pra puxar esta resposta.</p>
+          </div>
           <Toggle on={!!config.required} onToggle={() => setConfigKey('required', !config.required)} label="Obrigatório" />
         </>
       )}

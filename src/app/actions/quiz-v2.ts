@@ -97,6 +97,7 @@ export interface BlockConfig {
   label?: string
   placeholder?: string
   required?: boolean
+  field_key?: string         // identificador do campo p/ personalização (ex: nome) → {{nome}}
   bg_color?: string          // cor dos cards de opção (escolha única/múltipla)
   border_color?: string      // cor do contorno dos cards de opção
   next_button_text?: string  // texto do botão "Próximo" da múltipla escolha
