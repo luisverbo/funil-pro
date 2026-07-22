@@ -645,7 +645,9 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
     )
   } else if (block.type === 'alert') {
     const vc = { info: 'bg-blue-50 text-blue-700', success: 'bg-emerald-50 text-emerald-700', warning: 'bg-amber-50 text-amber-700', danger: 'bg-red-50 text-red-700' }[config.alert_variant ?? 'warning']
-    summary = <div className={`text-xs rounded-lg px-3 py-2 ${vc}`}>{config.alert_text || 'Mensagem de alerta'}</div>
+    summary = <div className={`text-xs rounded-lg px-3 py-2 ${vc}`}>
+      {(config.alert_text ?? '').replace(/<[^>]+>/g, '').trim() ? <span dangerouslySetInnerHTML={{ __html: config.alert_text ?? '' }} /> : 'Mensagem de alerta'}
+    </div>
   } else if (block.type === 'notification') {
     summary = (
       <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 py-1.5 shadow-sm">
@@ -1366,19 +1368,21 @@ function BlockEditor({
         <>
           <div>
             <label className={labelCls}>Mensagem</label>
-            <textarea value={config.alert_text ?? ''} onChange={e => setConfigKey('alert_text', e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="Texto do alerta" />
+            <RichTextField key={block.id} value={config.alert_text ?? ''} onChange={html => setConfigKey('alert_text', html)} placeholder="Texto do alerta" />
+            <p className="text-[11px] text-gray-400 mt-1">Selecione o texto pra mudar cor, negrito, tamanho…</p>
           </div>
           <div>
-            <label className={labelCls}>Estilo</label>
+            <label className={labelCls}>Cor da caixa</label>
             <div className="grid grid-cols-2 gap-2">
               {(['info','success','warning','danger'] as const).map(v => (
                 <button key={v} onClick={() => setConfigKey('alert_variant', v)}
                   className={`py-1.5 text-xs rounded-lg border transition ${(config.alert_variant ?? 'warning') === v ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 text-gray-600'}`}>
-                  {v === 'info' ? 'Info' : v === 'success' ? 'Sucesso' : v === 'warning' ? 'Aviso' : 'Perigo'}
+                  {v === 'info' ? 'Azul' : v === 'success' ? 'Verde' : v === 'warning' ? 'Amarelo' : 'Vermelho'}
                 </button>
               ))}
             </div>
           </div>
+          <Toggle on={config.alert_show_icon !== false} onToggle={() => setConfigKey('alert_show_icon', config.alert_show_icon === false)} label="Mostrar ícone à esquerda" />
         </>
       )}
 

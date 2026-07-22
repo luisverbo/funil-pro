@@ -1076,7 +1076,13 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           const v = config.alert_variant ?? 'warning'
           const cls = { info: 'bg-blue-50 text-blue-800 border-blue-200', success: 'bg-emerald-50 text-emerald-800 border-emerald-200', warning: 'bg-amber-50 text-amber-800 border-amber-200', danger: 'bg-red-50 text-red-800 border-red-200' }[v]
           const icon = { info: 'ℹ️', success: '✅', warning: '⚠️', danger: '🚨' }[v]
-          return <div className={`flex items-start gap-2 border rounded-2xl px-4 py-3 ${cls}`}><span>{icon}</span><p className="text-sm font-medium">{config.alert_text}</p></div>
+          const html = (config.alert_text ?? '').replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '')
+          return (
+            <div className={`flex items-start gap-2 border rounded-2xl px-4 py-3 ${cls}`}>
+              {config.alert_show_icon !== false && <span className="shrink-0">{icon}</span>}
+              <div className="text-sm font-medium prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: resolveVars(html) }} />
+            </div>
+          )
         })()}
 
         {/* Notification */}
@@ -1128,11 +1134,11 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         {block.type === 'checklist' && (
           <div>
             {config.checklist_title && <h3 className="text-xl font-bold mb-3 text-center" style={{ color: theme.textColor }}>{config.checklist_title}</h3>}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {(config.checklist_items ?? []).map(it => (
-                <div key={it.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: theme.cardBg, border: theme.cardBorder }}>
+                <div key={it.id} className="flex items-center gap-3 py-1.5">
                   <span className="flex items-center justify-center w-6 h-6 rounded-full text-white text-sm shrink-0" style={{ background: '#10b981' }}>✓</span>
-                  <span className="text-sm" style={{ color: theme.textColor }}>{it.text}</span>
+                  <span className="text-base" style={{ color: theme.textColor }}>{it.text}</span>
                 </div>
               ))}
             </div>

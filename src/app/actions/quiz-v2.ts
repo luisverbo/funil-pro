@@ -203,8 +203,9 @@ export interface BlockConfig {
   text_align?: 'left' | 'center' | 'right'
 
   // Alert
-  alert_text?: string
+  alert_text?: string        // HTML (texto formatado)
   alert_variant?: 'info' | 'success' | 'warning' | 'danger'
+  alert_show_icon?: boolean  // mostrar o ícone à esquerda (default true)
 
   // Notification (prova social recorrente)
   notification_items?: NotificationItem[]
