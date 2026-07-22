@@ -1163,7 +1163,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     const ctaUrl = cfg.cta_url
 
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8"
+      <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col items-center justify-center px-4 py-8"
         style={{
           background: theme.background,
           backgroundImage: theme.backgroundImage ? `url(${theme.backgroundImage})` : undefined,
@@ -1212,7 +1212,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col"
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col"
       style={{
         background: theme.background,
         backgroundImage: theme.backgroundImage ? `url(${theme.backgroundImage})` : undefined,
@@ -1244,9 +1244,9 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         </div>
       )}
 
-      <div key={transitionKey} className="flex-1 flex items-start justify-center px-4 pt-6 pb-8"
+      <div key={transitionKey} className="flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pt-6 pb-8"
         style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
-        <div className="w-full max-w-xl space-y-6">
+        <div className="w-full max-w-xl min-w-0 space-y-6">
           {currentPage?.blocks.map(renderBlock)}
 
           {shouldShowNextButton && !hasExplicitButton && (
