@@ -1148,8 +1148,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const hasResultBlock = currentPage?.blocks.some(b => b.type === 'result')
   const nonChoiceInputs = currentPage?.blocks.filter(b => !['single_choice','yes_no'].includes(b.type) && !NON_INPUT_BLOCKS.has(b.type)) ?? []
   const isLandingOnly = (currentPage?.blocks.length ?? 0) > 0 && currentPage!.blocks.every(b => LANDING_BLOCKS.has(b.type))
-  const heroHasCta = currentPage?.blocks.some(b => b.type === 'hero' && b.config.hero_cta_text)
-  const shouldShowNextButton = !hasResultBlock && !(isLandingOnly && heroHasCta) && (!hasChoiceAutoAdvance || nonChoiceInputs.length > 0 || hasFinalCapture || isLandingOnly)
+  // Página só de conteúdo (título/imagem/texto…, sem campos de resposta): NÃO
+  // força botão — quem monta decide se coloca um bloco Botão.
+  // Rede de segurança: página COM campos de resposta e sem botão ganha o
+  // "Próximo" automático pra não travar o visitante.
+  const hasInputNeedingSubmit = nonChoiceInputs.length > 0 || hasFinalCapture
+  const shouldShowNextButton = !hasResultBlock && !isLandingOnly && (!hasChoiceAutoAdvance || hasInputNeedingSubmit)
 
   if (phase !== 'answering' && resultBlock) {
     const cfg = resultBlock.config
