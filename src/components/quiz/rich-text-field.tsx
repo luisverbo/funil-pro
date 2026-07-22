@@ -16,6 +16,7 @@ const FONT_SIZES = [
 ]
 
 const COLORS = ['#111827', '#6366f1', '#ef4444', '#10b981', '#f59e0b', '#3b82f6', '#a855f7', '#ffffff']
+const HIGHLIGHTS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff']
 
 export default function RichTextField({ value, onChange, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -34,6 +35,14 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
   function exec(cmd: string, arg?: string) {
     ref.current?.focus()
     document.execCommand(cmd, false, arg)
+    emit()
+  }
+
+  // marca-texto na seleção (precisa de styleWithCSS pra usar hiliteColor)
+  function highlight(color: string) {
+    ref.current?.focus()
+    try { document.execCommand('styleWithCSS', false, 'true') } catch {}
+    document.execCommand('hiliteColor', false, color) || document.execCommand('backColor', false, color)
     emit()
   }
 
@@ -78,11 +87,24 @@ export default function RichTextField({ value, onChange, placeholder }: Props) {
         </select>
         <div className="flex items-center gap-0.5 flex-wrap ml-0.5">
           {COLORS.map(c => (
-            <button key={c} type="button" title={`Cor ${c}`}
+            <button key={c} type="button" title={`Cor do texto ${c}`}
               onMouseDown={e => { e.preventDefault(); exec('foreColor', c) }}
               style={{ background: c }}
               className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0" />
           ))}
+        </div>
+        <div className="w-px h-5 bg-gray-200 mx-0.5 self-center" />
+        <span className="text-[11px] text-gray-400 flex-shrink-0" title="Marca-texto">🖍️</span>
+        <div className="flex items-center gap-0.5 flex-wrap">
+          {HIGHLIGHTS.map(c => (
+            <button key={c} type="button" title="Marca-texto"
+              onMouseDown={e => { e.preventDefault(); highlight(c) }}
+              style={{ background: c }}
+              className="w-4 h-4 rounded border border-gray-300 flex-shrink-0" />
+          ))}
+          <button type="button" title="Remover marca-texto"
+            onMouseDown={e => { e.preventDefault(); highlight('transparent') }}
+            className="w-4 h-4 rounded border border-gray-300 bg-white text-gray-400 text-[10px] leading-none flex items-center justify-center flex-shrink-0">⊘</button>
         </div>
       </div>
       <div

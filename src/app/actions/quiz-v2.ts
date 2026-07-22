@@ -111,6 +111,7 @@ export interface BlockConfig {
   heading_size?: 'sm' | 'md' | 'lg' | 'xl'
   heading_align?: 'left' | 'center' | 'right'
   heading_color?: string
+  heading_highlight?: string   // cor do marca-texto atrás do título (vazio = sem)
 
   // Text block
   content?: string
