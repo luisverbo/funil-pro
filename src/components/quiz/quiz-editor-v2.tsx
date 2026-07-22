@@ -489,10 +489,10 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
     )
   } else if (block.type === 'heading') {
     const sizeCls = config.heading_size === 'sm' ? 'text-lg' : config.heading_size === 'md' ? 'text-2xl' : config.heading_size === 'xl' ? 'text-4xl' : 'text-3xl'
-    const hl = config.heading_highlight
-      ? { background: config.heading_highlight, padding: '0.05em 0.25em', borderRadius: '0.2em', boxDecorationBreak: 'clone' as const, WebkitBoxDecorationBreak: 'clone' as const }
-      : undefined
-    summary = <p className={`${sizeCls} font-bold text-gray-900 leading-tight`} style={{ textAlign: config.heading_align ?? 'center' }}>{config.heading_text ? <span style={{ color: config.heading_color || undefined, ...hl }}>{config.heading_text}</span> : <span className="italic text-gray-400 text-base font-normal">Título vazio</span>}</p>
+    const isEmpty = !((config.heading_text ?? '').replace(/<[^>]+>/g, '').trim())
+    summary = isEmpty
+      ? <p className="italic text-gray-400 text-base">Título vazio</p>
+      : <p className={`${sizeCls} font-bold text-gray-900 leading-tight`} style={{ textAlign: config.heading_align ?? 'center' }} dangerouslySetInnerHTML={{ __html: config.heading_text ?? '' }} />
   } else if (block.type === 'text_block') {
     // decodifica HTML (tira tags E entidades como &nbsp;) pra prévia não mostrar código
     const text = (() => {
@@ -1232,7 +1232,8 @@ function BlockEditor({
         <>
           <div>
             <label className={labelCls}>Texto do título</label>
-            <input value={config.heading_text ?? ''} onChange={e => setConfigKey('heading_text', e.target.value)} className={inputCls} placeholder="Seu título aqui" />
+            <RichTextField key={block.id} value={config.heading_text ?? ''} onChange={html => setConfigKey('heading_text', html)} placeholder="Seu título aqui" />
+            <p className="text-[11px] text-emerald-600 mt-1">🖍️ Selecione uma palavra/trecho e use a cor ou o marca-texto na barra pra destacar só ela.</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -1251,26 +1252,6 @@ function BlockEditor({
                 <option value="center">Centro</option>
                 <option value="right">Direita</option>
               </select>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Cor (vazio = cor do tema)</label>
-            <div className="flex gap-2 items-center">
-              <input type="color" value={config.heading_color || '#111827'} onChange={e => setConfigKey('heading_color', e.target.value)} className="h-9 w-16 border border-gray-200 rounded-lg cursor-pointer" />
-              <button onClick={() => setConfigKey('heading_color', '')} className="text-xs text-gray-500 underline">Usar cor do tema</button>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>🖍️ Marca-texto (fundo do título)</label>
-            <div className="flex gap-1.5 items-center flex-wrap">
-              {['', '#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'].map(c => (
-                <button key={c} onClick={() => setConfigKey('heading_highlight', c)}
-                  title={c ? 'Marca-texto' : 'Sem marca-texto'}
-                  className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center ${config.heading_highlight === c ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-gray-200'}`}
-                  style={{ background: c || '#ffffff' }}>{c ? '' : '⊘'}</button>
-              ))}
-              <input type="color" value={config.heading_highlight || '#fef08a'} onChange={e => setConfigKey('heading_highlight', e.target.value)}
-                className="h-7 w-9 border border-gray-200 rounded-lg cursor-pointer" title="Cor personalizada" />
             </div>
           </div>
         </>

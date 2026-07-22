@@ -732,23 +732,15 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           </div>
         )}
 
-        {block.type === 'heading' && (
+        {block.type === 'heading' && config.heading_text && (
           <h2 className="font-bold leading-tight"
             style={{
               textAlign: config.heading_align ?? 'center',
-              fontSize: config.heading_size === 'sm' ? '1.375rem' : config.heading_size === 'md' ? '1.75rem' : config.heading_size === 'xl' ? '2.75rem' : '2.125rem',
-            }}>
-            <span style={{
               color: config.heading_color || theme.textColor,
-              ...(config.heading_highlight ? {
-                background: config.heading_highlight,
-                padding: '0.05em 0.25em', borderRadius: '0.2em',
-                boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
-              } : {}),
-            }}>
-              {config.heading_text}
-            </span>
-          </h2>
+              fontSize: config.heading_size === 'sm' ? '1.375rem' : config.heading_size === 'md' ? '1.75rem' : config.heading_size === 'xl' ? '2.75rem' : '2.125rem',
+            }}
+            dangerouslySetInnerHTML={{ __html: config.heading_text.replace(/href\s*=\s*(["'])\s*(?:javascript|data|vbscript):[^"']*\1/gi, 'href="#"').replace(/on\w+\s*=\s*(["'])[^"']*\1/gi, '') }}
+          />
         )}
 
         {block.type === 'text_block' && config.content && (
