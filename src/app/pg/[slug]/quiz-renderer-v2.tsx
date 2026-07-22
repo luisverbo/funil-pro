@@ -1267,7 +1267,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         </div>
       )}
 
-      <div key={transitionKey} className={`flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-8 ${currentPage?.blocks[0]?.type === 'image' ? 'pt-2' : 'pt-6'}`}
+      <div key={transitionKey} className={`flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-8 ${currentPage?.blocks[0]?.type === 'image' ? 'pt-0' : 'pt-6'}`}
         style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
         <div className="w-full max-w-xl min-w-0">
           {currentPage?.blocks.map(renderBlock)}
