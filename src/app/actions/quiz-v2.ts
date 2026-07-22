@@ -297,6 +297,8 @@ export interface QuizSettings {
   primary_color?: string
   logo_url?: string
   show_progress?: boolean
+  progress_color?: string   // cor da barra de progresso (vazio = cor principal)
+  show_back?: boolean       // mostrar botão "Voltar" (default true)
   theme?: QuizTheme
   pixel_id?: string
 }

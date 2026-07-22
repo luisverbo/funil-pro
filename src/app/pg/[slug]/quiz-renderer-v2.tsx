@@ -1229,12 +1229,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       )}
 
       {showProgress && (
-        <div className="h-1 shrink-0" style={{ background: primaryColor + '30' }}>
-          <div className="h-full transition-all duration-500" style={{ width: `${progressPct}%`, background: primaryColor }} />
+        <div className="h-1.5 shrink-0" style={{ background: (data.settings.progress_color || primaryColor) + '30' }}>
+          <div className="h-full transition-all duration-500" style={{ width: `${progressPct}%`, background: data.settings.progress_color || primaryColor }} />
         </div>
       )}
 
-      {pageIdx > 0 && (
+      {pageIdx > 0 && data.settings.show_back !== false && (
         <div className="px-6 pt-4 shrink-0">
           <button onClick={() => { setPageIdx(i => i - 1); setTransitionKey(k => k + 1) }}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">

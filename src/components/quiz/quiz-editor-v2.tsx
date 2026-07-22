@@ -957,7 +957,22 @@ function RightPanelEmpty({ settings, onUpdateSettings }: {
                 className="w-7 h-7 rounded-full border-2 outline-2 outline transition" />
             ))}
           </div>
-          <Toggle on={!!settings.show_progress} onToggle={() => onUpdateSettings({ show_progress: !settings.show_progress })} label="Mostrar barra de progresso" />
+          <div className="border-t border-gray-100 pt-3 space-y-3">
+            <Toggle on={settings.show_progress !== false} onToggle={() => onUpdateSettings({ show_progress: settings.show_progress === false })} label="Mostrar barra de progresso" />
+            {settings.show_progress !== false && (
+              <div>
+                <label className={labelCls}>Cor da barra de progresso</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={settings.progress_color || settings.primary_color || '#6366f1'}
+                    onChange={e => onUpdateSettings({ progress_color: e.target.value })}
+                    className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer p-0.5 shrink-0" />
+                  <span className="text-xs text-gray-500 flex-1">{settings.progress_color ? settings.progress_color : 'usando a cor principal'}</span>
+                  {settings.progress_color && <button onClick={() => onUpdateSettings({ progress_color: undefined })} className="text-[11px] text-gray-400 underline">resetar</button>}
+                </div>
+              </div>
+            )}
+            <Toggle on={settings.show_back !== false} onToggle={() => onUpdateSettings({ show_back: settings.show_back === false })} label="Mostrar botão &quot;Voltar&quot;" />
+          </div>
           <div className="border-t border-gray-100 pt-3">
             <label className={labelCls}>Pixel Meta deste quiz (opcional)</label>
             <input value={settings.pixel_id ?? ''} onChange={e => onUpdateSettings({ pixel_id: e.target.value || undefined })}
