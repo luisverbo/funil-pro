@@ -145,19 +145,66 @@ function getYoutubeEmbed(url: string): string | null {
 type ThemeShape = ReturnType<typeof resolveTheme>
 
 // Prova social: alterna mensagens estilo toast
+// Sininho suave gerado no navegador (sem arquivo externo) — só toca após a
+// pessoa já ter interagido com a página (política de autoplay), o que sempre
+// acontece no quiz.
+function playDing() {
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const ctx = new AC()
+    const o = ctx.createOscillator(); const g = ctx.createGain()
+    o.connect(g); g.connect(ctx.destination)
+    o.type = 'sine'; o.frequency.value = 880
+    g.gain.setValueAtTime(0.0001, ctx.currentTime)
+    g.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.01)
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45)
+    o.start(); o.stop(ctx.currentTime + 0.45)
+    o.onended = () => ctx.close().catch(() => {})
+  } catch {}
+}
+
 function NotificationBlock({ config }: { config: BlockConfig }) {
   const items = config.notification_items ?? []
+  const interval = (config.notification_interval ?? 5) * 1000
+  const pos = config.notification_position ?? 'bottom'
+  const color = config.notification_color || '#16a34a'
   const [idx, setIdx] = useState(0)
+  const [done, setDone] = useState(false)
+
+  // Passa UMA vez pelos itens e para (sem loop). 1 item: mostra e some.
   useEffect(() => {
-    if (items.length <= 1) return
-    const iv = setInterval(() => setIdx(i => (i + 1) % items.length), (config.notification_interval ?? 5) * 1000)
+    if (items.length === 0) return
+    if (items.length === 1) { const t = setTimeout(() => setDone(true), interval + 1200); return () => clearTimeout(t) }
+    const iv = setInterval(() => {
+      setIdx(i => {
+        if (i >= items.length - 1) { clearInterval(iv); setTimeout(() => setDone(true), interval); return i }
+        return i + 1
+      })
+    }, interval)
     return () => clearInterval(iv)
-  }, [items.length, config.notification_interval])
-  if (items.length === 0) return null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, interval])
+
+  // Sininho a cada notificação que entra
+  useEffect(() => {
+    if (items.length === 0 || done) return
+    if (config.notification_sound) playDing()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, done])
+
+  if (items.length === 0 || done) return null
+  const card = (
+    <div key={idx} className="flex items-center gap-3 bg-white rounded-xl px-4 py-3 shadow-lg pointer-events-auto"
+      style={{ animation: 'fadeInUp 400ms ease', borderLeft: `4px solid ${color}` }}>
+      <span className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0" style={{ background: color + '22' }}>🔔</span>
+      <span className="text-sm text-gray-800">{items[idx].text}</span>
+    </div>
+  )
+  if (pos === 'inline') return card
   return (
-    <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-md" style={{ animation: 'fadeInUp 400ms ease' }} key={idx}>
-      <span className="text-xl">🔔</span>
-      <span className="text-sm text-gray-700">{items[idx].text}</span>
+    <div className="fixed z-[60] left-4 right-4 sm:left-auto sm:right-6 sm:max-w-xs pointer-events-none"
+      style={pos === 'top' ? { top: 16 } : { bottom: 16 }}>
+      {card}
     </div>
   )
 }

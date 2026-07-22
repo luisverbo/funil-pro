@@ -209,6 +209,9 @@ export interface BlockConfig {
   // Notification (prova social recorrente)
   notification_items?: NotificationItem[]
   notification_interval?: number  // segundos entre notificações
+  notification_position?: 'top' | 'bottom' | 'inline'  // topo/rodapé flutuante ou no fluxo
+  notification_color?: string     // cor de destaque (padrão verde)
+  notification_sound?: boolean    // toca um sininho a cada notificação
 
   // Loading (revela/avança após N segundos)
   loading_text?: string

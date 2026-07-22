@@ -156,6 +156,9 @@ function defaultConfig(type: BlockType): BlockConfig {
     case 'alert': return { alert_text: 'Atenção: vagas limitadas!', alert_variant: 'warning' }
     case 'notification': return {
       notification_interval: 5,
+      notification_position: 'bottom',
+      notification_color: '#16a34a',
+      notification_sound: true,
       notification_items: [
         { id: newId(), text: 'Maria acabou de se inscrever 🎉' },
         { id: newId(), text: 'João garantiu a vaga há 2 min' },
@@ -1383,9 +1386,34 @@ function BlockEditor({
       {block.type === 'notification' && (
         <>
           <div>
-            <label className={labelCls}>Intervalo entre notificações (seg)</label>
-            <input type="number" min={1} value={config.notification_interval ?? 5} onChange={e => setConfigKey('notification_interval', Number(e.target.value))} className={inputCls} />
+            <label className={labelCls}>Posição</label>
+            <select value={config.notification_position ?? 'bottom'} onChange={e => setConfigKey('notification_position', e.target.value as 'top' | 'bottom' | 'inline')} className={inputCls}>
+              <option value="bottom">Rodapé (flutuando embaixo)</option>
+              <option value="top">Topo (flutuando em cima)</option>
+              <option value="inline">No meio do conteúdo</option>
+            </select>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Intervalo (seg)</label>
+              <input type="number" min={1} value={config.notification_interval ?? 5} onChange={e => setConfigKey('notification_interval', Number(e.target.value))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Cor</label>
+              <div className="flex gap-1.5 items-center">
+                {['#16a34a','#6366f1','#ef4444','#f59e0b','#0ea5e9'].map(c => (
+                  <button key={c} onClick={() => setConfigKey('notification_color', c)}
+                    style={{ background: c, borderColor: (config.notification_color || '#16a34a') === c ? '#111827' : 'transparent' }}
+                    className="w-6 h-6 rounded-full border-2" />
+                ))}
+                <label className="w-6 h-6 rounded-full cursor-pointer relative overflow-hidden border border-gray-200" style={{ background: 'conic-gradient(red,yellow,lime,aqua,blue,magenta,red)' }} title="Qualquer cor">
+                  <input type="color" value={config.notification_color || '#16a34a'} onChange={e => setConfigKey('notification_color', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+                </label>
+              </div>
+            </div>
+          </div>
+          <Toggle on={!!config.notification_sound} onToggle={() => setConfigKey('notification_sound', !config.notification_sound)} label="🔔 Tocar sininho a cada notificação" />
+          <p className="text-[11px] text-gray-400">Mostra as mensagens na ordem, uma vez cada, e para (sem repetir em loop).</p>
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className={labelCls.replace('mb-1.5','')}>Mensagens</label>
