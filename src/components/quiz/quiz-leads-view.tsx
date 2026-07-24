@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   getQuizLeads, getQuizStats, resetQuizLeads, exportLeadsCSV, getAnswerBreakdown,
   type QuizLead, type QuizLeadWithEvents,
@@ -300,6 +300,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
 
   const totalPages = Math.ceil(total / pageSize)
 
+  // Páginas que pedem contato (captura final ou campos de nome/email/telefone)
+  const capturePages = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of pages) {
+      if ((p.blocks ?? []).some(b => ['final_capture', 'field_text', 'field_email', 'field_phone'].includes(b.type))) s.add(p.id)
+    }
+    return s
+  }, [pages])
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50">
       {/* Toolbar */}
@@ -387,7 +396,6 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                       Lead / Data
                     </th>
                     <th className="text-left px-3 py-3 font-semibold text-gray-500 whitespace-nowrap w-24">Status</th>
-                    <th className="text-left px-3 py-3 font-semibold text-gray-500 whitespace-nowrap w-44">Contato</th>
                     {pages.map(p => {
                       const reached = reachCount[p.id] ?? 0
                       const rate = total > 0 ? Math.round((reached / total) * 100) : 0
@@ -422,17 +430,22 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                         )}
                       </td>
                       <td className="px-3 py-3">{statusBadge(lead.status)}</td>
-                      <td className="px-3 py-3">
-                        {(lead.name || lead.email || lead.phone) ? (
-                          <div className="flex flex-col gap-0.5">
-                            {lead.name && <span className="font-semibold text-gray-800 truncate max-w-[160px]">{lead.name}</span>}
-                            {lead.email && <span className="text-gray-500 truncate max-w-[160px]" title={lead.email}>✉ {lead.email}</span>}
-                            {lead.phone && <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-emerald-600 hover:underline">📱 {lead.phone}</a>}
-                          </div>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
                       {pages.map(p => {
                         const cell = pageCellValue(lead, p.id)
+                        const reached = cell.state !== 'none'
+                        // Página de captura + lead chegou nela → mostra o CONTATO
+                        // aqui (nome/telefone/email), no lugar em que foram pedidos.
+                        if (capturePages.has(p.id) && reached && (lead.name || lead.email || lead.phone)) {
+                          return (
+                            <td key={p.id} className="px-3 py-3 align-top">
+                              <div className="flex flex-col gap-0.5 rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-1.5">
+                                {lead.name && <span className="font-semibold text-emerald-800 truncate max-w-[150px]">👤 {lead.name}</span>}
+                                {lead.phone && <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-emerald-700 hover:underline">📱 {lead.phone}</a>}
+                                {lead.email && <span className="text-emerald-700 truncate max-w-[150px]" title={lead.email}>✉ {lead.email}</span>}
+                              </div>
+                            </td>
+                          )
+                        }
                         return (
                           <td key={p.id} className="px-3 py-3">
                             {cell.state === 'none' ? (
