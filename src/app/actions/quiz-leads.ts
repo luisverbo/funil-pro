@@ -39,6 +39,13 @@ export interface QuizLead {
   name: string | null
   email: string | null
   phone: string | null
+  utm_source?: string | null
+  utm_medium?: string | null
+  utm_campaign?: string | null
+  utm_content?: string | null
+  utm_term?: string | null
+  referrer?: string | null
+  landing_url?: string | null
 }
 
 export interface QuizLeadEvent {
@@ -254,6 +261,7 @@ export async function exportLeadsCSV(
     }
 
     const header = ['ID','Data','Nome','Email','Telefone','Status','Score','Resultado','Tempo (min)',
+      'Origem (utm_source)','Campanha (utm_campaign)','utm_medium','utm_content',
       ...qpages.map(p => p.title || 'Pergunta')].map(escape).join(',')
 
     const rows = (leads ?? []).map((lead) => {
@@ -265,6 +273,7 @@ export async function exportLeadsCSV(
         lead.id.slice(0, 8), startedAt,
         escape(lead.name), escape(lead.email), escape(lead.phone),
         lead.status ?? '', lead.score ?? 0, escape(lead.result_shown), durationMin,
+        escape(lead.utm_source), escape(lead.utm_campaign), escape(lead.utm_medium), escape(lead.utm_content),
         ...qpages.map(p => escape(la[p.id] ?? '')),
       ].join(',')
     })

@@ -23,9 +23,19 @@ export async function POST(
     const action = body.action as string
 
     if (action === 'start') {
+      const utm = (body.utm && typeof body.utm === 'object') ? body.utm as Record<string, string> : {}
       const { data: lead, error } = await admin
         .from('quiz_leads')
-        .insert({ quiz_id: pageId, tenant_id: page.tenant_id })
+        .insert({
+          quiz_id: pageId, tenant_id: page.tenant_id,
+          utm_source: utm.utm_source ?? null,
+          utm_medium: utm.utm_medium ?? null,
+          utm_campaign: utm.utm_campaign ?? null,
+          utm_content: utm.utm_content ?? null,
+          utm_term: utm.utm_term ?? null,
+          referrer: (String(body.referrer ?? '') || null)?.slice(0, 500) ?? null,
+          landing_url: (String(body.landing_url ?? '') || null)?.slice(0, 500) ?? null,
+        })
         .select('id')
         .single()
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })

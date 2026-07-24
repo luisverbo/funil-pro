@@ -153,6 +153,15 @@ function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; p
             <span className="text-xs text-gray-500 truncate max-w-[120px]">→ {lead.result_shown}</span>
           )}
         </div>
+        {/* Origem (UTM) */}
+        {(lead.utm_source || lead.utm_campaign || lead.referrer) && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {lead.utm_source && <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700">📣 {lead.utm_source}</span>}
+            {lead.utm_campaign && <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">🎯 {lead.utm_campaign}</span>}
+            {lead.utm_content && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">{lead.utm_content}</span>}
+            {!lead.utm_source && lead.referrer && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 truncate max-w-[180px]">de: {lead.referrer.replace(/^https?:\/\//, '').slice(0, 30)}</span>}
+          </div>
+        )}
       </div>
 
       {/* Event timeline */}
@@ -300,6 +309,28 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     for (const pid of visitedPages) reachCount[pid] = (reachCount[pid] ?? 0) + 1
   }
 
+  // Tempo médio por página (entre a visita de uma página e a da próxima)
+  const timeSum: Record<string, number> = {}
+  const timeCount: Record<string, number> = {}
+  for (const lead of leads) {
+    const views = lead.events
+      .filter(e => e.event_type === 'page_viewed')
+      .map(e => ({ pid: e.page_id, t: new Date(e.created_at).getTime() }))
+      .sort((a, b) => a.t - b.t)
+    for (let i = 0; i < views.length - 1; i++) {
+      const dt = (views[i + 1].t - views[i].t) / 1000
+      if (dt > 0 && dt < 3600) {
+        timeSum[views[i].pid] = (timeSum[views[i].pid] ?? 0) + dt
+        timeCount[views[i].pid] = (timeCount[views[i].pid] ?? 0) + 1
+      }
+    }
+  }
+  const avgTime = (pid: string): string | null => {
+    if (!timeCount[pid]) return null
+    const s = Math.round(timeSum[pid] / timeCount[pid])
+    return s >= 60 ? `${Math.floor(s / 60)}m${s % 60 ? ' ' + (s % 60) + 's' : ''}` : `${s}s`
+  }
+
   const totalPages = Math.ceil(total / pageSize)
 
   // Páginas que pedem contato (captura final ou campos de nome/email/telefone)
@@ -411,6 +442,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                               </div>
                               <span className="text-[9px] text-gray-400 shrink-0">{rate}%</span>
                             </div>
+                            {avgTime(p.id) && <div className="text-[9px] text-gray-400 mt-0.5">⏱ {avgTime(p.id)} em média</div>}
                           </div>
                         </th>
                       )

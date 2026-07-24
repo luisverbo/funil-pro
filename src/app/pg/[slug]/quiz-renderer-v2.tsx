@@ -296,10 +296,22 @@ function useTracker(pageId: string) {
 
   async function start() {
     try {
+      // captura a origem (UTMs do anúncio) na entrada
+      const utm: Record<string, string> = {}
+      if (typeof window !== 'undefined') {
+        const sp = new URLSearchParams(window.location.search)
+        for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
+          const v = sp.get(k); if (v) utm[k] = v
+        }
+      }
       const res = await fetch(trackUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start' }),
+        body: JSON.stringify({
+          action: 'start', utm,
+          referrer: typeof document !== 'undefined' ? document.referrer : '',
+          landing_url: typeof window !== 'undefined' ? window.location.href : '',
+        }),
       })
       const data = await res.json()
       leadIdRef.current = data.leadId ?? null
