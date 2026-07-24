@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getQuizLeads, getQuizStats, resetQuizLeads, exportLeadsCSV,
+  getQuizLeads, getQuizStats, resetQuizLeads, exportLeadsCSV, getAnswerBreakdown,
   type QuizLead, type QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
 import type { QuizPage } from '@/app/actions/quiz-v2'
@@ -55,6 +55,67 @@ function pageCellValue(lead: QuizLeadWithEvents, pageId: string): { state: 'none
     summary = '✓ Fim'
   }
   return { state: 'answered', summary }
+}
+
+// ─── Respostas por pergunta (agregado) ───────────────────────────────────────
+function AnswerBreakdown({ quizId, pages, refreshKey }: { quizId: string; pages: QuizPage[]; refreshKey: number }) {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState<Record<string, { value: string; count: number }[]>>({})
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    getAnswerBreakdown(quizId).then(r => { setData(r.breakdown); setLoaded(true) })
+  }, [open, quizId, refreshKey])
+
+  // páginas que têm alguma resposta de escolha
+  const pagesWithAnswers = pages.filter(p => (data[p.id]?.length ?? 0) > 0)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mb-4 overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+        <span className="text-sm font-semibold text-gray-800">📊 Respostas por pergunta</span>
+        <span className="text-gray-400">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t border-gray-100">
+          {!loaded ? (
+            <p className="text-xs text-gray-400 py-4 text-center">Carregando…</p>
+          ) : pagesWithAnswers.length === 0 ? (
+            <p className="text-xs text-gray-400 py-4 text-center">Ainda não há respostas de escolha registradas.</p>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-4 mt-3">
+              {pagesWithAnswers.map((p, pi) => {
+                const answers = data[p.id]
+                const totalP = answers.reduce((s, a) => s + a.count, 0) || 1
+                return (
+                  <div key={p.id} className="border border-gray-100 rounded-lg p-3">
+                    <p className="text-xs font-bold text-gray-700 mb-2 truncate">Pág. {pi + 1} · {p.title}</p>
+                    <div className="space-y-1.5">
+                      {answers.map(a => {
+                        const pct = Math.round((a.count / totalP) * 100)
+                        return (
+                          <div key={a.value}>
+                            <div className="flex items-center justify-between text-[11px] mb-0.5">
+                              <span className="text-gray-600 truncate max-w-[70%]" title={a.value}>{a.value}</span>
+                              <span className="text-gray-400 shrink-0">{a.count} ({pct}%)</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                              <div className="h-full rounded-full bg-indigo-400" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
@@ -300,6 +361,9 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
         {/* Stats */}
         <StatsBar quizId={quizId} pages={pages} />
 
+        {/* Resumo agregado de respostas */}
+        <AnswerBreakdown quizId={quizId} pages={pages} refreshKey={total} />
+
         {/* Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {loading ? (
@@ -323,6 +387,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                       Lead / Data
                     </th>
                     <th className="text-left px-3 py-3 font-semibold text-gray-500 whitespace-nowrap w-24">Status</th>
+                    <th className="text-left px-3 py-3 font-semibold text-gray-500 whitespace-nowrap w-44">Contato</th>
                     {pages.map(p => {
                       const reached = reachCount[p.id] ?? 0
                       const rate = total > 0 ? Math.round((reached / total) * 100) : 0
@@ -357,6 +422,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                         )}
                       </td>
                       <td className="px-3 py-3">{statusBadge(lead.status)}</td>
+                      <td className="px-3 py-3">
+                        {(lead.name || lead.email || lead.phone) ? (
+                          <div className="flex flex-col gap-0.5">
+                            {lead.name && <span className="font-semibold text-gray-800 truncate max-w-[160px]">{lead.name}</span>}
+                            {lead.email && <span className="text-gray-500 truncate max-w-[160px]" title={lead.email}>✉ {lead.email}</span>}
+                            {lead.phone && <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-emerald-600 hover:underline">📱 {lead.phone}</a>}
+                          </div>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
                       {pages.map(p => {
                         const cell = pageCellValue(lead, p.id)
                         return (

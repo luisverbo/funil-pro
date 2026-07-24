@@ -223,40 +223,47 @@ export async function exportLeadsCSV(
 
     if (error) return { error: error.message }
 
-    const header = 'ID,Data,Nome,Email,Telefone,Status,Score,Resultado,Tempo (min)'
+    // Estrutura das páginas (pra colunas de resposta por pergunta)
+    const { data: pageRow } = await admin.from('pages').select('quiz_data').eq('id', quizId).single()
+    const qpages = ((pageRow?.quiz_data as { pages?: { id: string; title: string }[] } | null)?.pages) ?? []
+
+    // Respostas de cada lead por página (escolha/texto)
+    const { data: events } = await admin
+      .from('quiz_lead_events')
+      .select('lead_id, page_id, event_type, value')
+      .eq('quiz_id', quizId)
+      .in('event_type', ['choice_selected', 'text_entered'])
+    const answerMap: Record<string, Record<string, string>> = {}
+    for (const ev of events ?? []) {
+      const v = ev.value as { selected?: unknown; text?: unknown } | null
+      const ans = ev.event_type === 'choice_selected'
+        ? (Array.isArray(v?.selected) ? (v!.selected as unknown[]).join(' | ') : String(v?.selected ?? ''))
+        : String(v?.text ?? '')
+      if (!ans) continue
+      const lid = ev.lead_id as string, pid = ev.page_id as string
+      answerMap[lid] = answerMap[lid] || {}
+      answerMap[lid][pid] = ans   // última resposta da página vence
+    }
+
+    const escape = (v: string | number | null | undefined) => {
+      if (v == null) return ''
+      const s = String(v)
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+    }
+
+    const header = ['ID','Data','Nome','Email','Telefone','Status','Score','Resultado','Tempo (min)',
+      ...qpages.map(p => p.title || 'Pergunta')].map(escape).join(',')
 
     const rows = (leads ?? []).map((lead) => {
-      const shortId = lead.id.slice(0, 8)
-      const startedAt = lead.started_at
-        ? new Date(lead.started_at).toLocaleString('pt-BR')
-        : ''
-      const durationMin =
-        lead.last_activity_at && lead.started_at
-          ? Math.round(
-              (new Date(lead.last_activity_at).getTime() -
-                new Date(lead.started_at).getTime()) /
-                60000
-            )
-          : 0
-
-      const escape = (v: string | null | undefined) => {
-        if (v == null) return ''
-        const s = String(v)
-        return s.includes(',') || s.includes('"') || s.includes('\n')
-          ? `"${s.replace(/"/g, '""')}"`
-          : s
-      }
-
+      const startedAt = lead.started_at ? new Date(lead.started_at).toLocaleString('pt-BR') : ''
+      const durationMin = lead.last_activity_at && lead.started_at
+        ? Math.round((new Date(lead.last_activity_at).getTime() - new Date(lead.started_at).getTime()) / 60000) : 0
+      const la = answerMap[lead.id] ?? {}
       return [
-        shortId,
-        startedAt,
-        escape(lead.name),
-        escape(lead.email),
-        escape(lead.phone),
-        lead.status ?? '',
-        lead.score ?? 0,
-        escape(lead.result_shown),
-        durationMin,
+        lead.id.slice(0, 8), startedAt,
+        escape(lead.name), escape(lead.email), escape(lead.phone),
+        lead.status ?? '', lead.score ?? 0, escape(lead.result_shown), durationMin,
+        ...qpages.map(p => escape(la[p.id] ?? '')),
       ].join(',')
     })
 
@@ -265,6 +272,38 @@ export async function exportLeadsCSV(
   } catch (err) {
     return { error: String(err) }
   }
+}
+
+/** Contagem de respostas por página (quantos escolheram cada opção) */
+export async function getAnswerBreakdown(quizId: string): Promise<{ breakdown: Record<string, { value: string; count: number }[]> }> {
+  try {
+    const tenantId = await getTenantId()
+    const owns = await verifyTenantOwnsQuiz(quizId, tenantId)
+    if (!owns) return { breakdown: {} }
+    const admin = createAdminClient()
+    const { data: events } = await admin
+      .from('quiz_lead_events')
+      .select('page_id, event_type, value')
+      .eq('quiz_id', quizId)
+      .in('event_type', ['choice_selected'])
+    // page_id → valor → contagem (por LEAD já não dedupe: cada seleção conta; ok pra escolha única)
+    const counts: Record<string, Record<string, number>> = {}
+    for (const ev of events ?? []) {
+      const v = ev.value as { selected?: unknown } | null
+      const vals = Array.isArray(v?.selected) ? (v!.selected as unknown[]).map(String) : [String(v?.selected ?? '')]
+      const pid = ev.page_id as string
+      for (const val of vals) {
+        if (!val) continue
+        counts[pid] = counts[pid] || {}
+        counts[pid][val] = (counts[pid][val] ?? 0) + 1
+      }
+    }
+    const breakdown: Record<string, { value: string; count: number }[]> = {}
+    for (const [pid, m] of Object.entries(counts)) {
+      breakdown[pid] = Object.entries(m).map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count)
+    }
+    return { breakdown }
+  } catch { return { breakdown: {} } }
 }
 
 export async function resetQuizLeads(
