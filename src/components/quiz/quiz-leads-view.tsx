@@ -48,7 +48,8 @@ function pageCellValue(lead: QuizLeadWithEvents, pageId: string): { state: 'none
   } else if (last.event_type === 'text_entered') {
     summary = String((last.value as { text?: unknown }).text ?? '').slice(0, 30)
   } else if (last.event_type === 'button_clicked') {
-    summary = 'Clicou'
+    const txt = String((last.value as { text?: unknown }).text ?? '').trim()
+    summary = txt ? `🖱 ${txt.slice(0, 28)}` : 'Clicou'
   } else if (last.event_type === 'form_submitted') {
     summary = 'Formulário'
   } else if (last.event_type === 'quiz_completed') {
@@ -176,6 +177,7 @@ function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; p
               let valueStr = ''
               if (ev.event_type === 'choice_selected') valueStr = String((ev.value as { selected?: unknown }).selected ?? '')
               if (ev.event_type === 'text_entered') valueStr = String((ev.value as { text?: unknown }).text ?? '')
+              if (ev.event_type === 'button_clicked') valueStr = String((ev.value as { text?: unknown }).text ?? '')
 
               return (
                 <div key={i} className={`flex gap-2.5 ${isKey ? '' : 'opacity-60'}`}>

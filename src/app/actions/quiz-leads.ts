@@ -232,12 +232,14 @@ export async function exportLeadsCSV(
       .from('quiz_lead_events')
       .select('lead_id, page_id, event_type, value')
       .eq('quiz_id', quizId)
-      .in('event_type', ['choice_selected', 'text_entered'])
+      .in('event_type', ['choice_selected', 'text_entered', 'button_clicked'])
     const answerMap: Record<string, Record<string, string>> = {}
     for (const ev of events ?? []) {
       const v = ev.value as { selected?: unknown; text?: unknown } | null
       const ans = ev.event_type === 'choice_selected'
         ? (Array.isArray(v?.selected) ? (v!.selected as unknown[]).join(' | ') : String(v?.selected ?? ''))
+        : ev.event_type === 'button_clicked'
+        ? (v?.text ? `Clicou: ${String(v.text)}` : '')
         : String(v?.text ?? '')
       if (!ans) continue
       const lid = ev.lead_id as string, pid = ev.page_id as string
@@ -285,13 +287,18 @@ export async function getAnswerBreakdown(quizId: string): Promise<{ breakdown: R
       .from('quiz_lead_events')
       .select('page_id, event_type, value')
       .eq('quiz_id', quizId)
-      .in('event_type', ['choice_selected'])
-    // page_id → valor → contagem (por LEAD já não dedupe: cada seleção conta; ok pra escolha única)
+      .in('event_type', ['choice_selected', 'button_clicked'])
+    // page_id → valor → contagem (escolhas E cliques de botão, pra ver o que converte)
     const counts: Record<string, Record<string, number>> = {}
     for (const ev of events ?? []) {
-      const v = ev.value as { selected?: unknown } | null
-      const vals = Array.isArray(v?.selected) ? (v!.selected as unknown[]).map(String) : [String(v?.selected ?? '')]
+      const v = ev.value as { selected?: unknown; text?: unknown } | null
       const pid = ev.page_id as string
+      let vals: string[] = []
+      if (ev.event_type === 'choice_selected') {
+        vals = Array.isArray(v?.selected) ? (v!.selected as unknown[]).map(String) : [String(v?.selected ?? '')]
+      } else if (ev.event_type === 'button_clicked' && v?.text) {
+        vals = [`🖱 ${String(v.text)}`]
+      }
       for (const val of vals) {
         if (!val) continue
         counts[pid] = counts[pid] || {}

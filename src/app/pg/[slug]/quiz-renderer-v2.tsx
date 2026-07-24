@@ -874,7 +874,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             return (
               <div className={align}>
                 <a href={config.button_url || '#'} target="_blank" rel="noopener noreferrer"
-                  onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.button_url })}
+                  onClick={() => tracker.track('button_clicked', page.id, block.id, { text: config.button_text || 'Acessar', url: config.button_url })}
                   className={cls} style={st}>{config.button_text || 'Acessar'}</a>
               </div>
             )
@@ -883,7 +883,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             <div className={align}>
               <button
                 onClick={() => {
-                  tracker.track('button_clicked', page.id, block.id, {})
+                  tracker.track('button_clicked', page.id, block.id, { text: config.button_text || 'Próximo →' })
                   fireIntegrations(block.id, config, {
                     answers, score,
                     name: captureRef.current.name || leadData.name,
@@ -937,13 +937,13 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               <div className={`mt-8 ${config.hero_align === 'left' ? '' : 'flex justify-center'}`}>
                 {config.hero_cta_action === 'external_url' && config.hero_cta_url ? (
                   <a href={config.hero_cta_url} target="_blank" rel="noopener noreferrer"
-                    onClick={() => tracker.track('button_clicked', page.id, block.id, { url: config.hero_cta_url })}
+                    onClick={() => tracker.track('button_clicked', page.id, block.id, { text: config.hero_cta_text || 'Começar', url: config.hero_cta_url })}
                     className="inline-block px-10 py-4 text-white text-lg font-bold shadow-lg hover:opacity-90 transition"
                     style={{ background: primaryColor, borderRadius: theme.buttonRadius }}>
                     {config.hero_cta_text}
                   </a>
                 ) : (
-                  <button onClick={() => { tracker.track('button_clicked', page.id, block.id, {}); handleNext() }}
+                  <button onClick={() => { tracker.track('button_clicked', page.id, block.id, { text: config.hero_cta_text || 'Começar' }); handleNext() }}
                     className="px-10 py-4 text-white text-lg font-bold shadow-lg hover:opacity-90 transition"
                     style={{ background: primaryColor, borderRadius: theme.buttonRadius }}>
                     {config.hero_cta_text}
@@ -1121,7 +1121,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             </div>
             {config.pricing_cta_text && (
               <a href={config.pricing_cta_url || '#'} target={config.pricing_cta_url ? '_blank' : undefined} rel="noopener noreferrer"
-                onClick={() => tracker.track('button_clicked', page.id, block.id, {})}
+                onClick={() => tracker.track('button_clicked', page.id, block.id, { text: config.pricing_cta_text || 'Comprar' })}
                 className="block w-full py-3.5 text-white font-semibold hover:opacity-90 transition"
                 style={{ background: primaryColor, borderRadius: theme.buttonRadius }}>
                 {config.pricing_cta_text}
