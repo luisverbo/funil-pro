@@ -1,0 +1,104 @@
+// ─── Mapa Mental — tipos e paleta ────────────────────────────────────────────
+
+/** Nível visual do nó: 0 = raiz, 1 = ramo principal, 2+ = descendentes */
+export type MindLevel = 0 | 1 | 2
+
+export interface MindNode {
+  id: string
+  parentId: string | null
+  label: string
+  note?: string
+  icon?: string            // emoji opcional
+  color?: string           // chave da paleta (herda do ramo quando vazio)
+  x: number
+  y: number
+  collapsed?: boolean
+  order: number
+}
+
+export interface MindMapSummary {
+  id: string
+  title: string
+  description: string | null
+  thumbnail_url: string | null
+  created_at: string
+  updated_at: string
+  node_count?: number
+}
+
+export interface MindMap extends MindMapSummary {
+  nodes: MindNode[]
+}
+
+/** Paleta dos ramos — saturada mas harmônica (estilo MindMeister) */
+export interface BranchColor {
+  key: string
+  label: string
+  solid: string    // cor forte (raiz/ramo principal, conexões)
+  soft: string     // fundo suave (descendentes)
+  border: string
+  text: string     // texto sobre o fundo suave
+}
+
+export const BRANCH_COLORS: BranchColor[] = [
+  { key: 'indigo', label: 'Índigo', solid: '#6366f1', soft: '#eef2ff', border: '#c7d2fe', text: '#3730a3' },
+  { key: 'violet', label: 'Roxo',   solid: '#8b5cf6', soft: '#f5f3ff', border: '#ddd6fe', text: '#5b21b6' },
+  { key: 'pink',   label: 'Rosa',   solid: '#ec4899', soft: '#fdf2f8', border: '#fbcfe8', text: '#9d174d' },
+  { key: 'orange', label: 'Laranja',solid: '#f97316', soft: '#fff7ed', border: '#fed7aa', text: '#9a3412' },
+  { key: 'amber',  label: 'Âmbar',  solid: '#f59e0b', soft: '#fffbeb', border: '#fde68a', text: '#92400e' },
+  { key: 'green',  label: 'Verde',  solid: '#10b981', soft: '#ecfdf5', border: '#a7f3d0', text: '#065f46' },
+  { key: 'cyan',   label: 'Ciano',  solid: '#06b6d4', soft: '#ecfeff', border: '#a5f3fc', text: '#155e75' },
+  { key: 'blue',   label: 'Azul',   solid: '#3b82f6', soft: '#eff6ff', border: '#bfdbfe', text: '#1e40af' },
+]
+
+export const colorByKey = (key?: string): BranchColor =>
+  BRANCH_COLORS.find(c => c.key === key) ?? BRANCH_COLORS[0]
+
+/** Cor efetiva de um nó: a sua própria ou a herdada do ramo mais acima */
+export function resolveBranchColor(node: MindNode, byId: Map<string, MindNode>): BranchColor {
+  let cur: MindNode | undefined = node
+  const guard = new Set<string>()
+  while (cur && !guard.has(cur.id)) {
+    guard.add(cur.id)
+    if (cur.color) return colorByKey(cur.color)
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined
+  }
+  return BRANCH_COLORS[0]
+}
+
+/** Nível visual (0 raiz, 1 filho da raiz, 2 daí pra baixo) */
+export function levelOf(node: MindNode, byId: Map<string, MindNode>): MindLevel {
+  if (!node.parentId) return 0
+  const parent = byId.get(node.parentId)
+  if (!parent || !parent.parentId) return 1
+  return 2
+}
+
+/** Ids de todos os descendentes de um nó */
+export function descendantsOf(id: string, nodes: MindNode[]): string[] {
+  const out: string[] = []
+  const stack = [id]
+  while (stack.length) {
+    const cur = stack.pop()!
+    for (const n of nodes) {
+      if (n.parentId === cur) { out.push(n.id); stack.push(n.id) }
+    }
+  }
+  return out
+}
+
+/** Nós escondidos por ancestrais colapsados */
+export function hiddenIds(nodes: MindNode[]): Set<string> {
+  const hidden = new Set<string>()
+  for (const n of nodes) {
+    if (n.collapsed) for (const d of descendantsOf(n.id, nodes)) hidden.add(d)
+  }
+  return hidden
+}
+
+export const newNodeId = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'n' + Math.random().toString(36).slice(2)
+
+export const emptyMap = (): MindNode[] => [
+  { id: newNodeId(), parentId: null, label: 'Ideia central', x: 0, y: 0, order: 0 },
+]
