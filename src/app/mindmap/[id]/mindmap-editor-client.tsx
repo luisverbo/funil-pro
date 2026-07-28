@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ReactFlow, ReactFlowProvider, Background, BackgroundVariant, MiniMap,
-  useReactFlow, type Node, type Edge, type NodeChange, applyNodeChanges,
+  useReactFlow, useNodesState, type Node, type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { MindNodeView, type MindNodeData } from '@/components/mindmap/mind-node'
@@ -195,8 +195,13 @@ function EditorInner({ map }: { map: MindMap }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedId, addChild, addSibling, removeNode, navigate, undo, redo])
 
-  // ── nós e arestas do React Flow ──
-  const rfNodes: Node[] = useMemo(() => nodes
+  // ── nós do React Flow ──
+  // O React Flow gerencia o arrasto internamente (useNodesState). O modelo só é
+  // sincronizado quando a ESTRUTURA muda — não a cada pixel do arrasto — senão
+  // o canvas inteiro re-renderiza e "pisca".
+  const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState<Node>([])
+
+  const buildNodes = useCallback((): Node[] => nodes
     .filter(n => !hidden.has(n.id))
     .map(n => {
       const color = resolveBranchColor(n, byId)
@@ -204,6 +209,14 @@ function EditorInner({ map }: { map: MindMap }) {
         label: n.label,
         note: n.note,
         icon: n.icon,
+        imageUrl: n.imageUrl,
+        linkUrl: n.linkUrl,
+        shape: n.shape ?? 'solid',
+        bold: n.bold,
+        italic: n.italic,
+        underline: n.underline,
+        fontSize: n.fontSize,
+        textColor: n.textColor,
         level: levelOf(n, byId),
         color,
         childCount: nodes.filter(c => c.parentId === n.id).length,
@@ -216,6 +229,17 @@ function EditorInner({ map }: { map: MindMap }) {
       }
       return { id: n.id, type: 'mind', position: { x: n.x, y: n.y }, data, selected: selectedId === n.id }
     }), [nodes, hidden, byId, editingId, selectedId, patchNode, addChild, toggleCollapse])
+
+  // Assinatura da estrutura (sem posições): muda só quando algo visual/estrutural muda
+  const structureKey = useMemo(() => JSON.stringify(
+    nodes.map(n => [n.id, n.parentId, n.label, n.note, n.icon, n.color, n.collapsed,
+      n.shape, n.imageUrl, n.linkUrl, n.bold, n.italic, n.underline, n.fontSize, n.textColor])
+  ), [nodes])
+
+  useEffect(() => {
+    setRfNodes(buildNodes())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structureKey, selectedId, editingId, histTick])
 
   const rfEdges: Edge[] = useMemo(() => nodes
     .filter(n => n.parentId && !hidden.has(n.id) && !hidden.has(n.parentId))
@@ -231,26 +255,12 @@ function EditorInner({ map }: { map: MindMap }) {
       }
     }), [nodes, hidden, byId])
 
-  // arrasto livre → grava posição
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    const moved = changes.filter(c => c.type === 'position' && c.dragging === false)
-    if (moved.length > 0) {
-      const applied = applyNodeChanges(changes, rfNodes)
-      commit(prev => prev.map(n => {
-        const m = applied.find(a => a.id === n.id)
-        return m ? { ...n, x: Math.round(m.position.x), y: Math.round(m.position.y) } : n
-      }))
-      return
-    }
-    // arrasto em andamento: atualiza só a posição visual (sem histórico)
-    if (changes.some(c => c.type === 'position')) {
-      const applied = applyNodeChanges(changes, rfNodes)
-      setNodes(prev => prev.map(n => {
-        const m = applied.find(a => a.id === n.id)
-        return m ? { ...n, x: m.position.x, y: m.position.y } : n
-      }))
-    }
-  }, [rfNodes, commit])
+  // Ao SOLTAR o nó, grava a posição no modelo (o arrasto em si é interno do RF)
+  const onNodeDragStop = useCallback((_: unknown, n: Node) => {
+    commit(prev => prev.map(m =>
+      m.id === n.id ? { ...m, x: Math.round(n.position.x), y: Math.round(n.position.y) } : m
+    ))
+  }, [commit])
 
   // ── exportações ──
   const exportJson = useCallback(() => {
@@ -361,7 +371,8 @@ function EditorInner({ map }: { map: MindMap }) {
             nodes={rfNodes}
             edges={rfEdges}
             nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
+            onNodesChange={onRfNodesChange}
+            onNodeDragStop={onNodeDragStop}
             onNodeClick={(_, n) => { setSelectedId(n.id); setEditingId(null) }}
             onPaneClick={() => { setSelectedId(null); setEditingId(null) }}
             nodesConnectable={false}

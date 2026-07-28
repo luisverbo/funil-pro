@@ -3,6 +3,19 @@
 /** Nível visual do nó: 0 = raiz, 1 = ramo principal, 2+ = descendentes */
 export type MindLevel = 0 | 1 | 2
 
+/** Estilos de caixa do nó */
+export type MindShape = 'solid' | 'outline' | 'pill' | 'sharp' | 'underline' | 'plain'
+
+export interface MindShapeDef { key: MindShape; label: string }
+export const MIND_SHAPES: MindShapeDef[] = [
+  { key: 'solid',     label: 'Sólido' },
+  { key: 'outline',   label: 'Contorno' },
+  { key: 'pill',      label: 'Pílula' },
+  { key: 'sharp',     label: 'Reto' },
+  { key: 'underline', label: 'Sublinhado' },
+  { key: 'plain',     label: 'Sem caixa' },
+]
+
 export interface MindNode {
   id: string
   parentId: string | null
@@ -14,6 +27,15 @@ export interface MindNode {
   y: number
   collapsed?: boolean
   order: number
+  // aparência e conteúdo
+  shape?: MindShape
+  imageUrl?: string
+  linkUrl?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: 'sm' | 'md' | 'lg'
+  textColor?: string
 }
 
 export interface MindMapSummary {
