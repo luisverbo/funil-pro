@@ -139,30 +139,30 @@ function MindNodeComponent({ data, selected }: NodeProps) {
         )}
       </div>
 
-      {/* "+" no MEIO da lateral direita */}
-      <button
-        onClick={e => { e.stopPropagation(); d.onAddChild() }}
-        title="Adicionar item (Tab)"
-        aria-label="Adicionar item filho"
-        className="absolute top-1/2 -right-3 -translate-y-1/2 translate-x-full w-6 h-6 rounded-full text-white text-sm leading-none shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all hover:scale-110 motion-reduce:transition-none"
-        style={{ background: d.color.solid }}
-      >
-        +
-      </button>
-
-      {/* Colapsar/expandir no canto inferior direito */}
-      {d.childCount > 0 && (
+      {/* Controles centralizados na lateral direita: [+] adicionar · [−] recolher */}
+      <div className="absolute top-1/2 -translate-y-1/2 left-full ml-2 flex items-center gap-1">
         <button
-          onClick={e => { e.stopPropagation(); d.onToggleCollapse() }}
-          title={d.collapsed ? `Mostrar ${d.childCount} item(ns)` : 'Recolher ramo'}
-          aria-label={d.collapsed ? `Expandir ${d.childCount} itens` : 'Recolher ramo'}
-          className={`absolute -bottom-2 right-1 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow transition-all hover:scale-110
-            ${d.collapsed ? 'text-white' : 'bg-white border border-gray-300 text-gray-500 opacity-0 group-hover:opacity-100'}`}
-          style={d.collapsed ? { background: d.color.solid } : undefined}
+          onClick={e => { e.stopPropagation(); d.onAddChild() }}
+          title="Adicionar item (Tab)"
+          aria-label="Adicionar item filho"
+          className="w-6 h-6 rounded-full text-white text-sm leading-none shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all hover:scale-110 motion-reduce:transition-none"
+          style={{ background: d.color.solid }}
         >
-          {d.collapsed ? d.childCount : '−'}
+          +
         </button>
-      )}
+        {d.childCount > 0 && (
+          <button
+            onClick={e => { e.stopPropagation(); d.onToggleCollapse() }}
+            title={d.collapsed ? `Mostrar ${d.childCount} item(ns)` : 'Recolher ramo'}
+            aria-label={d.collapsed ? `Expandir ${d.childCount} itens` : 'Recolher ramo'}
+            className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow transition-all hover:scale-110 motion-reduce:transition-none
+              ${d.collapsed ? 'text-white' : 'bg-white border border-gray-300 text-gray-500 opacity-0 group-hover:opacity-100'}`}
+            style={d.collapsed ? { background: d.color.solid } : undefined}
+          >
+            {d.collapsed ? d.childCount : '−'}
+          </button>
+        )}
+      </div>
 
       <Handle type="source" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
     </div>
