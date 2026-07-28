@@ -188,6 +188,12 @@ export function NodeInspector({
       )}
 
       <div className="border-t border-gray-100 pt-3 flex flex-col gap-2 mt-auto">
+        {node.parentId && (
+          <button onClick={() => onChange({ hidden: !node.hidden })}
+            className="w-full py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+            {node.hidden ? '👁 Mostrar este item' : '🙈 Ocultar só este item'}
+          </button>
+        )}
         <button onClick={onAddChild}
           className="w-full py-2 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
           + Item filho <span className="text-[10px] opacity-60">(Tab)</span>

@@ -146,6 +146,20 @@ function EditorInner({ map }: { map: MindMap }) {
     commit(prev => prev.map(n => (n.id === id ? { ...n, collapsed: !n.collapsed } : n)))
   }, [commit])
 
+  /** Oculta SÓ este item (e o que estiver abaixo dele) */
+  const hideSelf = useCallback((id: string) => {
+    const node = byId.get(id)
+    if (!node?.parentId) return   // a raiz não some
+    commit(prev => prev.map(n => (n.id === id ? { ...n, hidden: true } : n)))
+    setSelectedId(node.parentId)
+    setEditingId(null)
+  }, [byId, commit])
+
+  /** Reexibe os filhos diretos que estavam ocultos individualmente */
+  const showHiddenChildren = useCallback((parentId: string) => {
+    commit(prev => prev.map(n => (n.parentId === parentId && n.hidden ? { ...n, hidden: false } : n)))
+  }, [commit])
+
   // ── navegação por setas ──
   const navigate = useCallback((dir: 'up' | 'down' | 'left' | 'right') => {
     if (!selectedId) return
@@ -220,19 +234,23 @@ function EditorInner({ map }: { map: MindMap }) {
         level: levelOf(n, byId),
         color,
         childCount: nodes.filter(c => c.parentId === n.id).length,
+        hiddenChildCount: nodes.filter(c => c.parentId === n.id && c.hidden).length,
         collapsed: !!n.collapsed,
+        isRoot: !n.parentId,
         editing: editingId === n.id,
         onStartEdit: () => setEditingId(n.id),
         onCommitEdit: (label: string) => { patchNode(n.id, { label }); setEditingId(null) },
         onAddChild: () => addChild(n.id),
         onToggleCollapse: () => toggleCollapse(n.id),
+        onHideSelf: () => hideSelf(n.id),
+        onShowHiddenChildren: () => showHiddenChildren(n.id),
       }
       return { id: n.id, type: 'mind', position: { x: n.x, y: n.y }, data, selected: selectedId === n.id }
-    }), [nodes, hidden, byId, editingId, selectedId, patchNode, addChild, toggleCollapse])
+    }), [nodes, hidden, byId, editingId, selectedId, patchNode, addChild, toggleCollapse, hideSelf, showHiddenChildren])
 
   // Assinatura da estrutura (sem posições): muda só quando algo visual/estrutural muda
   const structureKey = useMemo(() => JSON.stringify(
-    nodes.map(n => [n.id, n.parentId, n.label, n.note, n.icon, n.color, n.collapsed,
+    nodes.map(n => [n.id, n.parentId, n.label, n.note, n.icon, n.color, n.collapsed, n.hidden,
       n.shape, n.imageUrl, n.linkUrl, n.bold, n.italic, n.underline, n.fontSize, n.textColor])
   ), [nodes])
 

@@ -25,7 +25,8 @@ export interface MindNode {
   color?: string           // chave da paleta (herda do ramo quando vazio)
   x: number
   y: number
-  collapsed?: boolean
+  collapsed?: boolean    // recolhe TODOS os filhos deste nó
+  hidden?: boolean       // oculta APENAS este item (e o que estiver abaixo dele)
   order: number
   // aparência e conteúdo
   shape?: MindShape
@@ -109,11 +110,15 @@ export function descendantsOf(id: string, nodes: MindNode[]): string[] {
   return out
 }
 
-/** Nós escondidos por ancestrais colapsados */
+/** Nós escondidos: por ancestral recolhido OU por ocultação individual */
 export function hiddenIds(nodes: MindNode[]): Set<string> {
   const hidden = new Set<string>()
   for (const n of nodes) {
     if (n.collapsed) for (const d of descendantsOf(n.id, nodes)) hidden.add(d)
+    if (n.hidden) {
+      hidden.add(n.id)
+      for (const d of descendantsOf(n.id, nodes)) hidden.add(d)
+    }
   }
   return hidden
 }
