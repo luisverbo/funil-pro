@@ -201,19 +201,22 @@ function MindNodeComponent({ data, selected }: NodeProps) {
         )}
       </div>
 
-      {/* Ocultar SÓ este item (aparece no hover, à esquerda) */}
+      {/* Ocultar SÓ este item (à esquerda). O container com padding faz a ponte de
+          hover: o mouse chega ao botão sem sair da área do nó. */}
       {!d.isRoot && (
-        <button
-          onClick={e => { e.stopPropagation(); d.onHideSelf() }}
-          title="Ocultar só este item"
-          aria-label="Ocultar este item"
-          className="nodrag nopan cursor-pointer absolute top-1/2 -translate-y-1/2 right-full mr-2 w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 hover:text-gray-700 shadow hidden group-hover:flex focus:flex items-center justify-center transition-transform hover:scale-110 motion-reduce:transition-none"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
-            <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-            <line x1="1" y1="1" x2="23" y2="23" />
-          </svg>
-        </button>
+        <div className="nodrag nopan absolute top-1/2 -translate-y-1/2 right-full pr-2 py-4 flex items-center">
+          <button
+            onClick={e => { e.stopPropagation(); d.onHideSelf() }}
+            title="Ocultar só este item"
+            aria-label="Ocultar este item"
+            className="nodrag nopan cursor-pointer w-6 h-6 rounded-full bg-white border border-gray-300 text-gray-400 hover:text-gray-700 shadow hidden group-hover:flex focus:flex items-center justify-center transition-transform hover:scale-110 motion-reduce:transition-none"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+              <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+          </button>
+        </div>
       )}
 
       <Handle type="source" position={Position.Right} className="!opacity-0 !w-2 !h-2 !border-0" />
