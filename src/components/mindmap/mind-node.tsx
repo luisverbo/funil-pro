@@ -148,7 +148,7 @@ function MindNodeComponent({ data, selected }: NodeProps) {
           o badge "solto no ar" quando o mouse está fora.
           O py-4/-my-4 cria uma "ponte" invisível: o mouse vai do bloco até os
           botões sem sair do :hover, senão eles somem no meio do caminho. */}
-      <div className="nodrag nopan absolute top-1/2 -translate-y-1/2 left-full pl-2 py-4 -my-4 flex items-center gap-1">
+      <div className="nodrag nopan absolute top-1/2 -translate-y-1/2 left-full pl-2 py-4 flex items-center gap-1">
         {/* Ramo recolhido: badge com o total de filhos */}
         {d.collapsed && d.childCount > 0 && (
           <button
