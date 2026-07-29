@@ -32,6 +32,8 @@ function EditorInner({ map }: { map: MindMap }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [title, setTitle] = useState(map.title)
   const [showGrid, setShowGrid] = useState(true)
+  // arrastar para RE-ORGANIZAR: soltar um nó sobre outro o torna filho dele
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [exporting, setExporting] = useState(false)
 
@@ -259,6 +261,15 @@ function EditorInner({ map }: { map: MindMap }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structureKey, selectedId, editingId, histTick])
 
+  // Destaque do alvo enquanto arrasta (só troca a className — não reconstrói os nós)
+  useEffect(() => {
+    setRfNodes(nds => nds.map(n =>
+      n.className === (n.id === dropTargetId ? 'mm-drop' : undefined)
+        ? n
+        : { ...n, className: n.id === dropTargetId ? 'mm-drop' : undefined }
+    ))
+  }, [dropTargetId, setRfNodes])
+
   const rfEdges: Edge[] = useMemo(() => nodes
     .filter(n => n.parentId && !hidden.has(n.id) && !hidden.has(n.parentId))
     .map(n => {
@@ -273,12 +284,50 @@ function EditorInner({ map }: { map: MindMap }) {
       }
     }), [nodes, hidden, byId])
 
-  // Ao SOLTAR o nó, grava a posição no modelo (o arrasto em si é interno do RF)
+  /** alvo válido: existe, não é o próprio nó, nem um descendente dele (evita ciclo) */
+  const validDropTarget = useCallback((draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return false
+    const node = byId.get(draggedId)
+    if (node?.parentId === targetId) return false        // já é filho dele
+    return !descendantsOf(draggedId, nodes).includes(targetId)
+  }, [byId, nodes])
+
+  const onNodeDrag = useCallback((_: unknown, n: Node) => {
+    const hit = rf.getIntersectingNodes(n).find(t => validDropTarget(n.id, t.id))
+    setDropTargetId(hit?.id ?? null)
+  }, [rf, validDropTarget])
+
+  /** Move o nó (com toda a sub-árvore) para debaixo de outro pai */
+  const reparent = useCallback((childId: string, newParentId: string) => {
+    commit(prev => {
+      const node = prev.find(n => n.id === childId)
+      const parent = prev.find(n => n.id === newParentId)
+      if (!node || !parent) return prev
+      const sibs = prev.filter(n => n.parentId === newParentId && n.id !== childId)
+      const newX = parent.x + H_GAP
+      const newY = sibs.length > 0 ? Math.max(...sibs.map(s => s.y)) + V_GAP : parent.y
+      const dx = newX - node.x, dy = newY - node.y
+      const desc = new Set(descendantsOf(childId, prev))
+      return prev.map(n => {
+        if (n.id === childId) return { ...n, parentId: newParentId, x: newX, y: newY, order: sibs.length, hidden: false }
+        if (desc.has(n.id)) return { ...n, x: n.x + dx, y: n.y + dy }   // os filhos acompanham
+        return n
+      })
+    })
+  }, [commit])
+
+  // Ao SOLTAR: reorganiza (se estiver sobre outro nó) ou só grava a posição
   const onNodeDragStop = useCallback((_: unknown, n: Node) => {
+    if (dropTargetId && validDropTarget(n.id, dropTargetId)) {
+      reparent(n.id, dropTargetId)
+      setDropTargetId(null)
+      return
+    }
+    setDropTargetId(null)
     commit(prev => prev.map(m =>
       m.id === n.id ? { ...m, x: Math.round(n.position.x), y: Math.round(n.position.y) } : m
     ))
-  }, [commit])
+  }, [dropTargetId, validDropTarget, reparent, commit])
 
   // ── exportações ──
   const exportJson = useCallback(() => {
@@ -357,6 +406,14 @@ function EditorInner({ map }: { map: MindMap }) {
 
   return (
     <div className="fixed inset-0 flex flex-col bg-gray-50" style={{ zIndex: 30 }}>
+      {/* destaque do bloco que vai receber o item arrastado */}
+      <style>{`
+        .mm-drop { outline: 3px dashed #6366f1; outline-offset: 6px; border-radius: 22px; }
+        @media (prefers-reduced-motion: no-preference) {
+          .mm-drop { animation: mmPulse 900ms ease-in-out infinite; }
+          @keyframes mmPulse { 0%,100% { outline-color:#6366f1 } 50% { outline-color:#a5b4fc } }
+        }
+      `}</style>
       {/* Topbar */}
       <header className="flex items-center gap-3 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
         <button onClick={() => router.push('/mindmaps')} className="text-sm text-indigo-600 hover:underline">← Mapas</button>
@@ -369,10 +426,11 @@ function EditorInner({ map }: { map: MindMap }) {
         />
         <span className="text-xs text-gray-400 min-w-[70px]">{saveLabel}</span>
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden md:inline text-[11px] text-gray-400">
+          <span className="hidden lg:inline text-[11px] text-gray-400">
             <kbd className="px-1 py-0.5 bg-gray-100 rounded">Tab</kbd> filho ·
             <kbd className="px-1 py-0.5 bg-gray-100 rounded ml-1">Enter</kbd> irmão ·
-            <kbd className="px-1 py-0.5 bg-gray-100 rounded ml-1">F2</kbd> editar
+            <kbd className="px-1 py-0.5 bg-gray-100 rounded ml-1">F2</kbd> editar ·
+            <span className="ml-1">arraste um bloco sobre outro pra reorganizar</span>
           </span>
           <button
             onClick={() => selectedId && addChild(selectedId)}
@@ -390,6 +448,7 @@ function EditorInner({ map }: { map: MindMap }) {
             edges={rfEdges}
             nodeTypes={nodeTypes}
             onNodesChange={onRfNodesChange}
+            onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={(_, n) => { setSelectedId(n.id); setEditingId(null) }}
             onPaneClick={() => { setSelectedId(null); setEditingId(null) }}
