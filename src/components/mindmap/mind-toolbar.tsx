@@ -3,7 +3,7 @@
 import React from 'react'
 
 export function MindToolbar({
-  onZoomIn, onZoomOut, onFit, showGrid, onToggleGrid,
+  onZoomIn, onZoomOut, onFit, showGrid, onToggleGrid, onOrganize,
   onUndo, onRedo, canUndo, canRedo, onExportPng, onExportJson, exporting,
 }: {
   onZoomIn: () => void
@@ -11,6 +11,7 @@ export function MindToolbar({
   onFit: () => void
   showGrid: boolean
   onToggleGrid: () => void
+  onOrganize: () => void
   onUndo: () => void
   onRedo: () => void
   canUndo: boolean
@@ -41,6 +42,13 @@ export function MindToolbar({
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3"/></svg>
       </button>
       {sep}
+      <button onClick={onOrganize} className={btn} title="Organizar mapa (arruma tudo em árvore)" aria-label="Organizar mapa">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+          <rect x="2" y="10" width="5" height="4" rx="1"/><rect x="16" y="3" width="6" height="4" rx="1"/>
+          <rect x="16" y="10" width="6" height="4" rx="1"/><rect x="16" y="17" width="6" height="4" rx="1"/>
+          <path d="M7 12h4M11 5v14M11 5h5M11 12h5M11 19h5"/>
+        </svg>
+      </button>
       <button onClick={onToggleGrid} className={`${btn} ${showGrid ? 'text-indigo-600 bg-indigo-50' : ''}`} title="Mostrar/ocultar grade" aria-label="Alternar grade">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
       </button>

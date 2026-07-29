@@ -123,6 +123,46 @@ export function hiddenIds(nodes: MindNode[]): Set<string> {
   return hidden
 }
 
+/**
+ * Reorganiza a sub-árvore de `rootId` em formato de árvore: cada nível à direita
+ * do anterior e os filhos distribuídos verticalmente, com o pai centralizado em
+ * relação a eles. O próprio `rootId` permanece onde está.
+ */
+export function layoutSubtree(nodes: MindNode[], rootId: string, hGap = 260, vGap = 84): MindNode[] {
+  const kidsOf = (id: string) => nodes.filter(n => n.parentId === id).sort((a, b) => a.order - b.order)
+
+  // "altura" da sub-árvore, contada em linhas (folhas)
+  const cache = new Map<string, number>()
+  const height = (id: string): number => {
+    const hit = cache.get(id)
+    if (hit !== undefined) return hit
+    const kids = kidsOf(id)
+    const h = kids.length === 0 ? 1 : kids.reduce((s, k) => s + height(k.id), 0)
+    cache.set(id, h)
+    return h
+  }
+
+  const pos = new Map<string, { x: number; y: number }>()
+  const place = (id: string, x: number, top: number) => {
+    const h = height(id)
+    pos.set(id, { x, y: top + ((h - 1) * vGap) / 2 })   // pai centralizado nos filhos
+    let cursor = top
+    for (const k of kidsOf(id)) {
+      place(k.id, x + hGap, cursor)
+      cursor += height(k.id) * vGap
+    }
+  }
+
+  const root = nodes.find(n => n.id === rootId)
+  if (!root) return nodes
+  place(rootId, root.x, root.y - ((height(rootId) - 1) * vGap) / 2)
+
+  return nodes.map(n => {
+    const p = pos.get(n.id)
+    return p ? { ...n, x: Math.round(p.x), y: Math.round(p.y) } : n
+  })
+}
+
 export const newNodeId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'n' + Math.random().toString(36).slice(2)
 

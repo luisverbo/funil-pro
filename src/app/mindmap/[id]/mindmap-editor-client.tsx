@@ -13,7 +13,7 @@ import { MindToolbar } from '@/components/mindmap/mind-toolbar'
 import { saveMindMapNodes, renameMindMap } from '@/app/actions/mindmaps'
 import {
   descendantsOf, hiddenIds, levelOf, newNodeId, resolveBranchColor,
-  BRANCH_COLORS, type MindMap, type MindNode,
+  layoutSubtree, BRANCH_COLORS, type MindMap, type MindNode,
 } from '@/lib/mindmap/types'
 
 const nodeTypes = { mind: MindNodeView }
@@ -306,15 +306,24 @@ function EditorInner({ map }: { map: MindMap }) {
       const sibs = prev.filter(n => n.parentId === newParentId && n.id !== childId)
       const newX = parent.x + H_GAP
       const newY = sibs.length > 0 ? Math.max(...sibs.map(s => s.y)) + V_GAP : parent.y
-      const dx = newX - node.x, dy = newY - node.y
-      const desc = new Set(descendantsOf(childId, prev))
-      return prev.map(n => {
-        if (n.id === childId) return { ...n, parentId: newParentId, x: newX, y: newY, order: sibs.length, hidden: false }
-        if (desc.has(n.id)) return { ...n, x: n.x + dx, y: n.y + dy }   // os filhos acompanham
-        return n
-      })
+      const moved = prev.map(n =>
+        n.id === childId
+          ? { ...n, parentId: newParentId, x: newX, y: newY, order: sibs.length, hidden: false }
+          : n
+      )
+      // reorganiza a sub-árvore em volta do novo pai (senão os filhos ficariam
+      // espalhados nas posições antigas)
+      return layoutSubtree(moved, childId, H_GAP, V_GAP)
     })
   }, [commit])
+
+  /** Organiza o mapa inteiro em árvore, a partir da raiz */
+  const organizeAll = useCallback(() => {
+    const root = nodes.find(n => !n.parentId)
+    if (!root) return
+    commit(prev => layoutSubtree(prev, root.id, H_GAP, V_GAP))
+    setTimeout(() => rf.fitView({ duration: 300, padding: 0.2 }), 60)
+  }, [nodes, commit, rf])
 
   // Ao SOLTAR: reorganiza (se estiver sobre outro nó) ou só grava a posição
   const onNodeDragStop = useCallback((_: unknown, n: Node) => {
@@ -477,6 +486,7 @@ function EditorInner({ map }: { map: MindMap }) {
             onFit={() => rf.fitView({ duration: 250, padding: 0.2 })}
             showGrid={showGrid}
             onToggleGrid={() => setShowGrid(g => !g)}
+            onOrganize={organizeAll}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}
