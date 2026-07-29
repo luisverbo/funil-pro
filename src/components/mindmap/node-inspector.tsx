@@ -61,16 +61,19 @@ export function NodeInspector({
     `w-8 h-8 rounded-lg border text-sm flex items-center justify-center transition-colors ${on ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`
 
   return (
-    <aside className="w-72 shrink-0 bg-white border-l border-gray-200 overflow-y-auto p-4 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+    // [&>*]:shrink-0 impede que as seções (abas, campos) sejam esmagadas quando
+    // o painel precisa rolar — era o que fazia as abas sumirem.
+    <aside className="w-72 shrink-0 bg-white border-l border-gray-200 overflow-y-auto p-4 flex flex-col gap-4 [&>*]:shrink-0">
+      <div className="flex items-center justify-between shrink-0">
         <h3 className="font-semibold text-gray-900 text-sm">Item selecionado</h3>
         <button onClick={onClose} aria-label="Fechar painel" className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
       </div>
 
-      <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium">
+      {/* shrink-0: sem isso as abas eram esmagadas quando o painel tinha rolagem */}
+      <div className="flex shrink-0 border border-gray-200 rounded-lg overflow-hidden text-xs font-medium">
         {(['content', 'style'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-1.5 transition-colors ${tab === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            className={`flex-1 py-2 transition-colors ${tab === t ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
             {t === 'content' ? '✍️ Conteúdo' : '🎨 Estilo'}
           </button>
         ))}
@@ -187,7 +190,7 @@ export function NodeInspector({
         </>
       )}
 
-      <div className="border-t border-gray-100 pt-3 flex flex-col gap-2 mt-auto">
+      <div className="border-t border-gray-100 pt-3 flex flex-col gap-2 mt-auto shrink-0">
         {node.parentId && (
           <button onClick={() => onChange({ hidden: !node.hidden })}
             className="w-full py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
