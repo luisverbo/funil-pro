@@ -396,7 +396,7 @@ function EditorInner({ map }: { map: MindMap }) {
             nodesConnectable={false}
             panOnScroll
             selectionOnDrag={false}
-            panOnDrag={[0, 1, 2]}
+            panOnDrag={[0, 1, 2]}   /* arrasta o canvas; botões do nó usam .nopan pra não roubar o clique */
             zoomOnScroll
             minZoom={0.2}
             maxZoom={2}
