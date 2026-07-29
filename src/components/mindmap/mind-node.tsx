@@ -143,43 +143,58 @@ function MindNodeComponent({ data, selected }: NodeProps) {
         )}
       </div>
 
-      {/* Controles centralizados na lateral direita: [+] · [−] recolher tudo · [n] ocultos */}
+      {/* Controles na lateral direita. Badges permanentes vêm PRIMEIRO (colados no
+          bloco); os botões de hover usam `hidden` pra não ocupar espaço e deixar
+          o badge "solto no ar" quando o mouse está fora. */}
       <div className="absolute top-1/2 -translate-y-1/2 left-full ml-2 flex items-center gap-1">
-        <button
-          onClick={e => { e.stopPropagation(); d.onAddChild() }}
-          title="Adicionar item (Tab)"
-          aria-label="Adicionar item filho"
-          className="w-6 h-6 rounded-full text-white text-sm leading-none shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all hover:scale-110 motion-reduce:transition-none"
-          style={{ background: d.color.solid }}
-        >
-          +
-        </button>
-        {d.childCount > 0 && (
+        {/* Ramo recolhido: badge com o total de filhos */}
+        {d.collapsed && d.childCount > 0 && (
           <button
             onClick={e => { e.stopPropagation(); d.onToggleCollapse() }}
-            title={d.collapsed ? `Mostrar os ${d.childCount} itens` : 'Recolher todos os filhos'}
-            aria-label={d.collapsed ? `Expandir ${d.childCount} itens` : 'Recolher todos os filhos'}
-            className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shadow transition-all hover:scale-110 motion-reduce:transition-none
-              ${d.collapsed ? 'text-white' : 'bg-white border border-gray-300 text-gray-500 opacity-0 group-hover:opacity-100'}`}
-            style={d.collapsed ? { background: d.color.solid } : undefined}
+            title={`Mostrar os ${d.childCount} itens`}
+            aria-label={`Expandir ${d.childCount} itens`}
+            className="w-5 h-5 rounded-full text-[10px] font-bold text-white shadow flex items-center justify-center transition-transform hover:scale-110 motion-reduce:transition-none"
+            style={{ background: d.color.solid }}
           >
-            {d.collapsed ? d.childCount : '−'}
+            {d.childCount}
           </button>
         )}
+
         {/* Filhos ocultos individualmente — clique reexibe todos */}
         {!d.collapsed && d.hiddenChildCount > 0 && (
           <button
             onClick={e => { e.stopPropagation(); d.onShowHiddenChildren() }}
             title={`${d.hiddenChildCount} item(ns) oculto(s) — clique para mostrar`}
             aria-label={`Mostrar ${d.hiddenChildCount} itens ocultos`}
-            className="h-5 px-1.5 rounded-full text-[10px] font-bold text-white shadow flex items-center gap-0.5 transition-all hover:scale-110"
-            style={{ background: d.color.solid, opacity: 0.85 }}
+            className="h-5 pl-1 pr-1.5 rounded-full text-[10px] font-bold text-white shadow flex items-center gap-0.5 transition-transform hover:scale-110 motion-reduce:transition-none"
+            style={{ background: d.color.solid, opacity: 0.9 }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
               <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
               <line x1="1" y1="1" x2="23" y2="23" />
             </svg>
             {d.hiddenChildCount}
+          </button>
+        )}
+
+        {/* Só no hover — `hidden` evita espaço fantasma */}
+        <button
+          onClick={e => { e.stopPropagation(); d.onAddChild() }}
+          title="Adicionar item (Tab)"
+          aria-label="Adicionar item filho"
+          className="hidden group-hover:flex focus:flex w-6 h-6 rounded-full text-white text-sm leading-none shadow-md items-center justify-center transition-transform hover:scale-110 motion-reduce:transition-none"
+          style={{ background: d.color.solid }}
+        >
+          +
+        </button>
+        {!d.collapsed && d.childCount > 0 && (
+          <button
+            onClick={e => { e.stopPropagation(); d.onToggleCollapse() }}
+            title="Recolher todos os filhos"
+            aria-label="Recolher todos os filhos"
+            className="hidden group-hover:flex focus:flex w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-500 text-[10px] font-bold items-center justify-center shadow transition-transform hover:scale-110 motion-reduce:transition-none"
+          >
+            −
           </button>
         )}
       </div>
@@ -190,7 +205,7 @@ function MindNodeComponent({ data, selected }: NodeProps) {
           onClick={e => { e.stopPropagation(); d.onHideSelf() }}
           title="Ocultar só este item"
           aria-label="Ocultar este item"
-          className="absolute top-1/2 -translate-y-1/2 right-full mr-2 w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 hover:text-gray-700 shadow flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all hover:scale-110 motion-reduce:transition-none"
+          className="absolute top-1/2 -translate-y-1/2 right-full mr-2 w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 hover:text-gray-700 shadow hidden group-hover:flex focus:flex items-center justify-center transition-transform hover:scale-110 motion-reduce:transition-none"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-2.5 h-2.5">
             <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
