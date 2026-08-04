@@ -1,5 +1,5 @@
 // ============================================================================
-// Testes do Office Preview V2 (camada visual)
+// Testes do Office Preview V3 (camada visual)
 // ----------------------------------------------------------------------------
 // Nada de banco, nada de rede. A cena é derivada de eventos reais produzidos
 // pelo orquestrador em memória — os mesmos que o backend gravaria em cs_events.
@@ -36,6 +36,7 @@ const cena = readFileSync(join(RAIZ, 'src/components/content-studio/office-scene
 const avatar = readFileSync(join(RAIZ, 'src/components/content-studio/agent-avatar.tsx'), 'utf8')
 const ui = readFileSync(join(RAIZ, 'src/components/content-studio/office-preview.tsx'), 'utf8')
 const timeline = readFileSync(join(RAIZ, 'src/components/content-studio/timeline-panel.tsx'), 'utf8')
+const props = readFileSync(join(RAIZ, 'src/components/content-studio/office-props.tsx'), 'utf8')
 
 // ─── Store em memória ───────────────────────────────────────────────────────
 
@@ -248,7 +249,8 @@ test('7) reduced-motion elimina os movimentos longos', () => {
   assert.ok(cena.includes('const walkMs = reducedMotion ? 0 :'), 'transição zerada')
   assert.ok(cena.includes('@media (prefers-reduced-motion: reduce)'), 'guarda no CSS também')
   assert.ok(cena.includes('animation: none !important'))
-  assert.ok(avatar.includes('reducedMotion ?'), 'o avatar respeita a preferência')
+  assert.ok(avatar.includes('reducedMotion'), 'o avatar respeita a preferência')
+  assert.ok(avatar.includes('!reducedMotion &&'), 'as classes de animação dependem da preferência')
 })
 
 // ─── 8. "review" nunca aparece cru ─────────────────────────────────────────
@@ -289,27 +291,35 @@ test('9) o layout mobile não exige rolagem horizontal', () => {
   const tagSvg = cena.slice(cena.indexOf('<svg'), cena.indexOf('>', cena.indexOf('<svg')))
   assert.ok(!/width="\d+"|height="\d+"/.test(tagSvg), 'o svg raiz não pode ter tamanho fixo')
 
-  // O layout compacto empilha em zigue-zague, dentro de um viewBox estreito.
-  assert.ok(cena.includes("compact: '0 0 420 580'"))
+  // O layout compacto tem viewBox retrato próprio.
+  assert.ok(/compact: '0 0 \d+ \d+'/.test(cena), 'falta o viewBox do mobile')
 })
 
 test('9b) as três mesas cabem no viewBox, com folga para o personagem', () => {
-  const bloco = cena.slice(cena.indexOf('const DESKS'), cena.indexOf('const VIEWBOX'))
-  const pares = [...bloco.matchAll(/x:\s*(\d+),\s*y:\s*(\d+)/g)].map(m => [Number(m[1]), Number(m[2])])
-  assert.equal(pares.length, 6, 'três mesas em dois layouts')
+  const vb = (nome: string) => {
+    const m = new RegExp(`${nome}: '0 0 (\\d+) (\\d+)'`).exec(cena)!
+    return { w: Number(m[1]), h: Number(m[2]) }
+  }
+  const bloco = cena.slice(cena.indexOf('const DESKS'), cena.indexOf('const VISIT_OFFSET'))
+  const parse = (trecho: string) =>
+    [...trecho.matchAll(/x:\s*(\d+),\s*y:\s*(\d+)/g)].map(m => ({ x: Number(m[1]), y: Number(m[2]) }))
 
-  const [wide, compact] = [pares.slice(0, 3), pares.slice(3)]
-  // Margem: o personagem tem ~16px de meia-largura e a mesa ~62px.
-  for (const [x, y] of wide) {
-    assert.ok(x >= 70 && x <= 730, `mesa wide fora do viewBox: x=${x}`)
-    assert.ok(y >= 60 && y <= 300, `mesa wide fora do viewBox: y=${y}`)
+  const mesas = {
+    wide: parse(bloco.slice(bloco.indexOf('wide:'), bloco.indexOf('compact:'))),
+    compact: parse(bloco.slice(bloco.indexOf('compact:'))),
   }
-  for (const [x, y] of compact) {
-    assert.ok(x >= 70 && x <= 350, `mesa compacta fora do viewBox: x=${x}`)
-    assert.ok(y >= 60 && y <= 500, `mesa compacta fora do viewBox: y=${y}`)
+
+  // Margem: meia-mesa (~76) + deslocamento da visita, e placa ~95px abaixo.
+  for (const layout of ['wide', 'compact'] as const) {
+    const { w, h } = vb(layout)
+    const folga = layout === 'wide' ? 62 : 54
+    for (const { x, y } of mesas[layout]) {
+      assert.ok(x - 76 - folga > -20, `${layout}: mesa vaza à esquerda (x=${x})`)
+      assert.ok(x + 76 + folga < w + 20, `${layout}: mesa vaza à direita (x=${x}, w=${w})`)
+      assert.ok(y - 60 > 0, `${layout}: mesa vaza no topo (y=${y})`)
+      assert.ok(y + 110 < h, `${layout}: placa vaza embaixo (y=${y}, h=${h})`)
+    }
   }
-  // Em compacto as mesas ficam em zigue-zague (x alterna).
-  assert.notEqual(compact[0][0], compact[1][0], 'zigue-zague exige x diferente')
 })
 
 // ─── 10. Erro interrompe o que vem depois ──────────────────────────────────
@@ -401,7 +411,7 @@ test('14) nenhuma chamada externa foi adicionada na camada visual', () => {
   const semComentarios = (s: string) =>
     s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
-  for (const [nome, bruto] of [['cena', cena], ['avatar', avatar], ['ui', ui], ['timeline', timeline]] as const) {
+  for (const [nome, bruto] of [['cena', cena], ['avatar', avatar], ['ui', ui], ['timeline', timeline], ['props', props]] as const) {
     const src = semComentarios(bruto)
     assert.ok(!/\bfetch\s*\(/.test(src), `${nome} faz fetch`)
     assert.ok(!/https?:\/\//.test(src), `${nome} referencia URL externa`)
@@ -416,21 +426,96 @@ test('14) nenhuma chamada externa foi adicionada na camada visual', () => {
   assert.ok(avatar.includes('<circle') && avatar.includes('<rect'))
 })
 
-test('a cena tem escritório de verdade: piso, mesas, cadeiras e computadores', () => {
-  for (const peca of ['cs-floor', 'cs-wall', 'Workstation', 'Cadeira', 'Monitor', 'Teclado']) {
+test('a cena é um escritório rico: salas, portas, móveis e decoração', () => {
+  // Cenário
+  for (const peca of ['cs-floorgrad', 'cs-wallgrad', 'cs-tiles', 'Divisórias', 'Rodapé', 'Corredor']) {
     assert.ok(cena.includes(peca), `a cena precisa de ${peca}`)
   }
-  // Três estações, uma por agente.
-  assert.equal(OFFICE_AGENT_ORDER.length, 3)
-  assert.ok(cena.includes('corredor central') || cena.includes('Corredor central'))
-
-  // Personagem com corpo inteiro, não um círculo com emoji.
-  for (const parte of ['cs-head', 'cs-arm', 'cs-leg', 'Tronco', 'Cabeça']) {
-    assert.ok(avatar.includes(parte), `o personagem precisa de ${parte}`)
+  // Mobiliário e decoração vindos do catálogo de peças
+  for (const peca of ['Desk', 'Chair', 'Monitor', 'Keyboard', 'Papers', 'Mug', 'Plant', 'Shelf', 'Door', 'Window', 'Lamp']) {
+    assert.ok(props.includes(`export function ${peca}`), `falta a peça ${peca}`)
+    assert.ok(cena.includes(`<${peca}`), `a cena não usa ${peca}`)
   }
-  // Cada papel tem paleta e adereço próprios.
-  assert.ok(avatar.includes('researcher') && avatar.includes('strategist') && avatar.includes('copywriter'))
-  assert.ok(avatar.includes('Lupa') && avatar.includes('Bússola') && avatar.includes('Caneta'))
+  // Profundidade: perspectiva isométrica e sombras
+  assert.ok(props.includes('IsoTop') || /M 0 -\d+ L \d+ \d+ L 0 \d+ L -\d+/.test(props), 'faltam superfícies isométricas')
+  assert.equal(
+    (props.match(/opacity="0\.1[0-9]?"/g) ?? []).length >= 3, true,
+    'as peças precisam projetar sombra',
+  )
+  assert.ok(cena.includes('linearGradient') && cena.includes('radialGradient'), 'faltam gradientes de profundidade')
+
+  // Três estações, uma por agente
+  assert.equal(OFFICE_AGENT_ORDER.length, 3)
+})
+
+test('o personagem é articulado, não um empilhado de retângulos', () => {
+  // Cada membro gira na articulação — é isso que tira a dureza.
+  for (const parte of ['cs-hip', 'cs-torso', 'cs-head', 'cs-arm--front', 'cs-arm--back', 'cs-leg--front', 'cs-leg--back']) {
+    assert.ok(avatar.includes(parte), `o personagem precisa de ${parte}`)
+    assert.ok(cena.includes(parte), `a cena precisa animar ${parte}`)
+  }
+  // Origem de rotação declarada para cada articulação animada.
+  assert.ok((cena.match(/transform-origin:/g) ?? []).length >= 6, 'faltam origens de rotação')
+
+  // Rosto expressivo e sombra própria.
+  for (const traco of ['cs-eyes', 'Sobrancelhas', 'Bochechas', 'Boca', 'cs-shadow']) {
+    assert.ok(avatar.includes(traco), `o personagem precisa de ${traco}`)
+  }
+  // Cada papel com paleta e adereço próprios.
+  for (const key of OFFICE_AGENT_ORDER) assert.ok(avatar.includes(key), `falta paleta de ${key}`)
+})
+
+test('as animações pedidas existem e são dirigidas por estado', () => {
+  // idle (respiração), trabalho, caminhada, erro, conclusão, recebimento.
+  for (const anim of ['cs-breathe', 'cs-headsway', 'cs-typing', 'cs-lean', 'cs-step-f', 'cs-swing-f',
+                      'cs-bounce', 'cs-shake', 'cs-cheer', 'cs-receive', 'cs-glow']) {
+    assert.ok(cena.includes(`@keyframes ${anim}`), `falta a animação ${anim}`)
+  }
+  // E cada uma é ligada por uma CLASSE derivada do estado — nunca por timer.
+  for (const gatilho of ['cs-char--idle', 'cs-char--walk', 'cs-char--type',
+                         'cs-char--error', 'cs-char--cheer', 'cs-char--receive']) {
+    assert.ok(avatar.includes(gatilho), `${gatilho} precisa vir do estado`)
+    assert.ok(cena.includes(`.${gatilho}`), `${gatilho} precisa ter regra CSS`)
+  }
+  // Easing suave na caminhada: nada de linear seco.
+  assert.ok(cena.includes('cubic-bezier'), 'a transição precisa de easing')
+})
+
+test('o handoff é inequívoco: pasta destacada e caminho vivo', () => {
+  assert.ok(avatar.includes('function Folder'), 'a pasta precisa ser desenhada')
+  assert.ok(avatar.includes('cs-folder-glow'), 'a pasta precisa se destacar')
+  assert.ok(cena.includes('cs-path--active'), 'o caminho precisa reagir à caminhada')
+  assert.ok(cena.includes("view.agents.some(a => a.state === 'walking')"), 'o caminho acende com base no estado')
+  // A pasta fica ancorada na MÃO, dentro do braço — então acompanha o gesto.
+  const braco = avatar.slice(avatar.indexOf("cs-arm--front"), avatar.indexOf('cs-head'))
+  assert.ok(braco.includes('carryingFolder ? <Folder />'), 'a pasta precisa ficar na mão')
+})
+
+test('o mobile tem planta própria, não a mesma cena espremida', () => {
+  const bloco = cena.slice(cena.indexOf('const DESKS'), cena.indexOf('const VISIT_OFFSET'))
+  const wide = [...bloco.slice(bloco.indexOf('wide:'), bloco.indexOf('compact:')).matchAll(/x:\s*(\d+),\s*y:\s*(\d+)/g)]
+    .map(m => [Number(m[1]), Number(m[2])])
+  const compact = [...bloco.slice(bloco.indexOf('compact:')).matchAll(/x:\s*(\d+),\s*y:\s*(\d+)/g)]
+    .map(m => [Number(m[1]), Number(m[2])])
+
+  assert.equal(wide.length, 3)
+  assert.equal(compact.length, 3)
+  // Wide: alinhado na horizontal. Compact: em L, ocupando a vertical.
+  assert.ok(wide.every(([, y]) => y === wide[0][1]), 'no desktop as mesas ficam alinhadas')
+  assert.ok(new Set(compact.map(([, y]) => y)).size === 3, 'no mobile as mesas se distribuem na vertical')
+  assert.notEqual(compact[0][0], compact[1][0], 'no mobile a planta é em zigue-zague')
+
+  // Proporção do viewBox: paisagem no desktop, retrato no mobile.
+  const dimensoes = (nome: string) => {
+    const m = new RegExp(`${nome}: '0 0 (\\d+) (\\d+)'`).exec(cena)!
+    return { w: Number(m[1]), h: Number(m[2]) }
+  }
+  const { w: lw, h: lh } = dimensoes('wide')
+  const { w: cw, h: ch } = dimensoes('compact')
+  assert.ok(lw > lh, 'desktop precisa ser paisagem')
+  assert.ok(ch > cw, 'mobile precisa ser retrato')
+  // E o retrato não pode ser desproporcionalmente alto (rolagem infinita).
+  assert.ok(ch / cw < 1.5, `mobile alto demais: ${cw}x${ch}`)
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

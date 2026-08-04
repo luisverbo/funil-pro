@@ -180,81 +180,110 @@ export default function OfficePreview() {
   }, [productionId])
 
   const vazio = !loading && allEvents.length === 0 && !running
+  const estadoCor =
+    status === 'failed' ? 'text-rose-600'
+    : status === 'review' || status === 'published' ? 'text-emerald-600'
+    : status ? 'text-indigo-600' : 'text-gray-400'
   const eventoAtual = revealed > 0 ? (view.timeline[view.timeline.length - 1]?.seq ?? 0) : 0
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto overflow-x-hidden">
-      {/* Cabeçalho */}
-      <header className="mb-5">
+      {/* Cabeçalho — faixa única: identidade, selo e estado na mesma linha */}
+      <header className="mb-3 rounded-2xl bg-white border border-gray-100 shadow-sm px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 shrink-0 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-xl shadow-lg shadow-indigo-200/60">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-lg sm:text-xl shadow-md shadow-indigo-200/60">
             🏢
           </div>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">Content Studio</h1>
-            <p className="text-[13px] sm:text-sm text-gray-500 truncate">
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+                Content Studio
+              </h1>
+              <span
+                className="shrink-0 rounded-md bg-amber-50 border border-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600"
+                title="Agentes determinísticos, sem IA e sem custo"
+              >
+                demo
+              </span>
+            </div>
+            <p className="text-[12px] sm:text-[13px] text-gray-500 truncate">
               Escritório virtual dos agentes de conteúdo
             </p>
           </div>
-        </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" aria-hidden />
-            Modo demonstração — agentes stub
-          </span>
-          {status && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500">
-              Produção:{' '}
-              <strong className="font-semibold text-gray-800">{productionStatusLabel(status)}</strong>
-            </span>
-          )}
+          {/* Estado da produção, sempre em português */}
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 leading-none">Produção</p>
+            <p className={`text-[12px] sm:text-[13px] font-bold leading-tight ${estadoCor}`}>
+              {productionStatusLabel(status)}
+            </p>
+          </div>
         </div>
       </header>
 
-      {/* Ações */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      {/* Controles — HUD compacto, tudo numa faixa */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <button
           onClick={iniciar}
           disabled={running}
-          className="px-4 sm:px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-indigo-200 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:translate-y-0"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-b from-indigo-500 to-violet-600 text-white rounded-xl text-sm font-bold shadow-md shadow-indigo-200 ring-1 ring-inset ring-white/25 transition-all hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:translate-y-0"
         >
+          <span aria-hidden>{running ? '⏳' : '▶'}</span>
           {running ? 'Executando...' : 'Iniciar demonstração'}
         </button>
-        <button
-          onClick={reiniciar}
-          disabled={running || !productionId}
-          className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
-        >
-          Reiniciar
-        </button>
 
-        {/* Pausa: só a reprodução visual. */}
-        <button
-          onClick={() => setPausado(p => !p)}
-          disabled={!reproduzindo && !pausado}
-          aria-pressed={pausado}
-          className="px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 disabled:opacity-40"
-          title="Pausa apenas a animação — o processamento continua"
-        >
-          {pausado ? '▶ Continuar' : '⏸ Pausar'}
-        </button>
+        <div className="inline-flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <button
+            onClick={reiniciar}
+            disabled={running || !productionId}
+            className="px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+            title="Reproduz de novo os eventos já gravados"
+          >
+            ↻ <span className="hidden sm:inline">Reiniciar</span>
+          </button>
+          <span className="w-px bg-gray-200" aria-hidden />
+          <button
+            onClick={() => setPausado(p => !p)}
+            disabled={!reproduzindo && !pausado}
+            aria-pressed={pausado}
+            className="px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+            title="Pausa apenas a animação — o processamento continua"
+          >
+            {pausado ? '▶' : '❚❚'} <span className="hidden sm:inline">{pausado ? 'Continuar' : 'Pausar'}</span>
+          </button>
+        </div>
 
         {/* Velocidade: puramente visual. */}
-        <div className="inline-flex rounded-xl border border-gray-200 bg-white overflow-hidden" role="group" aria-label="Velocidade da animação">
-          {(['normal', 'rapido'] as const).map(v => (
+        <div
+          className="inline-flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden"
+          role="group"
+          aria-label="Velocidade da animação"
+        >
+          {(['normal', 'rapido'] as const).map(vel => (
             <button
-              key={v}
-              onClick={() => setVelocidade(v)}
-              aria-pressed={velocidade === v}
-              className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
-                velocidade === v ? 'bg-indigo-500 text-white' : 'text-gray-600 hover:bg-gray-50'
+              key={vel}
+              onClick={() => setVelocidade(vel)}
+              aria-pressed={velocidade === vel}
+              className={`px-3.5 py-2.5 text-sm font-bold transition-colors ${
+                velocidade === vel ? 'bg-indigo-500 text-white' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
-              {v === 'normal' ? '1x' : '2x'}
+              {vel === 'normal' ? '1x' : '2x'}
             </button>
           ))}
         </div>
+
+        {/* Andamento da reprodução — some quando não há nada a reproduzir */}
+        {allEvents.length > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-[11px] font-semibold text-gray-500 tabular-nums">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${reproduzindo && !pausado ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`}
+              aria-hidden
+            />
+            {revealed}/{allEvents.length}
+          </span>
+        )}
       </div>
 
       {/* Erro */}
