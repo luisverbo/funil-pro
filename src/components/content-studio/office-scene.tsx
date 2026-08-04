@@ -1,21 +1,26 @@
 'use client'
 
 // ============================================================================
-// Office Preview — a cena do escritório (SVG)
+// Office Preview V3 — a cena do escritório (SVG isométrico)
 // ----------------------------------------------------------------------------
-// Escritório em perspectiva leve, desenhado inteiro em SVG: piso, divisórias,
-// três estações com mesa/cadeira/computador, corredor central e os personagens.
+// Escritório em perspectiva isométrica leve: piso em losangos, paredes com
+// espessura, três salas separadas por divisórias, porta, janelas, estante,
+// quadros, plantas e luminárias.
 //
 // A REGRA que não muda desde a V1: a posição do personagem é DERIVADA dos
 // eventos (`agent.atDesk`), nunca de um timer. O CSS só interpola entre a
 // posição anterior e a nova — se o backend não gravou o handoff, ninguém anda.
 //
-// Dois layouts: `wide` (mesas lado a lado) e `compact` (zigue-zague, para
-// caber no celular sem cortar ninguém nem gerar rolagem horizontal).
+// Dois layouts, com PLANTAS DIFERENTES (não é o mesmo desenho espremido):
+//   wide    — três salas lado a lado, corredor horizontal
+//   compact — planta em L pensada para retrato, corredor em zigue-zague
 // ============================================================================
 
 import React from 'react'
 import AgentAvatar, { AGENT_PALETTE } from './agent-avatar'
+import {
+  Chair, Desk, DeskSign, Door, Keyboard, Lamp, Monitor, Mug, Papers, Plant, Shelf, Window,
+} from './office-props'
 import { OFFICE_AGENT_ORDER, type AgentView, type OfficeView } from '@/lib/content-studio/view-model'
 
 export type SceneLayout = 'wide' | 'compact'
@@ -23,100 +28,24 @@ export type SceneLayout = 'wide' | 'compact'
 /** Posição de cada estação, por layout. Coordenadas do viewBox. */
 const DESKS: Record<SceneLayout, Record<string, { x: number; y: number }>> = {
   wide: {
-    researcher: { x: 130, y: 250 },
-    strategist: { x: 400, y: 250 },
-    copywriter: { x: 670, y: 250 },
+    researcher: { x: 168, y: 300 },
+    strategist: { x: 480, y: 300 },
+    copywriter: { x: 792, y: 300 },
   },
   compact: {
-    researcher: { x: 110, y: 150 },
-    strategist: { x: 300, y: 300 },
-    copywriter: { x: 110, y: 450 },
+    researcher: { x: 140, y: 178 },
+    strategist: { x: 330, y: 336 },
+    copywriter: { x: 140, y: 492 },
   },
 }
 
+/** Onde o personagem fica ao chegar na mesa de outro (para não sobrepor). */
+const VISIT_OFFSET: Record<SceneLayout, number> = { wide: 62, compact: 54 }
+
 const VIEWBOX: Record<SceneLayout, string> = {
-  wide: '0 0 800 380',
-  compact: '0 0 420 580',
+  wide: '0 0 960 430',
+  compact: '0 0 470 620',
 }
-
-// ─── Mobiliário ─────────────────────────────────────────────────────────────
-
-/** Estação de trabalho: mesa, cadeira, monitor e um objeto decorativo. */
-function Workstation({
-  x, y, agentKey, active, label,
-}: { x: number; y: number; agentKey: string; active: boolean; label: string }) {
-  const palette = AGENT_PALETTE[agentKey] ?? AGENT_PALETTE.researcher
-
-  return (
-    <g transform={`translate(${x}, ${y})`}>
-      {/* Tapete do setor */}
-      <ellipse cx="0" cy="34" rx="78" ry="30" fill={palette.accent} opacity="0.35" />
-
-      {/* Cadeira (atrás do personagem) */}
-      <g transform="translate(0, 4)">
-        <rect x="-13" y="-20" width="26" height="26" rx="8" fill="#94a3b8" opacity="0.55" />
-        <rect x="-3" y="6" width="6" height="12" rx="3" fill="#64748b" opacity="0.55" />
-      </g>
-
-      {/* Mesa */}
-      <g>
-        <rect x="-62" y="30" width="124" height="13" rx="5" fill="#c8a678" />
-        <rect x="-62" y="30" width="124" height="5" rx="2.5" fill="#e0c39a" />
-        <rect x="-54" y="43" width="7" height="26" rx="3" fill="#a4794f" />
-        <rect x="47" y="43" width="7" height="26" rx="3" fill="#a4794f" />
-      </g>
-
-      {/* Monitor — acende quando o agente está trabalhando */}
-      <g transform="translate(-30, 8)">
-        <rect x="-19" y="-16" width="38" height="26" rx="3" fill="#1e293b" />
-        <rect
-          x="-16.5" y="-13.5" width="33" height="21" rx="2"
-          fill={active ? palette.suit : '#475569'}
-          className={active ? 'cs-screen cs-screen--on' : 'cs-screen'}
-        />
-        {active && (
-          <g className="cs-screen-lines" opacity="0.85">
-            <rect x="-13" y="-10" width="19" height="2.2" rx="1.1" fill="#fff" />
-            <rect x="-13" y="-6" width="25" height="2.2" rx="1.1" fill="#fff" />
-            <rect x="-13" y="-2" width="14" height="2.2" rx="1.1" fill="#fff" />
-          </g>
-        )}
-        <rect x="-4" y="10" width="8" height="5" rx="1.5" fill="#334155" />
-        <rect x="-11" y="15" width="22" height="3" rx="1.5" fill="#334155" />
-      </g>
-
-      {/* Teclado */}
-      <rect x="4" y="26" width="30" height="8" rx="2" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="1" />
-
-      {/* Decoração: caneca ou planta, alternando por mesa */}
-      {agentKey === 'strategist' ? (
-        <g transform="translate(46, 20)">
-          <path d="M -6 10 L -4.5 -2 L 4.5 -2 L 6 10 Z" fill="#d97706" opacity="0.8" />
-          <path d="M 0 -2 C -7 -6 -6 -15 0 -16 C 6 -15 7 -6 0 -2 Z" fill="#16a34a" />
-        </g>
-      ) : (
-        <g transform="translate(46, 22)">
-          <rect x="-5" y="-8" width="10" height="10" rx="2" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="1.2" />
-          <path d="M 5 -6 a 3 3 0 0 1 0 6" fill="none" stroke="#cbd5e1" strokeWidth="1.2" />
-        </g>
-      )}
-
-      {/* Placa do setor */}
-      <g transform="translate(0, 82)">
-        <rect x="-52" y="-11" width="104" height="22" rx="11" fill="#ffffff" stroke={palette.suit} strokeWidth="1.5" />
-        <text
-          x="0" y="4" textAnchor="middle"
-          fontFamily="system-ui, -apple-system, sans-serif" fontSize="12" fontWeight="600"
-          fill={palette.suitDark}
-        >
-          {label}
-        </text>
-      </g>
-    </g>
-  )
-}
-
-// ─── Cena ───────────────────────────────────────────────────────────────────
 
 export interface OfficeSceneProps {
   view: OfficeView
@@ -133,140 +62,258 @@ export default function OfficeScene({
   speed = 1,
 }: OfficeSceneProps) {
   const desks = DESKS[layout]
+  const wide = layout === 'wide'
   const byKey = new Map(view.agents.map(a => [a.key, a]))
+  const v = Math.max(speed, 0.25)
 
-  // Duração da caminhada: encurta no modo rápido, some com reduced-motion.
-  const walkMs = reducedMotion ? 0 : Math.round(1100 / Math.max(speed, 0.25))
+  // Caminhada: encurta no modo rápido, some com reduced-motion.
+  const walkMs = reducedMotion ? 0 : Math.round(1250 / v)
 
   return (
     <svg
       viewBox={VIEWBOX[layout]}
       className="cs-scene"
       role="img"
-      aria-label="Escritório virtual com três agentes de conteúdo"
+      aria-label="Escritório virtual com Pesquisador, Estrategista e Copywriter"
       style={{ width: '100%', height: 'auto', display: 'block' }}
     >
       <defs>
-        <linearGradient id="cs-wall" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#eef2f7" />
-          <stop offset="100%" stopColor="#dfe6ef" />
+        <linearGradient id="cs-wallgrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#f4f7fb" />
+          <stop offset="100%" stopColor="#dde5ef" />
         </linearGradient>
-        <linearGradient id="cs-floor" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f8fafc" />
-          <stop offset="100%" stopColor="#e9eef5" />
+        <linearGradient id="cs-floorgrad" x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0%" stopColor="#eaf0f7" />
+          <stop offset="100%" stopColor="#d3dde9" />
         </linearGradient>
+        <linearGradient id="cs-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#a8d8f5" />
+          <stop offset="100%" stopColor="#e3f2fd" />
+        </linearGradient>
+        <linearGradient id="cs-glass" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.42" />
+          <stop offset="60%" stopColor="#ffffff" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="cs-light" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fde68a" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#fde68a" stopOpacity="0" />
+        </linearGradient>
+        <radialGradient id="cs-rug" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        </radialGradient>
+        {/* Textura sutil do piso: ladrilhos isométricos */}
+        <pattern id="cs-tiles" width="56" height="28" patternUnits="userSpaceOnUse">
+          <path d="M 28 0 L 56 14 L 28 28 L 0 14 Z" fill="none" stroke="#c3d0de" strokeWidth="1" opacity="0.5" />
+        </pattern>
       </defs>
 
       <style>{`
         .cs-scene { --cs-walk: ${walkMs}ms; }
-        .cs-actor { transition: transform var(--cs-walk) cubic-bezier(.42,.02,.32,1); }
-        .cs-screen { transition: fill 320ms ease; }
+        /* A caminhada: easing suave nas pontas, sem "teleporte". */
+        .cs-actor { transition: transform var(--cs-walk) cubic-bezier(.45,.05,.25,1); }
+        .cs-screen { transition: fill 340ms ease; }
 
-        @keyframes cs-step {
-          0%, 100% { transform: rotate(0deg); }
-          50%      { transform: rotate(16deg); }
-        }
-        @keyframes cs-step-alt {
-          0%, 100% { transform: rotate(0deg); }
-          50%      { transform: rotate(-16deg); }
-        }
-        @keyframes cs-bob   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
-        @keyframes cs-type  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(1.6px); } }
-        @keyframes cs-blink { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
-        @keyframes cs-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-1.5px); } 75% { transform: translateX(1.5px); } }
+        @keyframes cs-breathe { 0%,100% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(-1.1px) scaleY(1.012); } }
+        @keyframes cs-headsway { 0%,100% { transform: translate(0, -8px) rotate(-1.1deg); } 50% { transform: translate(0, -9px) rotate(1.1deg); } }
+        @keyframes cs-swing-f  { 0%,100% { transform: translate(11px,-1px) rotate(26deg); } 50% { transform: translate(11px,-1px) rotate(-24deg); } }
+        @keyframes cs-swing-b  { 0%,100% { transform: translate(-11px,-1px) rotate(-26deg); } 50% { transform: translate(-11px,-1px) rotate(24deg); } }
+        @keyframes cs-step-f   { 0%,100% { transform: rotate(22deg); } 50% { transform: rotate(-22deg); } }
+        @keyframes cs-step-b   { 0%,100% { transform: rotate(-22deg); } 50% { transform: rotate(22deg); } }
+        @keyframes cs-bounce   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3.2px); } }
+        @keyframes cs-hipsway  { 0%,100% { transform: translate(0,24px) rotate(-2.6deg); } 50% { transform: translate(0,24px) rotate(2.6deg); } }
+        @keyframes cs-shadow   { 0%,100% { opacity:.16; transform: scale(1); } 50% { opacity:.1; transform: scale(.88); } }
+        @keyframes cs-typing   { 0%,100% { transform: translate(11px,-1px) rotate(-6deg); } 50% { transform: translate(11px,-1px) rotate(8deg); } }
+        @keyframes cs-typing-b { 0%,100% { transform: translate(-11px,-1px) rotate(6deg); } 50% { transform: translate(-11px,-1px) rotate(-8deg); } }
+        @keyframes cs-lean     { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(.6px) rotate(-3.4deg); } }
+        @keyframes cs-blink    { 0%,100% { opacity:.9; } 50% { opacity:.5; } }
+        @keyframes cs-shake    { 0%,100% { transform: translate(0,-8px) rotate(0); } 20% { transform: translate(-1.8px,-8px) rotate(-3deg); } 60% { transform: translate(1.8px,-8px) rotate(3deg); } }
+        @keyframes cs-cheer    { 0%,100% { transform: translateY(0); } 30% { transform: translateY(-4.5px); } }
+        @keyframes cs-receive  { 0%,100% { transform: translate(-11px,-1px) rotate(0); } 40% { transform: translate(-11px,-1px) rotate(-34deg); } }
+        @keyframes cs-glow     { 0%,100% { opacity:.25; stroke-width:2; } 50% { opacity:.95; stroke-width:3.2; } }
+        @keyframes cs-dash     { to { stroke-dashoffset: -28; } }
+        @keyframes cs-leafsway { 0%,100% { transform: rotate(-1.4deg); } 50% { transform: rotate(1.4deg); } }
 
-        .cs-char--walk .cs-leg--l { animation: cs-step ${Math.round(520 / speed)}ms ease-in-out infinite; transform-origin: center top; }
-        .cs-char--walk .cs-leg--r { animation: cs-step-alt ${Math.round(520 / speed)}ms ease-in-out infinite; transform-origin: center top; }
-        .cs-char--walk .cs-head   { animation: cs-bob ${Math.round(520 / speed)}ms ease-in-out infinite; }
-        .cs-char--type .cs-arm--l,
-        .cs-char--type .cs-arm--r { animation: cs-type ${Math.round(420 / speed)}ms ease-in-out infinite; transform-origin: center top; }
-        .cs-char--type .cs-arm--r { animation-delay: ${Math.round(210 / speed)}ms; }
-        .cs-char--error .cs-head  { animation: cs-shake 700ms ease-in-out 3; }
-        .cs-screen-lines          { animation: cs-blink ${Math.round(1400 / speed)}ms ease-in-out infinite; }
+        /* Parado: respira. É o que separa "vivo" de "boneco colado". */
+        .cs-char--idle .cs-torso { animation: cs-breathe ${Math.round(3400 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
+        .cs-char--idle .cs-head  { animation: cs-headsway ${Math.round(4600 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
 
-        /* O usuário mandou parar de mexer: paramos. */
+        /* Caminhando: quadril e ombros alternam; o corpo sobe e desce. */
+        .cs-char--walk               { animation: cs-bounce ${Math.round(560 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-shadow    { animation: cs-shadow ${Math.round(560 / v)}ms ease-in-out infinite; transform-origin: center; }
+        .cs-char--walk .cs-hip       { animation: cs-hipsway ${Math.round(560 / v)}ms ease-in-out infinite; transform-origin: center top; }
+        .cs-char--walk .cs-leg--front{ animation: cs-step-f ${Math.round(560 / v)}ms ease-in-out infinite; transform-origin: 3px 0; }
+        .cs-char--walk .cs-leg--back { animation: cs-step-b ${Math.round(560 / v)}ms ease-in-out infinite; transform-origin: -3px 0; }
+        .cs-char--walk .cs-arm--front{ animation: cs-swing-f ${Math.round(560 / v)}ms ease-in-out infinite; transform-origin: 11px -1px; }
+        .cs-char--walk .cs-arm--back { animation: cs-swing-b ${Math.round(560 / v)}ms ease-in-out infinite; transform-origin: -11px -1px; }
+
+        /* Trabalhando: inclina sobre a mesa e digita. */
+        .cs-char--type .cs-torso     { animation: cs-lean ${Math.round(2600 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
+        .cs-char--type .cs-arm--front{ animation: cs-typing ${Math.round(340 / v)}ms ease-in-out infinite; transform-origin: 11px -1px; }
+        .cs-char--type .cs-arm--back { animation: cs-typing-b ${Math.round(340 / v)}ms ease-in-out infinite; transform-origin: -11px -1px; animation-delay: ${Math.round(170 / v)}ms; }
+
+        .cs-char--error .cs-head     { animation: cs-shake 620ms ease-in-out 3; transform-origin: center bottom; }
+        .cs-char--cheer              { animation: cs-cheer 900ms ease-out 2; }
+        .cs-char--receive .cs-arm--back { animation: cs-receive 700ms ease-in-out 2; transform-origin: -11px -1px; }
+
+        .cs-folder-glow { animation: cs-glow ${Math.round(1300 / v)}ms ease-in-out infinite; }
+        .cs-screen-lines{ animation: cs-blink ${Math.round(1500 / v)}ms ease-in-out infinite; }
+        .cs-path--active{ animation: cs-dash ${Math.round(900 / v)}ms linear infinite; }
+        .cs-leaves      { animation: cs-leafsway ${Math.round(5200 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
+
+        /* O usuário mandou parar de mexer: paramos tudo. */
         @media (prefers-reduced-motion: reduce) {
-          .cs-actor { transition: none !important; }
-          .cs-char--walk .cs-leg--l,
-          .cs-char--walk .cs-leg--r,
-          .cs-char--walk .cs-head,
-          .cs-char--type .cs-arm--l,
-          .cs-char--type .cs-arm--r,
-          .cs-char--error .cs-head,
-          .cs-screen-lines { animation: none !important; }
+          .cs-scene * { animation: none !important; transition: none !important; }
         }
       `}</style>
 
-      {/* Parede e piso */}
-      <rect x="0" y="0" width="100%" height="100%" fill="url(#cs-wall)" />
-      <rect
-        x="0" y={layout === 'wide' ? 120 : 90}
-        width="100%" height="100%" fill="url(#cs-floor)"
-      />
+      {/* ─── Paredes ────────────────────────────────────────────────── */}
+      <rect x="0" y="0" width="100%" height="100%" fill="url(#cs-wallgrad)" />
 
-      {/* Janelas na parede */}
-      {layout === 'wide' && (
-        <g opacity="0.9">
-          {[90, 350, 610].map(x => (
-            <g key={x} transform={`translate(${x}, 26)`}>
-              <rect width="100" height="66" rx="8" fill="#bfdbfe" stroke="#cbd5e1" strokeWidth="3" />
-              <line x1="50" y1="0" x2="50" y2="66" stroke="#cbd5e1" strokeWidth="3" />
-              <circle cx="76" cy="18" r="9" fill="#fef9c3" opacity="0.9" />
+      {/* ─── Piso com textura ───────────────────────────────────────── */}
+      <g>
+        <rect x="0" y={wide ? 168 : 128} width="100%" height="100%" fill="url(#cs-floorgrad)" />
+        <rect x="0" y={wide ? 168 : 128} width="100%" height="100%" fill="url(#cs-tiles)" />
+        {/* Rodapé: a linha que separa parede de chão */}
+        <rect x="0" y={wide ? 162 : 122} width="100%" height="7" fill="#c2cedd" />
+        <rect x="0" y={wide ? 162 : 122} width="100%" height="2.5" fill="#dbe4ee" />
+      </g>
+
+      {/* ─── Divisórias entre as salas ──────────────────────────────── */}
+      {wide ? (
+        <g>
+          {[324, 636].map(x => (
+            <g key={x}>
+              <rect x={x - 5} y="120" width="10" height="150" rx="3" fill="#cbd6e3" />
+              <rect x={x - 5} y="120" width="4" height="150" rx="2" fill="#e3ebf4" />
+              <rect x={x - 9} y="112" width="18" height="10" rx="4" fill="#b8c5d5" />
+            </g>
+          ))}
+        </g>
+      ) : (
+        <g>
+          {[276, 434].map(y => (
+            <g key={y}>
+              <rect x="18" y={y - 4} width="434" height="8" rx="3" fill="#cbd6e3" opacity="0.75" />
+              <rect x="18" y={y - 4} width="434" height="3" rx="1.5" fill="#e3ebf4" opacity="0.9" />
             </g>
           ))}
         </g>
       )}
 
-      {/* Linhas do piso — dão a noção de corredor entre as mesas */}
-      <g stroke="#cbd5e1" strokeWidth="1" opacity="0.55">
-        {layout === 'wide'
-          ? [175, 230, 290, 355].map(y => <line key={y} x1="0" y1={y} x2="800" y2={y} />)
-          : [140, 200, 260, 320, 380, 440, 500].map(y => <line key={y} x1="0" y1={y} x2="420" y2={y} />)}
+      {/* ─── Decoração de parede ────────────────────────────────────── */}
+      {wide ? (
+        <g>
+          <g transform="translate(168, 92)"><Window /></g>
+          <g transform="translate(792, 92)"><Window /></g>
+          <g transform="translate(430, 74)"><Door tint="#94a3b8" /></g>
+          <g transform="translate(534, 60)"><WallArtSafe tone="#8b5cf6" /></g>
+          <g transform="translate(60, 52)"><WallArtSafe tone="#3b82f6" /></g>
+          <g transform="translate(900, 52)"><WallArtSafe tone="#f97316" /></g>
+          <g transform="translate(168, 34)"><Lamp /></g>
+          <g transform="translate(480, 34)"><Lamp /></g>
+          <g transform="translate(792, 34)"><Lamp /></g>
+        </g>
+      ) : (
+        <g>
+          <g transform="translate(120, 66)"><Window /></g>
+          <g transform="translate(330, 78)"><Door tint="#94a3b8" /></g>
+          <g transform="translate(410, 42)"><WallArtSafe tone="#8b5cf6" /></g>
+          <g transform="translate(240, 30)"><Lamp /></g>
+        </g>
+      )}
+
+      {/* ─── Mobiliário de canto ────────────────────────────────────── */}
+      {wide ? (
+        <g>
+          <g transform="translate(58, 262)"><Shelf /></g>
+          <g transform="translate(910, 268) scale(1.15)"><Plant /></g>
+          <g transform="translate(322, 292) scale(0.95)"><Plant /></g>
+          <g transform="translate(636, 292) scale(0.95)"><Plant /></g>
+        </g>
+      ) : (
+        <g>
+          <g transform="translate(400, 205) scale(0.85)"><Shelf /></g>
+          <g transform="translate(50, 320) scale(0.9)"><Plant /></g>
+          <g transform="translate(402, 552) scale(0.95)"><Plant /></g>
+        </g>
+      )}
+
+      {/* ─── Corredor: o caminho da pasta ───────────────────────────── */}
+      <g>
+        <path
+          d={wide ? 'M 96 372 L 864 372' : 'M 214 228 L 330 386 L 214 542'}
+          stroke="#b9c7d8" strokeWidth={wide ? 26 : 22} strokeLinecap="round" fill="none" opacity="0.55"
+        />
+        <path
+          className={view.agents.some(a => a.state === 'walking') ? 'cs-path cs-path--active' : 'cs-path'}
+          d={wide ? 'M 96 372 L 864 372' : 'M 214 228 L 330 386 L 214 542'}
+          stroke="#94a3b8" strokeWidth="2.6" strokeDasharray="10 18" fill="none" opacity="0.85"
+        />
       </g>
 
-      {/* Corredor central: o caminho por onde a pasta viaja */}
-      <path
-        d={layout === 'wide'
-          ? 'M 60 318 L 740 318'
-          : 'M 180 190 L 300 340 L 180 490'}
-        stroke="#94a3b8" strokeWidth="2.5" strokeDasharray="9 9" fill="none" opacity="0.5"
-      />
-
-      {/* Estações */}
+      {/* ─── Estações ───────────────────────────────────────────────── */}
       {OFFICE_AGENT_ORDER.map(key => {
         const agent = byKey.get(key)
         const pos = desks[key]
+        const p = AGENT_PALETTE[key]
+        const ativo = agent?.state === 'working'
+
         return (
-          <Workstation
-            key={key}
-            x={pos.x} y={pos.y}
-            agentKey={key}
-            active={agent?.state === 'working'}
-            label={agent?.label ?? key}
-          />
+          <g key={key} transform={`translate(${pos.x}, ${pos.y})`}>
+            {/* Tapete do setor */}
+            <g opacity="0.95">
+              <path d="M 0 -46 L 118 6 L 0 58 L -118 6 Z" fill={p.accent} opacity="0.55" />
+              <path d="M 0 -46 L 118 6 L 0 58 L -118 6 Z" fill="url(#cs-rug)" />
+              <path d="M 0 -38 L 100 6 L 0 50 L -100 6 Z" fill="none" stroke={p.suit} strokeWidth="1.6" opacity="0.3" />
+            </g>
+
+            {/* Cadeira atrás da mesa */}
+            <g transform="translate(0, -12)"><Chair tint={p.suitLight} dark={p.suit} /></g>
+
+            {/* Mesa e objetos */}
+            <g transform="translate(0, 6)">
+              <Desk tint={p.suit} />
+              <g transform="translate(-34, -14)"><Monitor on={!!ativo} tint={p.suit} /></g>
+              <g transform="translate(6, 14)"><Keyboard /></g>
+              <g transform="translate(44, 2)"><Papers tint={p.suit} /></g>
+              <g transform="translate(58, 16) scale(0.9)"><Mug color={p.suitDark} /></g>
+            </g>
+
+            {/* Placa do setor */}
+            <g transform="translate(0, 94)">
+              <DeskSign label={agent?.label ?? key} tint={p.suit} dark={p.suitDark} />
+            </g>
+          </g>
         )
       })}
 
-      {/* Personagens — camada acima do mobiliário, para caminharem "na frente" */}
+      {/* ─── Personagens ────────────────────────────────────────────── */}
       {OFFICE_AGENT_ORDER.map(key => {
         const agent = byKey.get(key)
         if (!agent) return null
+
         // A posição vem de `atDesk`, que veio dos eventos.
-        const alvo = desks[agent.atDesk] ?? desks[key]
-        const andando = agent.state === 'walking'
-        // Ao chegar na mesa do colega, para ao LADO — não em cima dele.
-        const offsetX = andando ? (alvo.x > desks[key].x ? -34 : 34) : 0
+        const casa = desks[key]
+        const alvo = desks[agent.atDesk] ?? casa
+        const visitando = agent.atDesk !== key
+
+        // Ao chegar na mesa do colega, para AO LADO — não em cima dele.
+        const dx = visitando ? (alvo.x >= casa.x ? -VISIT_OFFSET[layout] : VISIT_OFFSET[layout]) : 0
+        // Em pé fica um pouco à frente da mesa; sentado, atrás dela.
+        const dy = visitando || agent.state === 'walking' ? 26 : -4
 
         return (
           <g
             key={key}
             className="cs-actor"
-            style={{ transform: `translate(${alvo.x + offsetX}px, ${alvo.y}px)` }}
+            style={{ transform: `translate(${alvo.x + dx}px, ${alvo.y + dy}px)` }}
           >
             <AgentAvatar
               agentKey={key}
               state={agent.state}
               carryingFolder={agent.carryingFolder}
+              received={agent.receivedFolder}
               reducedMotion={reducedMotion}
             />
             <Bubble agent={agent} />
@@ -277,30 +324,47 @@ export default function OfficeScene({
   )
 }
 
+/** Quadro de parede — reexportado localmente para manter a cena legível. */
+function WallArtSafe({ tone }: { tone: string }) {
+  return (
+    <g>
+      <rect x="-22" y="-17" width="44" height="34" rx="2.5" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="2.5" />
+      <rect x="-18" y="-13" width="36" height="26" rx="1.5" fill={tone} opacity="0.16" />
+      <path d="M -18 13 L -6 -3 L 2 6 L 10 -6 L 18 13 Z" fill={tone} opacity="0.55" />
+      <circle cx="9" cy="-7" r="3.6" fill="#fbbf24" opacity="0.85" />
+    </g>
+  )
+}
+
 /** Balão curto acima da cabeça. Some quando não há nada a dizer. */
 function Bubble({ agent }: { agent: AgentView }) {
   if (!agent.bubble) return null
-  const largura = Math.min(Math.max(agent.bubble.length * 6.1 + 20, 66), 168)
+
+  const texto = agent.bubble.length > 26 ? agent.bubble.slice(0, 25) + '…' : agent.bubble
+  const w = Math.min(Math.max(texto.length * 6.6 + 26, 76), 186)
+  const p = AGENT_PALETTE[agent.key] ?? AGENT_PALETTE.researcher
 
   return (
-    <g transform={`translate(0, -34)`} className="cs-bubble">
-      <rect
-        x={-largura / 2} y="-15" width={largura} height="23" rx="11.5"
-        fill="#ffffff" stroke="#e2e8f0" strokeWidth="1.4"
-      />
-      <path d="M -4 8 L 0 13 L 4 8 Z" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1.4" />
+    <g transform="translate(0, -50)" className="cs-bubble">
+      <g opacity="0.14">
+        <rect x={-w / 2} y="-14" width={w} height="27" rx="13.5" fill="#0b1220" transform="translate(0,2)" />
+      </g>
+      <rect x={-w / 2} y="-15" width={w} height="27" rx="13.5" fill="#ffffff" stroke={p.suitLight} strokeWidth="1.6" />
+      <path d="M -5 11 L 0 17.5 L 5 11 Z" fill="#ffffff" stroke={p.suitLight} strokeWidth="1.6" />
+      <path d="M -5.5 10.4 L 5.5 10.4 Z" stroke="#ffffff" strokeWidth="2.4" />
       <text
-        x="0" y="0.5" textAnchor="middle"
-        fontFamily="system-ui, -apple-system, sans-serif" fontSize="10.5" fill="#334155"
+        x="0" y="1.5" textAnchor="middle"
+        fontFamily="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        fontSize="11.5" fontWeight="600" fill="#3d4a5c"
       >
-        {agent.bubble.length > 26 ? agent.bubble.slice(0, 25) + '…' : agent.bubble}
+        {texto}
       </text>
       {agent.progress && (
-        <g transform={`translate(${-largura / 2 + 8}, 4)`}>
-          <rect width={largura - 16} height="2.5" rx="1.25" fill="#e2e8f0" />
+        <g transform={`translate(${-w / 2 + 10}, 5.5)`}>
+          <rect width={w - 20} height="3.2" rx="1.6" fill="#e6ecf3" />
           <rect
-            width={(largura - 16) * (agent.progress.completed / agent.progress.total)}
-            height="2.5" rx="1.25" fill="#10b981"
+            width={(w - 20) * (agent.progress.completed / agent.progress.total)}
+            height="3.2" rx="1.6" fill="#10b981"
           />
         </g>
       )}
