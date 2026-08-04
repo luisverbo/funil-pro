@@ -69,12 +69,17 @@ export async function startProduction(
 
   let steps = await store.listSteps(productionId)
   if (steps.length === 0) {
-    steps = await store.insertSteps(materializeSteps(pipeline, production))
-    await store.emitEvent({
-      productionId,
-      type: 'production_created',
-      payload: { pipeline_key: pipeline.key, steps: steps.length },
-    })
+    const resultado = await store.insertSteps(materializeSteps(pipeline, production))
+    steps = resultado.rows
+    // Só quem venceu o índice único anuncia a criação. Duas chamadas
+    // concorrentes chegam aqui, mas apenas uma inseriu de fato.
+    if (resultado.inserted) {
+      await store.emitEvent({
+        productionId,
+        type: 'production_created',
+        payload: { pipeline_key: pipeline.key, steps: steps.length },
+      })
+    }
   }
 
   if (production.status === 'draft') {

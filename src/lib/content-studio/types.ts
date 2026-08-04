@@ -218,7 +218,14 @@ export interface ContentStore {
   updateProductionStatus(productionId: string, status: ProductionStatus): Promise<void>
 
   listSteps(productionId: string): Promise<StepRow[]>
-  insertSteps(steps: Omit<StepRow, 'id'>[]): Promise<StepRow[]>
+  /**
+   * Insere os steps da produção.
+   *
+   * `inserted` distingue "eu criei" de "já existiam": sob duas chamadas
+   * concorrentes ambas veem a lista vazia e tentam inserir, mas só uma vence o
+   * índice único. Sem essa informação, as duas emitiriam `production_created`.
+   */
+  insertSteps(steps: Omit<StepRow, 'id'>[]): Promise<{ rows: StepRow[]; inserted: boolean }>
   updateStep(stepId: string, patch: Partial<StepRow>): Promise<void>
 
   insertJob(job: Omit<JobRow, 'id'>): Promise<JobRow | null>

@@ -12,6 +12,7 @@
 // ============================================================================
 
 import type { AgentDefinition } from '../types'
+import { OFFICE_AGENTS } from './office'
 import { STUB_A, STUB_B } from './stub'
 
 const REGISTRY = new Map<string, AgentDefinition>()
@@ -55,3 +56,6 @@ export function __registerAgentForTests(agent: AgentDefinition): void {
 // Registro dos agentes desta fase.
 registerAgent(STUB_A)
 registerAgent(STUB_B)
+
+// Agentes do Office Preview — também stubs, também sem provedor externo.
+for (const agent of OFFICE_AGENTS) registerAgent(agent)
