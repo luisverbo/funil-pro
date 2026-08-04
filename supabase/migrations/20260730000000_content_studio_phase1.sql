@@ -11,6 +11,17 @@
 -- pois nada é visível fora da transação até o COMMIT final.
 --
 -- Aplicação: manual, pelo responsável. Esta migration não foi executada.
+--
+-- LIMITAÇÃO CONHECIDA (herdada, não introduzida aqui):
+--   current_tenant_id() faz `SELECT tenant_id FROM users_tenants
+--   WHERE user_id = auth.uid() LIMIT 1`, ou seja, assume que cada usuário está
+--   vinculado a UM ÚNICO tenant. Com um usuário em mais de um tenant, o LIMIT 1
+--   escolhe uma linha arbitrária e a RLS passa a filtrar por um tenant
+--   imprevisível. Toda a RLS deste módulo depende dessa função e herda o
+--   comportamento. A função NÃO é alterada por esta migration.
+--
+-- REQUISITO DE VERSÃO: PostgreSQL 15+ — `ON DELETE SET NULL (coluna)` em
+--   cs_events_step_fk usa lista de colunas, sintaxe introduzida no PG 15.
 -- ============================================================================
 
 BEGIN;
@@ -265,8 +276,14 @@ CREATE TABLE public.cs_events (
   CONSTRAINT cs_events_production_fk FOREIGN KEY (production_id, tenant_id)
     REFERENCES public.cs_productions (id, tenant_id) ON DELETE CASCADE,
   -- MATCH SIMPLE: com step_id NULL a FK não é verificada (evento de produção).
+  --
+  -- SET NULL com LISTA DE COLUNAS (Postgres 15+): apagar um step anula APENAS
+  -- step_id. Sem a lista, o Postgres tentaria anular também production_id, que
+  -- é NOT NULL — o DELETE do step falharia e, pior, o evento perderia o vínculo
+  -- com a produção. Aqui o evento sobrevive, órfão de step mas ainda na
+  -- produção e no tenant certos: a auditoria não tem buraco.
   CONSTRAINT cs_events_step_fk FOREIGN KEY (step_id, production_id)
-    REFERENCES public.cs_steps (id, production_id) ON DELETE SET NULL
+    REFERENCES public.cs_steps (id, production_id) ON DELETE SET NULL (step_id)
 );
 ALTER TABLE public.cs_events ENABLE ROW LEVEL SECURITY;
 
