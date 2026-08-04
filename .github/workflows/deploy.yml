@@ -30,5 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Process queue
+        env:
+          # O segredo NUNCA aparece no arquivo nem no log: o GitHub mascara o
+          # valor, e ele só é lido de dentro da variável de ambiente.
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          QUEUE_PROCESS_URL: https://funil-pro.vercel.app/api/queue/process
         run: |
-          curl -X POST https://funil-pro.vercel.app/api/queue/process
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "$QUEUE_PROCESS_URL"

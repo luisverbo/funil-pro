@@ -4,6 +4,7 @@ import { processJob, type QueueJob } from '@/lib/queue/processor'
 import { sendMeetingReminders } from '@/lib/agents/remind'
 import { sendFollowups } from '@/lib/agents/followup'
 import { processIgSequenceJobs } from '@/lib/instagram/sequence'
+import { CRON_UNAUTHORIZED_BODY, evaluateCronAuth, logCronAuth } from '@/lib/security/cron-auth'
 
 export const maxDuration = 60
 
@@ -82,17 +83,36 @@ async function run() {
   return { processed, failed, details }
 }
 
-export async function GET() {
+/**
+ * Caminho único de GET e POST: mesma autenticação, mesmo processador.
+ *
+ * A lógica de `run()` acima NÃO foi alterada — este handler apenas decide se a
+ * chamada chega até ela.
+ */
+export async function handle(request: Request): Promise<Response> {
+  const auth = evaluateCronAuth(request)
+
+  if (!auth.allowed) {
+    logCronAuth(auth, request, 401)
+    return NextResponse.json(CRON_UNAUTHORIZED_BODY, { status: 401 })
+  }
+
   try {
     const result = await run()
+    logCronAuth(auth, request, 200)
     return NextResponse.json(result)
   } catch (err) {
     const msg = String(err)
     console.error('[queue/process] Erro fatal:', msg)
+    logCronAuth(auth, request, 500)
     return NextResponse.json({ processed: 0, failed: 0, error: msg }, { status: 500 })
   }
 }
 
-export async function POST() {
-  return GET()
+export async function GET(request: Request): Promise<Response> {
+  return handle(request)
+}
+
+export async function POST(request: Request): Promise<Response> {
+  return handle(request)
 }
