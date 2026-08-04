@@ -1,16 +1,28 @@
 // ============================================================================
-// Office Preview V3 — personagem articulado (SVG)
+// Office Preview V3.1 — personagem articulado (SVG)
 // ----------------------------------------------------------------------------
-// SVG puro, sem Tailwind e sem imagem externa: a cena precisa se sustentar
-// sozinha, e isso permite renderizá-la fora do navegador para gerar capturas.
+// SVG puro, sem Tailwind e sem imagem externa: a cena se sustenta sozinha e
+// pode ser renderizada fora do navegador para gerar capturas.
 //
-// O que mudou da V2: o corpo deixou de ser um empilhado de retângulos. Agora
-// cada membro é um GRUPO com origem de rotação na articulação (ombro, quadril),
-// e as animações giram esses grupos. É isso que tira a dureza — um braço que
-// gira no ombro parece um braço; um retângulo que translada parece uma peça.
+// O QUE MUDOU DA V3 — e por quê a cabeça parecia solta:
 //
-// Nenhuma animação aqui inventa estado: todas são consequência de `state`, que
-// veio dos eventos gravados.
+//   1. o pescoço era um retângulo DESENHADO ATRÁS da cabeça, sem encostar no
+//      torso. Agora é um trapézio que NASCE da linha dos ombros e entra sob o
+//      queixo, com sombra do maxilar por cima — a cabeça apoia em algo.
+//   2. os ombros eram cantos arredondados do torso. Agora são duas cápsulas
+//      próprias que cobrem a raiz de cada braço, então o braço sai de DENTRO
+//      do ombro em vez de ficar colado ao lado.
+//   3. `cs-head` girava com origem no próprio centro, ignorando o corpo. Agora
+//      gira na BASE DO PESCOÇO, que é onde uma cabeça de verdade gira, e a
+//      rotação é acompanhada por um `cs-upper` (tronco+cabeça+braços) que se
+//      move junto — é isso que impede a cabeça de "descolar" ao caminhar.
+//
+// Proporções: ~5,5 cabeças de altura, ombro ≈ 1,7 cabeça, braço alcançando o
+// meio da coxa. Estilizado, mas dentro de proporção real — era a mistura
+// (cabeça de mascote em corpo realista) que parecia errada.
+//
+// Nenhuma animação inventa estado: todas são consequência de `state`, que veio
+// dos eventos gravados.
 // ============================================================================
 
 import React from 'react'
@@ -25,41 +37,43 @@ export interface AgentPalette {
 }
 
 export const AGENT_PALETTE: Record<string, AgentPalette> = {
-  researcher: { suit: '#3b82f6', suitDark: '#1e40af', suitLight: '#93c5fd', accent: '#dbeafe', hair: '#27303f' },
+  researcher: { suit: '#3b82f6', suitDark: '#1e40af', suitLight: '#93c5fd', accent: '#dbeafe', hair: '#2b3444' },
   strategist: { suit: '#8b5cf6', suitDark: '#5b21b6', suitLight: '#c4b5fd', accent: '#ede9fe', hair: '#4a2c2a' },
-  copywriter: { suit: '#f97316', suitDark: '#9a3412', suitLight: '#fdba74', accent: '#ffedd5', hair: '#7c2d12' },
+  copywriter: { suit: '#f97316', suitDark: '#9a3412', suitLight: '#fdba74', accent: '#ffedd5', hair: '#6d2f10' },
 }
 
-const SKIN = '#f6d0ac'
-const SKIN_SHADE = '#e0ac82'
-const BLUSH = '#f3a3a3'
+const SKIN = '#f7d3b0'
+const SKIN_SHADE = '#e2ab80'
+const SKIN_DEEP = '#c98f66'
+const BLUSH = '#f0a0a0'
+const MOUTH = '#a63a52'
 
-/** Adereço do papel, na mão livre. Reforça a personalidade de cada um. */
+/** Adereço do papel, na mão livre. */
 function Prop({ agentKey, palette }: { agentKey: string; palette: AgentPalette }) {
   if (agentKey === 'researcher') {
     return (
-      <g transform="translate(0, 2)" className="cs-prop">
-        <circle r="6.2" fill={palette.accent} opacity="0.75" stroke={palette.suitDark} strokeWidth="2.2" />
-        <circle r="6.2" fill="none" stroke="#ffffff" strokeWidth="0.8" opacity="0.6" />
-        <line x1="4.6" y1="4.6" x2="9.5" y2="9.5" stroke={palette.suitDark} strokeWidth="2.6" strokeLinecap="round" />
+      <g className="cs-prop">
+        <circle r="6" fill={palette.accent} opacity="0.8" stroke={palette.suitDark} strokeWidth="2.1" />
+        <path d="M -3.4 -2.6 A 5 5 0 0 1 1 -4.4" stroke="#ffffff" strokeWidth="1.1" fill="none" opacity="0.75" />
+        <line x1="4.4" y1="4.4" x2="9" y2="9" stroke={palette.suitDark} strokeWidth="2.6" strokeLinecap="round" />
       </g>
     )
   }
   if (agentKey === 'strategist') {
     return (
-      <g transform="translate(0, 2)" className="cs-prop">
-        <circle r="6.6" fill="#ffffff" stroke={palette.suitDark} strokeWidth="2" />
-        <circle r="6.6" fill={palette.accent} opacity="0.6" />
-        <path d="M -3 3 L 1.4 -1.4 L 3 -3 L -1.4 1.4 Z" fill={palette.suitDark} />
-        <circle r="1.1" fill={palette.suitDark} />
+      <g className="cs-prop">
+        <circle r="6.4" fill="#ffffff" stroke={palette.suitDark} strokeWidth="1.9" />
+        <circle r="6.4" fill={palette.accent} opacity="0.55" />
+        <path d="M -2.9 2.9 L 1.3 -1.3 L 2.9 -2.9 L -1.3 1.3 Z" fill={palette.suitDark} />
+        <circle r="1" fill={palette.suitDark} />
       </g>
     )
   }
   return (
-    <g transform="translate(0, 1) rotate(28)" className="cs-prop">
-      <rect x="-1.7" y="-8" width="3.4" height="12" rx="1.7" fill={palette.suitLight} stroke={palette.suitDark} strokeWidth="1.4" />
-      <path d="M -1.7 4 L 0 8.5 L 1.7 4 Z" fill={palette.suitDark} />
-      <rect x="-1.7" y="-8" width="3.4" height="3" rx="1.5" fill={palette.suitDark} />
+    <g className="cs-prop" transform="rotate(30)">
+      <rect x="-1.6" y="-7.6" width="3.2" height="11.4" rx="1.6" fill={palette.suitLight} stroke={palette.suitDark} strokeWidth="1.3" />
+      <path d="M -1.6 3.8 L 0 8 L 1.6 3.8 Z" fill={palette.suitDark} />
+      <rect x="-1.6" y="-7.6" width="3.2" height="2.8" rx="1.4" fill={palette.suitDark} />
     </g>
   )
 }
@@ -68,15 +82,11 @@ export interface AgentAvatarProps {
   agentKey: string
   state: AgentVisualState
   carryingFolder: boolean
-  /** Acabou de receber a pasta — dispara o aceno de reconhecimento. */
+  /** Acabou de receber a pasta — dispara a postura de recebimento. */
   received?: boolean
   reducedMotion?: boolean
 }
 
-/**
- * Personagem em três quartos, com proporção de avatar de jogo casual:
- * cabeça grande (~1/3 do corpo), tronco curto, membros arredondados.
- */
 export default function AgentAvatar({
   agentKey,
   state,
@@ -91,138 +101,184 @@ export default function AgentAvatar({
   const erro = state === 'error'
   const pronto = state === 'done'
 
-  // `idle` é a respiração: existe em qualquer estado parado, e é o que separa
-  // "personagem vivo" de "boneco colado na tela".
+  // Entregando: parado na mesa de outro, com a pasta na mão.
+  const entregando = carryingFolder && !walking
   const parado = !walking && !working
+
   const classes = [
     'cs-char',
-    !reducedMotion && parado ? 'cs-char--idle' : '',
+    !reducedMotion && parado && !entregando && !received ? 'cs-char--idle' : '',
     !reducedMotion && walking ? 'cs-char--walk' : '',
     !reducedMotion && working ? 'cs-char--type' : '',
     !reducedMotion && erro ? 'cs-char--error' : '',
     !reducedMotion && pronto ? 'cs-char--cheer' : '',
+    !reducedMotion && entregando ? 'cs-char--give' : '',
     !reducedMotion && received ? 'cs-char--receive' : '',
+    carryingFolder ? 'cs-char--carry' : '',
   ].filter(Boolean).join(' ')
 
   return (
     <g className={classes}>
-      {/* Sombra própria no chão, achatada como o resto da cena */}
-      <ellipse className="cs-shadow" cx="0" cy="52" rx="17" ry="6" fill="#0b1220" opacity="0.16" />
+      {/* Sombra de contato, elíptica como o resto da isometria */}
+      <ellipse className="cs-shadow" cx="0" cy="54" rx="18" ry="6.2" fill="#0b1220" opacity="0.17" />
 
-      {/* ─── Pernas: giram no QUADRIL ─────────────────────────────────── */}
-      <g className="cs-hip" transform="translate(0, 24)">
+      {/* ─── PERNAS — giram no quadril ────────────────────────────────── */}
+      <g className="cs-hip" transform="translate(0, 22)">
+        {/* Traseira */}
         <g className="cs-leg cs-leg--back">
-          <path d="M -3.2 0 q -4 12 -3.4 22" stroke={p.suitDark} strokeWidth="9.5" strokeLinecap="round" fill="none" />
-          <ellipse cx="-7.4" cy="25" rx="6.4" ry="3.6" fill="#273142" />
+          <path d="M -4 0 q -3.4 11 -2.6 20" stroke={p.suitDark} strokeWidth="10.5" strokeLinecap="round" fill="none" opacity="0.9" />
+          <g className="cs-foot cs-foot--back" transform="translate(-6.6, 22)">
+            <path d="M -5.4 0 q 0 -3.4 4 -3.4 q 5.6 0 6.4 2.4 q .6 1.9 -1.6 2.4 l -7.2 0 q -1.6 0 -1.6 -1.4 Z" fill="#2a3342" />
+          </g>
         </g>
+        {/* Dianteira */}
         <g className="cs-leg cs-leg--front">
-          <path d="M 3.2 0 q 4 12 3.4 22" stroke={p.suitDark} strokeWidth="9.5" strokeLinecap="round" fill="none" />
-          <ellipse cx="7.4" cy="25" rx="6.4" ry="3.6" fill="#1f2937" />
+          <path d="M 4 0 q 3.4 11 2.6 20" stroke={p.suitDark} strokeWidth="10.5" strokeLinecap="round" fill="none" />
+          <g className="cs-foot cs-foot--front" transform="translate(6.6, 22)">
+            <path d="M -5.4 0 q 0 -3.4 4 -3.4 q 5.6 0 6.4 2.4 q .6 1.9 -1.6 2.4 l -7.2 0 q -1.6 0 -1.6 -1.4 Z" fill="#1f2733" />
+          </g>
         </g>
       </g>
 
-      {/* ─── Tronco ───────────────────────────────────────────────────── */}
-      <g className="cs-torso">
-        {/* Corpo com ombros arredondados */}
-        <path
-          d="M -12.5 4 Q -13.5 -3 -6 -5 L 6 -5 Q 13.5 -3 12.5 4 L 11 24 Q 0 27.5 -11 24 Z"
-          fill={p.suit}
-        />
-        {/* Sombreado lateral — dá volume ao torso */}
-        <path d="M 4 -4.6 Q 13.4 -3 12.5 4 L 11 24 Q 6 25.6 3 25.8 Z" fill={p.suitDark} opacity="0.28" />
-        {/* Camisa por baixo */}
-        <path d="M -5.5 -4.6 L 0 6 L 5.5 -4.6 Q 0 -7 -5.5 -4.6 Z" fill="#ffffff" opacity="0.92" />
-        {/* Gravata/detalhe do papel */}
-        <path d="M 0 6 L 2.4 9 L 0 18 L -2.4 9 Z" fill={p.accent} opacity="0.95" />
-        {/* Cinto */}
-        <path d="M -11.4 22 Q 0 25 11.4 22 L 11 25 Q 0 28 -11 25 Z" fill={p.suitDark} opacity="0.55" />
-      </g>
-
-      {/* ─── Braços: giram no OMBRO ───────────────────────────────────── */}
-      <g className="cs-arm cs-arm--back" transform="translate(-11, -1)">
-        <path d="M 0 0 q -5.5 10 -3.5 19" stroke={p.suit} strokeWidth="8" strokeLinecap="round" fill="none" />
-        <circle cx="-3.4" cy="20.5" r="4.1" fill={SKIN} />
-      </g>
-
-      <g className="cs-arm cs-arm--front" transform="translate(11, -1)">
-        <path d="M 0 0 q 5.5 10 3.5 19" stroke={p.suit} strokeWidth="8" strokeLinecap="round" fill="none" />
-        <circle cx="3.4" cy="20.5" r="4.1" fill={SKIN} />
-        {/* O que a mão segura fica ancorado NELA, então acompanha o gesto */}
-        <g transform="translate(3.4, 20.5)">
-          {carryingFolder ? <Folder /> : <Prop agentKey={agentKey} palette={p} />}
-        </g>
-      </g>
-
-      {/* ─── Cabeça: gira no PESCOÇO ──────────────────────────────────── */}
-      <g className="cs-head" transform="translate(0, -8)">
-        {/* Pescoço */}
-        <rect x="-3.4" y="4" width="6.8" height="6" rx="3" fill={SKIN_SHADE} />
-        {/* Rosto */}
-        <ellipse cx="0" cy="-4" rx="12.4" ry="12.8" fill={SKIN} />
-        <ellipse cx="4.5" cy="-3" rx="7.8" ry="11" fill={SKIN_SHADE} opacity="0.22" />
-
-        {/* Orelhas */}
-        <ellipse cx="-12" cy="-3" rx="2.4" ry="3.2" fill={SKIN_SHADE} />
-        <ellipse cx="12" cy="-3" rx="2.4" ry="3.2" fill={SKIN_SHADE} />
-
-        {/* Cabelo */}
-        <path d="M -12.4 -6 Q -11 -18 0 -17.6 Q 11 -18 12.4 -6 Q 9 -12 0 -11.6 Q -9 -12 -12.4 -6 Z" fill={p.hair} />
-        <path d="M -12.4 -5 Q -13.6 -14 -6 -17 Q 0 -19.4 6 -17 Q 13.6 -14 12.4 -5 L 12.4 -8 Q 8 -14.4 0 -14.4 Q -8 -14.4 -12.4 -8 Z" fill={p.hair} />
-
-        {/* Sobrancelhas — a expressão mora aqui */}
-        {erro ? (
-          <>
-            <path d="M -8.6 -7.6 L -3.2 -5.6" stroke={p.hair} strokeWidth="1.7" strokeLinecap="round" />
-            <path d="M 8.6 -7.6 L 3.2 -5.6" stroke={p.hair} strokeWidth="1.7" strokeLinecap="round" />
-          </>
-        ) : (
-          <>
-            <path d="M -8.6 -6.4 Q -6 -8 -3.4 -6.6" stroke={p.hair} strokeWidth="1.6" fill="none" strokeLinecap="round" />
-            <path d="M 8.6 -6.4 Q 6 -8 3.4 -6.6" stroke={p.hair} strokeWidth="1.6" fill="none" strokeLinecap="round" />
-          </>
-        )}
-
-        {/* Olhos */}
-        <g className="cs-eyes">
-          <ellipse cx="-5" cy="-2.4" rx="2.1" ry="2.5" fill="#20293a" />
-          <ellipse cx="5" cy="-2.4" rx="2.1" ry="2.5" fill="#20293a" />
-          <circle cx="-4.3" cy="-3.3" r="0.75" fill="#ffffff" />
-          <circle cx="5.7" cy="-3.3" r="0.75" fill="#ffffff" />
+      {/* ─── PARTE SUPERIOR — tronco, ombros, cabeça e braços juntos ────
+           Agrupados de propósito: quando o corpo oscila ao caminhar, TUDO
+           acompanha. Era a falta disso que fazia a cabeça parecer solta.  */}
+      <g className="cs-upper">
+        {/* Braço traseiro (atrás do torso) */}
+        <g className="cs-arm cs-arm--back" transform="translate(-12.5, -2)">
+          <path d="M 0 0 q -4.6 9.5 -2.6 17.5" stroke={p.suitDark} strokeWidth="8.4" strokeLinecap="round" fill="none" opacity="0.92" />
+          <circle className="cs-hand cs-hand--back" cx="-2.6" cy="19" r="4.2" fill={SKIN_SHADE} />
         </g>
 
-        {/* Bochechas */}
-        <ellipse cx="-8" cy="1.6" rx="2.6" ry="1.7" fill={BLUSH} opacity="0.5" />
-        <ellipse cx="8" cy="1.6" rx="2.6" ry="1.7" fill={BLUSH} opacity="0.5" />
+        {/* Torso: trapézio invertido — ombro largo, cintura estreita */}
+        <g className="cs-torso">
+          <path
+            d="M -13.6 2 Q -14.6 -2.4 -11.4 -4.4 L 11.4 -4.4 Q 14.6 -2.4 13.6 2 L 11.4 22.5 Q 0 25.8 -11.4 22.5 Z"
+            fill={p.suit}
+          />
+          {/* Sombreado do lado oposto à luz */}
+          <path d="M 5 -4.4 L 11.4 -4.4 Q 14.6 -2.4 13.6 2 L 11.4 22.5 Q 8 23.5 4.6 24 Z" fill={p.suitDark} opacity="0.26" />
 
-        {/* Boca */}
-        {erro ? (
-          <path d="M -3.4 6.4 Q 0 3.6 3.4 6.4" stroke="#a8324a" strokeWidth="1.7" fill="none" strokeLinecap="round" />
-        ) : pronto || received ? (
-          <path d="M -4 3.6 Q 0 8.6 4 3.6 Z" fill="#a8324a" opacity="0.85" />
-        ) : working ? (
-          <ellipse cx="0" cy="5" rx="2" ry="1.5" fill="#a8324a" opacity="0.7" />
-        ) : (
-          <path d="M -3.4 4.4 Q 0 6.8 3.4 4.4" stroke="#a8324a" strokeWidth="1.6" fill="none" strokeLinecap="round" />
-        )}
+          {/* Camisa em V, ancorada na linha dos ombros */}
+          <path d="M -6 -4 L 0 7.4 L 6 -4 Q 0 -6 -6 -4 Z" fill="#ffffff" opacity="0.95" />
+          <path d="M 0 7.4 L 2.6 10.6 L 0 19 L -2.6 10.6 Z" fill={p.accent} />
+
+          {/* Cinto */}
+          <path d="M -11.8 20.6 Q 0 23.8 11.8 20.6 L 11.5 23.6 Q 0 26.8 -11.5 23.6 Z" fill={p.suitDark} opacity="0.5" />
+        </g>
+
+        {/* PESCOÇO — trapézio que nasce dos ombros e entra sob o queixo.
+            É a peça que faltava: a cabeça agora apoia em algo. */}
+        <g className="cs-neck">
+          <path d="M -4.6 -2 L 4.6 -2 L 3.4 -10.5 L -3.4 -10.5 Z" fill={SKIN_SHADE} />
+          {/* Sombra projetada pelo maxilar sobre o pescoço */}
+          <path d="M -3.9 -10.5 L 3.9 -10.5 L 4.2 -7 Q 0 -4.6 -4.2 -7 Z" fill={SKIN_DEEP} opacity="0.55" />
+          {/* Trapézio/clavícula: liga o pescoço aos ombros */}
+          <path d="M -13 -3.4 Q -6 -6.4 0 -6.4 Q 6 -6.4 13 -3.4 L 13 -1 Q 0 -3.4 -13 -1 Z" fill={p.suitLight} opacity="0.32" />
+        </g>
+
+        {/* OMBROS — cápsulas próprias cobrindo a raiz de cada braço */}
+        <ellipse className="cs-shoulder" cx="-12" cy="-1.4" rx="5.6" ry="5.2" fill={p.suit} />
+        <ellipse className="cs-shoulder" cx="12" cy="-1.4" rx="5.6" ry="5.2" fill={p.suit} />
+        <ellipse cx="12" cy="-1.4" rx="5.6" ry="5.2" fill={p.suitDark} opacity="0.18" />
+
+        {/* ─── CABEÇA — gira na BASE DO PESCOÇO ─────────────────────── */}
+        <g className="cs-head">
+          {/* Crânio levemente ovalado */}
+          <path d="M 0 -32.6 C 8.6 -32.6 12.8 -26.4 12.8 -20.4 C 12.8 -14 8.4 -9 0 -9 C -8.4 -9 -12.8 -14 -12.8 -20.4 C -12.8 -26.4 -8.6 -32.6 0 -32.6 Z" fill={SKIN} />
+          {/* Volume: lado oposto à luz */}
+          <path d="M 4.6 -32 C 10.4 -30.6 12.8 -25.6 12.8 -20.4 C 12.8 -14 8.4 -9 0 -9 C 3.4 -12 5.4 -15.6 5.4 -20.6 C 5.4 -25 5.2 -29.4 4.6 -32 Z" fill={SKIN_SHADE} opacity="0.32" />
+          {/* Queixo */}
+          <path d="M -5 -10.8 Q 0 -7.6 5 -10.8 Q 0 -8.6 -5 -10.8 Z" fill={SKIN_DEEP} opacity="0.3" />
+
+          {/* Orelhas, na altura dos olhos */}
+          <ellipse cx="-12.6" cy="-19.4" rx="2.5" ry="3.4" fill={SKIN_SHADE} />
+          <ellipse cx="12.6" cy="-19.4" rx="2.5" ry="3.4" fill={SKIN_SHADE} />
+
+          {/* Cabelo, acompanhando a curva do crânio */}
+          <path d="M -12.8 -21.4 C -12.8 -29.4 -7.4 -33 0 -33 C 7.4 -33 12.8 -29.4 12.8 -21.4 C 12.8 -24.6 8.4 -26.6 0 -26.6 C -8.4 -26.6 -12.8 -24.6 -12.8 -21.4 Z" fill={p.hair} />
+          <path d="M -12.6 -22.6 Q -11 -30.6 -3.4 -32.4 Q -8.4 -28 -8 -24.4 Z" fill={p.hair} />
+          <path d="M 12.6 -22.6 Q 11 -30.6 3.4 -32.4 Q 8.4 -28 8 -24.4 Z" fill={p.hair} />
+
+          {/* Sobrancelhas — o essencial da expressão */}
+          {erro ? (
+            <>
+              <path d="M -8.6 -23.4 L -3.4 -21.4" stroke={p.hair} strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M 8.6 -23.4 L 3.4 -21.4" stroke={p.hair} strokeWidth="1.8" strokeLinecap="round" />
+            </>
+          ) : pronto || received ? (
+            <>
+              <path d="M -8.4 -23.8 Q -5.8 -25.8 -3.2 -24.2" stroke={p.hair} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+              <path d="M 8.4 -23.8 Q 5.8 -25.8 3.2 -24.2" stroke={p.hair} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+            </>
+          ) : (
+            <>
+              <path d="M -8.4 -22.8 Q -5.8 -24.4 -3.2 -23" stroke={p.hair} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+              <path d="M 8.4 -22.8 Q 5.8 -24.4 3.2 -23" stroke={p.hair} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+            </>
+          )}
+
+          {/* Olhos */}
+          <g className="cs-eyes">
+            <ellipse cx="-5.2" cy="-19" rx="2.2" ry="2.6" fill="#243044" />
+            <ellipse cx="5.2" cy="-19" rx="2.2" ry="2.6" fill="#243044" />
+            <circle cx="-4.4" cy="-19.9" r="0.8" fill="#ffffff" />
+            <circle cx="6" cy="-19.9" r="0.8" fill="#ffffff" />
+          </g>
+
+          {/* Nariz — só uma sombra, suficiente nesse tamanho */}
+          <path d="M 0 -17.4 Q 1.4 -15.4 0 -14.6" stroke={SKIN_DEEP} strokeWidth="1.1" fill="none" strokeLinecap="round" opacity="0.65" />
+
+          {/* Bochechas */}
+          <ellipse cx="-8" cy="-14.6" rx="2.8" ry="1.8" fill={BLUSH} opacity="0.45" />
+          <ellipse cx="8" cy="-14.6" rx="2.8" ry="1.8" fill={BLUSH} opacity="0.45" />
+
+          {/* Boca */}
+          {erro ? (
+            <path d="M -3.4 -11.4 Q 0 -14 3.4 -11.4" stroke={MOUTH} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+          ) : pronto || received ? (
+            <path d="M -4 -13.8 Q 0 -9 4 -13.8 Z" fill={MOUTH} opacity="0.9" />
+          ) : working ? (
+            <ellipse cx="0" cy="-12.4" rx="1.9" ry="1.4" fill={MOUTH} opacity="0.72" />
+          ) : (
+            <path d="M -3.4 -13.2 Q 0 -10.8 3.4 -13.2" stroke={MOUTH} strokeWidth="1.6" fill="none" strokeLinecap="round" />
+          )}
+        </g>
+
+        {/* Braço dianteiro (na frente do torso) — carrega a pasta ou o adereço */}
+        <g className="cs-arm cs-arm--front" transform="translate(12.5, -2)">
+          <path d="M 0 0 q 4.6 9.5 2.6 17.5" stroke={p.suit} strokeWidth="8.4" strokeLinecap="round" fill="none" />
+          <g className="cs-hand cs-hand--front" transform="translate(2.6, 19)">
+            <circle r="4.2" fill={SKIN} />
+            {/* O que a mão segura fica DENTRO dela: acompanha todo gesto */}
+            <g transform="translate(1.6, 1.6)">
+              {carryingFolder ? <Folder /> : <Prop agentKey={agentKey} palette={p} />}
+            </g>
+            {/* Dedos por cima da pasta: a mão SEGURA, não encosta */}
+            {carryingFolder && (
+              <path d="M -2.6 1.4 q 2.6 -2.4 5.4 -0.6" stroke={SKIN_SHADE} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+            )}
+          </g>
+        </g>
       </g>
 
       {/* ─── Selo de estado ───────────────────────────────────────────── */}
       {(pronto || erro || state === 'queued') && (
-        <g className="cs-badge" transform="translate(14, -22)">
-          <circle r="8" fill="#ffffff" opacity="0.95" />
-          <circle r="6.8" fill={pronto ? '#10b981' : erro ? '#ef4444' : '#0ea5e9'} />
+        <g className="cs-badge" transform="translate(15, -30)">
+          <circle r="8.2" fill="#ffffff" opacity="0.96" />
+          <circle r="6.9" fill={pronto ? '#10b981' : erro ? '#ef4444' : '#0ea5e9'} />
           {pronto && (
             <path d="M -3 0.2 L -0.9 2.4 L 3.2 -2" stroke="#fff" strokeWidth="2" fill="none"
               strokeLinecap="round" strokeLinejoin="round" />
           )}
           {erro && (
             <>
-              <line x1="0" y1="-3.2" x2="0" y2="1.2" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-              <circle cx="0" cy="3.6" r="1.1" fill="#fff" />
+              <line x1="0" y1="-3.3" x2="0" y2="1.2" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+              <circle cx="0" cy="3.7" r="1.1" fill="#fff" />
             </>
           )}
           {state === 'queued' && (
-            <path d="M 0 -3.4 L 0 0.2 L 2.6 1.8" stroke="#fff" strokeWidth="1.9" fill="none" strokeLinecap="round" />
+            <path d="M 0 -3.5 L 0 0.2 L 2.7 1.9" stroke="#fff" strokeWidth="1.9" fill="none" strokeLinecap="round" />
           )}
         </g>
       )}
@@ -230,18 +286,16 @@ export default function AgentAvatar({
   )
 }
 
-/** A pasta entregue no handoff. Colorida e com brilho — precisa saltar. */
+/** A pasta entregue no handoff. */
 function Folder() {
   return (
-    <g className="cs-folder" transform="translate(1, 1)">
-      <ellipse cx="0" cy="8" rx="9" ry="2.6" fill="#0b1220" opacity="0.14" />
-      <path d="M -9 -7 L -9 -10.5 L -2.6 -10.5 L -0.6 -7.6 L 9 -7.6 L 9 -6 Z" fill="#f59e0b" />
-      <rect x="-9" y="-7" width="18" height="13.5" rx="2.2" fill="#fbbf24" stroke="#b45309" strokeWidth="1.5" />
-      <rect x="-6" y="-3.6" width="12" height="1.7" rx="0.85" fill="#fff8e1" />
-      <rect x="-6" y="-0.4" width="8.5" height="1.7" rx="0.85" fill="#fff8e1" />
-      <rect x="-6" y="2.8" width="10" height="1.7" rx="0.85" fill="#fff8e1" opacity="0.8" />
-      {/* Brilho pulsante: a pasta é o objeto mais importante da cena */}
-      <rect className="cs-folder-glow" x="-10.4" y="-8.4" width="20.8" height="16.3" rx="3"
+    <g className="cs-folder">
+      <path d="M -9 -6.6 L -9 -10 L -2.6 -10 L -0.6 -7.2 L 9 -7.2 L 9 -5.6 Z" fill="#e08c0b" />
+      <rect x="-9" y="-6.6" width="18" height="13.2" rx="2.2" fill="#fbbf24" stroke="#a3560a" strokeWidth="1.5" />
+      <rect x="-6" y="-3.2" width="12" height="1.8" rx="0.9" fill="#fff8e1" />
+      <rect x="-6" y="0" width="8.5" height="1.8" rx="0.9" fill="#fff8e1" />
+      <rect x="-6" y="3.2" width="10" height="1.8" rx="0.9" fill="#fff8e1" opacity="0.8" />
+      <rect className="cs-folder-glow" x="-10.6" y="-8.2" width="21.2" height="16.4" rx="3"
         fill="none" stroke="#fde047" strokeWidth="2" opacity="0.85" />
     </g>
   )
