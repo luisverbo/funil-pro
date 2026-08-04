@@ -41,6 +41,21 @@ export interface AgentView {
   progress: { completed: number; total: number; label?: string } | null
   /** Para quem está entregando, quando `state === 'walking'`. */
   handoffTo: string | null
+
+  // ─── Posição na cena (derivada dos eventos, nunca de timer) ──────────────
+
+  /**
+   * Mesa onde o personagem está NESTE momento da timeline.
+   *
+   * É a própria, exceto durante um handoff, quando passa a ser a do colega.
+   * A cena só interpola entre duas posições com transição CSS — a decisão de
+   * ONDE ele está continua vindo dos eventos.
+   */
+  atDesk: string
+  /** Carrega a pasta (durante a entrega). */
+  carryingFolder: boolean
+  /** Acabou de receber a pasta — usado para o aceno de reconhecimento. */
+  receivedFolder: boolean
 }
 
 export interface TimelineEntry {
@@ -60,6 +75,33 @@ export interface OfficeView {
   lastSeq: number
   finished: boolean
   failed: boolean
+}
+
+/**
+ * Rótulo amigável de cada estado da produção.
+ *
+ * Só apresentação: o valor persistido em `cs_productions.status` continua o
+ * técnico. Ninguém deveria ler "review" numa tela de produto.
+ */
+export const PRODUCTION_STATUS_LABEL: Record<string, string> = {
+  draft: 'Rascunho',
+  queued: 'Na fila',
+  running: 'Em andamento',
+  waiting_input: 'Aguardando informação',
+  review: 'Aguardando aprovação',
+  awaiting_approval: 'Aguardando aprovação',
+  approved: 'Aprovado',
+  scheduled: 'Agendado',
+  publishing: 'Publicando',
+  published: 'Publicado',
+  failed: 'Falhou',
+  canceled: 'Cancelado',
+}
+
+/** Nunca devolve o valor cru: um estado desconhecido vira texto neutro. */
+export function productionStatusLabel(status: string | null | undefined): string {
+  if (!status) return 'Não iniciada'
+  return PRODUCTION_STATUS_LABEL[status] ?? 'Em andamento'
 }
 
 /** Ordem das mesas no escritório. */
@@ -97,6 +139,9 @@ function emptyAgent(key: string): AgentView {
     bubble: null,
     progress: null,
     handoffTo: null,
+    atDesk: key,          // começa na própria mesa
+    carryingFolder: false,
+    receivedFolder: false,
   }
 }
 
@@ -142,7 +187,13 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
         break
 
       case 'agent_started':
-        if (agent) { agent.state = 'working'; agent.bubble = 'Trabalhando...'; agent.handoffTo = null }
+        if (agent) {
+          agent.state = 'working'
+          agent.bubble = 'Trabalhando...'
+          agent.handoffTo = null
+          agent.atDesk = agent.key          // de volta à própria mesa
+          agent.receivedFolder = false
+        }
         break
 
       case 'agent_progress':
@@ -159,11 +210,21 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
         break
 
       case 'agent_completed':
-        if (agent) { agent.state = 'done'; agent.bubble = 'Pronto!'; agent.progress = null }
+        if (agent) {
+          agent.state = 'done'
+          agent.bubble = 'Pronto!'
+          agent.progress = null
+          agent.atDesk = agent.key
+        }
         break
 
       case 'agent_failed':
-        if (agent) { agent.state = 'error'; agent.bubble = 'Deu problema' }
+        if (agent) {
+          agent.state = 'error'
+          agent.bubble = 'Deu problema'
+          agent.atDesk = agent.key
+          agent.carryingFolder = false
+        }
         view.failed = true
         break
 
@@ -180,13 +241,27 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
           origem.state = 'walking'
           origem.handoffTo = to ?? null
           origem.bubble = to ? `Levando para o ${OFFICE_AGENT_LABELS[to] ?? to}` : 'Entregando'
+          // Caminha ATÉ a mesa do destinatário, levando a pasta junto.
+          origem.atDesk = to ?? origem.key
+          origem.carryingFolder = true
         }
         break
       }
 
       case 'task_handoff_completed': {
+        // Entrega feita: quem levou solta a pasta e VOLTA para a própria mesa;
+        // quem recebeu fica com ela até começar a trabalhar.
         const origem = event.agent_key ? byKey.get(event.agent_key) : undefined
-        if (origem) { origem.state = 'done'; origem.handoffTo = null; origem.bubble = 'Entregue' }
+        if (origem) {
+          const destino = origem.handoffTo ? byKey.get(origem.handoffTo) : undefined
+          if (destino) destino.receivedFolder = true
+
+          origem.state = 'done'
+          origem.handoffTo = null
+          origem.bubble = 'Entregue'
+          origem.atDesk = origem.key
+          origem.carryingFolder = false
+        }
         break
       }
 
