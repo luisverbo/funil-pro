@@ -14,6 +14,14 @@
 import { OFFICE_AGENT_LABELS } from './agents/office'
 import type { EventType, StoredEvent } from './types'
 
+/**
+ * O que a view precisa de um evento.
+ *
+ * Aceita tanto `StoredEvent` (servidor) quanto a versão pública sem
+ * `tenant_id` (navegador) — a cena é a mesma; o tenant nunca foi usado aqui.
+ */
+export type ViewEvent = Omit<StoredEvent, 'tenant_id'> & { tenant_id?: string }
+
 /** Postura do personagem no escritório. */
 export type AgentVisualState =
   | 'idle'       // parado na mesa
@@ -109,7 +117,7 @@ export function emptyOfficeView(): OfficeView {
  * permite reproduzir a animação a partir do banco, inclusive depois de um
  * recarregamento da página.
  */
-export function buildOfficeView(events: StoredEvent[]): OfficeView {
+export function buildOfficeView(events: ViewEvent[]): OfficeView {
   const view = emptyOfficeView()
   const byKey = new Map(view.agents.map(a => [a.key, a]))
 

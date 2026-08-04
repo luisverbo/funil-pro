@@ -392,7 +392,9 @@ test('1) toda action deriva o tenant da sessão e nenhuma o aceita do cliente', 
     const corpo = actions.slice(actions.indexOf(`export async function ${fn}`))
     const ate = corpo.slice(0, corpo.indexOf('\n}\n') + 3)
     assert.ok(ate.includes('await currentTenantId()'), `${fn} não resolve o tenant`)
-    assert.ok(ate.includes('Sessão expirada'), `${fn} não bloqueia usuário sem sessão`)
+    // Sem sessão a action para aqui — `fail('unauthenticated')` devolve o texto
+    // genérico de USER_MESSAGES, nunca um detalhe interno.
+    assert.ok(ate.includes("fail('unauthenticated')"), `${fn} não bloqueia usuário sem sessão`)
   }
   // Nenhuma assinatura de action recebe tenantId
   assert.ok(!/export async function \w+\([^)]*tenantId/.test(actions), 'action aceita tenantId do cliente')

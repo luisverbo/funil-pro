@@ -21,11 +21,13 @@ import {
   type AgentView,
   type OfficeView,
 } from '@/lib/content-studio/view-model'
-import type { StoredEvent } from '@/lib/content-studio/types'
+import type { PublicEvent } from '@/lib/content-studio/demo-guard'
 
-const REVEAL_MS = 850      // ritmo de revelação dos eventos já gravados
-const TICK_MS = 400        // intervalo entre pedidos de avanço ao servidor
-const MAX_TICKS = 40       // trava de segurança do laço de avanço
+const REVEAL_MS = 850          // ritmo de revelação dos eventos já gravados
+const TICK_MS = 400            // intervalo entre pedidos de avanço ao servidor
+const MAX_TICKS = 30           // teto de chamadas: o pipeline tem 3 passos
+const MAX_TOTAL_MS = 60_000    // teto de tempo total do laço
+const MAX_SEM_PROGRESSO = 3    // rodadas sem evento novo antes de desistir
 
 const AVATAR: Record<string, { emoji: string; ring: string; desk: string }> = {
   researcher: { emoji: '🔎', ring: 'from-sky-400 to-blue-600', desk: 'bg-sky-50 border-sky-100' },
@@ -140,7 +142,7 @@ function Character({ agent, index }: { agent: AgentView; index: number }) {
 // ─── Tela ───────────────────────────────────────────────────────────────────
 
 export default function OfficePreview() {
-  const [allEvents, setAllEvents] = useState<StoredEvent[]>([])
+  const [allEvents, setAllEvents] = useState<PublicEvent[]>([])
   const [revealed, setRevealed] = useState(0)
   const [productionId, setProductionId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
@@ -165,7 +167,8 @@ export default function OfficePreview() {
           setRevealed(res.data.events.length) // já aconteceu: mostra completa
         }
       })
-      .catch(err => { if (vivo) setError(String(err)) })
+      // Exceção crua não vai para a tela: poderia carregar detalhe interno.
+      .catch(() => { if (vivo) setError('Não foi possível carregar a demonstração. Tente novamente.') })
       .finally(() => { if (vivo) setLoading(false) })
     return () => { vivo = false }
   }, [])
@@ -183,35 +186,63 @@ export default function OfficePreview() {
   )
 
   const iniciar = useCallback(async () => {
+    // Guarda de clique duplo no cliente. O servidor também é idempotente — as
+    // duas camadas existem porque nenhuma sozinha basta: esta não sobrevive a
+    // duas abas, e a do servidor não evita o pedido redundante.
+    if (running) return
+
     setError(null)
     setRunning(true)
     setAllEvents([])
     setRevealed(0)
 
+    const limite = Date.now() + MAX_TOTAL_MS
+    let semProgresso = 0
+    let ultimoTotal = -1
+
     try {
       const criada = await startDemoProduction()
-      if (!criada.ok) { setError(criada.error); setRunning(false); return }
+      if (!criada.ok) { setError(criada.error); return }
+      if (cancelled.current) return
 
       const id = criada.data.productionId
       setProductionId(id)
 
-      // Avança um passo por vez, deixando a tela acompanhar.
       for (let i = 0; i < MAX_TICKS; i++) {
         if (cancelled.current) return
-        const res = await advanceDemo(id, 1)
+        if (Date.now() > limite) {
+          setError('A demonstração demorou mais que o esperado e foi interrompida.')
+          break
+        }
+
+        const res = await advanceDemo(id)
+        if (cancelled.current) return
         if (!res.ok) { setError(res.error); break }
 
         setAllEvents(res.data.events)
         setStatus(res.data.production.status)
-        if (!res.data.pending) break
+
+        if (!res.data.pending) break   // terminou: para imediatamente
+
+        // Resposta inconsistente (pending eterno sem evento novo) não pode
+        // virar laço infinito — desistimos após algumas rodadas paradas.
+        semProgresso = res.data.events.length === ultimoTotal ? semProgresso + 1 : 0
+        ultimoTotal = res.data.events.length
+        if (semProgresso >= MAX_SEM_PROGRESSO) {
+          setError('A demonstração parou de avançar. Tente novamente.')
+          break
+        }
+
         await new Promise(r => setTimeout(r, TICK_MS))
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } catch {
+      // Detalhe técnico não vai para a tela: o servidor já registrou o que
+      // importa, e a mensagem crua poderia expor interno.
+      setError('Não foi possível concluir a demonstração. Tente novamente.')
     } finally {
       if (!cancelled.current) setRunning(false)
     }
-  }, [])
+  }, [running])
 
   // Reiniciar = reler do banco e reproduzir. NÃO cria produção nova.
   const reiniciar = useCallback(async () => {
