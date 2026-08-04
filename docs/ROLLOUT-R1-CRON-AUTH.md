@@ -79,26 +79,46 @@ exceção com tamanhos diferentes, vazando o comprimento do segredo.
 
 ### Etapa 1 — criar e cadastrar o segredo (nada muda em produção)
 
-Gere um segredo forte:
+Gere um segredo forte **exclusivo de produção**:
 
 ```bash
 openssl rand -base64 48 | tr -d '\n'
 ```
 
-Cadastre **o mesmo valor** em dois lugares:
-
 **Vercel** → Project Settings → Environment Variables
 
 | Nome | Valor | Ambientes |
 |---|---|---|
-| `CRON_SECRET` | o valor gerado | Production, Preview, Development |
-| `CRON_AUTH_ENFORCE` | `false` | Production |
+| `CRON_SECRET` | o valor gerado | **Production apenas** |
+| `CRON_AUTH_ENFORCE` | `false` | **Production apenas** |
 
 **GitHub** → Settings → Secrets and variables → Actions → New repository secret
 
 | Nome | Valor |
 |---|---|
-| `CRON_SECRET` | **o mesmo valor** |
+| `CRON_SECRET` | **o mesmo segredo de produção** |
+
+O GitHub recebe o segredo de produção porque o workflow chama a URL de
+produção. É o mesmo destino, logo é o mesmo segredo.
+
+#### Um segredo por ambiente — não reutilize
+
+**Não marque Preview nem Development ao cadastrar `CRON_SECRET` na Vercel.**
+
+Preview e Development são ambientes de menor confiança: builds de branch,
+deploys de teste, variáveis puxadas para a máquina de quem desenvolve
+(`vercel env pull`). Copiar o segredo de produção para lá significa que
+comprometer qualquer um deles compromete produção.
+
+Se um dia Preview ou Development precisarem desta autenticação:
+
+- gere um segredo **novo e diferente** para cada ambiente
+- cadastre cada um **somente** no seu próprio ambiente
+- **nunca** copie o segredo de produção para um ambiente de menor confiança
+
+Enquanto `CRON_SECRET` não existir em Preview/Development, o endpoint nesses
+ambientes fica em modo de compatibilidade (`CRON_AUTH_ENFORCE` também não está
+definido lá) e continua respondendo normalmente.
 
 > Guarde o segredo no seu gerenciador de senhas. Depois de salvo, nem a Vercel
 > nem o GitHub mostram o valor de novo.
@@ -116,37 +136,80 @@ Nenhuma chamada é recusada. Nada quebra.
 
 ### Etapa 3 — atualizar o crontab da VPS
 
-Acesse a VPS e edite:
+> **O segredo nunca entra na linha de comando.**
+>
+> Argumentos de processo são públicos na máquina: qualquer usuário roda
+> `ps aux` (ou lê `/proc/<pid>/cmdline`) e vê o valor enquanto o `curl`
+> executa. Isso vale para o segredo escrito direto no `crontab`, passado em
+> `-H "Authorization: ..."`, ou expandido de uma variável dentro de um script —
+> `chmod 600` protege o **arquivo**, não os argumentos do processo que ele gera.
+>
+> Por isso o segredo fica num **arquivo de configuração do curl**, que o `curl`
+> lê sozinho. Ele nunca aparece na linha de comando.
+
+**1. Faça backup da linha atual do crontab** — antes de qualquer mudança:
 
 ```bash
-crontab -e
+crontab -l > ~/crontab.backup.$(date +%Y%m%d-%H%M%S)
 ```
 
-Localize a linha atual, algo como:
+**2. Confirme o caminho real do curl** (o `cron` roda com `PATH` mínimo, então
+o caminho absoluto é obrigatório):
+
+```bash
+command -v curl
+```
+
+Use na etapa 4 exatamente o que este comando devolver — normalmente
+`/usr/bin/curl`, mas pode diferir.
+
+**3. Crie o arquivo de configuração:**
+
+```bash
+touch /root/.queue-process.curl.conf
+chmod 600 /root/.queue-process.curl.conf
+```
+
+Edite (`nano /root/.queue-process.curl.conf`) e coloque:
+
+```
+url = "https://funil-pro.vercel.app/api/queue/process"
+request = "POST"
+silent
+show-error
+fail
+header = "Authorization: Bearer COLE_AQUI_O_SEGREDO"
+```
+
+Mesma URL, mesmo método (`POST`) que hoje. O `chmod 600` é criado **antes** de
+o segredo ser escrito, para que ele nunca exista com permissão aberta.
+
+**4. Teste manualmente antes de mexer no crontab:**
+
+```bash
+/usr/bin/curl --config /root/.queue-process.curl.conf -o /dev/null -w '%{http_code}\n'
+```
+
+**Só siga se retornar `200`.** Se vier outra coisa, corrija o arquivo — não
+altere o crontab enquanto não estiver 200.
+
+**5. Só então atualize o crontab** (`crontab -e`), mantendo a **mesma
+frequência** da linha atual:
 
 ```cron
-* * * * * curl -s -X POST https://funil-pro.vercel.app/api/queue/process
+* * * * * /usr/bin/curl --config /root/.queue-process.curl.conf
 ```
 
-Substitua por — **mesma URL, mesma frequência, mesmo método**, só o header a mais:
+#### Regras sobre este arquivo
 
-```cron
-CRON_SECRET=COLE_AQUI_O_SEGREDO
-* * * * * curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" https://funil-pro.vercel.app/api/queue/process
-```
-
-> O `crontab` não expande `$VAR` dentro da linha de comando da forma esperada em
-> todas as implementações. Se o header não chegar, use um script:
->
-> ```bash
-> # /root/queue-process.sh  (chmod 600 — contém o segredo)
-> #!/bin/sh
-> curl -s -X POST -H "Authorization: Bearer SEGREDO_AQUI" \
->   https://funil-pro.vercel.app/api/queue/process
-> ```
-> ```cron
-> * * * * * /root/queue-process.sh
-> ```
+- **Nunca** exiba, imprima ou registre o conteúdo dele — nada de `cat`,
+  `echo`, `set -x` ou redirecionar para log.
+- **Nunca** envie o segredo em chat, Pull Request, commit, issue ou
+  documentação. Nem parcialmente.
+- Não versione o arquivo. Ele vive só na VPS.
+- Para rotacionar o segredo: atualize a Vercel, depois este arquivo, depois o
+  GitHub Secret. Enquanto os três não estiverem iguais, mantenha
+  `CRON_AUTH_ENFORCE=false`.
 
 ### Etapa 4 — confirmar que os dois chamadores autenticam
 
@@ -166,13 +229,17 @@ qual pelo User-Agent antes de seguir.
 
 ### Etapa 5 — ligar o enforcement
 
-Na Vercel, mude `CRON_AUTH_ENFORCE` para `true` e faça redeploy
-(variável de ambiente só vale a partir do próximo deploy).
+Na Vercel, mude `CRON_AUTH_ENFORCE` para `true` **em Production** e faça
+redeploy (variável de ambiente só vale a partir do próximo deploy).
 
 Confirme, nesta ordem:
 
-1. as chamadas autenticadas continuam com `status: 200`
-2. uma chamada sem credencial recebe 401:
+1. as chamadas autenticadas continuam com `status: 200` — na VPS:
+   ```bash
+   /usr/bin/curl --config /root/.queue-process.curl.conf -o /dev/null -w '%{http_code}\n'
+   # 200
+   ```
+2. uma chamada sem credencial recebe 401 (este comando não usa segredo nenhum):
    ```bash
    curl -i -X POST https://funil-pro.vercel.app/api/queue/process
    # HTTP/2 401   {"error":"unauthorized"}
@@ -188,14 +255,21 @@ Confirme, nesta ordem:
 
 Se qualquer coisa parar de funcionar:
 
-1. Na Vercel, `CRON_AUTH_ENFORCE` = `false`
+1. Na Vercel, `CRON_AUTH_ENFORCE` = `false` (em Production)
 2. Redeploy
 
 Pronto — a compatibilidade volta na hora e todos os chamadores voltam a passar.
 
-**Não remova `CRON_SECRET`** e **não tire os headers** dos dois chamadores: eles
-são inofensivos no modo de compatibilidade, e mantê-los deixa o caminho pronto
-para tentar de novo sem refazer as etapas 1 a 3.
+**Não remova `CRON_SECRET` da Vercel nem do GitHub**, e **não desfaça** o
+arquivo `/root/.queue-process.curl.conf` da VPS nem o header do workflow. Os
+três são inofensivos no modo de compatibilidade, e mantê-los deixa o caminho
+pronto para tentar de novo sem refazer as etapas 1 a 3.
+
+Se precisar reverter também o crontab, use o backup feito na etapa 3:
+
+```bash
+crontab ~/crontab.backup.<data>
+```
 
 ---
 

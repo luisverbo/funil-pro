@@ -178,8 +178,13 @@ test('9) nenhum segredo, hash, prefixo ou tamanho aparece nos logs', async () =>
   assert.ok(!saida.includes(hash), 'o hash do segredo vazou no log')
   assert.ok(!saida.includes(hash.slice(0, 8)), 'prefixo do hash vazou')
   assert.ok(!saida.includes(SECRET.slice(0, 6)), 'prefixo do segredo vazou')
-  assert.ok(!saida.includes(String(SECRET.length)), 'tamanho do segredo vazou')
   assert.ok(!/Bearer/i.test(saida), 'o header cru vazou no log')
+
+  // O comprimento é procurado FORA do timestamp: `at` é um campo permitido e
+  // cheio de números, então um "45" vindo do relógio marcaria falso positivo.
+  const semTimestamp = saida.replace(/"at":"[^"]*"/g, '"at":"<ts>"')
+  assert.ok(!semTimestamp.includes(String(SECRET.length)), 'tamanho do segredo vazou')
+  assert.ok(!semTimestamp.includes(String(WRONG.length)), 'tamanho do valor recebido vazou')
 
   // ...e o que DEVE estar registrado, está.
   assert.ok(saida.includes('authenticated'))
