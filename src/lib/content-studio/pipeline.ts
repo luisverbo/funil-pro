@@ -21,8 +21,25 @@ export const STUB_PIPELINE: PipelineDef = {
   ],
 }
 
+/**
+ * Pipeline do Office Preview: pesquisa → estratégia → copy, em cadeia.
+ *
+ * As dependências é que produzem a ordem — o orquestrador não sabe a topologia
+ * de antemão. Trocar os stubs por agentes reais depois não muda uma linha aqui.
+ */
+export const OFFICE_PIPELINE: PipelineDef = {
+  key: 'office_demo_v1',
+  label: 'Demonstração do escritório (stub)',
+  steps: [
+    { agentKey: 'researcher', dependsOn: [] },
+    { agentKey: 'strategist', dependsOn: ['researcher'] },
+    { agentKey: 'copywriter', dependsOn: ['strategist'] },
+  ],
+}
+
 const PIPELINES: Record<string, PipelineDef> = {
   [STUB_PIPELINE.key]: STUB_PIPELINE,
+  [OFFICE_PIPELINE.key]: OFFICE_PIPELINE,
 }
 
 export function getPipeline(key: string): PipelineDef {
