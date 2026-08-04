@@ -29,14 +29,13 @@ import {
   DEMO_BRIEF_MODE,
   DEMO_MAX_JOBS_PER_CALL,
   DEMO_PIPELINE_KEY,
-  isOpenDemo,
-  pickWinningDemo,
   safeUserMessage,
   toPublicEvent,
   type ProductionAdmission,
   type PublicEvent,
   type UserMessageKey,
 } from '@/lib/content-studio/demo-guard'
+import { ensureDemoProduction, type DemoRepo, type DemoRow } from '@/lib/content-studio/demo-runner'
 import { createSupabaseContentStore } from '@/lib/content-studio/store'
 import type { ProductionRow, StoredEvent } from '@/lib/content-studio/types'
 
@@ -155,90 +154,72 @@ export async function startDemoProduction(): Promise<ActionResult<DemoStart>> {
   const admin = createAdminClient()
 
   try {
-    // Camada 1: reaproveita demonstração aberta.
-    const existente = await findOpenDemo(admin, tenantId)
-    if (existente) return { ok: true, data: { productionId: existente.id } }
-
-    const { data: criada, error } = await admin
-      .from('cs_productions')
-      .insert({
-        tenant_id: tenantId,                 // <- da sessão, nunca do cliente
-        pipeline_key: DEMO_PIPELINE_KEY,     // <- fixo, não é parâmetro
-        title: 'Demonstração do escritório',
-        brief: {
-          // `modo` é a marca de demonstração. Campo jsonb já existente: nenhuma
-          // coluna nova, nenhuma migration.
-          modo: DEMO_BRIEF_MODE,
-          tema: 'lançamento de infoproduto',
-          publico: 'infoprodutores iniciantes',
-        },
-      })
-      .select('id, created_at')
-      .single()
-
-    if (error || !criada) return fail('start_failed', error?.message)
-
-    // Camada 2: resolve corrida entre criações simultâneas.
-    const vencedora = await resolveDuplicateDemos(admin, tenantId, criada.id)
-
-    const store = createSupabaseContentStore(admin, { tenantId, productionId: vencedora })
-    await startProduction(store, vencedora)   // idempotente
-
-    return { ok: true, data: { productionId: vencedora } }
+    const { productionId } = await ensureDemoProduction(supabaseDemoRepo(admin, tenantId))
+    return { ok: true, data: { productionId } }
   } catch (err) {
     return fail('start_failed', err)
   }
 }
 
-async function findOpenDemo(
-  admin: ReturnType<typeof createAdminClient>,
-  tenantId: string,
-): Promise<{ id: string } | null> {
-  const { data } = await admin
-    .from('cs_productions')
-    .select(SELECT_ADMISSION_DATED)
-    .eq('tenant_id', tenantId)
-    .eq('pipeline_key', DEMO_PIPELINE_KEY)
-    .order('created_at', { ascending: true })
-    .limit(20)
-
-  const abertas = ((data ?? []) as unknown as (ProductionAdmission & { created_at: string })[]).filter(isOpenDemo)
-  return pickWinningDemo(abertas)
-}
-
 /**
- * Elege uma vencedora entre demos abertas e cancela as demais.
+ * Implementação Supabase da porta usada por `ensureDemoProduction`.
  *
- * Cancelamento é lógico (`status='canceled'`) — nada é apagado, e a produção
- * perdedora fica registrada como o que foi: uma criação duplicada abandonada.
+ * Toda query carrega o tenant da sessão. `materialize` é o único ponto que cria
+ * steps e fila — e recebe sempre a produção vencedora, nunca a perdedora.
  */
-async function resolveDuplicateDemos(
+function supabaseDemoRepo(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
-  minhaId: string,
-): Promise<string> {
-  const { data } = await admin
-    .from('cs_productions')
-    .select(SELECT_ADMISSION_DATED)
-    .eq('tenant_id', tenantId)
-    .eq('pipeline_key', DEMO_PIPELINE_KEY)
-    .order('created_at', { ascending: true })
-    .limit(20)
+): DemoRepo {
+  return {
+    async listDemos(): Promise<DemoRow[]> {
+      const { data, error } = await admin
+        .from('cs_productions')
+        .select(SELECT_ADMISSION_DATED)
+        .eq('tenant_id', tenantId)
+        .eq('pipeline_key', DEMO_PIPELINE_KEY)
+        .order('created_at', { ascending: true })
+        .limit(20)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as unknown as DemoRow[]
+    },
 
-  const abertas = ((data ?? []) as unknown as (ProductionAdmission & { created_at: string })[]).filter(isOpenDemo)
-  const vencedora = pickWinningDemo(abertas)
-  if (!vencedora) return minhaId
+    async insertDemo(): Promise<DemoRow> {
+      const { data, error } = await admin
+        .from('cs_productions')
+        .insert({
+          tenant_id: tenantId,               // <- da sessão, nunca do cliente
+          pipeline_key: DEMO_PIPELINE_KEY,   // <- fixo, não é parâmetro
+          title: 'Demonstração do escritório',
+          brief: {
+            // `modo` é a marca de demonstração. Coluna jsonb já existente:
+            // nenhuma coluna nova, nenhuma migration.
+            modo: DEMO_BRIEF_MODE,
+            tema: 'lançamento de infoproduto',
+            publico: 'infoprodutores iniciantes',
+          },
+        })
+        .select(SELECT_ADMISSION_DATED)
+        .single()
+      if (error || !data) throw new Error(error?.message ?? 'insert falhou')
+      return data as unknown as DemoRow
+    },
 
-  const perdedoras = abertas.filter(p => p.id !== vencedora.id).map(p => p.id)
-  if (perdedoras.length > 0) {
-    await admin
-      .from('cs_productions')
-      .update({ status: 'canceled', updated_at: new Date().toISOString() })
-      .eq('tenant_id', tenantId)
-      .in('id', perdedoras)
+    async cancelDemos(ids: string[]): Promise<void> {
+      if (ids.length === 0) return
+      const { error } = await admin
+        .from('cs_productions')
+        .update({ status: 'canceled', updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .in('id', ids)
+      if (error) throw new Error(error.message)
+    },
+
+    async materialize(productionId: string): Promise<void> {
+      const store = createSupabaseContentStore(admin, { tenantId, productionId })
+      await startProduction(store, productionId)
+    },
   }
-
-  return vencedora.id
 }
 
 // ─── Avançar ────────────────────────────────────────────────────────────────

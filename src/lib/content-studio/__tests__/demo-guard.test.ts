@@ -101,8 +101,9 @@ test('4) advanceDemo não aceita parâmetro de quantidade', () => {
 })
 
 test('4b) nem pipeline, agente, tenant ou status vêm do cliente', () => {
-  const inicio = actions.slice(actions.indexOf('export async function startDemoProduction'))
-  const corpo = inicio.slice(0, inicio.indexOf('\n}\n'))
+  // A inserção vive em supabaseDemoRepo.insertDemo.
+  const inicio = actions.slice(actions.indexOf('async insertDemo('))
+  const corpo = inicio.slice(0, inicio.indexOf('\n    },'))
   assert.ok(corpo.includes('tenant_id: tenantId'), 'tenant vem da sessão')
   assert.ok(corpo.includes('pipeline_key: DEMO_PIPELINE_KEY'), 'pipeline é constante')
   assert.ok(corpo.includes('modo: DEMO_BRIEF_MODE'), 'a marca de demo é constante')
@@ -145,18 +146,13 @@ test('5b) só demonstrações abertas são reaproveitadas', () => {
   assert.equal(isOpenDemo(demo({ brief: { modo: 'producao' } })), false)
 })
 
-test('5c) o servidor reaproveita antes de inserir, e resolve empate depois', () => {
-  const corpo = actions.slice(actions.indexOf('export async function startDemoProduction'))
-  const ordem = ['findOpenDemo', '.insert(', 'resolveDuplicateDemos', 'startProduction']
-  let pos = -1
-  for (const marca of ordem) {
-    const i = corpo.indexOf(marca)
-    assert.ok(i > pos, `"${marca}" fora de ordem no fluxo de criação`)
-    pos = i
-  }
+test('5c) a criação é delegada a ensureDemoProduction, que fixa a ordem', () => {
+  assert.ok(actions.includes('await ensureDemoProduction(supabaseDemoRepo(admin, tenantId))'))
   // A perdedora é cancelada logicamente, nunca apagada.
   assert.ok(actions.includes("status: 'canceled'"))
   assert.ok(!/\.delete\(/.test(actions), 'nada é apagado')
+  // startProduction só pode ser chamado de dentro de materialize().
+  assert.equal((actions.match(/startProduction\(/g) ?? []).length, 1)
 })
 
 test('5d) o botão fica bloqueado enquanto inicia', () => {
@@ -191,8 +187,11 @@ class ConcurrentStore implements ContentStore {
   }
   async listSteps(pid: string) { return this.steps.filter(s => s.production_id === pid).map(s => ({ ...s })) }
   async insertSteps(rows: Omit<StepRow, 'id'>[]) {
+    const jaTem = this.steps.filter(s => s.production_id === rows[0]?.production_id)
+    if (jaTem.length > 0) return { rows: jaTem.map(s => ({ ...s })), inserted: false }
     const created = rows.map(r => ({ ...r, id: `step-${++this.n}` }))
-    this.steps.push(...created); return created.map(s => ({ ...s }))
+    this.steps.push(...created)
+    return { rows: created.map(s => ({ ...s })), inserted: true }
   }
   async updateStep(id: string, patch: Partial<StepRow>) {
     const s = this.steps.find(x => x.id === id)

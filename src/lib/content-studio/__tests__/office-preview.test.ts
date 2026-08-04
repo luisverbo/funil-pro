@@ -55,9 +55,13 @@ class MemoryStore implements ContentStore {
   }
   async listSteps(pid: string) { return this.steps.filter(s => s.production_id === pid).map(s => ({ ...s })) }
   async insertSteps(rows: Omit<StepRow, 'id'>[]) {
+    // Espelha o índice único (production_id, step_index): se já existem, não
+    // inserimos de novo e sinalizamos `inserted: false`.
+    const jaTem = this.steps.filter(s => s.production_id === rows[0]?.production_id)
+    if (jaTem.length > 0) return { rows: jaTem.map(s => ({ ...s })), inserted: false }
     const created = rows.map(r => ({ ...r, id: `step-${++this.n}` }))
     this.steps.push(...created)
-    return created.map(s => ({ ...s }))
+    return { rows: created.map(s => ({ ...s })), inserted: true }
   }
   async updateStep(id: string, patch: Partial<StepRow>) {
     const s = this.steps.find(x => x.id === id); if (s) Object.assign(s, patch)

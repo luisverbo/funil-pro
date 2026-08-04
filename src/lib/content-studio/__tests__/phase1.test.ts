@@ -116,9 +116,11 @@ class MemoryStore implements ContentStore {
   }
 
   async insertSteps(rows: Omit<StepRow, 'id'>[]) {
+    const jaTem = this.steps.filter(s => s.production_id === rows[0]?.production_id)
+    if (jaTem.length > 0) return { rows: jaTem.map(s => ({ ...s })), inserted: false }
     const created = rows.map(r => ({ ...r, id: `step-${++this.seqId}` }))
     this.steps.push(...created)
-    return created.map(s => ({ ...s }))
+    return { rows: created.map(s => ({ ...s })), inserted: true }
   }
 
   async updateStep(stepId: string, patch: Partial<StepRow>) {
@@ -435,7 +437,7 @@ test('dedupe_key é determinística', () => {
 test('insertJob com dedupe_key repetida é no-op idempotente', async () => {
   const store = new MemoryStore()
   const p = store.createProduction()
-  const [step] = await store.insertSteps(materializeSteps(STUB_PIPELINE, p).slice(0, 1))
+  const { rows: [step] } = await store.insertSteps(materializeSteps(STUB_PIPELINE, p).slice(0, 1))
 
   const base = {
     tenant_id: p.tenant_id, production_id: p.id, step_id: step.id,

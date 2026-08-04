@@ -80,14 +80,27 @@ export function createSupabaseContentStore(
     },
 
     async insertSteps(steps) {
-      if (steps.length === 0) return []
+      if (steps.length === 0) return { rows: [], inserted: false }
       // Recarimba o escopo: mesmo que o chamador passasse outro tenant/produção,
       // o que vai para o banco é o do escopo. (A FK composta recusaria, mas
       // preferir a recusa a depender dela é mais barato que depurar um 23503.)
       const rows = steps.map(s => ({ ...s, tenant_id: tenantId, production_id: productionId }))
       const { data, error } = await db.from('cs_steps').insert(rows).select('*')
-      if (error) throw new Error(`insertSteps: ${error.message}`)
-      return (data ?? []) as StepRow[]
+
+      if (error) {
+        // 23505 = o índice único (production_id, step_index) barrou. Significa
+        // que outra chamada concorrente materializou esta MESMA produção entre
+        // o nosso "listSteps vazio" e este insert. Não é erro: os steps que
+        // queríamos já existem. Devolvemos os dela.
+        if (error.code === '23505') {
+          const { data: existentes, error: releitura } = await scoped('cs_steps')
+            .order('step_index', { ascending: true })
+          if (releitura) throw new Error(`insertSteps (releitura): ${releitura.message}`)
+          return { rows: (existentes ?? []) as StepRow[], inserted: false }
+        }
+        throw new Error(`insertSteps: ${error.message}`)
+      }
+      return { rows: (data ?? []) as StepRow[], inserted: true }
     },
 
     async updateStep(stepId, patch) {
