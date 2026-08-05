@@ -55,6 +55,25 @@ export interface OfficeSceneProps {
   speed?: number
 }
 
+/**
+ * Micro-rotina de ambiente — a camada de "vida" do escritório.
+ *
+ * Puramente COSMÉTICA e deliberadamente limitada:
+ *   • só para quem está OCIOSO (idle) — nunca durante trabalho, caminhada,
+ *     entrega, recebimento, erro ou conclusão;
+ *   • nunca para quem está EM FOCO — o agente da tarefa real jamais é
+ *     confundido com alguém "só se mexendo";
+ *   • o índice vem da POSIÇÃO na cena, não de sorteio: a cena renderizada no
+ *     servidor é idêntica à do cliente, e a captura é reproduzível.
+ *
+ * Não deriva de evento, não gera evento, não toca na timeline.
+ */
+function ambienteDe(agent: AgentView, emFoco: string | null, indice: number): number | undefined {
+  if (agent.state !== 'idle') return undefined
+  if (emFoco === agent.key) return undefined
+  return indice % 3
+}
+
 export default function OfficeScene({
   view,
   layout = 'wide',
@@ -119,101 +138,137 @@ export default function OfficeScene({
         .cs-scene { --cs-walk: ${walkMs}ms; }
         /* Deslocamento com peso: sai devagar, ganha velocidade, freia na
            chegada. É o easing que separa "andar" de "deslizar". */
-        .cs-actor { transition: transform var(--cs-walk) cubic-bezier(.34,.02,.2,1); }
+        .cs-actor  { transition: transform var(--cs-walk) cubic-bezier(.34,.02,.2,1); }
         .cs-screen { transition: fill 340ms ease; }
-        /* Foco visual: quem não está trabalhando recua discretamente. */
-        .cs-station { transition: opacity 480ms ease; }
+        .cs-station{ transition: opacity 480ms ease, filter 480ms ease; }
 
-        /* ── parado ───────────────────────────────────────────────────── */
-        @keyframes cs-breathe  { 0%,100% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(-1.2px) scaleY(1.014); } }
-        @keyframes cs-headidle { 0%,100% { transform: rotate(-1.4deg) translateY(0); } 50% { transform: rotate(1.4deg) translateY(-.5px); } }
-        @keyframes cs-armidle  { 0%,100% { transform: translate(12.5px,-2px) rotate(-2deg); } 50% { transform: translate(12.5px,-2px) rotate(3deg); } }
-        @keyframes cs-armidleb { 0%,100% { transform: translate(-12.5px,-2px) rotate(2deg); } 50% { transform: translate(-12.5px,-2px) rotate(-3deg); } }
+        /* TODA junta gira em torno da própria origem — o Socket já a colocou
+           no lugar. Nenhum keyframe precisa (nem pode) mexer em translate, e é
+           por isso que nada salta quando uma animação começa ou termina. */
+        .cs-j { transform-origin: 0 0; }
 
-        /* ── caminhada ────────────────────────────────────────────────
-           Dois "quiques" por ciclo (o corpo sobe a cada passo), quadril
-           rodando em oposição ao tronco, e a cabeça com meio ciclo de atraso
-           — o overlap é o que tira a rigidez.                              */
-        @keyframes cs-bounce   { 0%,100% { transform: translateY(0); } 25% { transform: translateY(-3.4px); } 50% { transform: translateY(-.4px); } 75% { transform: translateY(-3.4px); } }
-        @keyframes cs-hipsway  { 0%,100% { transform: translate(0,22px) rotate(-3.4deg); } 50% { transform: translate(0,22px) rotate(3.4deg); } }
-        @keyframes cs-upperlag { 0%,100% { transform: rotate(1.9deg); } 50% { transform: rotate(-1.9deg); } }
-        @keyframes cs-headlag  { 0%,100% { transform: rotate(-2.4deg) translateY(.5px); } 50% { transform: rotate(2.4deg) translateY(-.5px); } }
-        @keyframes cs-step-f   { 0%,100% { transform: rotate(24deg); } 50% { transform: rotate(-24deg); } }
-        @keyframes cs-step-b   { 0%,100% { transform: rotate(-24deg); } 50% { transform: rotate(24deg); } }
-        /* O pé acompanha a perna: aponta ao levantar, apoia ao descer. */
-        @keyframes cs-foot-f   { 0%,100% { transform: translate(6.6px,22px) rotate(-14deg); } 50% { transform: translate(6.6px,22px) rotate(12deg); } }
-        @keyframes cs-foot-b   { 0%,100% { transform: translate(-6.6px,22px) rotate(12deg); } 50% { transform: translate(-6.6px,22px) rotate(-14deg); } }
-        @keyframes cs-swing-f  { 0%,100% { transform: translate(12.5px,-2px) rotate(28deg); } 50% { transform: translate(12.5px,-2px) rotate(-26deg); } }
-        @keyframes cs-swing-b  { 0%,100% { transform: translate(-12.5px,-2px) rotate(-28deg); } 50% { transform: translate(-12.5px,-2px) rotate(26deg); } }
-        @keyframes cs-shadow   { 0%,100% { opacity:.17; transform: scale(1); } 25% { opacity:.09; transform: scale(.84); } 50% { opacity:.16; transform: scale(.98); } 75% { opacity:.09; transform: scale(.84); } }
+        /* ── repouso em pé ────────────────────────────────────────────── */
+        @keyframes cs-breathe { 0%,100% { transform: rotate(0deg) translateY(0); } 50% { transform: rotate(0deg) translateY(-1.2px); } }
+        @keyframes cs-headidle{ 0%,100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg); } }
+        @keyframes cs-neckidle{ 0%,100% { transform: rotate(.7deg); } 50% { transform: rotate(-.7deg); } }
+        @keyframes cs-armidleR{ 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+        @keyframes cs-armidleL{ 0%,100% { transform: rotate(3deg); } 50% { transform: rotate(-3deg); } }
+        @keyframes cs-elbowidle{0%,100% { transform: rotate(4deg); } 50% { transform: rotate(-3deg); } }
+
+        /* ── caminhada ───────────────────────────────────────────────
+           Centro de massa: o corpo sobe duas vezes por ciclo (uma por passo),
+           a pelve roda em oposição à coluna, e a cabeça chega com atraso.
+           Joelho e tornozelo dobram — é a transferência de peso.           */
+        @keyframes cs-bounce  { 0%,100% { transform: translateY(0); } 25% { transform: translateY(-3.6px); } 50% { transform: translateY(-.4px); } 75% { transform: translateY(-3.6px); } }
+        @keyframes cs-pelvis  { 0%,100% { transform: rotate(-3.6deg); } 50% { transform: rotate(3.6deg); } }
+        @keyframes cs-spine   { 0%,100% { transform: rotate(2deg); } 50% { transform: rotate(-2deg); } }
+        @keyframes cs-headlag { 0%,100% { transform: rotate(-2.6deg); } 50% { transform: rotate(2.6deg); } }
+        @keyframes cs-hipR    { 0%,100% { transform: rotate(26deg); } 50% { transform: rotate(-24deg); } }
+        @keyframes cs-hipL    { 0%,100% { transform: rotate(-24deg); } 50% { transform: rotate(26deg); } }
+        /* O joelho só dobra na fase de balanço — perna de apoio fica reta. */
+        @keyframes cs-kneeR   { 0%,100% { transform: rotate(2deg); } 30% { transform: rotate(34deg); } 60% { transform: rotate(4deg); } }
+        @keyframes cs-kneeL   { 0%,100% { transform: rotate(30deg); } 30% { transform: rotate(3deg); } 80% { transform: rotate(34deg); } }
+        @keyframes cs-ankleR  { 0%,100% { transform: rotate(-14deg); } 50% { transform: rotate(12deg); } }
+        @keyframes cs-ankleL  { 0%,100% { transform: rotate(12deg); } 50% { transform: rotate(-14deg); } }
+        @keyframes cs-shoulderR{0%,100% { transform: rotate(-26deg); } 50% { transform: rotate(28deg); } }
+        @keyframes cs-shoulderL{0%,100% { transform: rotate(28deg); } 50% { transform: rotate(-26deg); } }
+        @keyframes cs-elbowSwing{0%,100%{ transform: rotate(10deg); } 50% { transform: rotate(26deg); } }
+        @keyframes cs-shadow  { 0%,100% { opacity:.17; transform: scale(1); } 25% { opacity:.09; transform: scale(.84); } 50% { opacity:.16; transform: scale(.98); } 75% { opacity:.09; transform: scale(.84); } }
 
         /* ── trabalhando ─────────────────────────────────────────────── */
-        @keyframes cs-lean     { 0%,100% { transform: rotate(-3.4deg) translateY(.4px); } 50% { transform: rotate(-4.6deg) translateY(1.2px); } }
-        @keyframes cs-typing   { 0%,100% { transform: translate(12.5px,-2px) rotate(-9deg); } 50% { transform: translate(12.5px,-2px) rotate(4deg); } }
-        @keyframes cs-typing-b { 0%,100% { transform: translate(-12.5px,-2px) rotate(9deg); } 50% { transform: translate(-12.5px,-2px) rotate(-4deg); } }
-        @keyframes cs-headwork { 0%,100% { transform: rotate(.8deg) translateY(.4px); } 50% { transform: rotate(-.8deg) translateY(0); } }
+        @keyframes cs-lean    { 0%,100% { transform: rotate(-3.6deg); } 50% { transform: rotate(-4.8deg); } }
+        @keyframes cs-typingR { 0%,100% { transform: rotate(-42deg); } 50% { transform: rotate(-34deg); } }
+        @keyframes cs-typingL { 0%,100% { transform: rotate(36deg); } 50% { transform: rotate(44deg); } }
+        @keyframes cs-typeElbR{ 0%,100% { transform: rotate(58deg); } 50% { transform: rotate(48deg); } }
+        @keyframes cs-typeElbL{ 0%,100% { transform: rotate(-52deg); } 50% { transform: rotate(-62deg); } }
+        @keyframes cs-headwork{ 0%,100% { transform: rotate(1deg); } 50% { transform: rotate(-1deg); } }
 
         /* ── entrega e recebimento ───────────────────────────────────
-           Entregar: antecipa recolhendo o braço, depois estende e segura.
-           Receber: inclina para a pasta e recolhe, "absorvendo" a tarefa.  */
-        @keyframes cs-give     { 0%   { transform: translate(12.5px,-2px) rotate(6deg); }
-                                 30%  { transform: translate(12.5px,-2px) rotate(-10deg); }
-                                 60%,100% { transform: translate(12.5px,-2px) rotate(-46deg); } }
-        @keyframes cs-givelean { 0%,100% { transform: rotate(0deg); } 55% { transform: rotate(-4deg) translateX(1.4px); } }
-        @keyframes cs-receive  { 0%   { transform: translate(-12.5px,-2px) rotate(0deg); }
-                                 45%  { transform: translate(-12.5px,-2px) rotate(-44deg); }
-                                 100% { transform: translate(-12.5px,-2px) rotate(-6deg); } }
-        @keyframes cs-recvlean { 0%,100% { transform: rotate(0deg); } 40% { transform: rotate(4.5deg) translateX(-1.6px); } }
-        @keyframes cs-recvhead { 0%,100% { transform: rotate(0deg); } 40% { transform: rotate(-7deg) translateY(1px); } }
+           Entregar: antecipa recolhendo, estende e SEGURA (forwards).
+           Receber: alcança, pega e recolhe — termina diferente de onde vai. */
+        @keyframes cs-giveArm { 0% { transform: rotate(4deg); } 28% { transform: rotate(-14deg); } 62%,100% { transform: rotate(-58deg); } }
+        @keyframes cs-giveElb { 0% { transform: rotate(12deg); } 30% { transform: rotate(38deg); } 65%,100% { transform: rotate(-6deg); } }
+        @keyframes cs-giveLean{ 0%,100% { transform: rotate(0deg); } 58% { transform: rotate(-4.2deg); } }
+        @keyframes cs-recvArm { 0% { transform: rotate(2deg); } 46% { transform: rotate(-50deg); } 100% { transform: rotate(-8deg); } }
+        @keyframes cs-recvElb { 0% { transform: rotate(6deg); } 46% { transform: rotate(-4deg); } 100% { transform: rotate(46deg); } }
+        @keyframes cs-recvLean{ 0%,100% { transform: rotate(0deg); } 42% { transform: rotate(4.6deg); } }
+        @keyframes cs-recvHead{ 0%,100% { transform: rotate(0deg); } 42% { transform: rotate(-7deg); } }
+
+        /* ── micro-rotinas de ambiente (cosméticas) ─────────────────── */
+        @keyframes cs-amb-look { 0%,64%,100% { transform: rotate(0deg); } 74%,88% { transform: rotate(-13deg); } }
+        @keyframes cs-amb-read { 0%,54%,100% { transform: rotate(-4deg); } 68%,86% { transform: rotate(-40deg); } }
+        @keyframes cs-amb-shift{ 0%,70%,100% { transform: rotate(0deg); } 80%,90% { transform: rotate(2.6deg); } }
+        @keyframes cs-amb-tap  { 0%,46%,100% { transform: rotate(3deg); } 58%,72% { transform: rotate(-9deg); } }
 
         /* ── outros ──────────────────────────────────────────────────── */
-        @keyframes cs-blink    { 0%,100% { opacity:.9; } 50% { opacity:.5; } }
-        @keyframes cs-shake    { 0%,100% { transform: rotate(0); } 20% { transform: rotate(-3.4deg); } 60% { transform: rotate(3.4deg); } }
-        @keyframes cs-cheer    { 0%,100% { transform: translateY(0); } 28% { transform: translateY(-5px); } 55% { transform: translateY(0); } 70% { transform: translateY(-2px); } }
-        @keyframes cs-glow     { 0%,100% { opacity:.25; stroke-width:2; } 50% { opacity:.95; stroke-width:3.4; } }
-        @keyframes cs-dash     { to { stroke-dashoffset: -28; } }
-        @keyframes cs-leafsway { 0%,100% { transform: rotate(-1.4deg); } 50% { transform: rotate(1.4deg); } }
-        @keyframes cs-halo     { 0%,100% { opacity:.30; } 50% { opacity:.52; } }
+        @keyframes cs-blink   { 0%,100% { opacity:.9; } 50% { opacity:.5; } }
+        @keyframes cs-shake   { 0%,100% { transform: rotate(0); } 20% { transform: rotate(-3.6deg); } 60% { transform: rotate(3.6deg); } }
+        @keyframes cs-cheer   { 0%,100% { transform: translateY(0); } 28% { transform: translateY(-5px); } 55% { transform: translateY(0); } 70% { transform: translateY(-2px); } }
+        @keyframes cs-glow    { 0%,100% { opacity:.25; stroke-width:2; } 50% { opacity:.95; stroke-width:3.4; } }
+        @keyframes cs-dash    { to { stroke-dashoffset: -28; } }
+        @keyframes cs-leafsway{ 0%,100% { transform: rotate(-1.4deg); } 50% { transform: rotate(1.4deg); } }
+        @keyframes cs-halo    { 0%,100% { opacity:.30; } 50% { opacity:.52; } }
 
-        /* Parado: respira, a cabeça oscila e os braços acompanham de leve. */
-        .cs-char--idle .cs-torso     { animation: cs-breathe ${Math.round(3600 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
-        .cs-char--idle .cs-head      { animation: cs-headidle ${Math.round(5000 / v)}ms ease-in-out infinite; }
-        .cs-char--idle .cs-arm--front{ animation: cs-armidle ${Math.round(4200 / v)}ms ease-in-out infinite; transform-origin: 12.5px -2px; }
-        .cs-char--idle .cs-arm--back { animation: cs-armidleb ${Math.round(4200 / v)}ms ease-in-out infinite; transform-origin: -12.5px -2px; }
+        /* Repouso em pé: respira, a cabeça oscila, os braços acompanham. */
+        .cs-char--idle .cs-torso        { animation: cs-breathe ${Math.round(3600 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
+        .cs-char--idle .cs-j--head      { animation: cs-headidle ${Math.round(5000 / v)}ms ease-in-out infinite; }
+        .cs-char--idle .cs-j--neck      { animation: cs-neckidle ${Math.round(5000 / v)}ms ease-in-out infinite; }
+        .cs-char--idle .cs-j--shoulderR { animation: cs-armidleR ${Math.round(4200 / v)}ms ease-in-out infinite; }
+        .cs-char--idle .cs-j--shoulderL { animation: cs-armidleL ${Math.round(4200 / v)}ms ease-in-out infinite; }
+        .cs-char--idle .cs-j--elbowR    { animation: cs-elbowidle ${Math.round(4200 / v)}ms ease-in-out infinite; }
 
-        /* Caminhando. O grupo cs-upper girando junto é o que mantém a cabeça
-           presa ao corpo — sem ele, ela descola no meio do passo. */
-        .cs-char--walk               { animation: cs-bounce ${Math.round(620 / v)}ms ease-in-out infinite; }
-        .cs-char--walk .cs-shadow    { animation: cs-shadow ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: center; }
-        .cs-char--walk .cs-hip       { animation: cs-hipsway ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: center top; }
-        .cs-char--walk .cs-upper     { animation: cs-upperlag ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: center 22px; }
-        .cs-char--walk .cs-head      { animation: cs-headlag ${Math.round(620 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(90 / v)}ms; }
-        .cs-char--walk .cs-leg--front{ animation: cs-step-f ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: 4px 0; }
-        .cs-char--walk .cs-leg--back { animation: cs-step-b ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: -4px 0; }
-        .cs-char--walk .cs-foot--front{ animation: cs-foot-f ${Math.round(620 / v)}ms ease-in-out infinite; }
-        .cs-char--walk .cs-foot--back { animation: cs-foot-b ${Math.round(620 / v)}ms ease-in-out infinite; }
-        .cs-char--walk .cs-arm--front{ animation: cs-swing-f ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: 12.5px -2px; }
-        .cs-char--walk .cs-arm--back { animation: cs-swing-b ${Math.round(620 / v)}ms ease-in-out infinite; transform-origin: -12.5px -2px; }
-        /* Carregando a pasta, o braço da frente para de balançar e a segura. */
-        .cs-char--walk.cs-char--carry .cs-arm--front { animation: none; transform: translate(12.5px,-2px) rotate(-18deg); }
+        /* Caminhando. A pelve e a coluna girando em oposição são o que dá
+           centro de massa; joelho e tornozelo dobrando dão a transferência. */
+        .cs-char--walk                  { animation: cs-bounce ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-shadow       { animation: cs-shadow ${Math.round(640 / v)}ms ease-in-out infinite; transform-origin: center; }
+        .cs-char--walk .cs-j--pelvis    { animation: cs-pelvis ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--spine     { animation: cs-spine ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--head      { animation: cs-headlag ${Math.round(640 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(95 / v)}ms; }
+        .cs-char--walk .cs-j--hipR      { animation: cs-hipR ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--hipL      { animation: cs-hipL ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--kneeR     { animation: cs-kneeR ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--kneeL     { animation: cs-kneeL ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--ankleR    { animation: cs-ankleR ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--ankleL    { animation: cs-ankleL ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--shoulderR { animation: cs-shoulderR ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--shoulderL { animation: cs-shoulderL ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--elbowR    { animation: cs-elbowSwing ${Math.round(640 / v)}ms ease-in-out infinite; }
+        .cs-char--walk .cs-j--elbowL    { animation: cs-elbowSwing ${Math.round(640 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(320 / v)}ms; }
+        /* Carregando: o braço da pasta trava contra o corpo e para de balançar. */
+        .cs-char--walk.cs-char--carry .cs-j--shoulderR { animation: none; transform: rotate(-20deg); }
+        .cs-char--walk.cs-char--carry .cs-j--elbowR    { animation: none; transform: rotate(46deg); }
 
-        /* Trabalhando: inclina sobre a mesa e digita. */
-        .cs-char--type .cs-upper     { animation: cs-lean ${Math.round(2800 / v)}ms ease-in-out infinite; transform-origin: center 22px; }
-        .cs-char--type .cs-head      { animation: cs-headwork ${Math.round(1900 / v)}ms ease-in-out infinite; }
-        .cs-char--type .cs-arm--front{ animation: cs-typing ${Math.round(380 / v)}ms ease-in-out infinite; transform-origin: 12.5px -2px; }
-        .cs-char--type .cs-arm--back { animation: cs-typing-b ${Math.round(380 / v)}ms ease-in-out infinite; transform-origin: -12.5px -2px; animation-delay: ${Math.round(190 / v)}ms; }
+        /* Trabalhando: inclina sobre a mesa, antebraços na horizontal. */
+        .cs-char--type .cs-j--spine     { animation: cs-lean ${Math.round(2800 / v)}ms ease-in-out infinite; }
+        .cs-char--type .cs-j--head      { animation: cs-headwork ${Math.round(1900 / v)}ms ease-in-out infinite; }
+        .cs-char--type .cs-j--shoulderR { animation: cs-typingR ${Math.round(400 / v)}ms ease-in-out infinite; }
+        .cs-char--type .cs-j--shoulderL { animation: cs-typingL ${Math.round(400 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(200 / v)}ms; }
+        .cs-char--type .cs-j--elbowR    { animation: cs-typeElbR ${Math.round(400 / v)}ms ease-in-out infinite; }
+        .cs-char--type .cs-j--elbowL    { animation: cs-typeElbL ${Math.round(400 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(200 / v)}ms; }
 
-        /* Entregando: braço estendido, corpo inclinado para o colega. */
-        .cs-char--give .cs-arm--front{ animation: cs-give ${Math.round(760 / v)}ms cubic-bezier(.3,.1,.2,1) forwards; transform-origin: 12.5px -2px; }
-        .cs-char--give .cs-upper     { animation: cs-givelean ${Math.round(900 / v)}ms ease-in-out; transform-origin: center 22px; }
+        /* Entregando: antecipa, estende e segura. */
+        .cs-char--give .cs-j--shoulderR { animation: cs-giveArm ${Math.round(820 / v)}ms cubic-bezier(.3,.1,.2,1) forwards; }
+        .cs-char--give .cs-j--elbowR    { animation: cs-giveElb ${Math.round(820 / v)}ms cubic-bezier(.3,.1,.2,1) forwards; }
+        .cs-char--give .cs-j--spine     { animation: cs-giveLean ${Math.round(940 / v)}ms ease-in-out; }
 
-        /* Recebendo: inclina, alcança a pasta e recolhe. */
-        .cs-char--receive .cs-arm--back { animation: cs-receive ${Math.round(880 / v)}ms cubic-bezier(.3,.1,.2,1) 2; transform-origin: -12.5px -2px; }
-        .cs-char--receive .cs-upper     { animation: cs-recvlean ${Math.round(880 / v)}ms ease-in-out 2; transform-origin: center 22px; }
-        .cs-char--receive .cs-head      { animation: cs-recvhead ${Math.round(880 / v)}ms ease-in-out 2; }
+        /* Recebendo: alcança, pega e recolhe — absorvendo a tarefa. */
+        .cs-char--receive .cs-j--shoulderL { animation: cs-recvArm ${Math.round(900 / v)}ms cubic-bezier(.3,.1,.2,1) 2; }
+        .cs-char--receive .cs-j--elbowL    { animation: cs-recvElb ${Math.round(900 / v)}ms cubic-bezier(.3,.1,.2,1) 2; }
+        .cs-char--receive .cs-j--spine     { animation: cs-recvLean ${Math.round(900 / v)}ms ease-in-out 2; }
+        .cs-char--receive .cs-j--head      { animation: cs-recvHead ${Math.round(900 / v)}ms ease-in-out 2; }
 
-        .cs-char--error .cs-head     { animation: cs-shake 640ms ease-in-out 3; }
+        .cs-char--error .cs-j--head  { animation: cs-shake 640ms ease-in-out 3; }
         .cs-char--cheer              { animation: cs-cheer 1000ms cubic-bezier(.3,.6,.3,1) 2; }
+
+        /* Micro-rotinas: só decoram, e cada agente tem a sua para não
+           sincronizarem. Nunca tocam pelve, quadril ou joelho — nada que
+           possa ser confundido com "esse aqui está trabalhando". */
+        .cs-char--amb0 .cs-j--head      { animation: cs-amb-look ${Math.round(11000 / v)}ms ease-in-out infinite; }
+        .cs-char--amb0 .cs-j--shoulderR { animation: cs-amb-tap ${Math.round(11000 / v)}ms ease-in-out infinite; }
+        .cs-char--amb1 .cs-j--shoulderL { animation: cs-amb-read ${Math.round(13000 / v)}ms ease-in-out infinite; }
+        .cs-char--amb1 .cs-j--head      { animation: cs-amb-look ${Math.round(13000 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(2200 / v)}ms; }
+        .cs-char--amb2 .cs-j--spine     { animation: cs-amb-shift ${Math.round(15000 / v)}ms ease-in-out infinite; }
+        .cs-char--amb2 .cs-j--head      { animation: cs-amb-look ${Math.round(15000 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(4200 / v)}ms; }
 
         .cs-folder-glow { animation: cs-glow ${Math.round(1300 / v)}ms ease-in-out infinite; }
         .cs-screen-lines{ animation: cs-blink ${Math.round(1500 / v)}ms ease-in-out infinite; }
@@ -327,7 +382,8 @@ export default function OfficeScene({
             key={key}
             className="cs-station"
             transform={`translate(${pos.x}, ${pos.y})`}
-            opacity={foco ? 1 : 0.62}
+            opacity={foco ? 1 : 0.55}
+            style={foco ? undefined : { filter: 'saturate(.62)' }}
           >
             {/* Halo do setor em foco — pulso lento, longe de pisca-pisca */}
             {emFoco === key && (
@@ -362,7 +418,7 @@ export default function OfficeScene({
       })}
 
       {/* ─── Personagens ────────────────────────────────────────────── */}
-      {OFFICE_AGENT_ORDER.map(key => {
+      {OFFICE_AGENT_ORDER.map((key, i) => {
         const agent = byKey.get(key)
         if (!agent) return null
 
@@ -388,6 +444,7 @@ export default function OfficeScene({
               carryingFolder={agent.carryingFolder}
               received={agent.receivedFolder}
               reducedMotion={reducedMotion}
+              ambient={ambienteDe(agent, emFoco, i)}
             />
             <Bubble agent={agent} />
           </g>
