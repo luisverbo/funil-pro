@@ -27,6 +27,7 @@ import {
   type ProductionSummary,
 } from '@/app/actions/content-production'
 import { emptyProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
+import { emptyOfficeView } from '@/lib/content-studio/view-model'
 import type { BriefField } from '@/lib/content-studio/brief'
 import ProductionForm from './production-form'
 import QuickCreateForm, { type BrandProfile } from './quick-create-form'
@@ -102,6 +103,10 @@ export default function OfficePreview() {
   // Criação rápida é o PADRÃO; o briefing completo fica atrás do link.
   const [briefingAvancado, setBriefingAvancado] = useState(false)
   const [pipelineAtual, setPipelineAtual] = useState<string | null>(null)
+  // Feedback COSMÉTICO durante a Server Action síncrona do quick: mostra o
+  // Copywriter trabalhando SEM criar evento — nenhum evento sintético entra
+  // em cs_events nem na timeline; a resposta real substitui tudo.
+  const [quickGenerating, setQuickGenerating] = useState(false)
 
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
@@ -168,10 +173,21 @@ export default function OfficePreview() {
     return () => clearTimeout(t)
   }, [revealed, allEvents.length, pausado, velocidade, reducedMotion])
 
-  const view: OfficeView = useMemo(
-    () => buildOfficeView(allEvents.slice(0, revealed)),
-    [allEvents, revealed],
-  )
+  const view: OfficeView = useMemo(() => {
+    // Durante a Server Action do quick não há eventos ainda: a cena mostra o
+    // Copywriter trabalhando como estado VISUAL, sem tocar em cs_events. Assim
+    // que a resposta chega, quickGenerating cai e os eventos reais assumem.
+    if (quickGenerating) {
+      const cena = emptyOfficeView()
+      const copywriter = cena.agents.find(a => a.key === 'copywriter')
+      if (copywriter) {
+        copywriter.state = 'working'
+        copywriter.bubble = 'Criando seu carrossel com IA…'
+      }
+      return cena
+    }
+    return buildOfficeView(allEvents.slice(0, revealed))
+  }, [allEvents, revealed, quickGenerating])
 
   const reproduzindo = revealed < allEvents.length
 
@@ -258,10 +274,12 @@ export default function OfficePreview() {
       setResult(emptyProductionResult())
       setProducoes([])
       setProductionId(null)
+      setPipelineAtual(null)
       setStatus(null)
       setError(null)
       setErroBrief(null)
       setPausado(false)
+      setQuickGenerating(false)
       return proximo
     })
   }, [])
@@ -312,13 +330,15 @@ export default function OfficePreview() {
    * (awaiting_approval ou failed).
    */
   const criarRapido = useCallback(async (dados: {
-    tema: string; objetivo: QuickObjetivo; oferta: string; cta: string; marca: BrandProfile
+    tema: string; objetivo: QuickObjetivo; oferta: string; cta: string
+    marca: BrandProfile; idempotencyKey: string
   }) => {
     if (criando || running) return
     setErroBrief(null)
     setError(null)
     setCriando(true)
     setRunning(true)
+    setQuickGenerating(true)
     setPausado(false)
     setAllEvents([])
     setRevealed(0)
@@ -336,7 +356,9 @@ export default function OfficePreview() {
     } catch {
       setErroBrief('Não foi possível criar o carrossel. Tente novamente.')
     } finally {
-      if (!cancelled.current) { setCriando(false); setRunning(false) }
+      // Erro ou sucesso: o estado cosmético SEMPRE é limpo — a cena volta a
+      // ser dirigida exclusivamente pelos eventos persistidos.
+      if (!cancelled.current) { setCriando(false); setRunning(false); setQuickGenerating(false) }
     }
   }, [criando, running])
 
@@ -365,6 +387,7 @@ export default function OfficePreview() {
 
       const id = criada.data.production.id
       setProductionId(id)
+      setPipelineAtual(criada.data.production.pipelineKey)
       setStatus(criada.data.production.status)
       setAllEvents(criada.data.events)
       setResult(criada.data.result)
@@ -416,12 +439,27 @@ export default function OfficePreview() {
               <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
                 Content Studio
               </h1>
-              <span
-                className="shrink-0 rounded-md bg-amber-50 border border-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600"
-                title="Agentes determinísticos, sem IA e sem custo"
-              >
-                demo
-              </span>
+              {/* Selo VERDADEIRO por contexto — a fonte é o pipelineKey do
+                  servidor, nunca uma escolha do cliente. */}
+              {(() => {
+                const selo = modo === 'demo'
+                  ? { txt: 'demo', title: 'Agentes determinísticos, sem IA e sem custo', cor: 'bg-amber-50 border-amber-200/70 text-amber-600' }
+                  : pipelineAtual === 'content_carousel_quick_v1'
+                    ? { txt: 'IA rápida', title: 'Criação rápida: uma geração direta com IA', cor: 'bg-violet-50 border-violet-200/70 text-violet-600' }
+                    : pipelineAtual === 'content_carousel_ai_v1'
+                      ? { txt: 'IA', title: 'Geração realizada com IA', cor: 'bg-violet-50 border-violet-200/70 text-violet-600' }
+                      : pipelineAtual === 'content_carousel_v1'
+                        ? { txt: 'determinístico', title: 'Geração determinística, sem IA', cor: 'bg-gray-100 border-gray-200 text-gray-500' }
+                        : { txt: 'pronto', title: 'Nenhuma produção selecionada', cor: 'bg-gray-100 border-gray-200 text-gray-500' }
+                return (
+                  <span
+                    className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${selo.cor}`}
+                    title={selo.title}
+                  >
+                    {selo.txt}
+                  </span>
+                )
+              })()}
             </div>
             <p className="text-[12px] sm:text-[13px] text-gray-500 truncate">
               Escritório virtual dos agentes de conteúdo
@@ -571,6 +609,18 @@ export default function OfficePreview() {
           </span>
         )}
       </div>
+
+      {/* Geração rápida em andamento — texto honesto, sem evento sintético */}
+      {quickGenerating && (
+        <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
+          <p className="text-sm font-semibold text-indigo-800">
+            Copywriter criando seu carrossel com IA…
+          </p>
+          <p className="text-[12px] text-indigo-600 mt-0.5">
+            Isso normalmente leva alguns segundos.
+          </p>
+        </div>
+      )}
 
       {/* Erro */}
       {error && (

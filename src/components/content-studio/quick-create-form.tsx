@@ -71,6 +71,13 @@ function gravarPerfil(p: BrandProfile): void {
   for (const n of ouvintesPerfil) n()
 }
 
+/** Chave opaca por submissão — replay usa a mesma; intenção nova, outra. */
+function novaChave(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+}
+
 export interface QuickCreateFormProps {
   onSubmit: (dados: {
     tema: string
@@ -78,6 +85,7 @@ export interface QuickCreateFormProps {
     oferta: string
     cta: string
     marca: BrandProfile
+    idempotencyKey: string
   }) => Promise<void>
   enviando: boolean
   erro: string | null
@@ -92,6 +100,9 @@ export default function QuickCreateForm({ onSubmit, enviando, erro, onBriefingAv
   const [cta, setCta] = useState('')
 
   const perfil = useSyncExternalStore(assinarPerfil, snapshotPerfil, () => PERFIL_VAZIO)
+  // Uma chave por TENTATIVA: só troca depois de um envio — um retry do mesmo
+  // envio precisa repetir a mesma chave para o servidor reconhecê-lo.
+  const [chave, setChave] = useState(novaChave)
   const [perfilAberto, setPerfilAberto] = useState(false)
   const perfilId = useId()
 
@@ -101,8 +112,12 @@ export default function QuickCreateForm({ onSubmit, enviando, erro, onBriefingAv
   const enviar = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (!pronto || enviando) return
-    await onSubmit({ tema: tema.trim(), objetivo, oferta: oferta.trim(), cta: cta.trim(), marca: perfil })
-  }, [pronto, enviando, onSubmit, tema, objetivo, oferta, cta, perfil])
+    await onSubmit({
+      tema: tema.trim(), objetivo, oferta: oferta.trim(), cta: cta.trim(),
+      marca: perfil, idempotencyKey: chave,
+    })
+    setChave(novaChave())
+  }, [pronto, enviando, onSubmit, tema, objetivo, oferta, cta, perfil, chave])
 
   return (
     <section className="rounded-3xl border border-gray-100 bg-white shadow-sm p-4 sm:p-6 mb-4">

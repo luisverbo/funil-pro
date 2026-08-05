@@ -42,6 +42,8 @@ export interface QuickInput {
   cta?: unknown
   /** Preferências de marca do NAVEGADOR (localStorage) — opcionais. */
   marca?: unknown
+  /** Chave por SUBMISSÃO (replay usa a mesma; intenção nova ganha outra). */
+  idempotencyKey?: unknown
 }
 
 export interface ValidQuickBrief extends Record<string, unknown> {
@@ -54,9 +56,21 @@ export interface ValidQuickBrief extends Record<string, unknown> {
   marca_negocio: string
   marca_cta: string
   marca_descricao: string
+  /** Chave de idempotência da submissão — mesma semântica da Fase 2A. */
+  idempotency_key: string
   /** Marca da geração — auditável junto do pipeline_key. */
   modo: 'quick_v1'
 }
+
+/**
+ * Campos que definem EQUIVALÊNCIA de conteúdo entre submissões com a mesma
+ * chave. Independente da ordem das propriedades: a comparação é campo a campo
+ * sobre valores já normalizados.
+ */
+export const QUICK_COMPARE_FIELDS = [
+  'tema', 'objetivo', 'oferta', 'cta',
+  'marca_publico', 'marca_tom', 'marca_negocio', 'marca_cta', 'marca_descricao',
+] as const
 
 const LIMITES: Record<string, number> = {
   tema: 300, oferta: 300, cta: 160,
@@ -83,10 +97,17 @@ export type QuickValidation =
  * tenant, pipeline, modelo, prompt ou status enviados pelo cliente morrem na
  * validação, não em checagem posterior.
  */
+const IDEMPOTENCY_RE = /^[A-Za-z0-9_-]{8,64}$/
+
 export function validateQuickInput(input: QuickInput): QuickValidation {
   const tema = texto(input?.tema, LIMITES.tema)
   if (tema.length < 3) {
     return { ok: false, message: 'Conte em algumas palavras sobre o que você quer criar.' }
+  }
+
+  const chave = texto(input?.idempotencyKey, 64)
+  if (!IDEMPOTENCY_RE.test(chave)) {
+    return { ok: false, message: 'Não foi possível identificar este envio. Recarregue a página e tente novamente.' }
   }
 
   const objetivo = QUICK_OBJETIVOS.includes(input?.objetivo as QuickObjetivo)
@@ -109,6 +130,7 @@ export function validateQuickInput(input: QuickInput): QuickValidation {
       marca_negocio: texto(marca.negocio, LIMITES.marca_negocio),
       marca_cta: texto(marca.ctaPadrao, LIMITES.marca_cta),
       marca_descricao: texto(marca.descricao, LIMITES.marca_descricao),
+      idempotency_key: chave,
       modo: 'quick_v1',
     },
   }
