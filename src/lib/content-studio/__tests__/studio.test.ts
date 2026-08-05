@@ -23,8 +23,8 @@ import { ensureProduction, type ProductionRepo, type ProductionRowLite } from '.
 import { buildProductionResult } from '../result-view'
 import { buildOfficeView, deskOf, AGENT_LABELS } from '../view-model'
 import {
-  runStudioCarousel, STUDIO_PERSISTENCE_MARGIN_MS, STUDIO_PROFILES,
-  STUDIO_REQUEST_BUDGET_MS,
+  runStudioCarousel, STUDIO_DISPATCH_MARGIN_MS, STUDIO_PERSISTENCE_MARGIN_MS,
+  STUDIO_PROFILES, STUDIO_REQUEST_BUDGET_MS,
 } from '../studio/run'
 import {
   findWeakHeadline, makeCopyParser, makeStrategyParser, makeVisualParser,
@@ -529,9 +529,10 @@ test('23) ORÇAMENTO: agente que não cabe INTEIRO não começa — nada é cria
   // Falta 1ms para caber timeout + margem: NENHUM step, NENHUM evento,
   // NENHUMA chamada — não existe claim preso para limpar depois.
   const perfil = STUDIO_PROFILES[STUDIO_STRATEGIST_KEY]
+  const necessario = perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
   const r = await runStudioCarousel(store, producao, brief, {
     now: () => 0,
-    deadlineAt: perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS - 1,
+    deadlineAt: necessario - 1,
   })
 
   assert.equal(r.state, 'partial')
@@ -544,7 +545,7 @@ test('23) ORÇAMENTO: agente que não cabe INTEIRO não começa — nada é cria
   // No limiar EXATO, o agente cabe e roda.
   const r2 = await runStudioCarousel(store, producao, brief, {
     now: () => 0,
-    deadlineAt: perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS,
+    deadlineAt: necessario,
   })
   assert.equal(r2.state, 'partial')
   assert.equal(contador.calls, 1)
@@ -793,30 +794,33 @@ test('36) o cliente não escolhe tenant, pipeline, agente nem modelo', () => {
   assert.ok(action.includes('tenant_id: tenantId'), 'o tenant precisa vir da sessão')
 })
 
-test('37) INVARIANTE DE TEMPO: timeout + margem <= orçamento < maxDuration', () => {
+test('37) INVARIANTE DE TEMPO: timeout + margens <= orçamento < maxDuration', () => {
   const page = ler('src/app/(dashboard)/content-studio/page.tsx')
   const m = /export const maxDuration = (\d+)/.exec(page)
   assert.ok(m, 'sem maxDuration a Server Action morre no meio de uma chamada paga')
   const limiteMs = Number(m![1]) * 1000
   assert.ok(limiteMs <= 60_000, 'acima de 60s não vale em todos os planos da Vercel')
 
-  // O orçamento precisa caber DENTRO do limite da rota, com folga externa real
-  // (a margem interna cobre a persistência do runner, não o overhead da
-  // plataforma). Exigimos pelo menos 10s de folga externa.
+  // O orçamento cabe DENTRO do limite da rota com folga externa real.
   assert.ok(STUDIO_REQUEST_BUDGET_MS < limiteMs, 'orçamento >= limite da rota')
   assert.ok(limiteMs - STUDIO_REQUEST_BUDGET_MS >= 10_000, 'folga externa insuficiente')
 
-  // A margem de persistência existe e é significativa.
+  // As duas margens existem e são significativas.
   assert.ok(STUDIO_PERSISTENCE_MARGIN_MS >= 3_000, 'margem de persistência simbólica')
+  assert.ok(STUDIO_DISPATCH_MARGIN_MS >= 2_000, 'margem de despacho simbólica')
 
-  // O invariante central, por agente: o TIMEOUT INTEIRO + margem cabe no
-  // orçamento. (Era exatamente isto que o código anterior violava: timeout de
-  // 55s com orçamento de 50s e "reserva" de 28s sem relação com o timeout.)
+  // Invariante central, por agente: timeout + AS DUAS margens cabe no
+  // orçamento — e com folga estrita, para o overhead normal da requisição
+  // não derrubar o portão (o defeito visto em produção: 40s + 5s exigiam os
+  // 45s EXATOS do orçamento, e qualquer milissegundo de overhead barrava o
+  // Copywriter para sempre).
   for (const k of STUDIO_AGENT_ORDER) {
-    assert.ok(
-      STUDIO_PROFILES[k].timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS <= STUDIO_REQUEST_BUDGET_MS,
-      `${k}: timeoutMs ${STUDIO_PROFILES[k].timeoutMs} + margem não cabe no orçamento`,
-    )
+    const necessario = STUDIO_PROFILES[k].timeoutMs
+      + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
+    assert.ok(necessario <= STUDIO_REQUEST_BUDGET_MS,
+      `${k}: timeout + margens (${necessario}) não cabe no orçamento`)
+    assert.ok(STUDIO_REQUEST_BUDGET_MS - necessario >= 2_000,
+      `${k}: sem folga real para o overhead da requisição`)
   }
 })
 
@@ -893,7 +897,8 @@ test('41) o timeout entregue ao provider nunca excede o tempo restante − marge
   const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
 
   const perfil = STUDIO_PROFILES[STUDIO_STRATEGIST_KEY]
-  const deadline = perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS  // limiar exato
+  // Limiar exato do portão: timeout + margem de persistência + de despacho.
+  const deadline = perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
   await runStudioCarousel(store, producao, brief, {
     // O relógio anda 4s DEPOIS do portão (na primeira leitura ele devolve 0,
     // nas seguintes 4s): o clamp precisa reduzir o timeout do provider.
@@ -1015,6 +1020,86 @@ test('45) o CAS mora na porta ContentStore e no Supabase é UPDATE com predicado
   const run = ler('src/lib/content-studio/studio/run.ts')
   const finaliza = run.slice(run.indexOf('transitionProductionStatus'))
   assert.ok(finaliza.includes('if (transicionou)'), 'evento final sem depender do CAS')
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// 9. Overhead real da requisição (o defeito visto em produção)
+// ════════════════════════════════════════════════════════════════════════════
+
+test('46) Copywriter e Designer começam mesmo com 1ms, 100ms e 2s de overhead', async () => {
+  // Reprodução do travamento de produção: o deadline nasce na ENTRADA da
+  // action e o portão só roda depois de auth + leituras. No código anterior,
+  // o Copywriter (40s + 5s) exigia os 45s EXATOS — 1ms de overhead já o
+  // barrava, toda continuação repetia partial e a produção parava no
+  // Estrategista. Este teste falhava lá; passa com a margem de despacho.
+  for (const overhead of [1, 100, 2_000]) {
+    const contador = { calls: 0, agentes: [] as string[] }
+    __setContentAIProviderForTests(providerBom(contador))
+    const brief = briefValido({ slides: 6 })
+    const store = new MemStore()
+    const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
+
+    // Cada requisição: deadline = orçamento; o relógio já marca `overhead`
+    // quando o portão mede o restante.
+    let r = await runStudioCarousel(store, producao, brief, {
+      now: () => overhead, deadlineAt: STUDIO_REQUEST_BUDGET_MS,
+    })
+    for (let i = 0; i < 4 && r.ok && r.state === 'partial'; i++) {
+      r = await runStudioCarousel(store, producao, brief, {
+        now: () => overhead, deadlineAt: STUDIO_REQUEST_BUDGET_MS,
+      })
+    }
+
+    assert.equal(r.state, 'created', `overhead=${overhead}ms: produção não concluiu`)
+    assert.deepEqual(contador.agentes, [...STUDIO_AGENT_ORDER],
+      `overhead=${overhead}ms: rodaram ${contador.agentes.join(',')}`)
+    assert.equal(contador.calls, 3, `overhead=${overhead}ms: ${contador.calls} chamadas`)
+    assert.equal(store.productions.get(producao.id)!.status, 'awaiting_approval')
+  }
+})
+
+test('47) retomada visível: botão "Continuar produção", sem retomada automática', () => {
+  const preview = ler('src/components/content-studio/office-preview.tsx')
+
+  // O botão e o handler existem.
+  assert.ok(preview.includes('Continuar produção'), 'botão de continuar ausente')
+  assert.ok(preview.includes('const continuarProducao'), 'handler de continuação ausente')
+  assert.ok(preview.includes('studioPendente'), 'estado pendente não derivado do servidor')
+
+  // O aviso de teto esgotado não é silêncio.
+  assert.ok(preview.includes('A produção ainda não terminou'), 'teto esgota em silêncio')
+
+  // Reabrir uma produção deriva o pendente do estado do SERVIDOR.
+  const abrir = preview.slice(preview.indexOf('const abrirProducao'), preview.indexOf('const vazio'))
+  assert.ok(abrir.includes('aplicarEstado'), 'abrirProducao não deriva o pendente')
+
+  // NUNCA retoma sozinho: nenhum useEffect chama a continuação — retomar
+  // custa uma chamada de IA e exige clique. E o handler é o único chamador
+  // fora do laço do criarRapido.
+  const semComent = preview.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+  const efeitos = [...semComent.matchAll(/useEffect\(([\s\S]*?)\n  \}, \[/g)].map(m => m[1])
+  for (const corpo of efeitos) {
+    assert.ok(!corpo.includes('continueStudioProduction'), 'continuação disparada por efeito')
+    assert.ok(!corpo.includes('continuarProducao'), 'retomada automática ao abrir a página')
+  }
+})
+
+test('48) na geração Studio a terceira mesa é "Designer" DESDE O INÍCIO', () => {
+  const preview = ler('src/components/content-studio/office-preview.tsx')
+
+  // O rótulo vem da IDENTIDADE do pipeline selecionado, não de evento — e
+  // fora da cena cosmética, para valer também durante Estratégia e Copy.
+  const memo = preview.slice(preview.indexOf('const view: OfficeView'), preview.indexOf('const reproduzindo'))
+  const aposCena = memo.slice(memo.indexOf('buildOfficeView'))
+  assert.ok(aposCena.includes("pipelineAtual === 'content_carousel_studio_v1'"),
+    'o rótulo não é condicionado à identidade do pipeline')
+  assert.ok(aposCena.includes("label = 'Designer'"), 'a terceira mesa não é renomeada')
+
+  // SÓ o rótulo: nenhum estado visual é forjado fora dos eventos.
+  assert.ok(!aposCena.includes("state = '"), 'estado visual inventado fora dos eventos')
+
+  // E produções antigas não são afetadas: o rename é escopado ao pipeline
+  // studio, então cc_* continua com "Pesquisador" (rótulo default da mesa).
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

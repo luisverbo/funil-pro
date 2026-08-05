@@ -63,24 +63,43 @@ import {
 export const STUDIO_PERSISTENCE_MARGIN_MS = 5_000
 
 /**
+ * Folga para o tempo que passa ANTES do provider ser chamado: auth, leitura da
+ * produção, listagem dos steps, o próprio claim. Sem ela, um agente cujo
+ * timeout preenche o orçamento exato nunca passa no portão — foi EXATAMENTE o
+ * defeito visto em produção: `deadline = agora + 45s` na entrada, alguns ms
+ * depois o portão media `restante < 45s` e o Copywriter (40s + 5s) jamais
+ * começava; toda continuação repetia `partial` e a produção parava no
+ * Estrategista.
+ */
+export const STUDIO_DISPATCH_MARGIN_MS = 2_000
+
+/**
  * Orçamento de UMA requisição. A rota declara maxDuration = 60s; este número
- * precisa ficar ABAIXO disso com folga real (aqui: 15s), porque a margem cobre
- * a persistência do runner — não o overhead da plataforma.
+ * precisa ficar ABAIXO disso com folga real (aqui: 15s), porque as margens
+ * cobrem o trabalho do runner — não o overhead da plataforma.
  */
 export const STUDIO_REQUEST_BUDGET_MS = 45_000
 
 /**
  * Perfil de cada agente. O invariante — conferido por teste e reafirmado em
- * runtime no portão — é: timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS <= orçamento.
+ * runtime no carregamento — é:
+ *
+ *   timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
+ *     <= STUDIO_REQUEST_BUDGET_MS
+ *
+ * E o portão exige as DUAS margens além do timeout, então a folga real de
+ * overhead de cada agente é `orçamento − (timeout + margens)` — no pior caso
+ * (35s), ainda sobram 3s de tolerância além da folga de despacho.
  */
 export const STUDIO_PROFILES = {
   [STUDIO_STRATEGIST_KEY]: { maxOutputTokens: 1200, timeoutMs: 30_000 },
-  [STUDIO_COPYWRITER_KEY]: { maxOutputTokens: 2600, timeoutMs: 40_000 },
-  [STUDIO_DESIGNER_KEY]: { maxOutputTokens: 2800, timeoutMs: 40_000 },
+  [STUDIO_COPYWRITER_KEY]: { maxOutputTokens: 2600, timeoutMs: 35_000 },
+  [STUDIO_DESIGNER_KEY]: { maxOutputTokens: 2800, timeoutMs: 35_000 },
 } as const
 
 for (const [k, p] of Object.entries(STUDIO_PROFILES)) {
-  if (p.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS > STUDIO_REQUEST_BUDGET_MS) {
+  const necessario = p.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
+  if (necessario > STUDIO_REQUEST_BUDGET_MS) {
     // Configuração impossível não deve nem carregar — falha no import, não
     // no meio de uma produção paga.
     throw new Error(`studio: perfil de ${k} não cabe no orçamento da requisição`)
@@ -172,9 +191,13 @@ export async function runStudioCarousel(
       return { ok: true, state: 'partial', pending: faltantes(indice) }
     }
 
-    // ── Portão de tempo ANTES do claim: o agente INTEIRO precisa caber. ─────
+    // ── Portão de tempo ANTES do claim: o agente INTEIRO precisa caber —
+    //    timeout MAIS as duas margens (despacho + persistência). O overhead
+    //    normal da requisição (auth, leituras, claim) é coberto pela folga
+    //    entre `necessário` e o orçamento, garantida pelo invariante. ────────
     const perfil = STUDIO_PROFILES[agentKey]
-    if (deadline - agora() < perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS) {
+    const necessarioMs = perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
+    if (deadline - agora() < necessarioMs) {
       // Nenhum step, nenhum evento, nenhum provider — nada a limpar depois.
       return { ok: true, state: 'partial', pending: faltantes(indice) }
     }
