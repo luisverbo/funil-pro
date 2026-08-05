@@ -43,7 +43,7 @@ export interface ProductionRepo {
   /** Produções reais do tenant ainda abertas. */
   listOpen(): Promise<ProductionRowLite[]>
   /** Cria a produção `draft`, SEM steps, jobs ou eventos. */
-  insert(brief: ValidBrief): Promise<ProductionRowLite>
+  insert(brief: Record<string, unknown> & { idempotency_key: string }): Promise<ProductionRowLite>
   /** Cancelamento lógico (`status='canceled'`). Nada é apagado. */
   cancel(ids: string[]): Promise<void>
   /** Materializa steps e enfileira o primeiro passo. Precisa ser idempotente. */
@@ -67,10 +67,11 @@ export type EnsureProductionResult =
 export async function createWithPreflight(
   preflight: () => void,
   repoFactory: () => ProductionRepo,
-  brief: ValidBrief,
+  brief: Record<string, unknown> & { idempotency_key: string },
+  compareFields: readonly string[] = BRIEF_FIELDS,
 ): Promise<EnsureProductionResult> {
   preflight() // lança ContentAIError — o chamador traduz para mensagem pública
-  return ensureProduction(repoFactory(), brief)
+  return ensureProduction(repoFactory(), brief as ValidBrief, compareFields)
 }
 
 /**
@@ -86,8 +87,21 @@ export function sameBrief(
   a: Record<string, unknown> | null,
   b: Record<string, unknown> | null,
 ): boolean {
+  return sameBriefFields(a, b, BRIEF_FIELDS)
+}
+
+/**
+ * Equivalência por LISTA DE CAMPOS normalizados — nunca por ordem de
+ * propriedades JSON. Cada geração compara os SEUS campos: o briefing avançado
+ * usa BRIEF_FIELDS; a Criação rápida usa QUICK_COMPARE_FIELDS.
+ */
+export function sameBriefFields(
+  a: Record<string, unknown> | null,
+  b: Record<string, unknown> | null,
+  fields: readonly string[],
+): boolean {
   if (!a || !b) return false
-  return BRIEF_FIELDS.every(f => (a[f] ?? '') === (b[f] ?? ''))
+  return fields.every(f => (a[f] ?? '') === (b[f] ?? ''))
 }
 
 /**
@@ -98,7 +112,9 @@ export function sameBrief(
  */
 export async function ensureProduction(
   repo: ProductionRepo,
-  brief: ValidBrief,
+  brief: Record<string, unknown> & { idempotency_key: string },
+  // Campos de equivalência da geração — default: briefing avançado (2A).
+  compareFields: readonly string[] = BRIEF_FIELDS,
 ): Promise<EnsureProductionResult> {
   // 1) Mesmo envio de novo? Só se o CONTEÚDO também for o mesmo.
   //    Chave igual + briefing igual    -> devolve a de antes, nada é criado.
@@ -107,7 +123,7 @@ export async function ensureProduction(
   const mesmas = await repo.findByIdempotencyKey(brief.idempotency_key)
   const jaCriada = pickWinningProduction(mesmas)
   if (jaCriada) {
-    if (!sameBrief(jaCriada.brief, brief)) return { ok: false, reason: 'idempotency_conflict' }
+    if (!sameBriefFields(jaCriada.brief, brief, compareFields)) return { ok: false, reason: 'idempotency_conflict' }
     await repo.materialize(jaCriada.id)   // idempotente: nada duplica
     return { ok: true, productionId: jaCriada.id, reused: true, canceled: [] }
   }
@@ -134,7 +150,7 @@ export async function ensureProduction(
   // Corrida patológica: outra chamada venceu com a MESMA chave mas briefing
   // DIFERENTE. A nossa já foi cancelada acima — devolver a vencedora aqui
   // entregaria conteúdo que não é o deste envio. Conflito explícito.
-  if (vencedora.id !== minha.id && !sameBrief(vencedora.brief, brief)) {
+  if (vencedora.id !== minha.id && !sameBriefFields(vencedora.brief, brief, compareFields)) {
     return { ok: false, reason: 'idempotency_conflict' }
   }
 

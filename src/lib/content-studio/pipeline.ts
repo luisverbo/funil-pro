@@ -89,11 +89,27 @@ export const CAROUSEL_AI_PIPELINE: PipelineDef = {
   maxAutoRevisions: 1,
 }
 
+/**
+ * Fase 3 (MVP) — Criação rápida: UM step, SEM fila.
+ *
+ * Este pipeline existe como IDENTIDADE persistida (pipeline_key + agent_key) e
+ * para a admissão/result-view — a execução NÃO passa pelo orquestrador: é uma
+ * única chamada síncrona em quick/run.ts, sem jobs nem retries de job.
+ */
+export const QUICK_PIPELINE: PipelineDef = {
+  key: 'content_carousel_quick_v1',
+  label: 'Criação rápida (IA)',
+  steps: [{ agentKey: 'cc_quick_carousel', dependsOn: [] }],
+  finalStatus: 'awaiting_approval',
+  finalEvent: 'content_waiting_approval',
+}
+
 const PIPELINES: Record<string, PipelineDef> = {
   [STUB_PIPELINE.key]: STUB_PIPELINE,
   [OFFICE_PIPELINE.key]: OFFICE_PIPELINE,
   [CAROUSEL_PIPELINE.key]: CAROUSEL_PIPELINE,
   [CAROUSEL_AI_PIPELINE.key]: CAROUSEL_AI_PIPELINE,
+  [QUICK_PIPELINE.key]: QUICK_PIPELINE,
 }
 
 export function getPipeline(key: string): PipelineDef {

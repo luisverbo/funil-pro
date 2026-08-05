@@ -7,12 +7,14 @@ interface Props {
   children: React.ReactNode
   displayName: string
   isAdmin: boolean
+  /** Decidido no SERVIDOR (layout) — visibilidade do item Content Studio. */
+  showContentStudio?: boolean
 }
 
 const EXPANDED_W = 240
 const COLLAPSED_W = 64
 
-export default function AppShell({ children, displayName, isAdmin }: Props) {
+export default function AppShell({ children, displayName, isAdmin, showContentStudio = false }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
 
@@ -55,6 +57,7 @@ export default function AppShell({ children, displayName, isAdmin }: Props) {
       <Sidebar
         displayName={displayName}
         isAdmin={isAdmin}
+        showContentStudio={showContentStudio}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />

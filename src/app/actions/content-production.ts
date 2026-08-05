@@ -32,7 +32,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { drainQueue, startProduction } from '@/lib/content-studio/orchestrator'
 import { preflightContentAI } from '@/lib/content-studio/ai/bootstrap'
 import { firstBriefMessage, validateBrief, type BriefInput, type ValidBrief } from '@/lib/content-studio/brief'
-import { CAROUSEL_AI_PIPELINE } from '@/lib/content-studio/pipeline'
+import { CAROUSEL_AI_PIPELINE, QUICK_PIPELINE } from '@/lib/content-studio/pipeline'
 import {
   admitProduction,
   isRealProduction,
@@ -50,6 +50,8 @@ import {
   type ProductionRowLite,
 } from '@/lib/content-studio/production-runner'
 import { buildProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
+import { runQuickCarousel } from '@/lib/content-studio/quick/run'
+import { QUICK_COMPARE_FIELDS, validateQuickInput, type QuickInput, type ValidQuickBrief } from '@/lib/content-studio/quick/schema'
 import { createSupabaseContentStore } from '@/lib/content-studio/store'
 import { toPublicEvent, type PublicEvent } from '@/lib/content-studio/demo-guard'
 import type { ProductionRow, StepRow, StoredEvent } from '@/lib/content-studio/types'
@@ -60,6 +62,8 @@ export interface ProductionSummary {
   title: string | null
   status: ProductionRow['status']
   createdAt: string
+  /** Identidade da geração — o rodapé descreve o modo por ela. */
+  pipelineKey: string
 }
 
 export interface ProductionState {
@@ -166,6 +170,129 @@ export async function createProduction(input: BriefInput): Promise<ActionResult<
       return fail('ai_disabled', err)
     }
     return fail('create_failed', err)
+  }
+}
+
+/**
+ * CRIAÇÃO RÁPIDA — uma Server Action, UMA chamada de IA, sem jobs.
+ *
+ * Fluxo: autentica → tenant da sessão → valida entrada mínima → preflight de
+ * IA (sem rede, ANTES de persistir) → cria a produção (casca) → executa a
+ * geração única via `runQuickCarousel` (step + eventos + output + status pela
+ * porta ContentStore) → devolve o estado. Falha da IA: produção `failed` com
+ * evento seguro — nunca `running` eterno por erro tratável.
+ *
+ * O cliente NÃO envia tenant, pipeline, agente, status, modelo ou prompt: a
+ * validação copia por lista branca e as constantes são do servidor.
+ */
+export async function createQuickProduction(input: QuickInput): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+
+  const validado = validateQuickInput(input ?? {})
+  if (!validado.ok) return { ok: false, error: validado.message }
+
+  const admin = createAdminClient()
+
+  try {
+    // MESMO coordenador provado na 2A: preflight ÚNICO antes da fábrica do
+    // repo; eleição/idempotência por chave DENTRO do pipeline quick; limite de
+    // abertas contando as TRÊS gerações (via listOpen + MAX_OPEN_PRODUCTIONS,
+    // sem lista duplicada); a materialização — que é a ÚNICA chamada paga —
+    // só acontece para a vencedora, depois da eleição. Perdedora cancelada
+    // sem step, sem evento e sem chamada de IA.
+    const resultado = await createWithPreflight(
+      preflightContentAI,
+      () => supabaseQuickRepo(admin, tenantId, validado.brief),
+      validado.brief,
+      QUICK_COMPARE_FIELDS,
+    )
+    if (!resultado.ok) return fail(resultado.reason)
+    return readState(admin, tenantId, resultado.productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+/**
+ * Repo da Criação rápida — mesma porta do avançado, escopos próprios:
+ *   • idempotency_key buscada SÓ dentro de content_carousel_quick_v1 — uma
+ *     produção dos pipelines antigos jamais é reaproveitada por coincidência;
+ *   • listOpen conta as TRÊS gerações (PRODUCTION_PIPELINE_KEYS) — a cota do
+ *     tenant é uma só, trocar de pipeline não a multiplica; demonstrações e
+ *     estados terminais ficam fora (isOpenProduction, semântica única);
+ *   • materialize = runQuickCarousel: a única chamada de IA vive aqui, e só a
+ *     vencedora da eleição chega até ela. Reentrada com step concluído é
+ *     no-op — nunca uma segunda chamada paga.
+ *
+ * LIMITAÇÃO DOCUMENTADA (a mesma da 2A, sem constraint/migration): a
+ * convergência é por releitura+eleição. Duas chamadas simultâneas podem
+ * inserir duas cascas, mas ambas elegem a MESMA vencedora e a perdedora é
+ * cancelada ANTES de qualquer materialização — a janela restante produz no
+ * máximo uma casca cancelada, nunca chamada de IA nem conteúdo duplicado.
+ */
+function supabaseQuickRepo(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  brief: ValidQuickBrief,
+): ProductionRepo {
+  const base = () => admin.from('cs_productions').select(SELECT_LITE).eq('tenant_id', tenantId)
+
+  return {
+    async findByIdempotencyKey(key: string): Promise<ProductionRowLite[]> {
+      const { data, error } = await base()
+        .eq('pipeline_key', QUICK_PIPELINE.key)
+        .eq('brief->>idempotency_key', key)
+        .order('created_at', { ascending: true })
+        .limit(10)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as unknown as ProductionRowLite[]
+    },
+
+    async listOpen(): Promise<ProductionRowLite[]> {
+      const { data, error } = await base()
+        .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
+        .not('status', 'in', `(${PRODUCTION_TERMINAL.join(',')})`)
+        .order('created_at', { ascending: true })
+        .limit(20)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as unknown as ProductionRowLite[]
+    },
+
+    async insert(briefValido): Promise<ProductionRowLite> {
+      const { data, error } = await admin
+        .from('cs_productions')
+        .insert({
+          tenant_id: tenantId,               // <- da sessão, nunca do cliente
+          pipeline_key: QUICK_PIPELINE.key,  // <- constante do servidor
+          title: brief.tema.slice(0, 80),
+          brief: briefValido,
+        })
+        .select(SELECT_LITE)
+        .single()
+      if (error || !data) throw new Error(error?.message ?? 'insert falhou')
+      return data as unknown as ProductionRowLite
+    },
+
+    async cancel(ids: string[]): Promise<void> {
+      if (ids.length === 0) return
+      const { error } = await admin
+        .from('cs_productions')
+        .update({ status: 'canceled', updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .in('id', ids)
+      if (error) throw new Error(error.message)
+    },
+
+    async materialize(productionId: string): Promise<void> {
+      const store = createSupabaseContentStore(admin, { tenantId, productionId })
+      const production = await store.getProduction(productionId)
+      if (!production) throw new Error('produção não encontrada na materialização')
+      await runQuickCarousel(store, production, brief)
+    },
   }
 }
 
@@ -380,6 +507,7 @@ export async function listProductions(): Promise<ActionResult<ProductionSummary[
     ok: true,
     data: rows.filter(isRealProduction).map(r => ({
       id: r.id, title: r.title, status: r.status, createdAt: r.created_at,
+      pipelineKey: r.pipeline_key,
     })),
   }
 }
@@ -392,7 +520,7 @@ async function readState(
   productionId: string,
 ): Promise<ActionResult<ProductionState>> {
   const [producao, eventos, steps, jobs] = await Promise.all([
-    admin.from('cs_productions').select('id, status, title, created_at')
+    admin.from('cs_productions').select('id, status, title, created_at, pipeline_key')
       .eq('id', productionId).eq('tenant_id', tenantId).maybeSingle(),
     admin.from('cs_events').select('*')
       .eq('tenant_id', tenantId).eq('production_id', productionId)
@@ -408,13 +536,17 @@ async function readState(
   if (producao.error || !producao.data) return fail('read_failed', producao.error?.message)
 
   const row = producao.data as {
-    id: string; status: ProductionRow['status']; title: string | null; created_at: string
+    id: string; status: ProductionRow['status']; title: string | null
+    created_at: string; pipeline_key: string
   }
 
   return {
     ok: true,
     data: {
-      production: { id: row.id, title: row.title, status: row.status, createdAt: row.created_at },
+      production: {
+        id: row.id, title: row.title, status: row.status,
+        createdAt: row.created_at, pipelineKey: row.pipeline_key,
+      },
       // tenant_id é removido de cada evento antes de sair do servidor.
       events: ((eventos.data ?? []) as StoredEvent[]).map(toPublicEvent),
       pending: (jobs.count ?? 0) > 0,

@@ -303,8 +303,8 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
   // Toda action começa pelo tenant da sessão e sai se não houver.
   const exportadas = [...actionsCode.matchAll(/export async function (\w+)\(/g)].map(m => m[1])
   assert.deepEqual(exportadas.sort(), [
-    'advanceProduction', 'createProduction', 'getLatestProduction',
-    'getProductionState', 'listProductions',
+    'advanceProduction', 'createProduction', 'createQuickProduction',
+    'getLatestProduction', 'getProductionState', 'listProductions',
   ])
 
   for (const nome of exportadas) {
@@ -905,9 +905,10 @@ test('27) nenhum endpoint público foi criado', () => {
   assert.ok(actions.startsWith("'use server'"), 'as actions precisam ser server-only')
   assert.ok(!actionsCode.includes('NextResponse'), 'a action virou handler HTTP')
 
-  // A página segue fora do menu lateral.
+  // A página só entra no menu sob a prop decidida no servidor (nav.test.ts).
   const sidebar = ler('src/components/layout/sidebar.tsx')
-  assert.ok(!sidebar.includes('/content-studio'), 'a rota entrou no menu')
+  assert.ok(sidebar.includes('showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV'),
+    'o item do menu deve ser condicional à autorização do servidor')
 })
 
 test('28) nenhum arquivo do R1 foi alterado', () => {
