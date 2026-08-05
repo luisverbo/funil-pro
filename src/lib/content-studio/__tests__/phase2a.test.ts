@@ -303,8 +303,8 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
   // Toda action começa pelo tenant da sessão e sai se não houver.
   const exportadas = [...actionsCode.matchAll(/export async function (\w+)\(/g)].map(m => m[1])
   assert.deepEqual(exportadas.sort(), [
-    'advanceProduction', 'createProduction', 'getLatestProduction',
-    'getProductionState', 'listProductions',
+    'advanceProduction', 'createProduction', 'createQuickProduction',
+    'getLatestProduction', 'getProductionState', 'listProductions',
   ])
 
   for (const nome of exportadas) {

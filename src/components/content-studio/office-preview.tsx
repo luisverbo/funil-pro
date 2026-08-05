@@ -20,6 +20,7 @@ import { advanceDemo, getDemoState, getLatestDemo, startDemoProduction } from '@
 import {
   advanceProduction,
   createProduction,
+  createQuickProduction,
   getLatestProduction,
   getProductionState,
   listProductions,
@@ -28,6 +29,8 @@ import {
 import { emptyProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
 import type { BriefField } from '@/lib/content-studio/brief'
 import ProductionForm from './production-form'
+import QuickCreateForm, { type BrandProfile } from './quick-create-form'
+import type { QuickObjetivo } from '@/lib/content-studio/quick/schema'
 import ResultPanel from './result-panel'
 import {
   buildOfficeView,
@@ -96,6 +99,9 @@ export default function OfficePreview() {
   const [producoes, setProducoes] = useState<ProductionSummary[]>([])
   const [criando, setCriando] = useState(false)
   const [erroBrief, setErroBrief] = useState<string | null>(null)
+  // Criação rápida é o PADRÃO; o briefing completo fica atrás do link.
+  const [briefingAvancado, setBriefingAvancado] = useState(false)
+  const [pipelineAtual, setPipelineAtual] = useState<string | null>(null)
 
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
@@ -129,6 +135,8 @@ export default function OfficePreview() {
         if (!res.ok) { setError(res.error); return }
         if (res.data) {
           setProductionId(res.data.production.id)
+          const prod = res.data.production as { pipelineKey?: string }
+          setPipelineAtual(typeof prod.pipelineKey === 'string' ? prod.pipelineKey : null)
           setStatus(res.data.production.status)
           setAllEvents(res.data.events)
           setRevealed(res.data.events.length) // já aconteceu: mostra completa
@@ -298,6 +306,40 @@ export default function OfficePreview() {
     }
   }, [])
 
+  /**
+   * CRIAÇÃO RÁPIDA: uma única Server Action, uma única chamada de IA. Nada de
+   * laço de avanço no cliente — a resposta já volta com o estado final
+   * (awaiting_approval ou failed).
+   */
+  const criarRapido = useCallback(async (dados: {
+    tema: string; objetivo: QuickObjetivo; oferta: string; cta: string; marca: BrandProfile
+  }) => {
+    if (criando || running) return
+    setErroBrief(null)
+    setError(null)
+    setCriando(true)
+    setRunning(true)
+    setPausado(false)
+    setAllEvents([])
+    setRevealed(0)
+    setResult(emptyProductionResult())
+
+    try {
+      const r = await createQuickProduction(dados)
+      if (!r.ok) { setErroBrief(r.error); return }
+      if (cancelled.current) return
+      setProductionId(r.data.production.id)
+      setPipelineAtual(r.data.production.pipelineKey)
+      setStatus(r.data.production.status)
+      setAllEvents(r.data.events)
+      setResult(r.data.result)
+    } catch {
+      setErroBrief('Não foi possível criar o carrossel. Tente novamente.')
+    } finally {
+      if (!cancelled.current) { setCriando(false); setRunning(false) }
+    }
+  }, [criando, running])
+
   /** Cria a produção a partir do briefing e acompanha até o portão de aprovação. */
   const iniciarProducao = useCallback(async (
     valores: Record<BriefField, string>,
@@ -347,6 +389,7 @@ export default function OfficePreview() {
     const res = await getProductionState(id)
     if (!res.ok) { setError(res.error); return }
     setProductionId(id)
+    setPipelineAtual(res.data.production.pipelineKey)
     setStatus(res.data.production.status)
     setAllEvents(res.data.events)
     setResult(res.data.result)
@@ -417,9 +460,28 @@ export default function OfficePreview() {
         ))}
       </div>
 
-      {/* Briefing — só no modo produção. Não some por causa da timeline. */}
-      {modo === 'producao' && (
-        <ProductionForm onSubmit={iniciarProducao} enviando={criando} erro={erroBrief} />
+      {/* Criação rápida é o padrão; o briefing completo fica atrás do link. */}
+      {modo === 'producao' && !briefingAvancado && (
+        <QuickCreateForm
+          onSubmit={criarRapido}
+          enviando={criando}
+          erro={erroBrief}
+          onBriefingAvancado={() => setBriefingAvancado(true)}
+        />
+      )}
+      {modo === 'producao' && briefingAvancado && (
+        <>
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => setBriefingAvancado(false)}
+              className="text-sm font-semibold text-indigo-600 underline-offset-2 hover:underline"
+            >
+              ← Voltar para a criação rápida
+            </button>
+          </div>
+          <ProductionForm onSubmit={iniciarProducao} enviando={criando} erro={erroBrief} />
+        </>
       )}
 
       {/* Produções do tenant — trocar de produção só LÊ, nunca executa. */}
@@ -560,9 +622,18 @@ export default function OfficePreview() {
         />
       </section>
 
+      {/* Rodapé por MODO — o texto precisa dizer a verdade sobre a geração. */}
       <p className="mt-4 text-xs text-gray-400">
-        Os agentes desta demonstração são determinísticos e não usam IA: nenhuma chamada externa é feita
-        e nenhum custo é gerado. Os eventos exibidos são lidos de <code>cs_events</code>.
+        {modo === 'demo'
+          ? 'Os agentes desta demonstração são determinísticos e não usam IA: nenhuma chamada externa é feita e nenhum custo é gerado.'
+          : pipelineAtual === 'content_carousel_quick_v1'
+            ? 'Criação rápida: uma geração direta com IA.'
+            : pipelineAtual === 'content_carousel_ai_v1'
+              ? 'Geração realizada com IA.'
+              : pipelineAtual === 'content_carousel_v1'
+                ? 'Geração determinística (produção antiga, sem IA).'
+                : 'Crie um carrossel para começar.'}{' '}
+        Os eventos exibidos são lidos de <code>cs_events</code>.
       </p>
     </div>
   )

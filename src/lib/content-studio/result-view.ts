@@ -119,11 +119,64 @@ function aggregateAI(steps: StepRow[]): AIMeta {
  * Só lê steps `completed`: um step que falhou pode ter deixado output parcial,
  * e mostrá-lo como resultado seria apresentar rascunho abandonado como entrega.
  */
+/**
+ * Resultado da Criação rápida — um único output com copy, estratégia embutida
+ * e a auto-verificação (`review.notes` vira os avisos do painel). Nenhum dado
+ * de gerações antigas entra aqui.
+ */
+function buildQuickResult(data: Record<string, unknown>, steps: StepRow[]): ProductionResult {
+  const estrategia = (data.strategy && typeof data.strategy === 'object')
+    ? (data.strategy as Record<string, unknown>) : {}
+  const review = (data.review && typeof data.review === 'object')
+    ? (data.review as Record<string, unknown>) : {}
+  const slidesBrutos = Array.isArray(data.slides) ? data.slides : []
+
+  const slides: ResultSlide[] = slidesBrutos
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .map((s, i) => ({
+      numero: typeof s.number === 'number' ? s.number : i + 1,
+      papel: '',
+      headline: texto(s.headline) ?? '',
+      texto: texto(s.body) ?? '',
+    }))
+
+  const notes = (Array.isArray(review.notes) ? review.notes : [])
+    .filter((n): n is string => typeof n === 'string')
+
+  return {
+    titulo: texto(data.title),
+    estrategia: {
+      angulo: texto(estrategia.bigIdea) ?? texto(estrategia.angle),
+      promessa: texto(estrategia.promise),
+      tom: null,
+    },
+    slides,
+    legenda: texto(data.caption),
+    cta: texto(data.cta),
+    hashtags: Array.isArray(data.hashtags)
+      ? (data.hashtags as string[]).filter(h => typeof h === 'string') : [],
+    revisao: {
+      verdict: review.approved === true ? 'approved_for_human_review' : null,
+      checklist: [],
+      avisos: notes,
+      scores: {},
+      media: null,
+    },
+    revisionCycle: 0,
+    disponivel: slides.length > 0,
+    ai: aggregateAI(steps),
+  }
+}
+
 export function buildProductionResult(steps: StepRow[]): ProductionResult {
   // A GERAÇÃO é determinada pelas chaves realmente presentes nos steps:
   // qualquer step cc_ai_* => geração de IA (2B); senão, determinística (2A).
   // Todos os campos vêm da MESMA geração — nunca estratégia de uma com copy
   // de outra, nunca revisor de uma geração avaliando copy da outra.
+  // Criação rápida: UM step com tudo dentro (copy + estratégia + review).
+  const quick = dataDe(steps, 'cc_quick_carousel')
+  if (quick) return buildQuickResult(quick, steps)
+
   const geracaoAI = steps.some(s => s.agent_key.startsWith('cc_ai_'))
   const K = geracaoAI
     ? { strategist: 'cc_ai_strategist', copywriter: 'cc_ai_copywriter', reviewer: 'cc_ai_reviewer' }

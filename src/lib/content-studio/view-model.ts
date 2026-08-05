@@ -117,6 +117,7 @@ export const AGENT_LABELS: Record<string, string> = {
   ...OFFICE_AGENT_LABELS,
   ...CAROUSEL_AGENT_LABELS,
   ...CAROUSEL_AI_LABELS,
+  cc_quick_carousel: 'Copywriter',
 }
 
 /**
@@ -143,6 +144,9 @@ const DESK_BY_AGENT: Record<string, string> = {
   cc_ai_researcher: 'researcher',
   cc_ai_strategist: 'strategist',
   cc_ai_copywriter: 'copywriter',
+  // Criação rápida: UM agente, sentado na mesa do Copywriter. Pesquisador e
+  // Estrategista não executam — e portanto não são simulados na cena.
+  cc_quick_carousel: 'copywriter',
 }
 
 /** Mesa do agente, ou null para quem não tem lugar na cena. */
