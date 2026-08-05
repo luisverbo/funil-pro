@@ -35,36 +35,47 @@ export function isContentAIEnabled(): boolean {
 }
 
 /**
- * Modelo do Content Studio.
+ * Modelo do Content Studio — EXPLÍCITO, sem fallback.
  *
- * O default 'claude-sonnet-5' é o MESMO literal usado com sucesso em produção
- * pelos agentes conversacionais (src/lib/agents/chat.ts: AGENT_MODEL ??
- * 'claude-sonnet-5') — não é um chute novo desta fase. CONTENT_AI_MODEL
- * sobrepõe por ambiente; vazio/em branco é configuração inválida, nunca
- * fallback silencioso para outro modelo.
+ * O canário provou que a alegação "o default de chat.ts está validado em
+ * produção" era frágil: chat.ts usa `AGENT_MODEL ?? 'claude-sonnet-5'`, e a
+ * Vercel pode definir AGENT_MODEL (o motor conversacional rodou em Haiku,
+ * segundo o CLAUDE.md) — o literal default pode nunca ter sido exercido.
+ *
+ * Regra desta versão: com a IA habilitada, CONTENT_AI_MODEL precisa estar
+ * DEFINIDO e não vazio no ambiente. Ausência = invalid_config, barrada pelo
+ * preflight ANTES de qualquer persistência. Nada de fallback silencioso: um
+ * modelo errado deve falhar na configuração, não na primeira chamada paga.
+ * O valor vem somente do servidor — nenhuma action o aceita do cliente.
  */
 export function resolveContentAIModel(): string {
   const env = process.env.CONTENT_AI_MODEL
-  if (env !== undefined) {
-    const limpo = env.trim()
-    if (!limpo) throw new ContentAIError('invalid_config', 'CONTENT_AI_MODEL vazio')
-    return limpo
+  if (env === undefined) {
+    throw new ContentAIError('invalid_config', 'CONTENT_AI_MODEL ausente — obrigatório com a IA habilitada')
   }
-  return 'claude-sonnet-5'
+  const limpo = env.trim()
+  if (!limpo) throw new ContentAIError('invalid_config', 'CONTENT_AI_MODEL vazio')
+  return limpo
 }
 
-/** Perfil de chamada por papel. Teto de saída conservador: carrossel é curto. */
+/**
+ * Perfil de chamada por papel. Teto de saída conservador: carrossel é curto.
+ *
+ * SEM sampling parameters — e não é omissão: o Claude Sonnet 5 rejeita com
+ * HTTP 400 qualquer request com temperature/top_p/top_k fora do padrão, e foi
+ * exatamente isso que derrubou o primeiro canário (perfis 0.2–0.8). O caráter
+ * de cada agente (criativo vs. rigoroso) é responsabilidade dos PROMPTS.
+ */
 export interface AICallProfile {
   maxOutputTokens: number
-  temperature: number
   timeoutMs: number
 }
 
 export const AI_PROFILES: Record<string, AICallProfile> = {
-  researcher: { maxOutputTokens: 1800, temperature: 0.3, timeoutMs: 60_000 },
-  strategist: { maxOutputTokens: 1800, temperature: 0.6, timeoutMs: 60_000 },
-  copywriter: { maxOutputTokens: 2200, temperature: 0.8, timeoutMs: 90_000 },
-  reviewer:   { maxOutputTokens: 1400, temperature: 0.2, timeoutMs: 60_000 },
+  researcher: { maxOutputTokens: 1800, timeoutMs: 60_000 },
+  strategist: { maxOutputTokens: 1800, timeoutMs: 60_000 },
+  copywriter: { maxOutputTokens: 2200, timeoutMs: 90_000 },
+  reviewer:   { maxOutputTokens: 1400, timeoutMs: 60_000 },
 }
 
 /** No máximo UM retry técnico por chamada (timeout, 429/529, JSON inválido). */

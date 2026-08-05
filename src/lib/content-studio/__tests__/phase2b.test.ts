@@ -535,7 +535,8 @@ test('24-26) o cliente não escolhe modelo, não envia prompt, não envia output
   // O modelo vem da config do servidor, com env opcional — nunca de parâmetro.
   const config = ler('src/lib/content-studio/ai/config.ts')
   assert.ok(config.includes('CONTENT_AI_MODEL'))
-  assert.ok(config.includes("'claude-sonnet-5'"), 'o default provado sumiu')
+  assert.ok(!/return 'claude-/.test(semComentarios(config)),
+    'fallback silencioso de modelo voltou ao config')
   assert.ok(!actions.includes('CONTENT_AI_MODEL'), 'as actions repassam o modelo')
   // E o formulário continua enviando SÓ os campos do briefing.
   const form = semComentarios(ler('src/components/content-studio/production-form.tsx'))
@@ -885,6 +886,73 @@ test('resolução) resultado nunca mistura gerações', async () => {
   assert.equal(r2.titulo, 'ANTIGO')
 })
 
+// ─── CANÁRIO no orquestrador: erro FATAL não reagenda ───────────────────────
+
+test('canário) erro fatal do provider: sem agent_retrying, job falha, produção falha', async () => {
+  // Provider falso que devolve exatamente o que o canário sofreu: um 400
+  // fatal, agora TIPADO. O orquestrador precisa falhar de primeira.
+  __setContentAIProviderForTests({
+    async call() {
+      throw new ContentAIError('invalid_request', 'status=400',
+        { httpStatus: 400, providerErrorType: 'invalid_request_error' })
+    },
+  })
+
+  const store = new MemStore()
+  store.criar(CAROUSEL_AI_PIPELINE.key, BRIEF_FUNILPRO)
+  await startProduction(store, 'prod-1')
+  await drainQueue(store, 10)
+
+  // NENHUM agent_retrying — o defeito do canário era exatamente este evento.
+  assert.equal(store.events.filter(e => e.type === 'agent_retrying').length, 0,
+    'erro fatal criou agent_retrying')
+
+  // UM agent_failed, com payload contendo SÓ campos seguros.
+  const falhas = store.events.filter(e => e.type === 'agent_failed')
+  assert.equal(falhas.length, 1, `${falhas.length} agent_failed`)
+  assert.equal(falhas[0].payload.error_code, 'invalid_request')
+  assert.equal(falhas[0].payload.http_status, 400)
+  assert.equal(falhas[0].payload.provider_error_type, 'invalid_request_error')
+  // Erro de IA estruturado: SEM campo textual — só código/status/tipo.
+  assert.ok(!('error' in falhas[0].payload), 'evento de IA persistiu mensagem textual')
+
+  // Job falhou de vez (sem pending/retry), step failed, produção failed.
+  const researcher = store.steps.find(s => s.agent_key === 'cc_ai_researcher')!
+  assert.equal(researcher.status, 'failed')
+  assert.equal(researcher.attempt, 0, 'houve nova tentativa de job')
+  assert.ok(store.jobs.every(j => j.status !== 'pending' && j.status !== 'running'),
+    'sobrou job reagendado para um erro fatal')
+  assert.equal(store.jobs.length, 1, 'um novo job foi criado')
+  assert.equal(store.productions.get('prod-1')!.status, 'failed')
+
+  // E o pipeline parou no primeiro agente: nada downstream rodou.
+  assert.equal(store.events.filter(e => e.type === 'agent_started').length, 1)
+})
+
+test('canário) erro RETENTÁVEL continua com o retry de job (backoff)', async () => {
+  // 429/5xx/timeout minutos depois têm chance real de sucesso — o retry de
+  // job continua correto para eles. Decisão documentada: invalid_output e
+  // truncated_output também permanecem retentáveis (variação de amostragem).
+  __setContentAIProviderForTests({
+    async call() {
+      throw new ContentAIError('rate_limited', 'status=429', { httpStatus: 429 })
+    },
+  })
+
+  const store = new MemStore()
+  store.criar(CAROUSEL_AI_PIPELINE.key, BRIEF_FUNILPRO)
+  await startProduction(store, 'prod-1')
+  await runNextJob(store)
+
+  const retries = store.events.filter(e => e.type === 'agent_retrying')
+  assert.equal(retries.length, 1, 'retentável deveria reagendar o job')
+  assert.equal(retries[0].payload.error_code, 'rate_limited')
+  assert.equal(retries[0].payload.http_status, 429)
+  assert.ok(!('error' in retries[0].payload), 'retry de IA persistiu mensagem textual')
+  assert.equal(store.jobs[0].status, 'pending', 'o job não voltou para a fila')
+  assert.notEqual(store.productions.get('prod-1')!.status, 'failed')
+})
+
 // ─── kill switch ────────────────────────────────────────────────────────────
 
 test('kill-switch) default desligado; só a string exata "true" habilita', () => {
@@ -1000,16 +1068,23 @@ test('preflight) configuração inválida = zero persistência; válida = prosse
       () => createWithPreflight(preflightContentAI, fabrica, v.brief), /content_ai:missing_key/)
     assert.equal(toques, 0, 'sem chave tocou a persistência')
 
-    // 3. ligado com modelo vazio → zero persistência
+    // 3a. ligado com chave mas SEM modelo → zero persistência (regra nova do
+    // canário: modelo explícito obrigatório, sem fallback).
     process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
+    delete process.env.CONTENT_AI_MODEL
+    await assert.rejects(
+      () => createWithPreflight(preflightContentAI, fabrica, v.brief), /content_ai:invalid_config/)
+    assert.equal(toques, 0, 'modelo ausente tocou a persistência')
+
+    // 3b. modelo vazio → zero persistência
     process.env.CONTENT_AI_MODEL = '   '
     await assert.rejects(
       () => createWithPreflight(preflightContentAI, fabrica, v.brief), /content_ai:invalid_config/)
     assert.equal(toques, 0, 'modelo vazio tocou a persistência')
     assert.equal(fabricas, 0, 'o repo foi CONSTRUÍDO antes do preflight passar')
 
-    // 4. configuração válida → a criação prossegue (repo é usado)
-    delete process.env.CONTENT_AI_MODEL
+    // 4. configuração válida (switch + chave + modelo) → a criação prossegue
+    process.env.CONTENT_AI_MODEL = 'claude-modelo-de-teste'
     const r = await createWithPreflight(preflightContentAI, fabrica, v.brief)
     assert.ok(r.ok, 'configuração válida deveria criar')
     assert.ok(toques > 0, 'a criação válida não usou o repo')

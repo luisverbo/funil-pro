@@ -252,6 +252,36 @@ export interface PipelineDef {
 export const DEFAULT_FINAL_STATUS: ProductionStatus = 'review'
 export const DEFAULT_FINAL_EVENT: EventType = 'content_waiting_approval'
 
+// ─── Disposição de erro de agente ───────────────────────────────────────────
+//
+// O orquestrador NÃO importa a camada de IA — a comunicação é por um contrato
+// duck-typed: qualquer erro pode declarar `agentErrorDisposition` e um payload
+// seguro para eventos. Foi a ausência disto que fez o canário criar
+// `agent_retrying` para um HTTP 400: o provider sabia que era fatal, mas a
+// informação virava string antes de chegar à decisão de retry.
+
+export type AgentErrorDisposition = 'fatal' | 'retryable'
+
+/** Erro FATAL: repetir o job não muda o resultado — falhar imediatamente. */
+export function isFatalAgentError(err: unknown): boolean {
+  return !!err && typeof err === 'object' &&
+    (err as { agentErrorDisposition?: unknown }).agentErrorDisposition === 'fatal'
+}
+
+/**
+ * Campos SEGUROS que um erro oferece para o payload de eventos persistidos.
+ * Nunca contém mensagem bruta de provedor, prompt, chave ou briefing.
+ */
+export function agentErrorEventPayload(err: unknown): Record<string, unknown> {
+  if (!err || typeof err !== 'object') return {}
+  const e = err as { code?: unknown; httpStatus?: unknown; providerErrorType?: unknown }
+  const out: Record<string, unknown> = {}
+  if (typeof e.code === 'string') out.error_code = e.code
+  if (typeof e.httpStatus === 'number') out.http_status = e.httpStatus
+  if (typeof e.providerErrorType === 'string') out.provider_error_type = e.providerErrorType
+  return out
+}
+
 // ─── Porta de persistência ──────────────────────────────────────────────────
 
 /**

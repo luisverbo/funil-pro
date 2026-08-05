@@ -28,6 +28,59 @@ import {
   type ContentAIProvider,
 } from './provider'
 
+interface AnthropicErrorBody {
+  type?: string
+  request_id?: string
+  error?: { type?: string; message?: string }
+}
+
+/**
+ * Mapeia o formato de erro da Anthropic para um código ESTRUTURADO.
+ *
+ * As decisões de fluxo usam APENAS error.type e status — nunca texto livre.
+ * A mensagem entra só num log interno, higienizada e truncada.
+ */
+export function classifyAnthropicError(
+  status: number,
+  errorType: string | undefined,
+): { code: import('./provider').ContentAICode; retryable: boolean } {
+  switch (errorType) {
+    case 'invalid_request_error': return { code: 'invalid_request', retryable: false }
+    case 'authentication_error': return { code: 'authentication_error', retryable: false }
+    case 'permission_error': return { code: 'permission_error', retryable: false }
+    // Modelo inexistente: a API responde 404 com not_found_error.
+    case 'not_found_error':
+      return { code: status === 404 ? 'invalid_model' : 'not_found', retryable: false }
+    // 413: o request excedeu o tamanho máximo — repetir o MESMO request não
+    // conserta. Código genérico seguro com disposição fatal.
+    case 'request_too_large': return { code: 'invalid_request', retryable: false }
+    // 409: conflito transitório do lado da API. DECISÃO DOCUMENTADA: um retry
+    // é seguro — a chamada não tem efeito colateral persistente do nosso lado
+    // (idempotente por natureza: só geração), e o conflito pode se resolver.
+    case 'conflict_error': return { code: 'provider_server_error', retryable: true }
+    case 'rate_limit_error': return { code: 'rate_limited', retryable: true }
+    case 'overloaded_error': return { code: 'overloaded', retryable: true }
+    // 504: a API não respondeu a tempo — transitório.
+    case 'timeout_error': return { code: 'provider_server_error', retryable: true }
+    case 'api_error': return { code: 'provider_server_error', retryable: true }
+    default:
+      // Sem error.type reconhecível: o STATUS decide.
+      if (status === 429 || status === 529) return { code: 'rate_limited', retryable: true }
+      if (status === 409 || status >= 500) return { code: 'provider_server_error', retryable: true }
+      if (status >= 400) return { code: 'unknown_provider_error', retryable: false }
+      return { code: 'unknown_provider_error', retryable: false }
+  }
+}
+
+/** Higieniza a mensagem para o LOG interno: sem chave, curta, uma linha. */
+export function sanitizeProviderMessage(msg: unknown): string {
+  if (typeof msg !== 'string') return ''
+  return msg
+    .replace(/sk-[A-Za-z0-9_-]+/g, '<redacted>')
+    .replace(/\s+/g, ' ')
+    .slice(0, 200)
+}
+
 interface AnthropicResponse {
   content?: { type: string; text?: string }[]
   stop_reason?: string
@@ -94,14 +147,15 @@ export function classifyStopReason(stopReason: string | undefined): {
 }
 
 /**
- * Classifica o status HTTP.
+ * Classificação por status puro (fallback quando o corpo de erro é ilegível;
+ * o caminho principal usa classifyAnthropicError, que considera error.type).
  *   retentáveis (1x): 429, 500, 502, 503, 529, timeout, erro de rede
  *   não retentáveis: 400, 401, 403, 404 e demais 4xx — repetir não conserta
  *                    pedido inválido, chave inválida ou modelo inexistente.
  */
 export function classifyHttpStatus(status: number): 'ok' | 'retryable' | 'fatal' {
   if (status === 200) return 'ok'
-  if (status === 429 || status === 529 || status === 500 || status === 502 || status === 503) {
+  if (status === 429 || status === 529 || status === 409 || (status >= 500 && status <= 504)) {
     return 'retryable'
   }
   return 'fatal'
@@ -162,7 +216,15 @@ export function createAnthropicProvider(deps: AnthropicProviderDeps = {}): Conte
               body: JSON.stringify({
                 model,
                 max_tokens: req.maxOutputTokens,
-                temperature: req.temperature,
+                // SEM temperature/top_p/top_k: o Sonnet 5 rejeita com 400
+                // qualquer sampling parameter fora do padrão — causa do
+                // primeiro canário. O caráter de cada agente vem dos prompts.
+                //
+                // thinking DESLIGADO de propósito nesta v1: a saída é JSON
+                // estruturado curto, e pensamento consumiria o orçamento de
+                // max_tokens (1400–2200), além de latência e custo. Definido
+                // no servidor — o cliente não alcança esta configuração.
+                thinking: { type: 'disabled' },
                 // System separado do conteúdo do usuário — primeira camada da
                 // defesa contra prompt injection.
                 system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
@@ -179,16 +241,39 @@ export function createAnthropicProvider(deps: AnthropicProviderDeps = {}): Conte
             continue
           }
 
-          const disposicao = classifyHttpStatus(res.status)
-          if (disposicao === 'fatal') {
-            // 400/401/403/404...: pedido inválido, chave inválida, modelo
-            // inexistente. Repetir não conserta — e o corpo NÃO é propagado.
-            throw new ContentAIError('provider_error', `status=${res.status}`)
-          }
-          if (disposicao === 'retryable') {
-            ultimoErro = res.status === 429
-              ? new ContentAIError('rate_limited', `status=${res.status}`)
-              : new ContentAIError('provider_error', `status=${res.status}`)
+          if (res.status !== 200) {
+            // Extrai SÓ os campos permitidos do corpo de erro. A leitura é
+            // tolerante: corpo não-JSON ou malformado não derruba o
+            // diagnóstico — segue com error.type ausente e o STATUS decide.
+            let errorType: string | undefined
+            let mensagemInterna = ''
+            let requestIdCorpo = ''
+            try {
+              const corpo = (await res.json()) as AnthropicErrorBody
+              errorType = corpo?.error?.type
+              mensagemInterna = sanitizeProviderMessage(corpo?.error?.message)
+              if (typeof corpo?.request_id === 'string') requestIdCorpo = corpo.request_id
+            } catch { /* corpo ilegível: classifica só pelo status */ }
+            // Header é a fonte principal; o request_id do corpo é fallback.
+            // Fica SÓ no log interno — não vai para cs_events.
+            const requestId = res.headers?.get?.('request-id') ?? requestIdCorpo
+
+            const classe = classifyAnthropicError(res.status, errorType)
+            const erro = new ContentAIError(classe.code, `status=${res.status}`, {
+              httpStatus: res.status,
+              providerErrorType: errorType,
+            })
+
+            // LOG interno estruturado — responde "qual modelo/status/tipo/
+            // request-id" sem prompt, briefing, chave ou corpo integral.
+            console.error(
+              `[content-studio:ai] execution=${req.executionId} model=${model} ` +
+              `status=${res.status} type=${errorType ?? '-'} code=${classe.code} ` +
+              `request_id=${requestId || '-'}${mensagemInterna ? ` msg="${mensagemInterna}"` : ''}`,
+            )
+
+            if (!classe.retryable) throw erro    // FATAL: uma chamada, sem retry
+            ultimoErro = erro
             // Só espera se AINDA HAVERÁ outra tentativa: esperar depois da
             // última chamada falhar seria segurar a Server Action à toa.
             if (tentativa < AI_MAX_TECH_RETRIES) {
@@ -206,7 +291,11 @@ export function createAnthropicProvider(deps: AnthropicProviderDeps = {}): Conte
             continue
           }
 
-          if (json.error) throw new ContentAIError('provider_error', `type=${json.error.type ?? '?'}`)
+          if (json.error) {
+            throw new ContentAIError('unknown_provider_error', `type=${json.error.type ?? '?'}`, {
+              httpStatus: 200, providerErrorType: json.error.type,
+            })
+          }
 
           // TÉRMINO explícito antes de olhar o conteúdo.
           const parada = classifyStopReason(json.stop_reason)

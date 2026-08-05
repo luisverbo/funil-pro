@@ -104,6 +104,7 @@ test('grafo isolado) produção habilitada carrega a implementação Anthropic',
   const r = rodarFilho({
     CONTENT_AI_ENABLED: 'true',
     ANTHROPIC_API_KEY: 'sk-teste-nao-real',
+    CONTENT_AI_MODEL: 'claude-modelo-de-teste',
   })
   assert.equal(r.erro, null, `o agente falhou no grafo real: ${r.erro}`)
   assert.equal(r.alcancouAnthropic, true,
@@ -127,6 +128,12 @@ test('grafo isolado) habilitado sem chave → missing_key, sem template', () => 
   assert.equal(r.alcancouAnthropic, false)
   // E nada de conteúdo: o agente não devolveu output nenhum.
   assert.equal(r.provider, null)
+})
+
+test('grafo isolado) habilitado sem CONTENT_AI_MODEL → invalid_config, sem rede', () => {
+  const r = rodarFilho({ CONTENT_AI_ENABLED: 'true', ANTHROPIC_API_KEY: 'sk-teste-nao-real' })
+  assert.ok(r.erro?.includes('content_ai:invalid_config'), `erro inesperado: ${r.erro}`)
+  assert.equal(r.alcancouAnthropic, false, 'modelo ausente tocou a rede')
 })
 
 test('grafo isolado) cc_researcher determinístico roda com IA DESLIGADA e zero fetch', () => {
