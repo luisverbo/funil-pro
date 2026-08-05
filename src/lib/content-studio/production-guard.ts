@@ -17,12 +17,33 @@
 // sem Postgres.
 // ============================================================================
 
-import { CAROUSEL_PIPELINE } from './pipeline'
+import { CAROUSEL_AI_PIPELINE, CAROUSEL_PIPELINE } from './pipeline'
 import { DEMO_BRIEF_MODE } from './demo-guard'
 import type { ProductionStatus } from './types'
 
-/** Pipelines aceitos pela produção real. Lista branca, nunca "tudo menos demo". */
-export const PRODUCTION_PIPELINE_KEYS: readonly string[] = [CAROUSEL_PIPELINE.key]
+/**
+ * Pipelines aceitos pela produção real. Lista branca, nunca "tudo menos demo".
+ *
+ * As DUAS gerações são produções válidas do tenant: a determinística (2A) e a
+ * de IA (2B). A identidade persistida diz sozinha o que cada uma é:
+ *   content_carousel_v1    = geração determinística da Fase 2A (agentes cc_*)
+ *   content_carousel_ai_v1 = geração com IA da Fase 2B (agentes cc_ai_*)
+ */
+export const PRODUCTION_PIPELINE_KEYS: readonly string[] = [
+  CAROUSEL_PIPELINE.key,
+  CAROUSEL_AI_PIPELINE.key,
+]
+
+/**
+ * Este pipeline executa agentes de IA?
+ *
+ * Decide se `advanceProduction` exige o preflight de IA. O pipeline antigo NÃO
+ * exige: uma produção determinística incompleta conclui normalmente mesmo com
+ * CONTENT_AI_ENABLED desligado e sem ANTHROPIC_API_KEY.
+ */
+export function pipelineRequiresAI(pipelineKey: string): boolean {
+  return pipelineKey === CAROUSEL_AI_PIPELINE.key
+}
 
 /** Um job por chamada. Fixo no servidor: o cliente não escolhe quanto executar. */
 export const PRODUCTION_MAX_JOBS_PER_CALL = 1
@@ -132,6 +153,7 @@ export const PRODUCTION_MESSAGES = {
   invalid_brief: 'Revise o briefing e tente novamente.',
   too_many_open: 'Você já tem produções em andamento. Conclua uma antes de criar outra.',
   idempotency_conflict: 'Este envio entrou em conflito com outro. Recarregue a página e tente novamente.',
+  ai_disabled: 'A geração com IA está temporariamente indisponível.',
   create_failed: 'Não foi possível iniciar a produção. Tente novamente.',
   read_failed: 'Não foi possível carregar a produção. Tente novamente.',
 } as const

@@ -55,6 +55,25 @@ export type EnsureProductionResult =
   | { ok: false; reason: 'too_many_open' | 'idempotency_conflict' }
 
 /**
+ * Coordenador da criação: PREFLIGHT exatamente UMA vez, antes de tudo.
+ *
+ * `preflight` lança quando a configuração de IA não sustenta uma produção
+ * (desligada, sem chave, modelo inválido). A FÁBRICA do repo só roda depois
+ * dele: reprovado, nem o repo é construído — zero persistência, zero fetch,
+ * nem findByIdempotencyKey. Função pequena com dependências injetáveis: o
+ * teste comportamental prova "zero escrita" com um repo espião, sem Server
+ * Action nem banco.
+ */
+export async function createWithPreflight(
+  preflight: () => void,
+  repoFactory: () => ProductionRepo,
+  brief: ValidBrief,
+): Promise<EnsureProductionResult> {
+  preflight() // lança ContentAIError — o chamador traduz para mensagem pública
+  return ensureProduction(repoFactory(), brief)
+}
+
+/**
  * Os DOIS briefings dizem a mesma coisa?
  *
  * A chave de idempotência afirma "este é o mesmo envio de antes" — e isso só é

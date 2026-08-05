@@ -13,6 +13,7 @@
 
 import type { AgentDefinition } from '../types'
 import { CAROUSEL_AGENTS } from './carousel'
+import { CAROUSEL_AI_AGENTS } from './carousel-ai'
 import { OFFICE_AGENTS } from './office'
 import { STUB_A, STUB_B } from './stub'
 
@@ -61,7 +62,12 @@ registerAgent(STUB_B)
 // Agentes do Office Preview — também stubs, também sem provedor externo.
 for (const agent of OFFICE_AGENTS) registerAgent(agent)
 
-// Fase 2A: agentes do pipeline de produção. Chaves com prefixo `cc_` para não
-// colidirem com os stubs da demonstração — os dois pipelines convivem, e a
-// demonstração precisa continuar barata e previsível.
+// Fase 2A: agentes determinísticos nas chaves cc_* — produções antigas de
+// content_carousel_v1 (inclusive incompletas) retomam com as MESMAS
+// implementações e o mesmo schema com que começaram.
 for (const agent of CAROUSEL_AGENTS) registerAgent(agent)
+
+// Fase 2B: agentes de IA nas chaves cc_ai_* — exclusivas do pipeline
+// content_carousel_ai_v1. Três grupos convivem sem colisão: demo (sem
+// prefixo), determinístico (cc_) e IA (cc_ai_).
+for (const agent of CAROUSEL_AI_AGENTS) registerAgent(agent)
