@@ -14,6 +14,7 @@
 import { CAROUSEL_AGENT_LABELS } from './agents/carousel'
 import { CAROUSEL_AI_LABELS } from './agents/carousel-ai'
 import { OFFICE_AGENT_LABELS } from './agents/office'
+import { STUDIO_AGENT_LABELS } from './studio/schema'
 import type { EventType, StoredEvent } from './types'
 
 /**
@@ -118,6 +119,7 @@ export const AGENT_LABELS: Record<string, string> = {
   ...CAROUSEL_AGENT_LABELS,
   ...CAROUSEL_AI_LABELS,
   cc_quick_carousel: 'Copywriter',
+  ...STUDIO_AGENT_LABELS,
 }
 
 /**
@@ -147,6 +149,14 @@ const DESK_BY_AGENT: Record<string, string> = {
   // Criação rápida: UM agente, sentado na mesa do Copywriter. Pesquisador e
   // Estrategista não executam — e portanto não são simulados na cena.
   cc_quick_carousel: 'copywriter',
+  // Geração Studio: TRÊS agentes, TRÊS mesas — cada um com a sua.
+  // Estrategista e Copywriter ficam nas mesas de sempre (mesmas cores). O
+  // Designer ocupa a terceira estação, que este pipeline não usa para pesquisa;
+  // a placa da mesa passa a exibir "Designer" porque o rótulo vem do agente que
+  // REALMENTE trabalhou ali (ver `buildOfficeView`), não do nome do slot.
+  cst_strategist: 'strategist',
+  cst_copywriter: 'copywriter',
+  cst_designer: 'researcher',
 }
 
 /** Mesa do agente, ou null para quem não tem lugar na cena. */
@@ -231,6 +241,15 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
     // tem mesa (Revisor, Aprovação) simplesmente não move ninguém na cena.
     const deskKey = deskOf(event.agent_key)
     const agent = deskKey ? byKey.get(deskKey) : undefined
+
+    // A placa da mesa mostra QUEM trabalhou ali, não o nome do slot. É o que
+    // permite o Designer ter a própria estação sem redesenhar o escritório: se
+    // o evento gravado é de `cst_designer`, a mesa passa a se chamar Designer.
+    // Sem evento, nada muda — a cena continua sem inventar ocupante.
+    if (agent && event.agent_key) {
+      const rotulo = AGENT_LABELS[event.agent_key]
+      if (rotulo) agent.label = rotulo
+    }
 
     switch (event.type) {
       case 'agent_queued':

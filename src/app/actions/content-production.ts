@@ -32,7 +32,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { drainQueue, startProduction } from '@/lib/content-studio/orchestrator'
 import { preflightContentAI } from '@/lib/content-studio/ai/bootstrap'
 import { firstBriefMessage, validateBrief, type BriefInput, type ValidBrief } from '@/lib/content-studio/brief'
-import { CAROUSEL_AI_PIPELINE, QUICK_PIPELINE } from '@/lib/content-studio/pipeline'
+import { CAROUSEL_AI_PIPELINE, QUICK_PIPELINE, STUDIO_PIPELINE } from '@/lib/content-studio/pipeline'
 import {
   admitProduction,
   isRealProduction,
@@ -52,6 +52,11 @@ import {
 import { buildProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
 import { runQuickCarousel } from '@/lib/content-studio/quick/run'
 import { QUICK_COMPARE_FIELDS, validateQuickInput, type QuickInput, type ValidQuickBrief } from '@/lib/content-studio/quick/schema'
+import { runStudioCarousel, STUDIO_REQUEST_BUDGET_MS } from '@/lib/content-studio/studio/run'
+import {
+  STUDIO_COMPARE_FIELDS, validateStudioInput,
+  type StudioInput, type ValidStudioBrief,
+} from '@/lib/content-studio/studio/schema'
 import { createSupabaseContentStore } from '@/lib/content-studio/store'
 import { toPublicEvent, type PublicEvent } from '@/lib/content-studio/demo-guard'
 import type { ProductionRow, StepRow, StoredEvent } from '@/lib/content-studio/types'
@@ -214,6 +219,168 @@ export async function createQuickProduction(input: QuickInput): Promise<ActionRe
       return fail('ai_disabled', err)
     }
     return fail('create_failed', err)
+  }
+}
+
+/**
+ * Cria e executa a geração Studio (Estrategista → Copywriter → Designer).
+ *
+ * Mesmo coordenador da 2A/quick: preflight único de IA sem rede ANTES de
+ * persistir, eleição/idempotência por chave dentro do pipeline studio, cota de
+ * abertas compartilhada entre TODAS as gerações. A materialização executa os
+ * agentes que couberem no orçamento de tempo; o que não couber fica para
+ * `continueStudioProduction`, com o estado no banco.
+ */
+export async function createStudioProduction(input: StudioInput): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+
+  const validado = validateStudioInput(input ?? {})
+  if (!validado.ok) return { ok: false, error: validado.message }
+
+  const admin = createAdminClient()
+
+  try {
+    const resultado = await createWithPreflight(
+      preflightContentAI,
+      () => supabaseStudioRepo(admin, tenantId, validado.brief),
+      validado.brief,
+      STUDIO_COMPARE_FIELDS,
+    )
+    if (!resultado.ok) return fail(resultado.reason)
+    return readState(admin, tenantId, resultado.productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+/**
+ * Continua uma produção Studio que parou por ORÇAMENTO DE TEMPO.
+ *
+ * Não é um "avançar" genérico: revalida tenant, exige o pipeline studio e um
+ * estado ainda avançável. Reentrada em produção concluída é no-op — os steps
+ * concluídos são pulados pelo próprio runner, sem nova chamada paga.
+ */
+export async function continueStudioProduction(productionId: string): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+  if (typeof productionId !== 'string' || !productionId) return fail('not_found')
+
+  const admin = createAdminClient()
+
+  const { data: row } = await admin
+    .from('cs_productions')
+    .select(SELECT_LITE)
+    .eq('tenant_id', tenantId)          // <- tenant da SESSÃO
+    .eq('id', productionId)
+    .maybeSingle()
+
+  const candidata = (row ?? null) as ProductionAdmissionRow | null
+  if (!candidata) return fail('not_found')
+  if (candidata.pipeline_key !== STUDIO_PIPELINE.key) return fail('wrong_pipeline')
+
+  const admissao = admitProduction(candidata)
+  if (!admissao.ok) {
+    // Já terminou (ou falhou): devolve o estado, não é erro para o usuário.
+    if (admissao.reason === 'not_advanceable') return readState(admin, tenantId, productionId)
+    return fail(admissao.reason)
+  }
+
+  const brief = candidata.brief as ValidStudioBrief | null
+  if (!brief || typeof brief.tema !== 'string') return fail('invalid_brief')
+
+  try {
+    // Preflight ANTES de qualquer chamada — o kill switch pode ter mudado
+    // entre uma requisição e outra.
+    preflightContentAI()
+
+    const store = createSupabaseContentStore(admin, { tenantId, productionId })
+    const production = await store.getProduction(productionId)
+    if (!production) return fail('not_found')
+
+    await runStudioCarousel(store, production, brief, {
+      deadlineAt: Date.now() + STUDIO_REQUEST_BUDGET_MS,
+    })
+    return readState(admin, tenantId, productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+/**
+ * Repo da geração Studio — mesma porta, escopos próprios (espelha o do quick):
+ *   • idempotency_key buscada SÓ dentro de content_carousel_studio_v1;
+ *   • listOpen conta TODAS as gerações — a cota do tenant continua uma só;
+ *   • materialize = runStudioCarousel, com orçamento de tempo. Só a vencedora
+ *     da eleição chega até aqui, e cada step tem claim atômico próprio.
+ */
+function supabaseStudioRepo(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  brief: ValidStudioBrief,
+): ProductionRepo {
+  const base = () => admin.from('cs_productions').select(SELECT_LITE).eq('tenant_id', tenantId)
+
+  return {
+    async findByIdempotencyKey(key: string): Promise<ProductionRowLite[]> {
+      const { data, error } = await base()
+        .eq('pipeline_key', STUDIO_PIPELINE.key)
+        .eq('brief->>idempotency_key', key)
+        .order('created_at', { ascending: true })
+        .limit(10)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as unknown as ProductionRowLite[]
+    },
+
+    async listOpen(): Promise<ProductionRowLite[]> {
+      const { data, error } = await base()
+        .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
+        .not('status', 'in', `(${PRODUCTION_TERMINAL.join(',')})`)
+        .order('created_at', { ascending: true })
+        .limit(20)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as unknown as ProductionRowLite[]
+    },
+
+    async insert(briefValido): Promise<ProductionRowLite> {
+      const { data, error } = await admin
+        .from('cs_productions')
+        .insert({
+          tenant_id: tenantId,                // <- da sessão, nunca do cliente
+          pipeline_key: STUDIO_PIPELINE.key,  // <- constante do servidor
+          title: brief.tema.slice(0, 80),
+          brief: briefValido,
+        })
+        .select(SELECT_LITE)
+        .single()
+      if (error || !data) throw new Error(error?.message ?? 'insert falhou')
+      return data as unknown as ProductionRowLite
+    },
+
+    async cancel(ids: string[]): Promise<void> {
+      if (ids.length === 0) return
+      const { error } = await admin
+        .from('cs_productions')
+        .update({ status: 'canceled', updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .in('id', ids)
+      if (error) throw new Error(error.message)
+    },
+
+    async materialize(productionId: string): Promise<void> {
+      const store = createSupabaseContentStore(admin, { tenantId, productionId })
+      const production = await store.getProduction(productionId)
+      if (!production) throw new Error('produção não encontrada na materialização')
+      await runStudioCarousel(store, production, brief, {
+        deadlineAt: Date.now() + STUDIO_REQUEST_BUDGET_MS,
+      })
+    },
   }
 }
 
@@ -514,6 +681,19 @@ export async function listProductions(): Promise<ActionResult<ProductionSummary[
 
 // ─── Estado completo ────────────────────────────────────────────────────────
 
+/**
+ * Ainda falta agente para rodar nesta produção Studio?
+ *
+ * Só é `true` num estado em que continuar faz sentido: produção terminal
+ * (concluída, falhada, cancelada) nunca pede continuação, mesmo que algum step
+ * não exista — senão o cliente ficaria pedindo avanço para sempre.
+ */
+function studioPending(status: ProductionRow['status'], steps: StepRow[]): boolean {
+  if (PRODUCTION_TERMINAL.includes(status)) return false
+  const concluidos = steps.filter(s => s.status === 'completed').length
+  return concluidos < STUDIO_PIPELINE.steps.length
+}
+
 async function readState(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
@@ -549,7 +729,12 @@ async function readState(
       },
       // tenant_id é removido de cada evento antes de sair do servidor.
       events: ((eventos.data ?? []) as StoredEvent[]).map(toPublicEvent),
-      pending: (jobs.count ?? 0) > 0,
+      // A geração Studio não usa fila: "falta trabalho" é medido pelos STEPS
+      // concluídos, não por job aberto. Isso é o que diz ao cliente se ele
+      // deve pedir a continuação — e o critério vem do banco, não de um timer.
+      pending: row.pipeline_key === STUDIO_PIPELINE.key
+        ? studioPending(row.status, (steps.data ?? []) as StepRow[])
+        : (jobs.count ?? 0) > 0,
       // Montado aqui, no servidor, a partir do que os agentes gravaram.
       result: buildProductionResult((steps.data ?? []) as StepRow[]),
     },

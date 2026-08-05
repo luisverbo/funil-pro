@@ -38,6 +38,24 @@ export interface ResultSlide {
   texto: string
 }
 
+/** Direção visual de UM slide — saída do Designer (geração Studio). */
+export interface ResultVisualSlide {
+  numero: number
+  estilo: string
+  composicao: string
+  elementos: string[]
+  cores: string
+  layout: string
+  promptImagem: string
+}
+
+/** Direção visual da peça inteira + por slide. Vazia nas gerações anteriores. */
+export interface ResultVisual {
+  disponivel: boolean
+  geral: { estilo: string | null; paleta: string | null; tipografia: string | null; clima: string | null }
+  slides: ResultVisualSlide[]
+}
+
 export interface ProductionResult {
   titulo: string | null
   estrategia: {
@@ -59,6 +77,10 @@ export interface ProductionResult {
   }
   /** Quantas vezes o copy foi reescrito por pedido do revisor. */
   revisionCycle: number
+  /** Direção visual do Designer. `disponivel: false` nas gerações sem Designer. */
+  visual: ResultVisual
+  /** Quantidade de slides que o usuário PEDIU (geração Studio). */
+  slidesPedidos: number | null
   /** true quando há material suficiente para mostrar o painel. */
   disponivel: boolean
   /** Metadados de IA agregados — para o selo "IA real" e contagem de chamadas. */
@@ -80,6 +102,12 @@ const AI_META_VAZIO: AIMeta = {
   promptVersions: [], usedRealAI: false,
 }
 
+const VISUAL_VAZIO: ResultVisual = {
+  disponivel: false,
+  geral: { estilo: null, paleta: null, tipografia: null, clima: null },
+  slides: [],
+}
+
 const RESULTADO_VAZIO: ProductionResult = {
   titulo: null,
   estrategia: { angulo: null, promessa: null, tom: null },
@@ -89,6 +117,8 @@ const RESULTADO_VAZIO: ProductionResult = {
   hashtags: [],
   revisao: { verdict: null, checklist: [], avisos: [], scores: {}, media: null },
   revisionCycle: 0,
+  visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
+  slidesPedidos: null,
   disponivel: false,
   ai: { ...AI_META_VAZIO },
 }
@@ -163,6 +193,90 @@ function buildQuickResult(data: Record<string, unknown>, steps: StepRow[]): Prod
       media: null,
     },
     revisionCycle: 0,
+    visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
+    slidesPedidos: null,
+    disponivel: slides.length > 0,
+    ai: aggregateAI(steps),
+  }
+}
+
+/**
+ * Resultado da geração Studio — três steps distintos:
+ *   cst_strategist -> estratégia (tese, ângulo, promessa, tom)
+ *   cst_copywriter -> copy final (título, slides, legenda, CTA, hashtags)
+ *   cst_designer   -> direção visual + prompt de imagem por slide
+ *
+ * Cada campo vem do agente que o produziu. O painel mostra a copy assim que o
+ * Copywriter termina, mesmo que o Designer ainda não tenha rodado — o que
+ * existe aparece, o que não existe não é inventado.
+ */
+function buildStudioResult(steps: StepRow[]): ProductionResult {
+  const plano = dataDe(steps, 'cst_strategist')
+  const copy = dataDe(steps, 'cst_copywriter')
+  const arte = dataDe(steps, 'cst_designer')
+
+  const slidesBrutos = Array.isArray(copy?.slides) ? copy.slides : []
+  const slides: ResultSlide[] = slidesBrutos
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .map((s, i) => ({
+      numero: typeof s.number === 'number' ? s.number : i + 1,
+      papel: '',
+      headline: texto(s.headline) ?? '',
+      texto: texto(s.body) ?? '',
+    }))
+
+  const review = (copy?.review && typeof copy.review === 'object')
+    ? (copy.review as Record<string, unknown>) : {}
+  const notes = (Array.isArray(review.notes) ? review.notes : [])
+    .filter((n): n is string => typeof n === 'string')
+
+  // ── Direção visual ──
+  const dirGeral = (arte?.direction && typeof arte.direction === 'object')
+    ? (arte.direction as Record<string, unknown>) : {}
+  const visualBrutos = Array.isArray(arte?.slides) ? arte.slides : []
+  const visualSlides: ResultVisualSlide[] = visualBrutos
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .map((s, i) => ({
+      numero: typeof s.number === 'number' ? s.number : i + 1,
+      estilo: texto(s.style) ?? '',
+      composicao: texto(s.composition) ?? '',
+      elementos: (Array.isArray(s.elements) ? s.elements : []).filter((e): e is string => typeof e === 'string'),
+      cores: texto(s.colors) ?? '',
+      layout: texto(s.layout) ?? '',
+      promptImagem: texto(s.imagePrompt) ?? '',
+    }))
+
+  return {
+    titulo: texto(copy?.title),
+    estrategia: {
+      angulo: texto(plano?.bigIdea) ?? texto(plano?.angle),
+      promessa: texto(plano?.promise),
+      tom: texto(plano?.tone),
+    },
+    slides,
+    legenda: texto(copy?.caption),
+    cta: texto(copy?.cta),
+    hashtags: Array.isArray(copy?.hashtags)
+      ? (copy.hashtags as string[]).filter(h => typeof h === 'string') : [],
+    revisao: {
+      verdict: review.approved === true ? 'approved_for_human_review' : null,
+      checklist: [],
+      avisos: notes,
+      scores: {},
+      media: null,
+    },
+    revisionCycle: 0,
+    visual: {
+      disponivel: visualSlides.length > 0,
+      geral: {
+        estilo: texto(dirGeral.style),
+        paleta: texto(dirGeral.palette),
+        tipografia: texto(dirGeral.typography),
+        clima: texto(dirGeral.mood),
+      },
+      slides: visualSlides,
+    },
+    slidesPedidos: slides.length > 0 ? slides.length : null,
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }
@@ -174,6 +288,12 @@ export function buildProductionResult(steps: StepRow[]): ProductionResult {
   // Todos os campos vêm da MESMA geração — nunca estratégia de uma com copy
   // de outra, nunca revisor de uma geração avaliando copy da outra.
   // Criação rápida: UM step com tudo dentro (copy + estratégia + review).
+  // Geração Studio (cst_*): reconhecida PRIMEIRO e nunca misturada com outra.
+  // Basta o Copywriter ter concluído — a direção visual entra quando existir.
+  if (steps.some(s => s.agent_key.startsWith('cst_'))) {
+    return buildStudioResult(steps)
+  }
+
   const quick = dataDe(steps, 'cc_quick_carousel')
   if (quick) return buildQuickResult(quick, steps)
 
@@ -228,6 +348,10 @@ export function buildProductionResult(steps: StepRow[]): ProductionResult {
       media: typeof revisao?.media === 'number' ? revisao.media : null,
     },
     revisionCycle: typeof copy.revision_cycle === 'number' ? copy.revision_cycle : 0,
+    // Gerações anteriores não têm Designer: a direção visual fica vazia, e o
+    // painel simplesmente não mostra o bloco — nada é inventado para elas.
+    visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
+    slidesPedidos: null,
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }

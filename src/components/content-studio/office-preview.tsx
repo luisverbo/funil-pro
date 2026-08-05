@@ -20,7 +20,8 @@ import { advanceDemo, getDemoState, getLatestDemo, startDemoProduction } from '@
 import {
   advanceProduction,
   createProduction,
-  createQuickProduction,
+  continueStudioProduction,
+  createStudioProduction,
   getLatestProduction,
   getProductionState,
   listProductions,
@@ -55,6 +56,9 @@ const REVEAL_MS = 950         // ritmo base de revelação dos eventos gravados
 const TICK_MS = 400           // intervalo entre pedidos de avanço ao servidor
 const MAX_TICKS = 30          // teto de chamadas: o pipeline tem 3 passos
 const MAX_TOTAL_MS = 60_000   // teto de tempo total do laço
+// Geração Studio: 3 agentes. Se cada requisição avançar ao menos um, 3 bastam;
+// o teto é 4 para tolerar uma parada por orçamento sem travar a tela.
+const MAX_CONTINUACOES = 4
 const MAX_SEM_PROGRESSO = 3   // rodadas sem evento novo antes de desistir
 
 type Velocidade = 'normal' | 'rapido'
@@ -178,12 +182,18 @@ export default function OfficePreview() {
     // Copywriter trabalhando como estado VISUAL, sem tocar em cs_events. Assim
     // que a resposta chega, quickGenerating cai e os eventos reais assumem.
     if (quickGenerating) {
+      // Enquanto a primeira Server Action não responde não existe evento algum.
+      // A cena mostra o Estrategista (o primeiro da fila) trabalhando como
+      // estado VISUAL, e as outras duas mesas já identificadas — sem gravar
+      // nada em cs_events. Quando os eventos reais chegam, eles assumem.
       const cena = emptyOfficeView()
-      const copywriter = cena.agents.find(a => a.key === 'copywriter')
-      if (copywriter) {
-        copywriter.state = 'working'
-        copywriter.bubble = 'Criando seu carrossel com IA…'
+      const estrategista = cena.agents.find(a => a.key === 'strategist')
+      if (estrategista) {
+        estrategista.state = 'working'
+        estrategista.bubble = 'Planejando seu carrossel…'
       }
+      const designer = cena.agents.find(a => a.key === 'researcher')
+      if (designer) designer.label = 'Designer'
       return cena
     }
     return buildOfficeView(allEvents.slice(0, revealed))
@@ -325,13 +335,17 @@ export default function OfficePreview() {
   }, [])
 
   /**
-   * CRIAÇÃO RÁPIDA: uma única Server Action, uma única chamada de IA. Nada de
-   * laço de avanço no cliente — a resposta já volta com o estado final
-   * (awaiting_approval ou failed).
+   * CRIAÇÃO RÁPIDA (geração Studio): Estrategista → Copywriter → Designer.
+   *
+   * Três chamadas de IA não cabem com segurança no limite de UMA requisição.
+   * O servidor executa o que couber no orçamento e responde `pending: true`
+   * quando ainda falta agente; aqui pedimos a continuação, no MÁXIMO
+   * MAX_CONTINUACOES vezes. Não é polling: cada chamada faz trabalho real e o
+   * estado de parada vem do banco (steps concluídos), não de um relógio.
    */
   const criarRapido = useCallback(async (dados: {
     tema: string; objetivo: QuickObjetivo; oferta: string; cta: string
-    marca: BrandProfile; idempotencyKey: string
+    slides: number; marca: BrandProfile; idempotencyKey: string
   }) => {
     if (criando || running) return
     setErroBrief(null)
@@ -345,14 +359,28 @@ export default function OfficePreview() {
     setResult(emptyProductionResult())
 
     try {
-      const r = await createQuickProduction(dados)
+      let r = await createStudioProduction(dados)
       if (!r.ok) { setErroBrief(r.error); return }
       if (cancelled.current) return
-      setProductionId(r.data.production.id)
+
+      const id = r.data.production.id
+      setProductionId(id)
       setPipelineAtual(r.data.production.pipelineKey)
-      setStatus(r.data.production.status)
-      setAllEvents(r.data.events)
-      setResult(r.data.result)
+
+      // Continua enquanto o SERVIDOR disser que falta agente. Laço fechado:
+      // no máximo MAX_CONTINUACOES, e qualquer erro encerra.
+      for (let i = 0; i < MAX_CONTINUACOES && r.ok && r.data.pending; i++) {
+        const proximo = await continueStudioProduction(id)
+        if (cancelled.current) return
+        if (!proximo.ok) { setErroBrief(proximo.error); break }
+        r = proximo
+      }
+
+      if (r.ok) {
+        setStatus(r.data.production.status)
+        setAllEvents(r.data.events)
+        setResult(r.data.result)
+      }
     } catch {
       setErroBrief('Não foi possível criar o carrossel. Tente novamente.')
     } finally {
@@ -444,7 +472,9 @@ export default function OfficePreview() {
               {(() => {
                 const selo = modo === 'demo'
                   ? { txt: 'demo', title: 'Agentes determinísticos, sem IA e sem custo', cor: 'bg-amber-50 border-amber-200/70 text-amber-600' }
-                  : pipelineAtual === 'content_carousel_quick_v1'
+                  : pipelineAtual === 'content_carousel_studio_v1'
+                    ? { txt: 'IA + design', title: 'Estrategista, Copywriter e Designer com IA', cor: 'bg-violet-50 border-violet-200/70 text-violet-600' }
+                    : pipelineAtual === 'content_carousel_quick_v1'
                     ? { txt: 'IA rápida', title: 'Criação rápida: uma geração direta com IA', cor: 'bg-violet-50 border-violet-200/70 text-violet-600' }
                     : pipelineAtual === 'content_carousel_ai_v1'
                       ? { txt: 'IA', title: 'Geração realizada com IA', cor: 'bg-violet-50 border-violet-200/70 text-violet-600' }
@@ -614,10 +644,10 @@ export default function OfficePreview() {
       {quickGenerating && (
         <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
           <p className="text-sm font-semibold text-indigo-800">
-            Copywriter criando seu carrossel com IA…
+            Estrategista, Copywriter e Designer trabalhando no seu carrossel…
           </p>
           <p className="text-[12px] text-indigo-600 mt-0.5">
-            Isso normalmente leva alguns segundos.
+            São três etapas seguidas: isso costuma levar de trinta segundos a um minuto.
           </p>
         </div>
       )}
@@ -676,8 +706,10 @@ export default function OfficePreview() {
       <p className="mt-4 text-xs text-gray-400">
         {modo === 'demo'
           ? 'Os agentes desta demonstração são determinísticos e não usam IA: nenhuma chamada externa é feita e nenhum custo é gerado.'
-          : pipelineAtual === 'content_carousel_quick_v1'
-            ? 'Criação rápida: uma geração direta com IA.'
+          : pipelineAtual === 'content_carousel_studio_v1'
+            ? 'Criação rápida: Estrategista, Copywriter e Designer, com IA — a direção visual é texto, não imagem gerada.'
+            : pipelineAtual === 'content_carousel_quick_v1'
+            ? 'Criação rápida: uma geração direta com IA (produção anterior).'
             : pipelineAtual === 'content_carousel_ai_v1'
               ? 'Geração realizada com IA.'
               : pipelineAtual === 'content_carousel_v1'

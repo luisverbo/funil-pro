@@ -17,7 +17,7 @@
 // sem Postgres.
 // ============================================================================
 
-import { CAROUSEL_AI_PIPELINE, CAROUSEL_PIPELINE, QUICK_PIPELINE } from './pipeline'
+import { CAROUSEL_AI_PIPELINE, CAROUSEL_PIPELINE, QUICK_PIPELINE, STUDIO_PIPELINE } from './pipeline'
 import { DEMO_BRIEF_MODE } from './demo-guard'
 import type { ProductionStatus } from './types'
 
@@ -33,6 +33,7 @@ export const PRODUCTION_PIPELINE_KEYS: readonly string[] = [
   CAROUSEL_PIPELINE.key,
   CAROUSEL_AI_PIPELINE.key,
   QUICK_PIPELINE.key,
+  STUDIO_PIPELINE.key,
 ]
 
 /**
@@ -43,7 +44,11 @@ export const PRODUCTION_PIPELINE_KEYS: readonly string[] = [
  * CONTENT_AI_ENABLED desligado e sem ANTHROPIC_API_KEY.
  */
 export function pipelineRequiresAI(pipelineKey: string): boolean {
-  return pipelineKey === CAROUSEL_AI_PIPELINE.key || pipelineKey === QUICK_PIPELINE.key
+  return (
+    pipelineKey === CAROUSEL_AI_PIPELINE.key ||
+    pipelineKey === QUICK_PIPELINE.key ||
+    pipelineKey === STUDIO_PIPELINE.key
+  )
 }
 
 /** Um job por chamada. Fixo no servidor: o cliente não escolhe quanto executar. */
