@@ -65,10 +65,35 @@ export const CAROUSEL_PIPELINE: PipelineDef = {
   maxAutoRevisions: 1,
 }
 
+/**
+ * Fase 2B — pipeline de IA REAL, com chaves novas.
+ *
+ * `content_carousel_v1` (acima) fica intacto apontando para os agentes
+ * determinísticos: produções antigas, inclusive incompletas, retomam com as
+ * mesmas implementações e o mesmo schema com que começaram. O par
+ * (pipeline_key, agent_key) persistido identifica a geração sem depender de
+ * comentário nem de AgentDefinition.version.
+ */
+export const CAROUSEL_AI_PIPELINE: PipelineDef = {
+  key: 'content_carousel_ai_v1',
+  label: 'Carrossel de conteúdo (IA)',
+  steps: [
+    { agentKey: 'cc_ai_researcher', dependsOn: [] },
+    { agentKey: 'cc_ai_strategist', dependsOn: ['cc_ai_researcher'] },
+    { agentKey: 'cc_ai_copywriter', dependsOn: ['cc_ai_strategist'] },
+    { agentKey: 'cc_ai_reviewer', dependsOn: ['cc_ai_copywriter'] },
+    { agentKey: 'cc_ai_approval', dependsOn: ['cc_ai_reviewer'] },
+  ],
+  finalStatus: 'awaiting_approval',
+  finalEvent: 'content_waiting_approval',
+  maxAutoRevisions: 1,
+}
+
 const PIPELINES: Record<string, PipelineDef> = {
   [STUB_PIPELINE.key]: STUB_PIPELINE,
   [OFFICE_PIPELINE.key]: OFFICE_PIPELINE,
   [CAROUSEL_PIPELINE.key]: CAROUSEL_PIPELINE,
+  [CAROUSEL_AI_PIPELINE.key]: CAROUSEL_AI_PIPELINE,
 }
 
 export function getPipeline(key: string): PipelineDef {

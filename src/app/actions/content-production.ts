@@ -32,11 +32,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { drainQueue, startProduction } from '@/lib/content-studio/orchestrator'
 import { preflightContentAI } from '@/lib/content-studio/ai/bootstrap'
 import { firstBriefMessage, validateBrief, type BriefInput, type ValidBrief } from '@/lib/content-studio/brief'
-import { CAROUSEL_PIPELINE } from '@/lib/content-studio/pipeline'
+import { CAROUSEL_AI_PIPELINE } from '@/lib/content-studio/pipeline'
 import {
   admitProduction,
   isRealProduction,
+  pipelineRequiresAI,
   PRODUCTION_MAX_JOBS_PER_CALL,
+  PRODUCTION_PIPELINE_KEYS,
   PRODUCTION_TERMINAL,
   safeProductionMessage,
   type ProductionAdmissionRow,
@@ -146,25 +148,23 @@ export async function createProduction(input: BriefInput): Promise<ActionResult<
     return { ok: false, error: firstBriefMessage(validado.errors) }
   }
 
-  // PREFLIGHT de configuração de IA — sem rede — ANTES de qualquer
-  // persistência: kill switch, chave, modelo e construção do provedor.
-  // Reprovado: zero produção, zero step, zero job, zero evento. Os códigos
-  // internos (disabled/missing_key/invalid_config) ficam no log; o navegador
-  // vê uma única mensagem amigável.
-  try {
-    preflightContentAI()
-  } catch (err) {
-    return fail('ai_disabled', err)
-  }
-
-  const admin = createAdminClient()
-
+  // PREFLIGHT ÚNICO, dentro do coordenador: kill switch, chave, modelo e
+  // construção do provedor — sem rede — ANTES da fábrica do repo. Reprovado:
+  // zero produção, zero step, zero job, zero evento. Os códigos internos
+  // (disabled/missing_key/invalid_config) ficam no log; o navegador vê uma
+  // única mensagem amigável.
   try {
     const resultado = await createWithPreflight(
-      preflightContentAI, supabaseProductionRepo(admin, tenantId), validado.brief)
+      preflightContentAI,
+      () => supabaseProductionRepo(createAdminClient(), tenantId),
+      validado.brief)
     if (!resultado.ok) return fail(resultado.reason)
+    const admin = createAdminClient()
     return readState(admin, tenantId, resultado.productionId)
   } catch (err) {
+    if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
     return fail('create_failed', err)
   }
 }
@@ -182,8 +182,10 @@ function supabaseProductionRepo(
 
   return {
     async findByIdempotencyKey(key: string): Promise<ProductionRowLite[]> {
+      // SÓ o pipeline de IA: uma produção determinística antiga jamais é
+      // reaproveitada por coincidência de idempotency_key.
       const { data, error } = await base()
-        .eq('pipeline_key', CAROUSEL_PIPELINE.key)
+        .eq('pipeline_key', CAROUSEL_AI_PIPELINE.key)
         .eq('brief->>idempotency_key', key)
         .order('created_at', { ascending: true })
         .limit(10)
@@ -192,8 +194,10 @@ function supabaseProductionRepo(
     },
 
     async listOpen(): Promise<ProductionRowLite[]> {
+      // O limite de abertas conta as DUAS gerações — trocar de pipeline não
+      // multiplica a cota do tenant. Demonstrações ficam fora (lista branca).
       const { data, error } = await base()
-        .eq('pipeline_key', CAROUSEL_PIPELINE.key)
+        .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
         .not('status', 'in', `(${PRODUCTION_TERMINAL.join(',')})`)
         .order('created_at', { ascending: true })
         .limit(20)
@@ -206,7 +210,7 @@ function supabaseProductionRepo(
         .from('cs_productions')
         .insert({
           tenant_id: tenantId,                 // <- da sessão, nunca do cliente
-          pipeline_key: CAROUSEL_PIPELINE.key, // <- constante, não é parâmetro
+          pipeline_key: CAROUSEL_AI_PIPELINE.key, // <- constante, não é parâmetro
           title: brief.titulo,
           brief,                               // <- já validado e normalizado
         })
@@ -249,15 +253,6 @@ export async function advanceProduction(productionId: string): Promise<ActionRes
   if (!tenantId) return fail('unauthenticated')
   if (!idValido(productionId)) return fail('not_found')
 
-  // Avançar executa agentes de IA: o MESMO preflight barra kill switch
-  // desligado, chave ausente e modelo inválido antes de qualquer job rodar.
-  // Produções existentes continuam LEGÍVEIS via getProductionState/getLatest.
-  try {
-    preflightContentAI()
-  } catch (err) {
-    return fail('ai_disabled', err)
-  }
-
   const admin = createAdminClient()
 
   const { data, error } = await admin
@@ -278,6 +273,19 @@ export async function advanceProduction(productionId: string): Promise<ActionRes
       return readState(admin, tenantId, productionId)
     }
     return fail(admissao.reason)
+  }
+
+  // O preflight de IA SÓ se aplica ao pipeline que executa IA — decidido
+  // DEPOIS de carregar e conferir a produção do tenant. Uma produção
+  // determinística antiga (content_carousel_v1) conclui normalmente com a IA
+  // desligada, sem chave e sem modelo. Pipeline desconhecido já foi recusado
+  // pela admissão (lista branca) com erro público seguro.
+  if (pipelineRequiresAI(row!.pipeline_key)) {
+    try {
+      preflightContentAI()
+    } catch (err) {
+      return fail('ai_disabled', err)
+    }
   }
 
   const store = createSupabaseContentStore(admin, { tenantId, productionId })
@@ -338,7 +346,7 @@ export async function getLatestProduction(): Promise<ActionResult<ProductionStat
     .from('cs_productions')
     .select(SELECT_LITE)
     .eq('tenant_id', tenantId)
-    .eq('pipeline_key', CAROUSEL_PIPELINE.key)
+    .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
     .neq('status', 'canceled')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -360,7 +368,7 @@ export async function listProductions(): Promise<ActionResult<ProductionSummary[
     .from('cs_productions')
     .select('id, title, status, created_at, pipeline_key, brief')
     .eq('tenant_id', tenantId)
-    .eq('pipeline_key', CAROUSEL_PIPELINE.key)
+    .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
     .neq('status', 'canceled')
     .order('created_at', { ascending: false })
     .limit(20)

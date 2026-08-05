@@ -120,9 +120,18 @@ function aggregateAI(steps: StepRow[]): AIMeta {
  * e mostrá-lo como resultado seria apresentar rascunho abandonado como entrega.
  */
 export function buildProductionResult(steps: StepRow[]): ProductionResult {
-  const copy = dataDe(steps, 'cc_copywriter')
-  const estrategia = dataDe(steps, 'cc_strategist')
-  const revisao = dataDe(steps, 'cc_reviewer')
+  // A GERAÇÃO é determinada pelas chaves realmente presentes nos steps:
+  // qualquer step cc_ai_* => geração de IA (2B); senão, determinística (2A).
+  // Todos os campos vêm da MESMA geração — nunca estratégia de uma com copy
+  // de outra, nunca revisor de uma geração avaliando copy da outra.
+  const geracaoAI = steps.some(s => s.agent_key.startsWith('cc_ai_'))
+  const K = geracaoAI
+    ? { strategist: 'cc_ai_strategist', copywriter: 'cc_ai_copywriter', reviewer: 'cc_ai_reviewer' }
+    : { strategist: 'cc_strategist', copywriter: 'cc_copywriter', reviewer: 'cc_reviewer' }
+
+  const copy = dataDe(steps, K.copywriter)
+  const estrategia = dataDe(steps, K.strategist)
+  const revisao = dataDe(steps, K.reviewer)
 
   if (!copy) return { ...RESULTADO_VAZIO, ai: aggregateAI(steps) }
 

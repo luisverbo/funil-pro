@@ -1,11 +1,12 @@
 // ============================================================================
 // Content Studio — agentes REAIS do content_carousel_v1 (Fase 2B)
 // ----------------------------------------------------------------------------
-// Estes agentes substituem os determinísticos no REGISTRY para as chaves cc_*.
-// Os determinísticos continuam exportados em carousel.ts como fixture de teste
-// e referência — mas produção real NUNCA cai neles: se a IA falha, o job falha
-// com código claro e a produção fica em estado recuperável/failed. Template
-// fingindo ser resultado é pior que erro.
+// Chaves cc_ai_* — NOVAS e não conflitantes. As chaves cc_* continuam com os
+// agentes determinísticos da Fase 2A: produções content_carousel_v1 criadas
+// antes deste PR retomam e concluem com as MESMAS implementações de quando
+// nasceram. A identidade persistida (pipeline_key + agent_key) diz sozinha
+// qual geração produziu cada step. Se a IA falha, o job falha com código
+// claro — template fingindo ser resultado é pior que erro.
 //
 // Cada agente:
 //   1. monta system (fixo, versionado) + conteúdo do usuário (envelopado)
@@ -49,14 +50,13 @@ import {
   type ReviewAIOutput,
 } from '../ai/schemas'
 import type { AgentDefinition, AgentInput, AgentOutput, AgentUsage } from '../types'
-import { CAROUSEL_APPROVAL } from './carousel'
 
 export const CAROUSEL_AI_LABELS: Record<string, string> = {
-  cc_researcher: 'Pesquisador',
-  cc_strategist: 'Estrategista',
-  cc_copywriter: 'Copywriter',
-  cc_reviewer: 'Revisor',
-  cc_approval: 'Aprovação',
+  cc_ai_researcher: 'Pesquisador',
+  cc_ai_strategist: 'Estrategista',
+  cc_ai_copywriter: 'Copywriter',
+  cc_ai_reviewer: 'Revisor',
+  cc_ai_approval: 'Aprovação',
 }
 
 /**
@@ -99,9 +99,9 @@ function execId(input: AgentInput): string {
 // ─── Pesquisador ────────────────────────────────────────────────────────────
 
 export const AI_RESEARCHER: AgentDefinition = {
-  key: 'cc_researcher',
+  key: 'cc_ai_researcher',
   version: 2,
-  label: CAROUSEL_AI_LABELS.cc_researcher,
+  label: CAROUSEL_AI_LABELS.cc_ai_researcher,
 
   validateInput(input) {
     if (typeof input.brief?.tema !== 'string' || !input.brief.tema) {
@@ -125,12 +125,12 @@ export const AI_RESEARCHER: AgentDefinition = {
 // ─── Estrategista ───────────────────────────────────────────────────────────
 
 export const AI_STRATEGIST: AgentDefinition = {
-  key: 'cc_strategist',
+  key: 'cc_ai_strategist',
   version: 2,
-  label: CAROUSEL_AI_LABELS.cc_strategist,
+  label: CAROUSEL_AI_LABELS.cc_ai_strategist,
 
   validateInput(input) {
-    if (!input.upstream.cc_researcher) {
+    if (!input.upstream.cc_ai_researcher) {
       throw new Error('strategist: a pesquisa do Pesquisador não chegou')
     }
   },
@@ -141,7 +141,7 @@ export const AI_STRATEGIST: AgentDefinition = {
       system: STRATEGIST_PROMPT.system,
       userContent: [
         envelopeBrief(input.brief),
-        envelopeUpstream('pesquisa', input.upstream.cc_researcher.data),
+        envelopeUpstream('pesquisa', input.upstream.cc_ai_researcher.data),
       ].join('\n\n'),
       parse: parseStrategy,
       ...AI_PROFILES.strategist,
@@ -154,12 +154,12 @@ export const AI_STRATEGIST: AgentDefinition = {
 // ─── Copywriter ─────────────────────────────────────────────────────────────
 
 export const AI_COPYWRITER: AgentDefinition = {
-  key: 'cc_copywriter',
+  key: 'cc_ai_copywriter',
   version: 2,
-  label: CAROUSEL_AI_LABELS.cc_copywriter,
+  label: CAROUSEL_AI_LABELS.cc_ai_copywriter,
 
   validateInput(input) {
-    if (!input.upstream.cc_strategist) {
+    if (!input.upstream.cc_ai_strategist) {
       throw new Error('copywriter: a estratégia do Estrategista não chegou')
     }
   },
@@ -169,8 +169,8 @@ export const AI_COPYWRITER: AgentDefinition = {
 
     const partes = [
       envelopeBrief(input.brief),
-      envelopeUpstream('pesquisa', input.upstream.cc_researcher?.data ?? {}),
-      envelopeUpstream('estrategia', input.upstream.cc_strategist.data),
+      envelopeUpstream('pesquisa', input.upstream.cc_ai_researcher?.data ?? {}),
+      envelopeUpstream('estrategia', input.upstream.cc_ai_strategist.data),
     ]
 
     // Ciclo de revisão: o orquestrador gravou instruções e a versão anterior
@@ -274,12 +274,12 @@ export function computeVerdict(
 }
 
 export const AI_REVIEWER: AgentDefinition = {
-  key: 'cc_reviewer',
+  key: 'cc_ai_reviewer',
   version: 2,
-  label: CAROUSEL_AI_LABELS.cc_reviewer,
+  label: CAROUSEL_AI_LABELS.cc_ai_reviewer,
 
   validateInput(input) {
-    if (!input.upstream.cc_copywriter) {
+    if (!input.upstream.cc_ai_copywriter) {
       throw new Error('reviewer: o texto do Copywriter não chegou')
     }
   },
@@ -287,7 +287,7 @@ export const AI_REVIEWER: AgentDefinition = {
   async run(input): Promise<AgentOutput> {
     // A cópia persistida já passou pelo schema; revalidar aqui garante que o
     // revisor nunca avalia estrutura inválida vinda de um estado antigo.
-    const copy = parseCopy(input.upstream.cc_copywriter.data)
+    const copy = parseCopy(input.upstream.cc_ai_copywriter.data)
 
     // Nível 1: sem rede. Se falhar, nem gastamos a chamada de IA.
     const det = deterministicReview(copy, input.brief ?? {})
@@ -300,7 +300,7 @@ export const AI_REVIEWER: AgentDefinition = {
         system: REVIEWER_PROMPT.system,
         userContent: [
           envelopeBrief(input.brief),
-          envelopeUpstream('estrategia', input.upstream.cc_strategist?.data ?? {}),
+          envelopeUpstream('estrategia', input.upstream.cc_ai_strategist?.data ?? {}),
           envelopeUpstream('copy_para_avaliar', copy),
         ].join('\n\n'),
         parse: parseReviewAI,
@@ -330,7 +330,7 @@ export const AI_REVIEWER: AgentDefinition = {
 
     return {
       data: {
-        agent: 'cc_reviewer',
+        agent: 'cc_ai_reviewer',
         verdict,
         scores: ai.scores,
         media: Math.round(media * 10) / 10,
@@ -346,7 +346,7 @@ export const AI_REVIEWER: AgentDefinition = {
       },
       artifacts: [],
       usage,
-      nextHint: verdict === 'needs_revision' ? { suggestRevise: ['cc_copywriter'] } : undefined,
+      nextHint: verdict === 'needs_revision' ? { suggestRevise: ['cc_ai_copywriter'] } : undefined,
     }
   },
 }
@@ -354,12 +354,36 @@ export const AI_REVIEWER: AgentDefinition = {
 // A aprovação continua DETERMINÍSTICA e continua não aprovando nada — só
 // exige que o parecer exista e tenha passado, e leva a awaiting_approval.
 export const AI_APPROVAL: AgentDefinition = {
-  ...CAROUSEL_APPROVAL,
+  key: 'cc_ai_approval',
+  version: 1,
+  label: CAROUSEL_AI_LABELS.cc_ai_approval,
+
   validateInput(input) {
-    const parecer = input.upstream.cc_reviewer?.data
+    const parecer = input.upstream.cc_ai_reviewer?.data
     if (!parecer) throw new Error('approval: o parecer do Revisor não chegou')
     if (parecer.verdict !== 'approved_for_human_review') {
       throw new Error('approval: o material não passou na revisão')
+    }
+  },
+
+  // Igual ao determinístico em ESPÍRITO: fecha o trabalho automático, não
+  // aprova nada — mas lê o parecer do revisor DE IA (upstream cc_ai_reviewer).
+  async run(input): Promise<AgentOutput> {
+    const parecer = input.upstream.cc_ai_reviewer.data
+    return {
+      data: {
+        agent: 'cc_ai_approval',
+        estado: 'aguardando_aprovacao',
+        aprovado_automaticamente: false,
+        mensagem: 'Material pronto para revisão humana.',
+        itens_ok: parecer.itens_ok ?? null,
+        itens_total: parecer.itens_total ?? null,
+      },
+      artifacts: [],
+      usage: {
+        provider: 'none', model: 'deterministic', inputTokens: 0, outputTokens: 0,
+        imagesGenerated: 0, costCents: 0, durationMs: 0, aiCalls: 0,
+      },
     }
   },
 }

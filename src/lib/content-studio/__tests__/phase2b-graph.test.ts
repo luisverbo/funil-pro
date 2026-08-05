@@ -30,7 +30,7 @@ function test(name: string, fn: () => void | Promise<void>) { suite.push({ name,
  * Roda o script filho num Node novo. `env` controla o cenário; o caminho do
  * registry COMPILADO é injetado — o filho não conhece este arquivo.
  */
-function rodarFilho(env: Record<string, string | undefined>): {
+function rodarFilho(env: Record<string, string | undefined>, agentKey = 'cc_ai_researcher'): {
   alcancouAnthropic: boolean
   provider: string | null
   pesquisaExterna: unknown
@@ -62,9 +62,9 @@ function rodarFilho(env: Record<string, string | undefined>): {
 
     // SÓ AGORA o entrypoint real de produção entra no processo.
     const { getAgent } = require(${JSON.stringify(registryPath)})
-    const agente = getAgent('cc_researcher')
+    const agente = getAgent(${JSON.stringify('__AGENT__')})
     agente.run({
-      envelope: { productionId: 'p', stepId: 's', agentKey: 'cc_researcher',
+      envelope: { productionId: 'p', stepId: 's', agentKey: ${JSON.stringify('__AGENT__')},
                   tenantId: 't', attempt: 0, idempotencyKey: 'k' },
       brief: { tema: 'organização de leads', publico: 'pequenas empresas' },
       upstream: {}, stepInput: null,
@@ -85,7 +85,8 @@ function rodarFilho(env: Record<string, string | undefined>): {
       })
   `
 
-  const filho = spawnSync(process.execPath, ['-e', script], {
+  const scriptFinal = script.replaceAll(JSON.stringify('__AGENT__'), JSON.stringify(agentKey))
+  const filho = spawnSync(process.execPath, ['-e', scriptFinal], {
     // Ambiente MÍNIMO e explícito: nada vaza do processo pai.
     env: { PATH: process.env.PATH, ...env } as unknown as NodeJS.ProcessEnv,
     encoding: 'utf8',
@@ -126,6 +127,14 @@ test('grafo isolado) habilitado sem chave → missing_key, sem template', () => 
   assert.equal(r.alcancouAnthropic, false)
   // E nada de conteúdo: o agente não devolveu output nenhum.
   assert.equal(r.provider, null)
+})
+
+test('grafo isolado) cc_researcher determinístico roda com IA DESLIGADA e zero fetch', () => {
+  // Nenhuma env de IA: produção antiga precisa concluir num deploy sem chave.
+  const r = rodarFilho({}, 'cc_researcher')
+  assert.equal(r.erro, null, `o determinístico falhou sem IA: ${r.erro}`)
+  assert.equal(r.alcancouAnthropic, false, 'o determinístico tocou a rede')
+  assert.equal(r.provider, 'none', 'o determinístico deveria declarar provider none')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

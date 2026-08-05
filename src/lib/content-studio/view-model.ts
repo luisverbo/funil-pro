@@ -12,6 +12,7 @@
 // ============================================================================
 
 import { CAROUSEL_AGENT_LABELS } from './agents/carousel'
+import { CAROUSEL_AI_LABELS } from './agents/carousel-ai'
 import { OFFICE_AGENT_LABELS } from './agents/office'
 import type { EventType, StoredEvent } from './types'
 
@@ -115,6 +116,7 @@ export const OFFICE_AGENT_ORDER = ['researcher', 'strategist', 'copywriter'] as 
 export const AGENT_LABELS: Record<string, string> = {
   ...OFFICE_AGENT_LABELS,
   ...CAROUSEL_AGENT_LABELS,
+  ...CAROUSEL_AI_LABELS,
 }
 
 /**
@@ -135,6 +137,12 @@ const DESK_BY_AGENT: Record<string, string> = {
   cc_researcher: 'researcher',
   cc_strategist: 'strategist',
   cc_copywriter: 'copywriter',
+  // Fase 2B: os agentes de IA sentam nas MESMAS mesas — mesmos personagens,
+  // mesmas animações. Revisor e Aprovação (das duas gerações) seguem só na
+  // linha do tempo, como antes.
+  cc_ai_researcher: 'researcher',
+  cc_ai_strategist: 'strategist',
+  cc_ai_copywriter: 'copywriter',
 }
 
 /** Mesa do agente, ou null para quem não tem lugar na cena. */

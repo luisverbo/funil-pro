@@ -49,10 +49,17 @@ import {
   computeVerdict, deterministicReview,
 } from '../agents/carousel-ai'
 import { getAgent } from '../agents/registry'
+import { drainQueue, runNextJob, startProduction } from '../orchestrator'
+import { buildProductionResult } from '../result-view'
+import { pipelineRequiresAI } from '../production-guard'
+import type {
+  ContentStore, EmitEventInput, JobRow, ProductionRow, ProductionStatus,
+  StepRow, StoredEvent,
+} from '../types'
 import { preflightContentAI } from '../ai/bootstrap'
 import { createWithPreflight, type ProductionRepo } from '../production-runner'
 import { validateBrief } from '../brief'
-import { getPipeline } from '../pipeline'
+import { CAROUSEL_AI_PIPELINE, CAROUSEL_PIPELINE, getPipeline } from '../pipeline'
 import type { AgentInput } from '../types'
 
 const RAIZ = process.cwd()
@@ -194,13 +201,13 @@ test('1) a produção real usa o provedor de IA, não template', async () => {
   const base = providerDeQualidade()
   __setContentAIProviderForTests({ async call(req) { chamadas++; return base.call(req) } })
 
-  const out = await AI_RESEARCHER.run(inputBase('cc_researcher'), {})
+  const out = await AI_RESEARCHER.run(inputBase('cc_ai_researcher'), {})
   assert.equal(chamadas, 1, 'o pesquisador não passou pela porta de IA')
   assert.equal(out.usage?.provider, 'anthropic')
   assert.equal(out.usage?.promptVersion, 'researcher_v1')
 
   // E o registry serve os agentes de IA para as chaves cc_*.
-  assert.equal(getAgent('cc_researcher').version, AI_RESEARCHER.version)
+  assert.equal(getAgent('cc_ai_researcher').version, AI_RESEARCHER.version)
 
   // Nada de template: o output vem do provedor, não de string fixa do agente.
   const fonte = semComentarios(ler('src/lib/content-studio/agents/carousel-ai.ts'))
@@ -260,7 +267,7 @@ test('6) timeout vira falha segura, sem conteúdo no erro', async () => {
     async call() { throw new ContentAIError('timeout', '60000ms') },
   })
   await assert.rejects(
-    () => AI_RESEARCHER.run(inputBase('cc_researcher'), {}),
+    () => AI_RESEARCHER.run(inputBase('cc_ai_researcher'), {}),
     (err: Error) => {
       assert.ok(err.message.startsWith('content_ai:timeout'))
       assert.ok(!err.message.includes('lead'), 'o erro vazou conteúdo do briefing')
@@ -277,7 +284,7 @@ test('7) retry técnico ocorre no máximo UMA vez', async () => {
   // E a partir da 2ª tentativa de JOB o agente falha ANTES de chamar a rede.
   let chamadas = 0
   __setContentAIProviderForTests({ async call() { chamadas++; throw new ContentAIError('provider_error') } })
-  const input = inputBase('cc_researcher')
+  const input = inputBase('cc_ai_researcher')
   input.envelope.attempt = AI_MAX_ATTEMPTS_WITH_CALLS
   await assert.rejects(() => AI_RESEARCHER.run(input, {}), /attempts_exhausted/)
   assert.equal(chamadas, 0, 'tentativa esgotada ainda chamou a rede')
@@ -329,18 +336,18 @@ test('10) o estrategista recebe briefing E pesquisa — e exige a pesquisa', asy
     })
   }))
   const pesquisa = { data: { perfil_do_publico: 'dono de pequena empresa' } }
-  await AI_STRATEGIST.run(inputBase('cc_strategist', { cc_researcher: pesquisa as never }), {})
+  await AI_STRATEGIST.run(inputBase('cc_ai_strategist', { cc_ai_researcher: pesquisa as never }), {})
 
   assert.ok(chamadasCom[0].includes('<dados_do_briefing>'), 'o briefing não chegou')
   assert.ok(chamadasCom[0].includes('etapa="pesquisa"'), 'a pesquisa não chegou')
-  assert.throws(() => AI_STRATEGIST.validateInput!(inputBase('cc_strategist')))
+  assert.throws(() => AI_STRATEGIST.validateInput!(inputBase('cc_ai_strategist')))
 })
 
 test('11) o copywriter usa a estratégia (e a revisão, quando houver)', async () => {
   let recebido = ''
   __setContentAIProviderForTests(fakeProvider(req => { recebido = req.userContent; return parseCopy(COPY_QUALIDADE) }))
 
-  const input = inputBase('cc_copywriter', { cc_strategist: { data: { big_idea: 'ideia' } } as never })
+  const input = inputBase('cc_ai_copywriter', { cc_ai_strategist: { data: { big_idea: 'ideia' } } as never })
   input.stepInput = {
     revision_cycle: 1,
     revision_notes: ['O gancho está genérico'],
@@ -413,9 +420,9 @@ test('16) o revisor aprova copy de boa qualidade', async () => {
   __setContentAIProviderForTests(fakeProvider(() =>
     parseReviewAI({ scores: notasBoas, strengths: ['bom gancho'], problems: [], revision_instructions: [] })))
 
-  const out = await AI_REVIEWER.run(inputBase('cc_reviewer', {
-    cc_copywriter: { data: COPY_QUALIDADE } as never,
-    cc_strategist: { data: {} } as never,
+  const out = await AI_REVIEWER.run(inputBase('cc_ai_reviewer', {
+    cc_ai_copywriter: { data: COPY_QUALIDADE } as never,
+    cc_ai_strategist: { data: {} } as never,
   }), {})
 
   assert.equal(out.data.verdict, 'approved_for_human_review')
@@ -469,7 +476,7 @@ test('20) eventos não contêm prompt nem briefing completo', () => {
 test('21) tokens e metadados são persistidos e respeitam o schema', async () => {
   const base = providerDeQualidade()
   __setContentAIProviderForTests(base)
-  const out = await AI_RESEARCHER.run(inputBase('cc_researcher'), {})
+  const out = await AI_RESEARCHER.run(inputBase('cc_ai_researcher'), {})
   assert.equal(out.usage?.inputTokens, 120)
   assert.equal(out.usage?.outputTokens, 240)
   assert.equal(out.usage?.durationMs, 7)
@@ -540,7 +547,8 @@ test('24-26) o cliente não escolhe modelo, não envia prompt, não envia output
 
 test('27) o resultado continua vindo da persistência', () => {
   const rv = semComentarios(ler('src/lib/content-studio/result-view.ts'))
-  assert.ok(rv.includes("dataDe(steps, 'cc_copywriter')"))
+  assert.ok(rv.includes('dataDe(steps, K.copywriter)'))
+  assert.ok(rv.includes("startsWith('cc_ai_')"), 'a detecção de geração sumiu')
   assert.ok(!/getContentAIProvider|fetch\s*\(/.test(rv), 'o result-view chama IA')
   const painel = semComentarios(ler('src/components/content-studio/result-panel.tsx'))
   assert.ok(!/dangerouslySetInnerHTML/.test(painel), 'o painel renderiza HTML arbitrário')
@@ -646,6 +654,237 @@ test('injection) o briefing não escapa do envelope nem vira instrução', () =>
   }
 })
 
+// ─── Store em memória (compatibilidade entre gerações) ──────────────────────
+
+class MemStore implements ContentStore {
+  productions = new Map<string, ProductionRow>()
+  steps: StepRow[] = []
+  jobs: JobRow[] = []
+  events: StoredEvent[] = []
+  private n = 0
+
+  criar(pipelineKey: string, brief: Record<string, unknown>): ProductionRow {
+    const p: ProductionRow = {
+      id: 'prod-1', tenant_id: 'tenant-A', pipeline_key: pipelineKey,
+      title: 'Produção', brief, status: 'draft', next_event_seq: 0, created_by: null,
+      created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z',
+    }
+    this.productions.set(p.id, p)
+    return p
+  }
+  async getProduction(id: string) { return id === 'prod-1' ? (this.productions.get(id) ?? null) : null }
+  async updateProductionStatus(id: string, st: ProductionStatus) { const p = this.productions.get(id); if (p) p.status = st }
+  async listSteps(id: string) {
+    return this.steps.filter(s => s.production_id === id)
+      .sort((a, b) => a.step_index - b.step_index).map(s => ({ ...s }))
+  }
+  async insertSteps(rows: Omit<StepRow, 'id'>[]) {
+    if (this.steps.length) return { rows: await this.listSteps('prod-1'), inserted: false }
+    const criados = rows.map((r, i) => ({ ...r, id: `step-${i}` }))
+    this.steps.push(...criados)
+    return { rows: criados.map(s => ({ ...s })), inserted: true }
+  }
+  async updateStep(id: string, patch: Partial<StepRow>) { const st = this.steps.find(x => x.id === id); if (st) Object.assign(st, patch) }
+  async insertJob(job: Omit<JobRow, 'id'>) {
+    if (this.jobs.some(j => j.dedupe_key === job.dedupe_key)) return null
+    if (this.jobs.some(j => j.step_id === job.step_id && (j.status === 'pending' || j.status === 'running'))) return null
+    const row: JobRow = { ...job, id: `job-${this.n++}` }
+    this.jobs.push(row)
+    return { ...row }
+  }
+  async claimNextJob(now: Date, tok: string, secs: number) {
+    const j = this.jobs.find(j => j.status === 'pending' && new Date(j.scheduled_for) <= now)
+    if (!j) return null
+    j.status = 'running'; j.lock_token = tok
+    j.locked_until = new Date(now.getTime() + secs * 1000).toISOString()
+    return { ...j }
+  }
+  async completeJob(id: string, tok: string) {
+    const j = this.jobs.find(x => x.id === id && x.lock_token === tok && x.status === 'running')
+    if (!j) return false
+    j.status = 'done'; return true
+  }
+  async failJob(id: string, tok: string, err: string, retryAt: Date | null) {
+    const j = this.jobs.find(x => x.id === id && x.lock_token === tok)
+    if (!j) return
+    j.error = err; j.lock_token = null; j.locked_until = null
+    if (retryAt) { j.status = 'pending'; j.attempt += 1; j.scheduled_for = retryAt.toISOString() }
+    else j.status = 'failed'
+  }
+  async recoverStaleJobs() { return 0 }
+  async emitEvent(i: EmitEventInput) {
+    const p = this.productions.get(i.productionId)!
+    p.next_event_seq += 1
+    this.events.push({
+      id: `ev-${p.next_event_seq}`, tenant_id: p.tenant_id, production_id: p.id,
+      step_id: i.stepId ?? null, agent_key: i.agentKey ?? null, type: i.type,
+      schema_version: 1, seq: p.next_event_seq, payload: i.payload ?? {},
+      ui_hint: i.uiHint ?? null, occurred_at: '2026-01-01T00:00:00.000Z',
+    })
+    return p.next_event_seq
+  }
+}
+
+/** Ambiente "IA desligada e sem chave" — como um deploy com o switch off. */
+async function semIA<T>(fn: () => Promise<T>): Promise<T> {
+  __setContentAIProviderForTests(null)
+  const e = process.env.CONTENT_AI_ENABLED
+  const k = process.env.ANTHROPIC_API_KEY
+  const originalFetch = globalThis.fetch
+  let fetches = 0
+  globalThis.fetch = (async () => { fetches++; throw new Error('rede tocada') }) as typeof fetch
+  delete process.env.CONTENT_AI_ENABLED
+  delete process.env.ANTHROPIC_API_KEY
+  try {
+    const r = await fn()
+    if (fetches > 0) throw new Error(`o cenário determinístico fez ${fetches} fetch(es)`)
+    return r
+  } finally {
+    globalThis.fetch = originalFetch
+    if (e === undefined) delete process.env.CONTENT_AI_ENABLED; else process.env.CONTENT_AI_ENABLED = e
+    if (k === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = k
+  }
+}
+
+const BRIEF_2A = {
+  titulo: 'Produção antiga', tema: 'mentoria de vendas', objetivo: 'gerar interesse',
+  publico: 'lojistas', oferta: 'consultoria mensal', tom: 'direto', cta: 'chame no direct',
+  observacoes: '', idempotency_key: 'antiga0001',
+}
+
+// ─── Compatibilidade: produções content_carousel_v1 (2A) ────────────────────
+
+test('compat-A) produção antiga incompleta conclui deterministicamente com IA desligada', async () => {
+  await semIA(async () => {
+    const store = new MemStore()
+    store.criar(CAROUSEL_PIPELINE.key, BRIEF_2A)
+    await startProduction(store, 'prod-1')
+
+    // researcher determinístico concluído; strategist pendente — retomada.
+    await runNextJob(store)
+    assert.equal(store.steps.find(s => s.agent_key === 'cc_researcher')!.status, 'completed')
+    assert.equal(store.steps.find(s => s.agent_key === 'cc_strategist')!.status, 'queued')
+
+    // advanceProduction (drain) continua o pipeline SEM provider e SEM rede.
+    await drainQueue(store, 40)
+    assert.equal(store.productions.get('prod-1')!.status, 'awaiting_approval')
+    assert.ok(store.steps.every(s => s.status === 'completed'))
+    // Todos os steps declaram custo zero VERDADEIRO (determinísticos).
+    for (const st of store.steps) {
+      assert.equal(st.output?.usage?.provider, 'none', `${st.agent_key} não é determinístico`)
+    }
+  })
+})
+
+test('compat-B) reviewer antigo avalia copy no schema antigo, sem IA', async () => {
+  await semIA(async () => {
+    const store = new MemStore()
+    store.criar(CAROUSEL_PIPELINE.key, BRIEF_2A)
+    await startProduction(store, 'prod-1')
+    // roda até o copywriter (3 jobs), deixando o reviewer pendente
+    await runNextJob(store); await runNextJob(store); await runNextJob(store)
+
+    const copy = store.steps.find(s => s.agent_key === 'cc_copywriter')!
+    assert.equal(copy.status, 'completed')
+    // Schema ANTIGO: titulo/texto/legenda — não title/body/caption.
+    assert.ok('titulo' in copy.output!.data && 'legenda' in copy.output!.data)
+    assert.equal(store.steps.find(s => s.agent_key === 'cc_reviewer')!.status, 'queued')
+
+    // O reviewer determinístico antigo conclui sem falhar por schema.
+    await drainQueue(store, 40)
+    const parecer = store.steps.find(s => s.agent_key === 'cc_reviewer')!
+    assert.equal(parecer.status, 'completed')
+    assert.equal(parecer.output!.data.verdict, 'aprovado_para_revisao')
+    assert.equal(store.productions.get('prod-1')!.status, 'awaiting_approval')
+  })
+})
+
+test('compat-C) produção antiga concluída continua legível, sem selo de IA', async () => {
+  await semIA(async () => {
+    const store = new MemStore()
+    store.criar(CAROUSEL_PIPELINE.key, BRIEF_2A)
+    await startProduction(store, 'prod-1')
+    await drainQueue(store, 40)
+    const eventosAntes = store.events.length
+
+    // Já awaiting_approval: chamadas extras são no-op absoluto.
+    await drainQueue(store, 10)
+    assert.equal(store.events.length, eventosAntes)
+
+    // Resultado legível no formato antigo, SEM selo de IA real.
+    const r = buildProductionResult(store.steps)
+    assert.ok(r.disponivel)
+    assert.ok(r.titulo && r.legenda && r.cta)
+    assert.equal(r.ai.usedRealAI, false, 'produção determinística ganhou selo de IA')
+    assert.equal(r.revisao.verdict, 'aprovado_para_revisao')
+  })
+})
+
+// ─── Resolução por agent_key ────────────────────────────────────────────────
+
+test('resolução) agent_key decide a implementação; o kill switch não muda isso', () => {
+  const det = getAgent('cc_copywriter')
+  const ia = getAgent('cc_ai_copywriter')
+  assert.notEqual(det, ia)
+  assert.equal(det.version, 1, 'cc_copywriter deixou de ser o determinístico v1')
+  assert.equal(ia.version, 2, 'cc_ai_copywriter deixou de ser o de IA v2')
+
+  // Ligar/desligar o kill switch NÃO troca a resolução de nenhuma chave.
+  const original = process.env.CONTENT_AI_ENABLED
+  try {
+    process.env.CONTENT_AI_ENABLED = 'true'
+    assert.equal(getAgent('cc_copywriter'), det)
+    delete process.env.CONTENT_AI_ENABLED
+    assert.equal(getAgent('cc_copywriter'), det)
+    assert.equal(getAgent('cc_ai_copywriter'), ia)
+  } finally {
+    if (original === undefined) delete process.env.CONTENT_AI_ENABLED
+    else process.env.CONTENT_AI_ENABLED = original
+  }
+
+  // As DEZ chaves convivem no registry, sem colisão e sem mistura.
+  for (const k of ['cc_researcher', 'cc_strategist', 'cc_copywriter', 'cc_reviewer', 'cc_approval']) {
+    assert.equal(getAgent(k).version, 1, `${k} não é o determinístico`)
+  }
+  for (const k of ['cc_ai_researcher', 'cc_ai_strategist', 'cc_ai_copywriter', 'cc_ai_reviewer']) {
+    assert.equal(getAgent(k).version, 2, `${k} não é o de IA`)
+  }
+  assert.equal(getAgent('cc_ai_approval').version, 1) // aprovação é determinística nas duas
+
+  // Estático: nenhum agent_key antigo alcança IA; nenhum novo cai no template.
+  const det_src = semComentarios(ler('src/lib/content-studio/agents/carousel.ts'))
+  assert.ok(!/ContentAIProvider|resolveContentAIProvider|anthropic/i.test(det_src))
+  const ia_src = semComentarios(ler('src/lib/content-studio/agents/carousel-ai.ts'))
+  assert.ok(!ia_src.includes('stableHash'))
+  assert.ok(!/upstream\.cc_(?!ai_)/.test(ia_src), 'string antiga acidental no fluxo de IA')
+
+  // pipelineRequiresAI decide o preflight do advance.
+  assert.equal(pipelineRequiresAI(CAROUSEL_PIPELINE.key), false)
+  assert.equal(pipelineRequiresAI(CAROUSEL_AI_PIPELINE.key), true)
+})
+
+test('resolução) resultado nunca mistura gerações', async () => {
+  // Steps das DUAS gerações lado a lado (cenário impossível em produção, mas
+  // é exatamente o que o result-view precisa recusar a misturar).
+  const stepDe = (agentKey: string, idx: number, data: Record<string, unknown>): StepRow => ({
+    id: `s-${idx}`, production_id: 'p', tenant_id: 't', agent_key: agentKey,
+    step_index: idx, depends_on: [], status: 'completed', input: null,
+    output: { data }, attempt: 0, error: null, started_at: null, completed_at: null,
+  })
+  const misto = [
+    stepDe('cc_copywriter', 0, { titulo: 'ANTIGO', slides: [{ numero: 1, papel: 'x', headline: 'h', texto: 't' }], legenda: 'l', cta: 'c' }),
+    stepDe('cc_ai_copywriter', 1, { title: 'NOVO', slides: [{ number: 1, role: 'hook', headline: 'h2', body: 'b2' }], caption: 'cap', cta: 'c2' }),
+  ]
+  const r = buildProductionResult(misto)
+  // Havendo qualquer step cc_ai_*, SÓ a geração de IA é lida.
+  assert.equal(r.titulo, 'NOVO')
+  assert.equal(r.legenda, 'cap')
+
+  const soAntigo = [misto[0]]
+  const r2 = buildProductionResult(soAntigo)
+  assert.equal(r2.titulo, 'ANTIGO')
+})
+
 // ─── kill switch ────────────────────────────────────────────────────────────
 
 test('kill-switch) default desligado; só a string exata "true" habilita', () => {
@@ -671,15 +910,27 @@ test('kill-switch) desligado bloqueia criação E avanço ANTES de gravar', () =
   // inclusive antes de construir o client admin.
   const criar = actions.slice(actions.indexOf('export async function createProduction'))
     .split('\nexport ')[0]
-  const gate = criar.indexOf('preflightContentAI()')
-  assert.ok(gate > 0, 'createProduction não roda o preflight')
-  assert.ok(gate < criar.indexOf('createAdminClient'), 'o preflight vem depois do client')
-  assert.ok(gate < criar.indexOf('createWithPreflight'), 'o preflight vem depois da criação')
+  // O preflight roda DENTRO do coordenador, como primeiro argumento — e a
+  // fábrica do repo (que constrói o client) só roda depois dele.
+  assert.ok(criar.includes('createWithPreflight('), 'createProduction não usa o coordenador')
+  assert.ok(criar.includes('preflightContentAI,'), 'o preflight não é injetado no coordenador')
+  assert.ok(criar.includes('() => supabaseProductionRepo('), 'o repo não entra como fábrica')
   assert.ok(criar.indexOf("fail('ai_disabled'") > 0)
-  // advanceProduction idem, antes do drain.
+  // advanceProduction: preflight SÓ para pipeline de IA, DEPOIS de carregar e
+  // admitir a produção do tenant, ANTES do drain.
   const avancar = actions.slice(actions.indexOf('export async function advanceProduction'))
     .split('\nexport ')[0]
-  assert.ok(avancar.indexOf('preflightContentAI()') < avancar.indexOf('drainQueue'))
+  const pos = {
+    posse: avancar.indexOf("eq('tenant_id', tenantId)"),
+    admissao: avancar.indexOf('admitProduction'),
+    decisao: avancar.indexOf('pipelineRequiresAI'),
+    preflight: avancar.indexOf('preflightContentAI()'),
+    drain: avancar.indexOf('drainQueue'),
+  }
+  assert.ok(pos.posse > 0 && pos.posse < pos.admissao, 'posse depois da admissão')
+  assert.ok(pos.admissao < pos.decisao, 'decisão de IA antes da admissão')
+  assert.ok(pos.decisao < pos.preflight && pos.preflight < pos.drain,
+    'preflight fora da ordem decisão -> preflight -> drain')
   // Leitura NÃO é bloqueada: produções existentes permanecem legíveis.
   for (const leitura of ['getProductionState', 'getLatestProduction', 'listProductions']) {
     const corpo = actions.slice(actions.indexOf(`export async function ${leitura}`))
@@ -707,8 +958,10 @@ test('preflight) configuração inválida = zero persistência; válida = prosse
   const originalModel = process.env.CONTENT_AI_MODEL
   const originalFetch = globalThis.fetch
 
-  // Repo ESPIÃO: qualquer método chamado conta como escrita/leitura.
+  // Repo ESPIÃO: qualquer método chamado conta como escrita/leitura. A própria
+  // FÁBRICA conta: reprovado no preflight, nem o repo pode ser construído.
   let toques = 0
+  let fabricas = 0
   const espiao: ProductionRepo = {
     async findByIdempotencyKey() { toques++; return [] },
     async listOpen() { toques++; return [] },
@@ -720,6 +973,7 @@ test('preflight) configuração inválida = zero persistência; válida = prosse
     async cancel() { toques++ },
     async materialize() { toques++ },
   }
+  const fabrica = () => { fabricas++; return espiao }
   // fetch envenenado: QUALQUER toque na rede durante o preflight explode.
   let fetches = 0
   globalThis.fetch = (async () => { fetches++; throw new Error('rede tocada') }) as typeof fetch
@@ -736,28 +990,30 @@ test('preflight) configuração inválida = zero persistência; válida = prosse
     delete process.env.CONTENT_AI_ENABLED
     process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
     await assert.rejects(
-      () => createWithPreflight(preflightContentAI, espiao, v.brief), /content_ai:disabled/)
+      () => createWithPreflight(preflightContentAI, fabrica, v.brief), /content_ai:disabled/)
     assert.equal(toques, 0, 'desligado tocou a persistência')
 
     // 2. ligado sem chave → zero persistência
     process.env.CONTENT_AI_ENABLED = 'true'
     delete process.env.ANTHROPIC_API_KEY
     await assert.rejects(
-      () => createWithPreflight(preflightContentAI, espiao, v.brief), /content_ai:missing_key/)
+      () => createWithPreflight(preflightContentAI, fabrica, v.brief), /content_ai:missing_key/)
     assert.equal(toques, 0, 'sem chave tocou a persistência')
 
     // 3. ligado com modelo vazio → zero persistência
     process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
     process.env.CONTENT_AI_MODEL = '   '
     await assert.rejects(
-      () => createWithPreflight(preflightContentAI, espiao, v.brief), /content_ai:invalid_config/)
+      () => createWithPreflight(preflightContentAI, fabrica, v.brief), /content_ai:invalid_config/)
     assert.equal(toques, 0, 'modelo vazio tocou a persistência')
+    assert.equal(fabricas, 0, 'o repo foi CONSTRUÍDO antes do preflight passar')
 
     // 4. configuração válida → a criação prossegue (repo é usado)
     delete process.env.CONTENT_AI_MODEL
-    const r = await createWithPreflight(preflightContentAI, espiao, v.brief)
+    const r = await createWithPreflight(preflightContentAI, fabrica, v.brief)
     assert.ok(r.ok, 'configuração válida deveria criar')
     assert.ok(toques > 0, 'a criação válida não usou o repo')
+    assert.equal(fabricas, 1, 'a fábrica deveria rodar exatamente uma vez')
 
     // 5. NENHUM caso fez fetch durante o preflight.
     assert.equal(fetches, 0, `o preflight tocou a rede ${fetches}x`)
