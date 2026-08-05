@@ -25,7 +25,8 @@ import {
   REVIEW_FLOORS,
   REVIEW_MIN_AVG,
 } from '../ai/config'
-import { ContentAIError, getContentAIProvider, type AICallResult } from '../ai/provider'
+import { resolveContentAIProvider } from '../ai/bootstrap'
+import { ContentAIError, type AICallResult } from '../ai/provider'
 import {
   COPYWRITER_PROMPT,
   RESEARCHER_PROMPT,
@@ -58,15 +59,25 @@ export const CAROUSEL_AI_LABELS: Record<string, string> = {
   cc_approval: 'Aprovação',
 }
 
-/** Metadados seguros da chamada — vão para cs_steps.output.usage (jsonb). */
+/**
+ * Metadados seguros da chamada — vão para cs_steps.output.usage (jsonb).
+ *
+ * SEMÂNTICA DOS TOKENS: `inputTokens` é o TOTAL de entrada (não cacheados +
+ * criação de cache + leitura de cache) — nunca subestima o consumo. Os três
+ * componentes ficam registrados separadamente. `costCents` fica AUSENTE de
+ * propósito: a chamada é paga e o custo ainda não é calculado — zero seria
+ * mentira. Só os agentes determinísticos têm custo zero real.
+ */
 function usageDe(r: AICallResult, promptVersion: string): AgentUsage {
   return {
     provider: 'anthropic',
     model: r.model,
     inputTokens: r.inputTokens,
+    uncachedInputTokens: r.uncachedInputTokens,
+    cacheCreationInputTokens: r.cacheCreationInputTokens,
+    cacheReadInputTokens: r.cacheReadInputTokens,
     outputTokens: r.outputTokens,
     imagesGenerated: 0,
-    costCents: 0, // cobrança não existe nesta fase; o custo real fica nos tokens
     durationMs: r.durationMs,
     aiCalls: r.calls,
     promptVersion,
@@ -100,7 +111,7 @@ export const AI_RESEARCHER: AgentDefinition = {
 
   async run(input): Promise<AgentOutput> {
     exigirTentativaComRede(input)
-    const r = await getContentAIProvider().call({
+    const r = await resolveContentAIProvider().call({
       system: RESEARCHER_PROMPT.system,
       userContent: envelopeBrief(input.brief),
       parse: parseResearch,
@@ -126,7 +137,7 @@ export const AI_STRATEGIST: AgentDefinition = {
 
   async run(input): Promise<AgentOutput> {
     exigirTentativaComRede(input)
-    const r = await getContentAIProvider().call({
+    const r = await resolveContentAIProvider().call({
       system: STRATEGIST_PROMPT.system,
       userContent: [
         envelopeBrief(input.brief),
@@ -178,7 +189,7 @@ export const AI_COPYWRITER: AgentDefinition = {
       ].join('\n'))
     }
 
-    const r = await getContentAIProvider().call({
+    const r = await resolveContentAIProvider().call({
       system: COPYWRITER_PROMPT.system,
       userContent: partes.join('\n\n'),
       parse: parseCopy,
@@ -285,7 +296,7 @@ export const AI_REVIEWER: AgentDefinition = {
     let usage: AgentUsage
     if (det.passed) {
       exigirTentativaComRede(input)
-      const r = await getContentAIProvider().call({
+      const r = await resolveContentAIProvider().call({
         system: REVIEWER_PROMPT.system,
         userContent: [
           envelopeBrief(input.brief),

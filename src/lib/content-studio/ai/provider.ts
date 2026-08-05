@@ -6,9 +6,11 @@
 // provedor falso — nenhum teste automatizado chama API real — e trocar de
 // provedor sem tocar em agente nenhum.
 //
-// O contrato é deliberadamente estreito:
-//   entra  -> instruções de sistema, dados estruturados, validador, perfil
-//   sai    -> output JÁ VALIDADO + metadados seguros (modelo, tokens, duração)
+// Este arquivo define APENAS o contrato e o override de teste. Quem liga a
+// porta à implementação concreta é `bootstrap.ts`, com import EXPLÍCITO — a
+// primeira versão registrava a fábrica por efeito colateral de import, e o
+// grafo de produção nunca importava o arquivo: o provedor real simplesmente
+// não carregava. O teste de grafo em phase2b-provider.test.ts protege isso.
 //
 // O que NUNCA atravessa esta porta para fora do servidor: a API key, o prompt,
 // a resposta bruta inválida, stack trace, dados de outro tenant.
@@ -38,7 +40,17 @@ export interface AICallResult {
   /** Output validado pelo `parse` — só ele é persistido. */
   output: Record<string, unknown>
   model: string
+  /**
+   * TOTAL de tokens de entrada = não cacheados + criação de cache + leitura
+   * de cache. É o número que nunca pode subestimar o consumo.
+   */
   inputTokens: number
+  /** Tokens de entrada processados sem cache (usage.input_tokens da API). */
+  uncachedInputTokens?: number
+  /** Tokens gravados no cache nesta chamada (cobrados com acréscimo). */
+  cacheCreationInputTokens?: number
+  /** Tokens lidos do cache nesta chamada (cobrados com desconto). */
+  cacheReadInputTokens?: number
   outputTokens: number
   durationMs: number
   /** Quantas chamadas HTTP esta execução fez (1, ou 2 com o retry técnico). */
@@ -51,12 +63,14 @@ export interface AICallResult {
 export class ContentAIError extends Error {
   constructor(
     readonly code:
-      | 'missing_key' | 'timeout' | 'rate_limited' | 'provider_error'
-      | 'invalid_output' | 'attempts_exhausted',
+      | 'missing_key' | 'invalid_config' | 'disabled'
+      | 'timeout' | 'rate_limited' | 'provider_error' | 'network_error'
+      | 'invalid_output' | 'truncated_output' | 'refusal' | 'unexpected_stop'
+      | 'attempts_exhausted',
     detail?: string,
   ) {
     // O detail é técnico e curto (status HTTP, nome do campo inválido) —
-    // nunca a resposta bruta, nunca o prompt.
+    // nunca a resposta bruta, nunca o prompt, nunca a chave.
     super(`content_ai:${code}${detail ? `: ${detail}` : ''}`)
   }
 }
@@ -65,7 +79,7 @@ export interface ContentAIProvider {
   call(req: AICallRequest): Promise<AICallResult>
 }
 
-// ─── Resolução do provedor ──────────────────────────────────────────────────
+// ─── Override de teste ──────────────────────────────────────────────────────
 
 let providerParaTestes: ContentAIProvider | null = null
 
@@ -77,22 +91,7 @@ export function __setContentAIProviderForTests(p: ContentAIProvider | null): voi
   providerParaTestes = p
 }
 
-let realProviderFactory: (() => ContentAIProvider) | null = null
-
-/** Registrada pela implementação real na carga do módulo dela. */
-export function __registerRealProviderFactory(f: () => ContentAIProvider): void {
-  realProviderFactory = f
-}
-
-/**
- * Resolve o provedor ativo.
- *
- * SEM fallback silencioso: se não há provedor de teste instalado e a
- * implementação real não consegue operar (chave ausente), a chamada FALHA com
- * código claro. Produção real jamais degrada para template sem ninguém saber.
- */
-export function getContentAIProvider(): ContentAIProvider {
-  if (providerParaTestes) return providerParaTestes
-  if (!realProviderFactory) throw new ContentAIError('missing_key', 'provider real não carregado')
-  return realProviderFactory()
+/** Consultado pelo bootstrap: teste instalado tem prioridade sobre o real. */
+export function __getTestProvider(): ContentAIProvider | null {
+  return providerParaTestes
 }

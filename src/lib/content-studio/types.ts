@@ -150,9 +150,23 @@ export interface AgentInput {
 export interface AgentUsage {
   provider?: string
   model?: string
+  /**
+   * TOTAL de tokens de entrada (não cacheados + criação + leitura de cache).
+   * Em produções antigas (2A) é o único campo — a semântica de "total" vale
+   * para as duas gerações, sem dupla contagem.
+   */
   inputTokens?: number
+  /** Componentes do total, quando a chamada usou prompt caching. */
+  uncachedInputTokens?: number
+  cacheCreationInputTokens?: number
+  cacheReadInputTokens?: number
   outputTokens?: number
   imagesGenerated?: number
+  /**
+   * AUSENTE = custo ainda não calculado (chamada real de IA, paga).
+   * 0 = custo zero VERDADEIRO (agentes determinísticos). Nunca gravar 0 para
+   * chamada paga.
+   */
   costCents?: number
   /** Duração da(s) chamada(s) de IA em ms. */
   durationMs?: number

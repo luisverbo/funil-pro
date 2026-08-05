@@ -30,6 +30,7 @@ import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 import { drainQueue, startProduction } from '@/lib/content-studio/orchestrator'
+import { isContentAIEnabled } from '@/lib/content-studio/ai/config'
 import { firstBriefMessage, validateBrief, type BriefInput, type ValidBrief } from '@/lib/content-studio/brief'
 import { CAROUSEL_PIPELINE } from '@/lib/content-studio/pipeline'
 import {
@@ -139,6 +140,11 @@ export async function createProduction(input: BriefInput): Promise<ActionResult<
   const tenantId = await currentTenantId()
   if (!tenantId) return fail('unauthenticated')
 
+  // KILL SWITCH — bloqueia ANTES de criar qualquer coisa. Desligado, nenhuma
+  // casca, step ou job destinado à IA é gravado, e nenhuma chamada acontece.
+  // O valor vem só do ambiente do servidor: não é parâmetro desta action.
+  if (!isContentAIEnabled()) return fail('ai_disabled')
+
   const validado = validateBrief(input ?? {})
   if (!validado.ok) {
     // Mensagem de campo é segura: fala do formulário, não do banco.
@@ -235,6 +241,10 @@ export async function advanceProduction(productionId: string): Promise<ActionRes
   const tenantId = await currentTenantId()
   if (!tenantId) return fail('unauthenticated')
   if (!idValido(productionId)) return fail('not_found')
+
+  // Avançar executa agentes de IA. Com o kill switch desligado, nada roda —
+  // produções existentes continuam LEGÍVEIS via getProductionState/getLatest.
+  if (!isContentAIEnabled()) return fail('ai_disabled')
 
   const admin = createAdminClient()
 

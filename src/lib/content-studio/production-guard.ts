@@ -132,6 +132,7 @@ export const PRODUCTION_MESSAGES = {
   invalid_brief: 'Revise o briefing e tente novamente.',
   too_many_open: 'Você já tem produções em andamento. Conclua uma antes de criar outra.',
   idempotency_conflict: 'Este envio entrou em conflito com outro. Recarregue a página e tente novamente.',
+  ai_disabled: 'A geração com IA está temporariamente indisponível.',
   create_failed: 'Não foi possível iniciar a produção. Tente novamente.',
   read_failed: 'Não foi possível carregar a produção. Tente novamente.',
 } as const

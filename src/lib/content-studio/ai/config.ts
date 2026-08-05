@@ -11,15 +11,39 @@
 // modelo tem default próprio do Content Studio, com override OPCIONAL por env.
 // ============================================================================
 
+import { ContentAIError } from './provider'
+
 export const CONTENT_AI_PROVIDER = 'anthropic' as const
 
 /**
- * Modelo padrão do Content Studio.
+ * KILL SWITCH do rollout. Default DESLIGADO: só a string exata "true" habilita.
  *
- * Independente do AGENT_MODEL dos agentes conversacionais de propósito: os dois
- * domínios têm perfis de custo diferentes e não devem mudar juntos por engano.
+ * Lido a cada chamada (não congelado na carga do módulo): desligar a variável
+ * no ambiente desliga a IA sem redeploy de código. O navegador não alcança
+ * isto — nenhuma action aceita o valor como parâmetro.
  */
-export const CONTENT_AI_MODEL = process.env.CONTENT_AI_MODEL ?? 'claude-sonnet-5'
+export function isContentAIEnabled(): boolean {
+  return process.env.CONTENT_AI_ENABLED === 'true'
+}
+
+/**
+ * Modelo do Content Studio.
+ *
+ * O default 'claude-sonnet-5' é o MESMO literal usado com sucesso em produção
+ * pelos agentes conversacionais (src/lib/agents/chat.ts: AGENT_MODEL ??
+ * 'claude-sonnet-5') — não é um chute novo desta fase. CONTENT_AI_MODEL
+ * sobrepõe por ambiente; vazio/em branco é configuração inválida, nunca
+ * fallback silencioso para outro modelo.
+ */
+export function resolveContentAIModel(): string {
+  const env = process.env.CONTENT_AI_MODEL
+  if (env !== undefined) {
+    const limpo = env.trim()
+    if (!limpo) throw new ContentAIError('invalid_config', 'CONTENT_AI_MODEL vazio')
+    return limpo
+  }
+  return 'claude-sonnet-5'
+}
 
 /** Perfil de chamada por papel. Teto de saída conservador: carrossel é curto. */
 export interface AICallProfile {
@@ -48,16 +72,20 @@ export const AI_MAX_TECH_RETRIES = 1
 export const AI_MAX_ATTEMPTS_WITH_CALLS = 2
 
 /**
- * TETO ESTRUTURAL de chamadas por produção — derivado, não configurado:
+ * TETO ESTRUTURAL (teórico) de chamadas por produção.
+ *
+ * HONESTIDADE SOBRE O QUE ISTO É: não existe medidor cumulativo persistido
+ * entre invocações serverless — este número NÃO é um orçamento de runtime.
+ * É o pior caso derivado das travas que EXISTEM de fato:
  *
  *   execuções de step com IA: 4 (pesq/estr/copy/rev) + 2 (revisão: copy+rev) = 6
- *   × tentativas com rede (2) × chamadas por tentativa (1 + 1 retry = 2) = 24
+ *   × tentativas de job com rede (AI_MAX_ATTEMPTS_WITH_CALLS = 2)
+ *   × chamadas HTTP por tentativa (1 + AI_MAX_TECH_RETRIES = 2)  = 24
  *
- * O teto de tokens decorre dele: 24 × maxOutputTokens(≤2200) de saída, com
- * entrada limitada pelo briefing (≤2000 chars) e pelos schemas dos outputs.
- * O cliente não tem como aumentar nenhum destes números.
+ * O teste da Fase 2B deriva este valor da estrutura real do pipeline: quem
+ * acrescentar um agente ou ciclo quebra o teste até rever o teto.
  */
-export const AI_MAX_CALLS_PER_PRODUCTION = 24
+export const AI_STRUCTURAL_MAX_CALLS_PER_PRODUCTION = 24
 
 // ─── Régua de qualidade do revisor (servidor decide, não o modelo) ──────────
 
