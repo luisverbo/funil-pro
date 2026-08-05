@@ -59,19 +59,52 @@ export interface AICallResult {
   finish: 'ok' | 'ok_after_retry'
 }
 
-/** Erros com código estável e mensagem SEM conteúdo sensível. */
+export type ContentAICode =
+  // configuração / autorização — FATAIS: repetir não conserta
+  | 'missing_key' | 'invalid_config' | 'disabled'
+  | 'invalid_model' | 'invalid_request'
+  | 'authentication_error' | 'permission_error' | 'not_found'
+  | 'refusal' | 'unexpected_stop' | 'attempts_exhausted'
+  | 'unknown_provider_error'
+  // transitórios — RETENTÁVEIS (1x no provider; job pode reagendar)
+  | 'timeout' | 'network_error' | 'rate_limited' | 'overloaded'
+  | 'provider_server_error' | 'invalid_output' | 'truncated_output'
+  // legado genérico (mantido para compatibilidade de logs)
+  | 'provider_error'
+
+const FATAL_CODES: readonly ContentAICode[] = [
+  'missing_key', 'invalid_config', 'disabled',
+  'invalid_model', 'invalid_request',
+  'authentication_error', 'permission_error', 'not_found',
+  'refusal', 'unexpected_stop', 'attempts_exhausted',
+  'unknown_provider_error', 'provider_error',
+]
+
+/**
+ * Erros com código estável, DISPOSIÇÃO tipada e mensagem sem conteúdo
+ * sensível. A disposição viaja como PROPRIEDADE (agentErrorDisposition), não
+ * como texto: o orquestrador decide o retry sem parsear string — foi a
+ * conversão para string que fez o canário reagendar um HTTP 400 fatal.
+ */
 export class ContentAIError extends Error {
+  /** Contrato duck-typed lido pelo orquestrador (types.isFatalAgentError). */
+  readonly agentErrorDisposition: 'fatal' | 'retryable'
+  /** Status HTTP do provedor, quando houver — seguro para eventos. */
+  readonly httpStatus?: number
+  /** error.type devolvido pela Anthropic, quando houver — seguro p/ eventos. */
+  readonly providerErrorType?: string
+
   constructor(
-    readonly code:
-      | 'missing_key' | 'invalid_config' | 'disabled'
-      | 'timeout' | 'rate_limited' | 'provider_error' | 'network_error'
-      | 'invalid_output' | 'truncated_output' | 'refusal' | 'unexpected_stop'
-      | 'attempts_exhausted',
+    readonly code: ContentAICode,
     detail?: string,
+    extras?: { httpStatus?: number; providerErrorType?: string },
   ) {
     // O detail é técnico e curto (status HTTP, nome do campo inválido) —
     // nunca a resposta bruta, nunca o prompt, nunca a chave.
     super(`content_ai:${code}${detail ? `: ${detail}` : ''}`)
+    this.agentErrorDisposition = FATAL_CODES.includes(code) ? 'fatal' : 'retryable'
+    if (extras?.httpStatus !== undefined) this.httpStatus = extras.httpStatus
+    if (extras?.providerErrorType !== undefined) this.providerErrorType = extras.providerErrorType
   }
 }
 

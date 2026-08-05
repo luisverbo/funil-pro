@@ -14,7 +14,9 @@
 import { getAgent } from './agents/registry'
 import { eligibleSteps, getPipeline, materializeSteps } from './pipeline'
 import {
+  agentErrorEventPayload,
   buildDedupeKey,
+  isFatalAgentError,
   nextRetryDelaySeconds,
   readRevisionCycle,
   DEFAULT_FINAL_EVENT,
@@ -192,8 +194,9 @@ export async function runNextJob(
     await advanceProduction(store, production, step.agent_key, clock.now())
     return { status: 'completed', job, stepId: step.id, agentKey: step.agent_key }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return await handleFailure(store, production, step, job, lockToken, message, clock.now())
+    // O ERRO ORIGINAL segue inteiro até a decisão de retry — convertê-lo em
+    // string aqui foi o que fez o canário reagendar um HTTP 400 fatal.
+    return await handleFailure(store, production, step, job, lockToken, err, clock.now())
   }
 }
 
@@ -273,11 +276,20 @@ async function handleFailure(
   step: StepRow,
   job: JobRow,
   lockToken: string,
-  message: string,
+  err: unknown,
   now: Date,
 ): Promise<RunOutcome> {
+  const message = err instanceof Error ? err.message : String(err)
+  // Campos SEGUROS para os eventos (error_code, http_status, error.type) —
+  // nunca a mensagem bruta do provedor.
+  const extras = agentErrorEventPayload(err)
+
   const nextAttempt = job.attempt + 1
-  const willRetry = nextAttempt < job.max_attempts
+  // FATAL não reagenda: 400/401/403/404, modelo/config inválidos, refusal e
+  // término inesperado não mudam com o tempo — reagendar só repetiria a
+  // chamada (e o custo) para falhar igual. Foi o defeito do canário: o job
+  // criou agent_retrying para um 400 que o provider já sabia ser fatal.
+  const willRetry = nextAttempt < job.max_attempts && !isFatalAgentError(err)
 
   if (willRetry) {
     const retryAt = new Date(now.getTime() + nextRetryDelaySeconds(nextAttempt) * 1000)
@@ -288,7 +300,7 @@ async function handleFailure(
       type: 'agent_retrying',
       stepId: step.id,
       agentKey: step.agent_key,
-      payload: { attempt: nextAttempt, retry_at: retryAt.toISOString(), error: message },
+      payload: { attempt: nextAttempt, retry_at: retryAt.toISOString(), error: message, ...extras },
     })
     return { status: 'retrying', job, stepId: step.id, agentKey: step.agent_key, error: message }
   }
@@ -300,7 +312,7 @@ async function handleFailure(
     type: 'agent_failed',
     stepId: step.id,
     agentKey: step.agent_key,
-    payload: { attempt: job.attempt, error: message },
+    payload: { attempt: job.attempt, error: message, ...extras },
   })
   // Um step esgotado trava o pipeline: a produção falha por inteiro em vez de
   // ficar "rodando" para sempre sem nenhum job na fila.
