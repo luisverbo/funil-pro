@@ -653,7 +653,9 @@ test('C3) geração em andamento: Copywriter trabalha na CENA, timeline limpa', 
   const preview = semComentarios(ler('src/components/content-studio/office-preview.tsx'))
   // O estado cosmético existe e constrói a cena SEM tocar nos eventos.
   assert.ok(preview.includes('quickGenerating'), 'estado de geração sumiu')
-  const bloco = preview.slice(preview.indexOf('if (quickGenerating)'), preview.indexOf('return buildOfficeView'))
+  // A cena real agora nasce em `const cena = buildOfficeView(...)` (o rename
+  // da mesa do Designer vem depois dele) — o bloco cosmético termina ali.
+  const bloco = preview.slice(preview.indexOf('if (quickGenerating)'), preview.indexOf('const cena = buildOfficeView'))
   assert.ok(bloco.includes('emptyOfficeView()'), 'a cena de espera não parte da cena vazia')
   assert.ok(bloco.includes("state = 'working'"))
   assert.ok(bloco.includes('Planejando seu carrossel'))

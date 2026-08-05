@@ -112,6 +112,11 @@ export default function OfficePreview() {
   // Copywriter trabalhando SEM criar evento — nenhum evento sintético entra
   // em cs_events nem na timeline; a resposta real substitui tudo.
   const [quickGenerating, setQuickGenerating] = useState(false)
+  // Produção Studio com agente faltando (pending do SERVIDOR): habilita o
+  // botão "Continuar produção". Nunca dispara sozinho — retomar custa dinheiro
+  // e exige um clique consciente.
+  const [studioPendente, setStudioPendente] = useState(false)
+  const [avisoContinuacao, setAvisoContinuacao] = useState<string | null>(null)
 
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
@@ -197,8 +202,17 @@ export default function OfficePreview() {
       if (designer) designer.label = 'Designer'
       return cena
     }
-    return buildOfficeView(allEvents.slice(0, revealed))
-  }, [allEvents, revealed, quickGenerating])
+    const cena = buildOfficeView(allEvents.slice(0, revealed))
+    // IDENTIDADE DO PIPELINE, não evento: na geração Studio a terceira estação
+    // pertence ao Designer desde o primeiro instante — só o RÓTULO muda; o
+    // estado (idle/working/done) continua vindo exclusivamente dos eventos.
+    // Produções antigas (pipelines cc_*) seguem mostrando "Pesquisador".
+    if (pipelineAtual === 'content_carousel_studio_v1') {
+      const terceira = cena.agents.find(a => a.key === 'researcher')
+      if (terceira) terceira.label = 'Designer'
+    }
+    return cena
+  }, [allEvents, revealed, quickGenerating, pipelineAtual])
 
   const reproduzindo = revealed < allEvents.length
 
@@ -336,6 +350,22 @@ export default function OfficePreview() {
   }, [])
 
   /**
+   * O estado REAL entra na tela após CADA requisição — eventos, status,
+   * resultado parcial e o `pending` do servidor. É o que faz a cena mostrar o
+   * Estrategista entregar ao Copywriter, e ele ao Designer, em vez de congelar
+   * no primeiro personagem até o fim.
+   */
+  const aplicarEstado = useCallback((estado: ProductionState) => {
+    setStatus(estado.production.status)
+    setAllEvents(estado.events)
+    setResult(estado.result)
+    setStudioPendente(
+      estado.production.pipelineKey === 'content_carousel_studio_v1' && estado.pending,
+    )
+    if (!estado.pending) setAvisoContinuacao(null)
+  }, [])
+
+  /**
    * CRIAÇÃO RÁPIDA (geração Studio): Estrategista → Copywriter → Designer.
    *
    * Três chamadas de IA não cabem com segurança no limite de UMA requisição.
@@ -351,6 +381,7 @@ export default function OfficePreview() {
     if (criando || running) return
     setErroBrief(null)
     setError(null)
+    setAvisoContinuacao(null)
     setCriando(true)
     setRunning(true)
     setQuickGenerating(true)
@@ -368,16 +399,7 @@ export default function OfficePreview() {
       setProductionId(id)
       setPipelineAtual(r.data.production.pipelineKey)
 
-      // O estado REAL entra na tela após CADA requisição — eventos, status e
-      // resultado parcial — antes de pedir a continuação. É o que faz a cena
-      // mostrar o Estrategista entregar ao Copywriter, e ele ao Designer, em
-      // vez de congelar no primeiro personagem até o fim.
-      const aplicar = (estado: ProductionState) => {
-        setStatus(estado.production.status)
-        setAllEvents(estado.events)
-        setResult(estado.result)
-      }
-      aplicar(r.data)
+      aplicarEstado(r.data)
       // A partir da primeira resposta existem eventos persistidos: a cena
       // cosmética sai e os eventos reais dirigem o escritório.
       setQuickGenerating(false)
@@ -390,7 +412,13 @@ export default function OfficePreview() {
         if (cancelled.current) return
         if (!proximo.ok) { setErroBrief(proximo.error); break }
         r = proximo
-        aplicar(r.data)
+        aplicarEstado(r.data)
+      }
+
+      // Acabou o teto e AINDA falta agente? Nada de silêncio: a pessoa vê o
+      // aviso e o botão "Continuar produção" para retomar com um clique.
+      if (r.ok && r.data.pending) {
+        setAvisoContinuacao('A produção ainda não terminou. Use "Continuar produção" para retomar de onde parou.')
       }
     } catch {
       setErroBrief('Não foi possível criar o carrossel. Tente novamente.')
@@ -399,7 +427,46 @@ export default function OfficePreview() {
       // ser dirigida exclusivamente pelos eventos persistidos.
       if (!cancelled.current) { setCriando(false); setRunning(false); setQuickGenerating(false) }
     }
-  }, [criando, running])
+  }, [aplicarEstado, criando, running])
+
+  /**
+   * RETOMADA EXPLÍCITA de uma produção Studio incompleta — recarregou a
+   * página, caiu a conexão, houve deploy no meio, ou o teto de continuações
+   * terminou. Cada clique refaz o laço fechado de continuações; steps
+   * concluídos nunca são repetidos (o servidor pula pelo estado persistido).
+   * NUNCA dispara sozinho ao abrir a página: retomar custa uma chamada de IA.
+   */
+  const continuarProducao = useCallback(async () => {
+    if (criando || running || !productionId) return
+    setErroBrief(null)
+    setError(null)
+    setAvisoContinuacao(null)
+    setCriando(true)
+    setRunning(true)
+
+    try {
+      let r = await continueStudioProduction(productionId)
+      if (!r.ok) { setErroBrief(r.error); return }
+      if (cancelled.current) return
+      aplicarEstado(r.data)
+
+      for (let i = 0; i < MAX_CONTINUACOES && r.ok && r.data.pending; i++) {
+        const proximo = await continueStudioProduction(productionId)
+        if (cancelled.current) return
+        if (!proximo.ok) { setErroBrief(proximo.error); break }
+        r = proximo
+        aplicarEstado(r.data)
+      }
+
+      if (r.ok && r.data.pending) {
+        setAvisoContinuacao('A produção ainda não terminou. Use "Continuar produção" para retomar de onde parou.')
+      }
+    } catch {
+      setErroBrief('Não foi possível continuar a produção. Tente novamente.')
+    } finally {
+      if (!cancelled.current) { setCriando(false); setRunning(false) }
+    }
+  }, [aplicarEstado, criando, productionId, running])
 
   /** Cria a produção a partir do briefing e acompanha até o portão de aprovação. */
   const iniciarProducao = useCallback(async (
@@ -448,14 +515,15 @@ export default function OfficePreview() {
     setAllEvents([])
     setResult(emptyProductionResult())
 
+    setAvisoContinuacao(null)
     const res = await getProductionState(id)
     if (!res.ok) { setError(res.error); return }
     setProductionId(id)
     setPipelineAtual(res.data.production.pipelineKey)
-    setStatus(res.data.production.status)
-    setAllEvents(res.data.events)
-    setResult(res.data.result)
-  }, [running])
+    // `aplicarEstado` também deriva `studioPendente` do pending do servidor:
+    // reabrir uma produção Studio incompleta mostra o botão de continuar.
+    aplicarEstado(res.data)
+  }, [aplicarEstado, running])
 
   const vazio = !loading && allEvents.length === 0 && !running
   const estadoCor =
@@ -660,6 +728,27 @@ export default function OfficePreview() {
           <p className="text-[12px] text-indigo-600 mt-0.5">
             São três etapas seguidas: isso costuma levar de trinta segundos a um minuto.
           </p>
+        </div>
+      )}
+
+      {/* Produção Studio incompleta — retomada EXPLÍCITA, nunca automática */}
+      {modo === 'producao' && studioPendente && !criando && !quickGenerating && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-900">
+              {avisoContinuacao ?? 'Esta produção parou no meio — os agentes que já trabalharam estão salvos.'}
+            </p>
+            <p className="text-[12px] text-amber-700 mt-0.5">
+              Continuar executa apenas os agentes que faltam; nada é refeito.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={continuarProducao}
+            className="shrink-0 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
+          >
+            Continuar produção
+          </button>
         </div>
       )}
 
