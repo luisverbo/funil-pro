@@ -71,6 +71,15 @@ export default function ResultPanel({ result, aguardandoAprovacao }: ResultPanel
             ✦ IA real
           </span>
         )}
+        {/* Trabalho de direção de arte — só aparece quando o Designer gravou. */}
+        {result.visual.disponivel && (
+          <span
+            className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-700"
+            title={`Direção visual de ${result.visual.slides.length} slide(s) pelo Designer`}
+          >
+            ✎ copy + direção visual
+          </span>
+        )}
         {result.revisao.media !== null && (
           <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600 tabular-nums">
             nota {result.revisao.media.toFixed(1)}
@@ -134,6 +143,60 @@ export default function ResultPanel({ result, aguardandoAprovacao }: ResultPanel
       {result.cta && (
         <Bloco titulo="Chamada para ação">
           <p className="text-sm font-semibold text-gray-900">{result.cta}</p>
+        </Bloco>
+      )}
+
+      {/* ── Direção visual (Designer) ───────────────────────────────────── */}
+      {result.visual.disponivel && (
+        <Bloco titulo="Direção visual (Designer)">
+          <div className="mb-2 grid gap-1.5 rounded-xl border border-sky-100 bg-sky-50/50 px-3 py-2.5 sm:grid-cols-2">
+            {([
+              ['Estilo', result.visual.geral.estilo],
+              ['Cores', result.visual.geral.paleta],
+              ['Tipografia', result.visual.geral.tipografia],
+              ['Clima', result.visual.geral.clima],
+            ] as const).map(([rotulo, valor]) => valor && (
+              <p key={rotulo} className="text-[12px] text-gray-700">
+                <span className="font-semibold text-sky-800">{rotulo}: </span>{valor}
+              </p>
+            ))}
+          </div>
+
+          <ol className="space-y-2">
+            {result.visual.slides.map(v => (
+              <li key={v.numero} className="rounded-xl border border-gray-100 bg-white px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sky-500 text-[11px] font-bold text-white tabular-nums">
+                    {v.numero}
+                  </span>
+                  {v.estilo && (
+                    <span className="text-[11px] font-semibold text-gray-600">{v.estilo}</span>
+                  )}
+                </div>
+
+                {v.composicao && <p className="mt-1 text-sm text-gray-800">{v.composicao}</p>}
+
+                <dl className="mt-1 space-y-0.5 text-[12px] text-gray-500">
+                  {v.layout && (
+                    <div><dt className="inline font-semibold">Layout: </dt><dd className="inline">{v.layout}</dd></div>
+                  )}
+                  {v.cores && (
+                    <div><dt className="inline font-semibold">Cores: </dt><dd className="inline">{v.cores}</dd></div>
+                  )}
+                  {v.elementos.length > 0 && (
+                    <div><dt className="inline font-semibold">Elementos: </dt><dd className="inline">{v.elementos.join(' · ')}</dd></div>
+                  )}
+                </dl>
+
+                {v.promptImagem && (
+                  <p className="mt-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-gray-600">
+                    <span className="font-sans font-semibold text-gray-400">prompt de imagem · </span>
+                    {v.promptImagem}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
         </Bloco>
       )}
 

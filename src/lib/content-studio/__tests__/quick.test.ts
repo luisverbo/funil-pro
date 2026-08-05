@@ -97,6 +97,13 @@ class MemStore implements ContentStore {
   }
   async getProduction(id: string) { return this.productions.get(id) ?? null }
   async updateProductionStatus(id: string, st: ProductionStatus) { const p = this.productions.get(id); if (p) p.status = st }
+  async transitionProductionStatus(id: string, expected: readonly ProductionRow['status'][], next: ProductionRow['status']) {
+    // Espelha o CAS do Postgres: predicado e escrita no mesmo passo síncrono.
+    const p = this.productions.get(id)
+    if (!p || !expected.includes(p.status)) return false
+    p.status = next
+    return true
+  }
   async listSteps(id: string) { return this.steps.filter(s => s.production_id === id).map(s => ({ ...s })) }
   async insertSteps(rows: Omit<StepRow, 'id'>[]) {
     if (this.steps.length) return { rows: this.steps.map(s => ({ ...s })), inserted: false }
@@ -220,16 +227,19 @@ test('10-13) exatamente UMA chamada lógica; sem jobs, sem fila, sem loop', asyn
   for (const proibido of ['insertJob', 'claimNextJob', 'drainQueue', 'runNextJob', 'startProduction']) {
     assert.ok(!run.includes(proibido), `quick/run usa ${proibido}`)
   }
-  // E o cliente não tem laço: uma chamada de action, sem avancarAteParar.
+  // O botão da tela passou a criar a geração Studio (3 agentes). O laço do
+  // cliente agora existe, mas é FECHADO e não é polling: cada iteração faz
+  // trabalho real e a condição de parada vem do servidor (`pending`).
   const preview = semComentarios(ler('src/components/content-studio/office-preview.tsx'))
-  // Âncoras de CÓDIGO (comentários são removidos pelo semComentarios).
   const inicio = preview.indexOf('const criarRapido')
   const fim = preview.indexOf('const iniciarProducao')
   assert.ok(inicio > 0 && fim > inicio, 'criarRapido fora do lugar esperado')
   const criar = preview.slice(inicio, fim)
-  assert.ok(!criar.includes('avancarAteParar'), 'a criação rápida entrou no laço de avanço')
-  assert.ok(!criar.includes('for ('), 'laço no cliente')
-  assert.ok(criar.includes('await createQuickProduction('), 'não chama a action única')
+  assert.ok(!criar.includes('avancarAteParar'), 'entrou no laço de avanço da 2A')
+  assert.ok(!criar.includes('setInterval') && !criar.includes('setTimeout'), 'virou polling por timer')
+  assert.ok(criar.includes('MAX_CONTINUACOES'), 'o laço precisa de teto explícito')
+  assert.ok(criar.includes('r.data.pending'), 'a parada precisa vir do servidor')
+  assert.ok(criar.includes('await createStudioProduction('), 'não chama a action da geração Studio')
 })
 
 test('14-15) output persistido; awaiting_approval no sucesso', async () => {
@@ -339,7 +349,8 @@ test('23) o escritório mapeia SÓ o Copywriter; ninguém mais é simulado', asy
 
 test('24) rodapé descreve o modo com verdade', () => {
   const preview = ler('src/components/content-studio/office-preview.tsx')
-  assert.ok(preview.includes('Criação rápida: uma geração direta com IA.'))
+  assert.ok(preview.includes('Criação rápida: Estrategista, Copywriter e Designer'))
+  assert.ok(preview.includes('Criação rápida: uma geração direta com IA (produção anterior).'))
   assert.ok(preview.includes('Geração realizada com IA.'))
   assert.ok(preview.includes('Geração determinística (produção antiga, sem IA).'))
   // O texto da demo continua, mas SÓ no modo demo.
@@ -352,8 +363,11 @@ test('24) rodapé descreve o modo com verdade', () => {
 
 test('25-26) produções antigas seguem legíveis; demonstração intacta', () => {
   // As três gerações continuam na lista branca — selecionáveis e legíveis.
+  // As gerações anteriores continuam na lista branca — selecionáveis e
+  // legíveis; a geração Studio entra ao lado delas, não no lugar.
   assert.deepEqual([...PRODUCTION_PIPELINE_KEYS], [
     'content_carousel_v1', 'content_carousel_ai_v1', 'content_carousel_quick_v1',
+    'content_carousel_studio_v1',
   ])
   // O briefing avançado continua disponível na tela.
   const preview = ler('src/components/content-studio/office-preview.tsx')
@@ -642,15 +656,16 @@ test('C3) geração em andamento: Copywriter trabalha na CENA, timeline limpa', 
   const bloco = preview.slice(preview.indexOf('if (quickGenerating)'), preview.indexOf('return buildOfficeView'))
   assert.ok(bloco.includes('emptyOfficeView()'), 'a cena de espera não parte da cena vazia')
   assert.ok(bloco.includes("state = 'working'"))
-  assert.ok(bloco.includes('Criando seu carrossel com IA'))
+  assert.ok(bloco.includes('Planejando seu carrossel'))
   assert.ok(!bloco.includes('emitEvent') && !bloco.includes('setAllEvents'),
     'a cena de espera mexe em eventos')
-  // Só o Copywriter: nenhum outro personagem é simulado.
-  assert.ok(bloco.includes("a.key === 'copywriter'"))
-  assert.ok(!/researcher|strategist/.test(bloco), 'outros personagens simulados')
+  // Só o PRIMEIRO da fila é mostrado trabalhando: a cena de espera não pode
+  // fingir que os três já produziram algo.
+  assert.ok(bloco.includes("a.key === 'strategist'"))
+  assert.equal((bloco.match(/state = 'working'/g) ?? []).length, 1, 'mais de um agente simulado trabalhando')
   // Texto honesto de espera na tela.
-  assert.ok(preview.includes('Copywriter criando seu carrossel com IA'))
-  assert.ok(preview.includes('Isso normalmente leva alguns segundos'))
+  assert.ok(preview.includes('Estrategista, Copywriter e Designer trabalhando'))
+  assert.ok(preview.includes('São três etapas seguidas'))
   // Erro/sucesso limpam o estado no finally.
   const finallyBloco = preview.slice(preview.indexOf('const criarRapido'), preview.indexOf('const iniciarProducao'))
   assert.ok(finallyBloco.includes('setQuickGenerating(false)'), 'o finally não limpa a geração')

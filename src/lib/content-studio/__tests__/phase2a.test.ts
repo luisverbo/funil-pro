@@ -183,6 +183,13 @@ class MemoryStore implements ContentStore {
     const p = this.productions.get(id)
     if (p) p.status = status
   }
+  async transitionProductionStatus(id: string, expected: readonly ProductionRow['status'][], next: ProductionRow['status']) {
+    // Espelha o CAS do Postgres: predicado e escrita no mesmo passo síncrono.
+    const p = this.productions.get(id)
+    if (!p || !expected.includes(p.status)) return false
+    p.status = next
+    return true
+  }
 
   async listSteps(id: string) {
     return this.steps
@@ -303,7 +310,8 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
   // Toda action começa pelo tenant da sessão e sai se não houver.
   const exportadas = [...actionsCode.matchAll(/export async function (\w+)\(/g)].map(m => m[1])
   assert.deepEqual(exportadas.sort(), [
-    'advanceProduction', 'createProduction', 'createQuickProduction',
+    'advanceProduction', 'continueStudioProduction', 'createProduction',
+    'createQuickProduction', 'createStudioProduction',
     'getLatestProduction', 'getProductionState', 'listProductions',
   ])
 

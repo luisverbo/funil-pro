@@ -110,6 +110,13 @@ class MemoryStore implements ContentStore {
     const p = this.productions.get(id)
     if (p) p.status = status
   }
+  async transitionProductionStatus(id: string, expected: readonly ProductionRow['status'][], next: ProductionRow['status']) {
+    // Espelha o CAS do Postgres: predicado e escrita no mesmo passo síncrono.
+    const p = this.productions.get(id)
+    if (!p || !expected.includes(p.status)) return false
+    p.status = next
+    return true
+  }
 
   async listSteps(productionId: string) {
     return this.steps.filter(s => s.production_id === productionId).map(s => ({ ...s }))

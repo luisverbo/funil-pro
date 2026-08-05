@@ -104,12 +104,37 @@ export const QUICK_PIPELINE: PipelineDef = {
   finalEvent: 'content_waiting_approval',
 }
 
+/**
+ * Fase 4 — geração "Studio": Estrategista → Copywriter → Designer.
+ *
+ * TRÊS steps, ainda SEM fila: a execução é sequencial dentro da Server Action
+ * (`studio/run.ts`), com claim atômico por step e retomada por orçamento de
+ * tempo. O pipeline existe aqui como IDENTIDADE persistida e para a admissão,
+ * exatamente como o da Criação rápida.
+ *
+ * As chaves cst_* são novas: `content_carousel_quick_v1` e as gerações
+ * anteriores continuam apontando para os seus próprios agentes, e produções
+ * antigas seguem legíveis com o schema com que foram gravadas.
+ */
+export const STUDIO_PIPELINE: PipelineDef = {
+  key: 'content_carousel_studio_v1',
+  label: 'Criação rápida com Designer (IA)',
+  steps: [
+    { agentKey: 'cst_strategist', dependsOn: [] },
+    { agentKey: 'cst_copywriter', dependsOn: ['cst_strategist'] },
+    { agentKey: 'cst_designer', dependsOn: ['cst_copywriter'] },
+  ],
+  finalStatus: 'awaiting_approval',
+  finalEvent: 'content_waiting_approval',
+}
+
 const PIPELINES: Record<string, PipelineDef> = {
   [STUB_PIPELINE.key]: STUB_PIPELINE,
   [OFFICE_PIPELINE.key]: OFFICE_PIPELINE,
   [CAROUSEL_PIPELINE.key]: CAROUSEL_PIPELINE,
   [CAROUSEL_AI_PIPELINE.key]: CAROUSEL_AI_PIPELINE,
   [QUICK_PIPELINE.key]: QUICK_PIPELINE,
+  [STUDIO_PIPELINE.key]: STUDIO_PIPELINE,
 }
 
 export function getPipeline(key: string): PipelineDef {

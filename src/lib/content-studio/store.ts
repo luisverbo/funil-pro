@@ -72,6 +72,23 @@ export function createSupabaseContentStore(
       if (error) throw new Error(`updateProductionStatus: ${error.message}`)
     },
 
+    async transitionProductionStatus(id, expectedStatuses, nextStatus) {
+      if (id !== productionId) throw new Error('production_out_of_scope')
+      // O predicado de status vai NA PRÓPRIA UPDATE: o Postgres decide de
+      // forma atômica quem transiciona. `select` devolve as linhas realmente
+      // afetadas — zero linhas = outra execução chegou primeiro (ou o status
+      // atual não era um dos esperados).
+      const { data, error } = await db
+        .from('cs_productions')
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq('id', productionId)
+        .eq('tenant_id', tenantId)
+        .in('status', [...expectedStatuses])
+        .select('id')
+      if (error) throw new Error(`transitionProductionStatus: ${error.message}`)
+      return (data ?? []).length > 0
+    },
+
     async listSteps(id: string) {
       if (id !== productionId) return []
       const { data, error } = await scoped('cs_steps').order('step_index', { ascending: true })

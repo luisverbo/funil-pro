@@ -19,6 +19,11 @@ import {
   QUICK_OBJETIVOS,
   type QuickObjetivo,
 } from '@/lib/content-studio/quick/schema'
+import {
+  STUDIO_SLIDE_CHOICES,
+  STUDIO_SLIDES_DEFAULT,
+  type StudioSlideCount,
+} from '@/lib/content-studio/studio/schema'
 
 /** Preferência LOCAL do navegador (MVP). Nada disso vai para cs_settings. */
 export const BRAND_PROFILE_KEY = 'content-studio:brand-profile'
@@ -84,6 +89,8 @@ export interface QuickCreateFormProps {
     objetivo: QuickObjetivo
     oferta: string
     cta: string
+    /** Quantidade EXATA de slides escolhida pelo usuário. */
+    slides: StudioSlideCount
     marca: BrandProfile
     idempotencyKey: string
   }) => Promise<void>
@@ -98,6 +105,7 @@ export default function QuickCreateForm({ onSubmit, enviando, erro, onBriefingAv
   const [objetivo, setObjetivo] = useState<QuickObjetivo>('educar')
   const [oferta, setOferta] = useState('')
   const [cta, setCta] = useState('')
+  const [slides, setSlides] = useState<StudioSlideCount>(STUDIO_SLIDES_DEFAULT)
 
   const perfil = useSyncExternalStore(assinarPerfil, snapshotPerfil, () => PERFIL_VAZIO)
   // Uma chave por TENTATIVA: só troca depois de um envio — um retry do mesmo
@@ -114,10 +122,10 @@ export default function QuickCreateForm({ onSubmit, enviando, erro, onBriefingAv
     if (!pronto || enviando) return
     await onSubmit({
       tema: tema.trim(), objetivo, oferta: oferta.trim(), cta: cta.trim(),
-      marca: perfil, idempotencyKey: chave,
+      slides, marca: perfil, idempotencyKey: chave,
     })
     setChave(novaChave())
-  }, [pronto, enviando, onSubmit, tema, objetivo, oferta, cta, perfil, chave])
+  }, [pronto, enviando, onSubmit, tema, objetivo, oferta, cta, slides, perfil, chave])
 
   return (
     <section className="rounded-3xl border border-gray-100 bg-white shadow-sm p-4 sm:p-6 mb-4">
@@ -151,6 +159,28 @@ export default function QuickCreateForm({ onSubmit, enviando, erro, onBriefingAv
               {QUICK_OBJETIVO_LABELS[op]}
             </button>
           ))}
+        </div>
+
+        {/* Quantidade de slides — escolha do usuário, respeitada EXATAMENTE. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-semibold text-gray-500">Slides:</span>
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Quantidade de slides">
+            {STUDIO_SLIDE_CHOICES.map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setSlides(n)}
+                aria-pressed={slides === n}
+                className={`min-w-[40px] rounded-lg px-3 py-1.5 text-sm font-bold tabular-nums transition-colors ${
+                  slides === n
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
