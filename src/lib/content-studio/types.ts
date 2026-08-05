@@ -294,6 +294,19 @@ export function agentErrorEventPayload(err: unknown): Record<string, unknown> {
 export interface ContentStore {
   getProduction(productionId: string): Promise<ProductionRow | null>
   updateProductionStatus(productionId: string, status: ProductionStatus): Promise<void>
+  /**
+   * Compare-and-set de status: só transiciona se o status ATUAL estiver em
+   * `expectedStatuses`, e devolve se ESTA chamada realizou a transição.
+   *
+   * O predicado vive na própria UPDATE (WHERE status IN ...), nunca em
+   * read-then-write: sob duas finalizações concorrentes, exatamente uma recebe
+   * `true` — e só ela pode emitir o evento terminal correspondente.
+   */
+  transitionProductionStatus(
+    productionId: string,
+    expectedStatuses: readonly ProductionStatus[],
+    nextStatus: ProductionStatus,
+  ): Promise<boolean>
 
   listSteps(productionId: string): Promise<StepRow[]>
   /**

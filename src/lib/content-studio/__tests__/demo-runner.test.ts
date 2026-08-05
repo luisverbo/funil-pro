@@ -75,6 +75,13 @@ function storeFor(db: FakeDb, tenantId: string, productionId: string): ContentSt
       const p = db.productions.find(x => x.id === id)
       if (p) p.status = status
     },
+    async transitionProductionStatus(id, expected, next) {
+      // Espelha o CAS do Postgres: predicado e escrita no mesmo passo síncrono.
+      const p = db.productions.find(x => x.id === id)
+      if (!p || !expected.includes(p.status)) return false
+      p.status = next
+      return true
+    },
     async listSteps(id) { return db.stepsDe(id).map(s => ({ ...s })) },
 
     async insertSteps(rows) {

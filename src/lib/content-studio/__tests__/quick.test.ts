@@ -97,6 +97,13 @@ class MemStore implements ContentStore {
   }
   async getProduction(id: string) { return this.productions.get(id) ?? null }
   async updateProductionStatus(id: string, st: ProductionStatus) { const p = this.productions.get(id); if (p) p.status = st }
+  async transitionProductionStatus(id: string, expected: readonly ProductionRow['status'][], next: ProductionRow['status']) {
+    // Espelha o CAS do Postgres: predicado e escrita no mesmo passo síncrono.
+    const p = this.productions.get(id)
+    if (!p || !expected.includes(p.status)) return false
+    p.status = next
+    return true
+  }
   async listSteps(id: string) { return this.steps.filter(s => s.production_id === id).map(s => ({ ...s })) }
   async insertSteps(rows: Omit<StepRow, 'id'>[]) {
     if (this.steps.length) return { rows: this.steps.map(s => ({ ...s })), inserted: false }

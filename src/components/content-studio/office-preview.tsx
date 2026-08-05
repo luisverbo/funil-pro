@@ -25,6 +25,7 @@ import {
   getLatestProduction,
   getProductionState,
   listProductions,
+  type ProductionState,
   type ProductionSummary,
 } from '@/app/actions/content-production'
 import { emptyProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
@@ -367,19 +368,29 @@ export default function OfficePreview() {
       setProductionId(id)
       setPipelineAtual(r.data.production.pipelineKey)
 
+      // O estado REAL entra na tela após CADA requisição — eventos, status e
+      // resultado parcial — antes de pedir a continuação. É o que faz a cena
+      // mostrar o Estrategista entregar ao Copywriter, e ele ao Designer, em
+      // vez de congelar no primeiro personagem até o fim.
+      const aplicar = (estado: ProductionState) => {
+        setStatus(estado.production.status)
+        setAllEvents(estado.events)
+        setResult(estado.result)
+      }
+      aplicar(r.data)
+      // A partir da primeira resposta existem eventos persistidos: a cena
+      // cosmética sai e os eventos reais dirigem o escritório.
+      setQuickGenerating(false)
+
       // Continua enquanto o SERVIDOR disser que falta agente. Laço fechado:
-      // no máximo MAX_CONTINUACOES, e qualquer erro encerra.
+      // no máximo MAX_CONTINUACOES, cada iteração executa trabalho real (um
+      // agente) ou devolve estado terminal — sem setInterval, sem polling.
       for (let i = 0; i < MAX_CONTINUACOES && r.ok && r.data.pending; i++) {
         const proximo = await continueStudioProduction(id)
         if (cancelled.current) return
         if (!proximo.ok) { setErroBrief(proximo.error); break }
         r = proximo
-      }
-
-      if (r.ok) {
-        setStatus(r.data.production.status)
-        setAllEvents(r.data.events)
-        setResult(r.data.result)
+        aplicar(r.data)
       }
     } catch {
       setErroBrief('Não foi possível criar o carrossel. Tente novamente.')

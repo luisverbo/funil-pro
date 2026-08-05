@@ -22,7 +22,10 @@ import {
 import { ensureProduction, type ProductionRepo, type ProductionRowLite } from '../production-runner'
 import { buildProductionResult } from '../result-view'
 import { buildOfficeView, deskOf, AGENT_LABELS } from '../view-model'
-import { runStudioCarousel, STUDIO_PROFILES, STUDIO_REQUEST_BUDGET_MS } from '../studio/run'
+import {
+  runStudioCarousel, STUDIO_PERSISTENCE_MARGIN_MS, STUDIO_PROFILES,
+  STUDIO_REQUEST_BUDGET_MS,
+} from '../studio/run'
 import {
   findWeakHeadline, makeCopyParser, makeStrategyParser, makeVisualParser,
   STUDIO_AGENT_ORDER, STUDIO_COMPARE_FIELDS, STUDIO_COPYWRITER_KEY,
@@ -162,6 +165,13 @@ class MemStore implements ContentStore {
   async updateProductionStatus(id: string, st: ProductionStatus) {
     const p = this.productions.get(id); if (p) p.status = st
   }
+  async transitionProductionStatus(id: string, expected: readonly ProductionRow['status'][], next: ProductionRow['status']) {
+    // Espelha o CAS do Postgres: predicado e escrita no mesmo passo síncrono.
+    const p = this.productions.get(id)
+    if (!p || !expected.includes(p.status)) return false
+    p.status = next
+    return true
+  }
   async listSteps(id: string) { return this.steps.filter(s => s.production_id === id).map(s => ({ ...s })) }
 
   /** Espelha uq_cs_steps_prod_index (production_id, step_index). */
@@ -199,14 +209,25 @@ class MemStore implements ContentStore {
   }
 }
 
+/**
+ * Roda a produção INTEIRA: cada chamada executa no máximo UM agente novo, como
+ * as Server Actions fazem — três requisições completam os três agentes.
+ */
 async function rodar(n = 6, provider?: ContentAIProvider) {
   const contador = { calls: 0, agentes: [] as string[] }
   __setContentAIProviderForTests(provider ?? providerBom(contador))
   const brief = briefValido({ slides: n })
   const store = new MemStore()
   const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
-  const r = await runStudioCarousel(store, producao, brief)
-  return { store, producao, r, brief, contador }
+
+  let r = await runStudioCarousel(store, producao, brief)
+  const porRequisicao: number[] = [contador.calls]
+  for (let i = 0; i < 4 && r.ok && r.state === 'partial'; i++) {
+    const antes = contador.calls
+    r = await runStudioCarousel(store, producao, brief)
+    porRequisicao.push(contador.calls - antes)
+  }
+  return { store, producao, r, brief, contador, porRequisicao }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -431,7 +452,7 @@ test('20) termina em awaiting_approval com os eventos reais', async () => {
   assert.equal(store.jobs.length, 0, 'a geração Studio não usa fila')
 })
 
-test('21) CLAIM ATÔMICO: execuções concorrentes não pagam duas vezes', async () => {
+test('21) CLAIM ATÔMICO: 5 concorrentes, 1 step, 1 production_created, 1 chamada', async () => {
   const contador = { calls: 0, agentes: [] as string[] }
   let liberar!: () => void
   const barreira = new Promise<void>(res => { liberar = res })
@@ -460,18 +481,30 @@ test('21) CLAIM ATÔMICO: execuções concorrentes não pagam duas vezes', async
   const corridas = Array.from({ length: 5 }, () => runStudioCarousel(store, producao, brief))
   await new Promise(res => setTimeout(res, 10))
 
-  // Com o provider preso, só UMA execução chegou ao primeiro agente.
+  // Com o provider preso: UM step do Estrategista, UM production_created (só o
+  // vencedor do claim anuncia — quem apenas leu a lista vazia não emite nada),
+  // UM agent_started, UMA chamada.
   assert.equal(contador.calls, 1, `${contador.calls} chamadas — corrida de claim`)
   assert.equal(store.steps.length, 1, 'mais de um step criado para o mesmo índice')
+  assert.equal(store.events.filter(e => e.type === 'production_created').length, 1,
+    'production_created duplicado sob concorrência')
   assert.equal(store.events.filter(e => e.type === 'agent_started').length, 1)
 
   liberar()
   const finais = await Promise.all(corridas)
 
-  // As perdedoras saíram sem chamar nada; a vencedora tocou os três agentes.
-  assert.equal(contador.calls, 3, `total de ${contador.calls} chamadas ao provider`)
-  assert.equal(finais.filter(f => f.state === 'created').length, 1)
+  // Uma execução por agente: a vencedora rodou SÓ o Estrategista (partial);
+  // as perdedoras saíram sem evento e sem chamada.
+  assert.equal(contador.calls, 1, `total de ${contador.calls} chamadas ao provider`)
+  assert.equal(finais.filter(f => f.state === 'partial').length, 1)
   assert.ok(finais.filter(f => f.state === 'in_progress').length >= 1)
+  assert.equal(store.events.filter(e => e.type === 'production_created').length, 1)
+
+  // Duas continuações sequenciais completam a produção.
+  await runStudioCarousel(store, producao, brief)
+  const fim = await runStudioCarousel(store, producao, brief)
+  assert.equal(fim.state, 'created')
+  assert.equal(contador.calls, 3)
   assert.equal(store.productions.get(producao.id)!.status, 'awaiting_approval')
 })
 
@@ -486,31 +519,42 @@ test('22) reentrada em produção concluída NÃO faz nova chamada paga', async 
   assert.equal(store.steps.length, 3)
 })
 
-test('23) ORÇAMENTO: sem tempo para o próximo agente, para ANTES de criar o step', async () => {
+test('23) ORÇAMENTO: agente que não cabe INTEIRO não começa — nada é criado', async () => {
   const contador = { calls: 0, agentes: [] as string[] }
   __setContentAIProviderForTests(providerBom(contador))
   const brief = briefValido({ slides: 6 })
   const store = new MemStore()
   const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
 
-  // Relógio controlado: sobra tempo para o Estrategista e acaba depois dele.
-  let agora = 0
+  // Falta 1ms para caber timeout + margem: NENHUM step, NENHUM evento,
+  // NENHUMA chamada — não existe claim preso para limpar depois.
+  const perfil = STUDIO_PROFILES[STUDIO_STRATEGIST_KEY]
   const r = await runStudioCarousel(store, producao, brief, {
-    now: () => agora,
-    deadlineAt: STUDIO_PROFILES[STUDIO_STRATEGIST_KEY].reserveMs + 1,
+    now: () => 0,
+    deadlineAt: perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS - 1,
   })
 
   assert.equal(r.state, 'partial')
-  assert.deepEqual(r.pending, [STUDIO_COPYWRITER_KEY, STUDIO_DESIGNER_KEY])
-  assert.equal(contador.calls, 1, 'chamou além do que cabia no tempo')
-  assert.equal(store.steps.length, 1, 'criou step sem orçamento — claim preso')
-  assert.notEqual(store.productions.get(producao.id)!.status, 'awaiting_approval')
-  agora = 0
+  assert.deepEqual(r.pending, [...STUDIO_AGENT_ORDER])
+  assert.equal(contador.calls, 0, 'chamou o provider sem orçamento')
+  assert.equal(store.steps.length, 0, 'criou step sem orçamento — claim preso')
+  assert.equal(store.events.length, 0, 'emitiu evento sem ter feito trabalho')
+  assert.equal(store.productions.get(producao.id)!.status, 'draft')
 
-  // A requisição seguinte RETOMA de onde parou, sem repetir o Estrategista.
-  const r2 = await runStudioCarousel(store, producao, brief)
-  assert.equal(r2.state, 'created')
-  assert.equal(contador.calls, 3, 'o Estrategista foi refeito')
+  // No limiar EXATO, o agente cabe e roda.
+  const r2 = await runStudioCarousel(store, producao, brief, {
+    now: () => 0,
+    deadlineAt: perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS,
+  })
+  assert.equal(r2.state, 'partial')
+  assert.equal(contador.calls, 1)
+  assert.equal(store.steps.length, 1)
+
+  // As requisições seguintes retomam sem repetir o que já foi pago.
+  await runStudioCarousel(store, producao, brief)
+  const fim = await runStudioCarousel(store, producao, brief)
+  assert.equal(fim.state, 'created')
+  assert.equal(contador.calls, 3, 'algum agente foi refeito')
   assert.deepEqual(contador.agentes, [...STUDIO_AGENT_ORDER])
   assert.equal(store.productions.get(producao.id)!.status, 'awaiting_approval')
 })
@@ -535,6 +579,9 @@ test('24) falha de um agente: produção failed, sem retomada automática', asyn
   const store = new MemStore()
   const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
 
+  // 1ª requisição: Estrategista conclui (partial). 2ª: o Copywriter falha.
+  const r0 = await runStudioCarousel(store, producao, brief)
+  assert.equal(r0.state, 'partial')
   const r = await runStudioCarousel(store, producao, brief)
   assert.equal(r.state, 'failed')
   assert.equal(store.productions.get(producao.id)!.status, 'failed')
@@ -663,24 +710,16 @@ test('32) o resultado NUNCA mistura gerações', () => {
 
 test('33) copy pronta antes do Designer já aparece; a arte entra depois', async () => {
   const contador = { calls: 0, agentes: [] as string[] }
-  const base = providerBom(contador)
-
-  // Relógio que ANDA: cada chamada consome 15s do orçamento. É assim que o
-  // tempo acaba de verdade — um relógio parado nunca estouraria o limite.
-  let agora = 0
-  __setContentAIProviderForTests({
-    async call(req) { const r = await base.call(req); agora += 15_000; return r },
-  })
-
+  __setContentAIProviderForTests(providerBom(contador))
   const brief = briefValido({ slides: 6 })
   const store = new MemStore()
   const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
 
-  // 48s dão para Estrategista (20s de reserva) e Copywriter (28s), mas quando
-  // chega a vez do Designer só restam 18s — menos que a reserva dele.
-  await runStudioCarousel(store, producao, brief, { now: () => agora, deadlineAt: 48_000 })
-  assert.equal(contador.calls, 2, `rodaram ${contador.calls} agentes, esperávamos 2`)
-  assert.equal(store.steps.length, 2, 'criou step do Designer sem orçamento')
+  // Duas requisições: Estrategista e Copywriter prontos, Designer ainda não.
+  await runStudioCarousel(store, producao, brief)
+  await runStudioCarousel(store, producao, brief)
+  assert.equal(contador.calls, 2)
+  assert.equal(store.steps.length, 2)
 
   const parcial = buildProductionResult(store.steps)
   assert.equal(parcial.slides.length, 6, 'a copy pronta deveria aparecer')
@@ -754,20 +793,30 @@ test('36) o cliente não escolhe tenant, pipeline, agente nem modelo', () => {
   assert.ok(action.includes('tenant_id: tenantId'), 'o tenant precisa vir da sessão')
 })
 
-test('37) a rota do Content Studio declara maxDuration compatível com a IA', () => {
+test('37) INVARIANTE DE TEMPO: timeout + margem <= orçamento < maxDuration', () => {
   const page = ler('src/app/(dashboard)/content-studio/page.tsx')
   const m = /export const maxDuration = (\d+)/.exec(page)
   assert.ok(m, 'sem maxDuration a Server Action morre no meio de uma chamada paga')
-  const limite = Number(m![1])
-  assert.ok(limite <= 60, 'acima de 60s não vale em todos os planos da Vercel')
-  assert.ok(
-    STUDIO_REQUEST_BUDGET_MS < limite * 1000,
-    'o orçamento do runner precisa ser MENOR que o limite da requisição',
-  )
-  // Cada agente sozinho precisa caber no orçamento.
+  const limiteMs = Number(m![1]) * 1000
+  assert.ok(limiteMs <= 60_000, 'acima de 60s não vale em todos os planos da Vercel')
+
+  // O orçamento precisa caber DENTRO do limite da rota, com folga externa real
+  // (a margem interna cobre a persistência do runner, não o overhead da
+  // plataforma). Exigimos pelo menos 10s de folga externa.
+  assert.ok(STUDIO_REQUEST_BUDGET_MS < limiteMs, 'orçamento >= limite da rota')
+  assert.ok(limiteMs - STUDIO_REQUEST_BUDGET_MS >= 10_000, 'folga externa insuficiente')
+
+  // A margem de persistência existe e é significativa.
+  assert.ok(STUDIO_PERSISTENCE_MARGIN_MS >= 3_000, 'margem de persistência simbólica')
+
+  // O invariante central, por agente: o TIMEOUT INTEIRO + margem cabe no
+  // orçamento. (Era exatamente isto que o código anterior violava: timeout de
+  // 55s com orçamento de 50s e "reserva" de 28s sem relação com o timeout.)
   for (const k of STUDIO_AGENT_ORDER) {
-    assert.ok(STUDIO_PROFILES[k].reserveMs < STUDIO_REQUEST_BUDGET_MS, `${k} não cabe no orçamento`)
-    assert.ok(STUDIO_PROFILES[k].timeoutMs <= limite * 1000, `${k} tem timeout acima do limite da rota`)
+    assert.ok(
+      STUDIO_PROFILES[k].timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS <= STUDIO_REQUEST_BUDGET_MS,
+      `${k}: timeoutMs ${STUDIO_PROFILES[k].timeoutMs} + margem não cabe no orçamento`,
+    )
   }
 })
 
@@ -783,6 +832,189 @@ test('38) nada de fila, cron, endpoint público ou migration nesta geração', (
   // R1 intocado.
   assert.ok(ler('src/lib/security/cron-auth.ts').includes('timingSafeEqual'))
   assert.ok(ler('src/app/api/queue/process/route.ts').includes('evaluateCronAuth'))
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// 7. Uma requisição, no máximo UM agente novo
+// ════════════════════════════════════════════════════════════════════════════
+
+test('39) create roda SÓ o Estrategista; cada continuação, só o próximo', async () => {
+  const contador = { calls: 0, agentes: [] as string[] }
+  __setContentAIProviderForTests(providerBom(contador))
+  const brief = briefValido({ slides: 6 })
+  const store = new MemStore()
+  const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
+
+  // Requisição 1 (create): só o Estrategista.
+  const r1 = await runStudioCarousel(store, producao, brief)
+  assert.equal(r1.state, 'partial')
+  assert.deepEqual(contador.agentes, [STUDIO_STRATEGIST_KEY])
+  assert.deepEqual(r1.pending, [STUDIO_COPYWRITER_KEY, STUDIO_DESIGNER_KEY])
+  assert.equal(store.steps.length, 1)
+
+  // Requisição 2 (continuação): só o Copywriter.
+  const r2 = await runStudioCarousel(store, producao, brief)
+  assert.equal(r2.state, 'partial')
+  assert.deepEqual(contador.agentes, [STUDIO_STRATEGIST_KEY, STUDIO_COPYWRITER_KEY])
+  assert.deepEqual(r2.pending, [STUDIO_DESIGNER_KEY])
+
+  // Requisição 3 (continuação): só o Designer — e FINALIZA.
+  const r3 = await runStudioCarousel(store, producao, brief)
+  assert.equal(r3.state, 'created')
+  assert.deepEqual(contador.agentes, [...STUDIO_AGENT_ORDER])
+  assert.deepEqual(r3.pending, [])
+  assert.equal(store.productions.get(producao.id)!.status, 'awaiting_approval')
+
+  // TRÊS requisições completaram a produção; cada uma pagou UMA chamada.
+  assert.equal(contador.calls, 3)
+})
+
+test('40) a bateria completa confirma: nunca mais de 1 chamada por requisição', async () => {
+  const { r, porRequisicao, contador } = await rodar(8)
+  assert.equal(r.state, 'created')
+  assert.deepEqual(porRequisicao, [1, 1, 1], `chamadas por requisição: ${porRequisicao.join(',')}`)
+  assert.equal(contador.calls, 3)
+})
+
+test('41) o timeout entregue ao provider nunca excede o tempo restante − margem', async () => {
+  const timeouts: number[] = []
+  const base = providerBom()
+  // Relógio que anda 4s entre o portão e a chamada (simula latência interna).
+  let agora = 0
+  __setContentAIProviderForTests({
+    async call(req) {
+      timeouts.push(req.timeoutMs)
+      return base.call(req)
+    },
+  })
+
+  const brief = briefValido({ slides: 6 })
+  const store = new MemStore()
+  const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
+
+  const perfil = STUDIO_PROFILES[STUDIO_STRATEGIST_KEY]
+  const deadline = perfil.timeoutMs + STUDIO_PERSISTENCE_MARGIN_MS  // limiar exato
+  await runStudioCarousel(store, producao, brief, {
+    // O relógio anda 4s DEPOIS do portão (na primeira leitura ele devolve 0,
+    // nas seguintes 4s): o clamp precisa reduzir o timeout do provider.
+    now: () => { const t = agora; agora = 4_000; return t },
+    deadlineAt: deadline,
+  })
+
+  assert.equal(timeouts.length, 1)
+  assert.ok(
+    timeouts[0] <= deadline - 4_000 - STUDIO_PERSISTENCE_MARGIN_MS,
+    `provider recebeu ${timeouts[0]}ms com só ${deadline - 4_000}ms restantes`,
+  )
+  assert.ok(timeouts[0] <= perfil.timeoutMs, 'o clamp nunca AUMENTA o timeout')
+})
+
+test('42) timeout do provider vira failed persistido — nunca running eterno', async () => {
+  __setContentAIProviderForTests({
+    async call() {
+      const err = new Error('content_ai:timeout')
+      ;(err as { code?: string }).code = 'content_ai:timeout'
+      throw err
+    },
+  })
+  const brief = briefValido({ slides: 6 })
+  const store = new MemStore()
+  const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
+
+  const r = await runStudioCarousel(store, producao, brief)
+  assert.equal(r.state, 'failed')
+  assert.equal(r.errorCode, 'content_ai:timeout')
+  // O caminho de erro PERSISTIU tudo: step failed, evento, produção failed.
+  const step = store.steps[0]
+  assert.equal(step.status, 'failed')
+  assert.ok(step.completed_at, 'step failed sem completed_at')
+  assert.equal(store.productions.get(producao.id)!.status, 'failed')
+  assert.ok(store.events.some(e => e.type === 'agent_failed'))
+  // E nenhuma produção fica `running` por erro tratável.
+  assert.notEqual(store.productions.get(producao.id)!.status, 'running')
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// 8. Finalização idempotente (CAS)
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Produção com os TRÊS steps completos, pronta para finalizar. */
+function producaoCompleta(status: ProductionStatus = 'running') {
+  const brief = briefValido({ slides: 6 })
+  const store = new MemStore()
+  const producao = store.criar(STUDIO_PIPELINE_KEY, brief)
+  store.productions.get(producao.id)!.status = status
+  const dados: Record<string, Record<string, unknown>> = {
+    [STUDIO_STRATEGIST_KEY]: planoBom(6),
+    [STUDIO_COPYWRITER_KEY]: copyBoa(6),
+    [STUDIO_DESIGNER_KEY]: arteBoa(6),
+  }
+  STUDIO_AGENT_ORDER.forEach((agentKey, i) => {
+    store.steps.push({
+      id: `step-${agentKey}`, production_id: producao.id, tenant_id: producao.tenant_id,
+      agent_key: agentKey, step_index: i,
+      depends_on: i === 0 ? [] : [STUDIO_AGENT_ORDER[i - 1]],
+      status: 'completed', input: null,
+      output: { data: dados[agentKey], artifacts: [], usage: undefined },
+      attempt: 0, error: null, started_at: 'x', completed_at: 'x',
+    })
+  })
+  return { store, producao, brief }
+}
+
+test('43) duas finalizações simultâneas: UMA transição, UM evento final', async () => {
+  const contador = { calls: 0, agentes: [] as string[] }
+  __setContentAIProviderForTests(providerBom(contador))
+  const { store, producao, brief } = producaoCompleta('running')
+
+  const [a, b] = await Promise.all([
+    runStudioCarousel(store, producao, brief),
+    runStudioCarousel(store, producao, brief),
+  ])
+
+  assert.equal(store.events.filter(e => e.type === 'content_waiting_approval').length, 1,
+    'evento final duplicado')
+  assert.equal(store.productions.get(producao.id)!.status, 'awaiting_approval')
+  // Exatamente uma execução realizou a transição (created); a outra, reused.
+  assert.deepEqual([a.state, b.state].sort(), ['created', 'reused'])
+  assert.equal(contador.calls, 0, 'finalização chamou o provider')
+})
+
+test('44) recuperação: steps completos + produção running finaliza sem provider', async () => {
+  const contador = { calls: 0, agentes: [] as string[] }
+  __setContentAIProviderForTests(providerBom(contador))
+  const { store, producao, brief } = producaoCompleta('running')
+
+  const r = await runStudioCarousel(store, producao, brief)
+  assert.equal(r.state, 'created')
+  assert.equal(store.productions.get(producao.id)!.status, 'awaiting_approval')
+  assert.equal(store.events.filter(e => e.type === 'content_waiting_approval').length, 1)
+  assert.equal(contador.calls, 0)
+
+  // Quem chega DEPOIS encontra awaiting_approval: reused, sem evento novo.
+  const depois = await runStudioCarousel(store, producao, brief)
+  assert.equal(depois.state, 'reused')
+  assert.equal(store.events.filter(e => e.type === 'content_waiting_approval').length, 1)
+  assert.equal(contador.calls, 0)
+})
+
+test('45) o CAS mora na porta ContentStore e no Supabase é UPDATE com predicado', () => {
+  // A porta declara a operação explícita.
+  const tipos = ler('src/lib/content-studio/types.ts')
+  assert.ok(tipos.includes('transitionProductionStatus'), 'a porta não declara o CAS')
+
+  // A implementação Supabase usa o predicado NA PRÓPRIA UPDATE (WHERE status
+  // IN ...), nunca read-then-write.
+  const storeSrc = ler('src/lib/content-studio/store.ts')
+  const cas = storeSrc.slice(storeSrc.indexOf('async transitionProductionStatus'))
+    .split('\n    async ')[0]
+  assert.ok(cas.includes(".in('status'"), 'o predicado de status não está na UPDATE')
+  assert.ok(cas.includes(".select("), 'sem select não dá para saber quem transicionou')
+
+  // E o runner só emite o evento final quando o CAS devolveu true.
+  const run = ler('src/lib/content-studio/studio/run.ts')
+  const finaliza = run.slice(run.indexOf('transitionProductionStatus'))
+  assert.ok(finaliza.includes('if (transicionou)'), 'evento final sem depender do CAS')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
