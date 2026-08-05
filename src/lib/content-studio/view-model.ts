@@ -11,6 +11,7 @@
 // existentes são revelados, nunca o conteúdo deles.
 // ============================================================================
 
+import { CAROUSEL_AGENT_LABELS } from './agents/carousel'
 import { OFFICE_AGENT_LABELS } from './agents/office'
 import type { EventType, StoredEvent } from './types'
 
@@ -107,6 +108,41 @@ export function productionStatusLabel(status: string | null | undefined): string
 /** Ordem das mesas no escritório. */
 export const OFFICE_AGENT_ORDER = ['researcher', 'strategist', 'copywriter'] as const
 
+/**
+ * Rótulos de TODOS os agentes que podem aparecer na timeline — os stubs da
+ * demonstração e os do pipeline de produção.
+ */
+export const AGENT_LABELS: Record<string, string> = {
+  ...OFFICE_AGENT_LABELS,
+  ...CAROUSEL_AGENT_LABELS,
+}
+
+/**
+ * Em qual MESA um agente trabalha.
+ *
+ * O escritório tem três mesas, desenhadas na Fase V3/V4. O pipeline de produção
+ * tem cinco papéis: os três de sempre, mais Revisor e Aprovação.
+ *
+ * A escolha aqui é deliberada: os três papéis com mesa animam o escritório; o
+ * Revisor e a Aprovação aparecem na LINHA DO TEMPO e no resultado, sem mesa.
+ * A alternativa seria sentar o Revisor na cadeira de outro personagem, o que
+ * mostraria na tela algo que não corresponde ao evento gravado.
+ */
+const DESK_BY_AGENT: Record<string, string> = {
+  researcher: 'researcher',
+  strategist: 'strategist',
+  copywriter: 'copywriter',
+  cc_researcher: 'researcher',
+  cc_strategist: 'strategist',
+  cc_copywriter: 'copywriter',
+}
+
+/** Mesa do agente, ou null para quem não tem lugar na cena. */
+export function deskOf(agentKey: string | null | undefined): string | null {
+  if (!agentKey) return null
+  return DESK_BY_AGENT[agentKey] ?? null
+}
+
 const EVENT_LABEL: Record<EventType, string> = {
   production_created: 'Produção criada',
   agent_queued: 'Recebeu a tarefa',
@@ -134,7 +170,7 @@ const GOOD: EventType[] = ['agent_completed', 'content_approved', 'publication_c
 function emptyAgent(key: string): AgentView {
   return {
     key,
-    label: OFFICE_AGENT_LABELS[key] ?? key,
+    label: AGENT_LABELS[key] ?? key,
     state: 'idle',
     bubble: null,
     progress: null,
@@ -173,13 +209,16 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
       seq: event.seq,
       type: event.type,
       agentKey: event.agent_key,
-      agentLabel: event.agent_key ? (OFFICE_AGENT_LABELS[event.agent_key] ?? event.agent_key) : null,
+      agentLabel: event.agent_key ? (AGENT_LABELS[event.agent_key] ?? event.agent_key) : null,
       label: EVENT_LABEL[event.type] ?? event.type,
       at: event.occurred_at,
       tone: BAD.includes(event.type) ? 'bad' : GOOD.includes(event.type) ? 'good' : 'neutral',
     })
 
-    const agent = event.agent_key ? byKey.get(event.agent_key) : undefined
+    // Mapeado para a MESA: o pipeline de produção usa chaves cc_*, e quem não
+    // tem mesa (Revisor, Aprovação) simplesmente não move ninguém na cena.
+    const deskKey = deskOf(event.agent_key)
+    const agent = deskKey ? byKey.get(deskKey) : undefined
 
     switch (event.type) {
       case 'agent_queued':
@@ -236,13 +275,15 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
         // O evento carrega quem entrega e quem recebe: a caminhada é dado, não
         // suposição da interface.
         const { from, to } = event.payload as { from?: string; to?: string }
-        const origem = from ? byKey.get(from) : undefined
+        const origemKey = deskOf(from)
+        const destinoKey = deskOf(to)
+        const origem = origemKey ? byKey.get(origemKey) : undefined
         if (origem) {
           origem.state = 'walking'
-          origem.handoffTo = to ?? null
-          origem.bubble = to ? `Levando para o ${OFFICE_AGENT_LABELS[to] ?? to}` : 'Entregando'
+          origem.handoffTo = destinoKey
+          origem.bubble = to ? `Levando para o ${AGENT_LABELS[to] ?? to}` : 'Entregando'
           // Caminha ATÉ a mesa do destinatário, levando a pasta junto.
-          origem.atDesk = to ?? origem.key
+          origem.atDesk = destinoKey ?? origem.key
           origem.carryingFolder = true
         }
         break
@@ -251,7 +292,8 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
       case 'task_handoff_completed': {
         // Entrega feita: quem levou solta a pasta e VOLTA para a própria mesa;
         // quem recebeu fica com ela até começar a trabalhar.
-        const origem = event.agent_key ? byKey.get(event.agent_key) : undefined
+        const origemDesk = deskOf(event.agent_key)
+        const origem = origemDesk ? byKey.get(origemDesk) : undefined
         if (origem) {
           const destino = origem.handoffTo ? byKey.get(origem.handoffTo) : undefined
           if (destino) destino.receivedFolder = true

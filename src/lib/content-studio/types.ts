@@ -138,6 +138,13 @@ export interface AgentInput {
   brief: Record<string, unknown>
   /** Saídas dos steps dos quais este depende, indexadas por agent_key. */
   upstream: Record<string, AgentOutput>
+  /**
+   * Instrução gravada em `cs_steps.input` — hoje, o ciclo de revisão.
+   *
+   * Vem do ORQUESTRADOR, nunca do cliente. É o único canal pelo qual um agente
+   * sabe que está reescrevendo em vez de escrevendo pela primeira vez.
+   */
+  stepInput?: Record<string, unknown> | null
 }
 
 export interface AgentUsage {
@@ -202,7 +209,28 @@ export interface PipelineDef {
   key: string
   label: string
   steps: PipelineStepDef[]
+  /**
+   * Estado em que a produção termina quando TODOS os steps concluem.
+   *
+   * Aditivo e opcional: pipelines que não declaram continuam terminando em
+   * 'review', exatamente como na Fase 1. Só quem precisa de um portão de
+   * aprovação explícito declara 'awaiting_approval'.
+   */
+  finalStatus?: ProductionStatus
+  /** Evento emitido junto com `finalStatus`. Default: content_waiting_approval. */
+  finalEvent?: EventType
+  /**
+   * Quantas revisões automáticas o pipeline aceita. 0 (default) desliga.
+   *
+   * É um TETO, não uma meta: existe para que um revisor insatisfeito não
+   * reprocesse o copy para sempre. Sem ele, `suggestRevise` seria um laço.
+   */
+  maxAutoRevisions?: number
 }
+
+/** Default de `finalStatus` — o comportamento da Fase 1, preservado. */
+export const DEFAULT_FINAL_STATUS: ProductionStatus = 'review'
+export const DEFAULT_FINAL_EVENT: EventType = 'content_waiting_approval'
 
 // ─── Porta de persistência ──────────────────────────────────────────────────
 
@@ -256,6 +284,25 @@ export interface ContentStore {
  */
 export function buildDedupeKey(productionId: string, stepId: string, cycle: number): string {
   return `prod:${productionId}:step:${stepId}:cycle:${cycle}`
+}
+
+/**
+ * Ciclo de revisão de um step, guardado em `cs_steps.input`.
+ *
+ * Mora no `input` (coluna jsonb que existia sem uso) porque é EXATAMENTE isso:
+ * a instrução que o step recebeu ao ser reenfileirado. Contar reprocessamentos
+ * pelos eventos exigiria que o orquestrador lesse a timeline — e ele não deve
+ * depender dela para decidir.
+ */
+export interface StepRevisionInput {
+  revision_cycle: number
+  /** Avisos do revisor que motivaram o reprocessamento. */
+  revision_notes?: string[]
+}
+
+export function readRevisionCycle(input: Record<string, unknown> | null | undefined): number {
+  const raw = input?.revision_cycle
+  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0
 }
 
 /** Backoff: 1min → 5min → 15min. */

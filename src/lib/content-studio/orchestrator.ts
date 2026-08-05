@@ -16,12 +16,16 @@ import { eligibleSteps, getPipeline, materializeSteps } from './pipeline'
 import {
   buildDedupeKey,
   nextRetryDelaySeconds,
+  readRevisionCycle,
+  DEFAULT_FINAL_EVENT,
+  DEFAULT_FINAL_STATUS,
   type AgentContext,
   type AgentInput,
   type AgentOutput,
   type AgentProgress,
   type ContentStore,
   type JobRow,
+  type PipelineDef,
   type ProductionRow,
   type StepRow,
 } from './types'
@@ -237,6 +241,8 @@ function buildAgentInput(
     },
     brief: production.brief,
     upstream,
+    // Só o que o ORQUESTRADOR gravou. O cliente nunca escreve em cs_steps.
+    stepInput: step.input ?? null,
   }
 }
 
@@ -313,11 +319,15 @@ async function enqueueEligible(
   let enqueued = 0
 
   for (const step of eligibleSteps(steps)) {
+    // O ciclo entra na chave: depois de uma revisão, o step precisa de um job
+    // NOVO. Com a chave fixa em 0, o dedupe da primeira execução barraria o
+    // reenfileiramento e o pipeline pararia sem ninguém na fila.
+    const ciclo = readRevisionCycle(step.input)
     const job = await store.insertJob({
       tenant_id: production.tenant_id,
       production_id: production.id,
       step_id: step.id,
-      dedupe_key: buildDedupeKey(production.id, step.id, 0),
+      dedupe_key: buildDedupeKey(production.id, step.id, ciclo),
       status: 'pending',
       scheduled_for: now.toISOString(),
       attempt: 0,
@@ -356,6 +366,118 @@ async function enqueueEligible(
 }
 
 /**
+ * Revisão automática — no máximo `maxAutoRevisions` por step.
+ *
+ * O revisor pede a reescrita devolvendo `nextHint.suggestRevise`. Quem decide
+ * se ela acontece é ESTA função, não ele: um agente que pudesse se auto-agendar
+ * seria um laço infinito com passos extras.
+ *
+ * O contador vive em `cs_steps.input.revision_cycle`, do próprio step revisado.
+ * Ler dos eventos exigiria que o orquestrador dependesse da timeline para
+ * decidir — e a timeline é saída, não entrada.
+ *
+ * Estourado o teto, a produção FALHA com mensagem segura em vez de girar.
+ */
+async function maybeAutoRevise(
+  store: ContentStore,
+  production: ProductionRow,
+  pipeline: PipelineDef,
+  steps: StepRow[],
+  completedAgentKey: string,
+  now: Date,
+): Promise<boolean> {
+  const teto = pipeline.maxAutoRevisions ?? 0
+  if (teto <= 0) return false
+
+  const revisor = steps.find(s => s.agent_key === completedAgentKey)
+  const pedidos = revisor?.output?.nextHint?.suggestRevise ?? []
+  if (pedidos.length === 0) return false
+
+  let algumReenfileirado = false
+
+  for (const alvoKey of pedidos) {
+    const alvo = steps.find(s => s.agent_key === alvoKey)
+    if (!alvo || alvo.status !== 'completed') continue
+
+    const ciclo = readRevisionCycle(alvo.input)
+    if (ciclo >= teto) {
+      // Teto estourado: parar é o comportamento correto. Continuar seria
+      // reprocessar para sempre com o mesmo resultado.
+      await store.updateStep(revisor!.id, {
+        status: 'failed',
+        error: 'revisao_nao_aprovada',
+      })
+      await store.emitEvent({
+        productionId: production.id,
+        type: 'agent_failed',
+        stepId: revisor!.id,
+        agentKey: completedAgentKey,
+        payload: {
+          error: 'revisao_nao_aprovada',
+          revision_cycle: ciclo,
+          max_auto_revisions: teto,
+        },
+      })
+      await store.updateProductionStatus(production.id, 'failed')
+      return true
+    }
+
+    const proximo = ciclo + 1
+    const avisos = revisor?.output?.data?.avisos
+    await store.updateStep(alvo.id, {
+      status: 'pending',
+      output: null,
+      error: null,
+      completed_at: null,
+      input: {
+        revision_cycle: proximo,
+        revision_notes: Array.isArray(avisos) ? (avisos as string[]).slice(0, 10) : [],
+      },
+    })
+
+    // Ciclo > 0 na dedupe_key: job NOVO, sem colidir com o histórico. É para
+    // isto que `cycle` existia desde a Fase 1.
+    const job = await store.insertJob({
+      tenant_id: production.tenant_id,
+      production_id: production.id,
+      step_id: alvo.id,
+      dedupe_key: buildDedupeKey(production.id, alvo.id, proximo),
+      status: 'pending',
+      scheduled_for: now.toISOString(),
+      attempt: 0,
+      max_attempts: ORCHESTRATOR_MAX_ATTEMPTS,
+      lock_token: null,
+      locked_until: null,
+      error: null,
+    })
+    if (!job) continue
+
+    algumReenfileirado = true
+    await store.updateStep(alvo.id, { status: 'queued' })
+    await store.emitEvent({
+      productionId: production.id,
+      type: 'agent_reprocessed',
+      stepId: alvo.id,
+      agentKey: alvo.agent_key,
+      payload: { revision_cycle: proximo, requested_by: completedAgentKey },
+    })
+
+    // O revisor volta a pendente: ele precisa reavaliar o texto reescrito.
+    // O revisor volta a pendente para reavaliar o texto reescrito — e leva o
+    // MESMO ciclo, senão o dedupe da primeira avaliação barraria a segunda.
+    const revisorStep = steps.find(s => s.agent_key === completedAgentKey)
+    if (revisorStep) {
+      await store.updateStep(revisorStep.id, {
+        status: 'pending', output: null, error: null, completed_at: null,
+        input: { revision_cycle: proximo },
+      })
+    }
+  }
+
+  return algumReenfileirado
+}
+
+/**
  * Decide o que acontece depois que um step conclui.
  *
  * Três desfechos possíveis, e nenhum outro:
@@ -369,7 +491,12 @@ async function advanceProduction(
   completedAgentKey: string,
   now: Date,
 ): Promise<void> {
-  const steps = await store.listSteps(production.id)
+  const pipeline = getPipeline(production.pipeline_key)
+  let steps = await store.listSteps(production.id)
+
+  // Revisão automática pedida pelo agente que acabou de concluir.
+  const revisou = await maybeAutoRevise(store, production, pipeline, steps, completedAgentKey, now)
+  if (revisou) return
 
   const enqueued = await enqueueEligible(store, production, steps, now, completedAgentKey)
   if (enqueued > 0) {
@@ -382,18 +509,20 @@ async function advanceProduction(
     return
   }
 
+  steps = await store.listSteps(production.id)
   const pending = steps.filter(
     s => s.status !== 'completed' && s.status !== 'skipped' && s.status !== 'failed',
   )
 
   if (pending.length === 0) {
-    // Fase 1 encerra em 'review': não há publicador, e publicar sem revisão
-    // humana nunca foi o comportamento pedido.
-    await store.updateProductionStatus(production.id, 'review')
+    // Encerramento declarado pelo pipeline. Sem declaração, 'review' — que é
+    // exatamente o que a Fase 1 fazia, e continua fazendo.
+    const finalStatus = pipeline.finalStatus ?? DEFAULT_FINAL_STATUS
+    await store.updateProductionStatus(production.id, finalStatus)
     await store.emitEvent({
       productionId: production.id,
-      type: 'content_waiting_approval',
-      payload: { steps: steps.length },
+      type: pipeline.finalEvent ?? DEFAULT_FINAL_EVENT,
+      payload: { steps: steps.length, final_status: finalStatus },
     })
     return
   }

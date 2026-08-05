@@ -37,9 +37,38 @@ export const OFFICE_PIPELINE: PipelineDef = {
   ],
 }
 
+/**
+ * Fase 2A — o primeiro pipeline de PRODUÇÃO real.
+ *
+ * Real no sentido que importa: briefing do usuário, steps e jobs persistidos,
+ * outputs gravados, eventos auditáveis. Os agentes continuam determinísticos e
+ * sem IA — o que muda é que o material produzido é para valer, e o pipeline
+ * termina num portão humano em vez de simplesmente acabar.
+ *
+ * O passo `approval` NÃO aprova nada. Ele fecha o trabalho automático e deixa a
+ * produção em `awaiting_approval`, esperando uma pessoa. Aprovar é Fase 2B.
+ */
+export const CAROUSEL_PIPELINE: PipelineDef = {
+  key: 'content_carousel_v1',
+  label: 'Carrossel de conteúdo',
+  steps: [
+    { agentKey: 'cc_researcher', dependsOn: [] },
+    { agentKey: 'cc_strategist', dependsOn: ['cc_researcher'] },
+    { agentKey: 'cc_copywriter', dependsOn: ['cc_strategist'] },
+    { agentKey: 'cc_reviewer', dependsOn: ['cc_copywriter'] },
+    { agentKey: 'cc_approval', dependsOn: ['cc_reviewer'] },
+  ],
+  finalStatus: 'awaiting_approval',
+  finalEvent: 'content_waiting_approval',
+  // UMA revisão automática. O revisor pode devolver o copy uma única vez; se
+  // ainda assim reprovar, a produção falha com mensagem segura em vez de girar.
+  maxAutoRevisions: 1,
+}
+
 const PIPELINES: Record<string, PipelineDef> = {
   [STUB_PIPELINE.key]: STUB_PIPELINE,
   [OFFICE_PIPELINE.key]: OFFICE_PIPELINE,
+  [CAROUSEL_PIPELINE.key]: CAROUSEL_PIPELINE,
 }
 
 export function getPipeline(key: string): PipelineDef {
