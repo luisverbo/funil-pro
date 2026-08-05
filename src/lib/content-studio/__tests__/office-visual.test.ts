@@ -1,5 +1,5 @@
 // ============================================================================
-// Testes do Office Preview V4 (camada visual)
+// Testes do Office Preview V4.1 (camada visual)
 // ----------------------------------------------------------------------------
 // Nada de banco, nada de rede. A cena é derivada de eventos reais produzidos
 // pelo orquestrador em memória — os mesmos que o backend gravaria em cs_events.
@@ -38,6 +38,7 @@ const ui = readFileSync(join(RAIZ, 'src/components/content-studio/office-preview
 const timeline = readFileSync(join(RAIZ, 'src/components/content-studio/timeline-panel.tsx'), 'utf8')
 const props = readFileSync(join(RAIZ, 'src/components/content-studio/office-props.tsx'), 'utf8')
 const rig = readFileSync(join(RAIZ, 'src/components/content-studio/agent-rig.tsx'), 'utf8')
+const motion = readFileSync(join(RAIZ, 'src/components/content-studio/ambient-motion.ts'), 'utf8')
 
 // ─── Store em memória ───────────────────────────────────────────────────────
 
@@ -639,62 +640,52 @@ test('S4) reduced-motion desliga também as micro-rotinas', () => {
   assert.ok(/transition:\s*none\s*!important/.test(bloco), 'reduced-motion precisa parar as transições')
   assert.ok(/\.cs-scene \*/.test(bloco), 'a regra precisa alcançar a cena inteira — inclusive o ambiente')
 
-  // ...e o avatar nem chega a aplicar a classe de ambiente.
-  assert.ok(/!reducedMotion && parado && ambient !== undefined/.test(avatar),
-    'a classe de ambiente precisa depender de reducedMotion')
+  // ...o relógio da locomoção nem é ligado...
+  assert.ok(cena.includes('useAmbientOfficeMotion(OFFICE_AGENT_ORDER, !reducedMotion'),
+    'reduced-motion precisa desligar o relógio ambiental')
+  // ...e o avatar nem chega a aplicar as classes de ambiente.
+  assert.ok(avatar.includes('ambientWalking && semTarefa && !reducedMotion'),
+    'a caminhada ambiental precisa depender de reducedMotion')
+  assert.ok(avatar.includes('semTarefa && !reducedMotion ? ambientAction : null'),
+    'a pose ambiental precisa depender de reducedMotion')
 })
 
-test('17) micro-rotinas são cosméticas: não tocam backend nem timeline', () => {
-  assert.ok(cena.includes('function ambienteDe'), 'falta a camada de vida')
+test('17) a locomoção ambiental é cosmética: não toca backend nem timeline', () => {
+  // A camada vive em módulo próprio, fora do domínio.
+  assert.ok(cena.includes("from './ambient-motion'"), 'a cena precisa usar a máquina ambiental')
+  assert.ok(cena.includes("from './use-ambient-motion'"), 'a cena precisa usar o relógio')
 
-  const fn = cena.slice(cena.indexOf('function ambienteDe'), cena.indexOf('export default function OfficeScene'))
-  // Deriva só de estado visual local — nada de evento, nada persistido.
-  assert.ok(fn.includes("agent.state !== 'idle'"), 'só age sobre agentes ociosos')
-  assert.ok(!/emitEvent|advanceDemo|fetch|timeline|cs_events/.test(fn), 'a camada de vida não pode tocar dados')
-  // Determinística: a mesma cena no servidor e no cliente.
-  assert.ok(fn.includes('indice % 3'), 'o índice vem da posição, não de sorteio')
-  assert.ok(!/Math\.random/.test(cena + avatar + rig), 'nada pode ser aleatório')
+  const sem = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+  assert.ok(!/emitEvent|advanceDemo|startDemoProduction|getDemoState|cs_events/.test(sem(motion)),
+    'a máquina ambiental não pode tocar em dados')
+  assert.ok(!/from '@\/lib\/content-studio/.test(motion), 'a máquina não pode depender do domínio')
 
-  // A view-model não ganhou campo novo por causa disso.
+  // A view-model de negócio não ganhou campo nenhum por causa disso.
   const vm = readFileSync(join(RAIZ, 'src/lib/content-studio/view-model.ts'), 'utf8')
-  assert.ok(!/ambient|rotina|micro/i.test(vm), 'a camada de vida não pode virar estado persistido')
+  assert.ok(!/ambient|waypoint/i.test(vm), 'a camada de vida não pode virar estado persistido')
 
-  // E as micro-rotinas não mexem em nada que sugira locomoção ou trabalho.
-  const ambientes = cena.split('\n').filter(l => /\.cs-char--amb\d/.test(l))
-  assert.ok(ambientes.length >= 4, 'precisa haver micro-rotinas')
-  for (const r of ambientes) {
-    for (const proibida of ['cs-j--pelvis', 'cs-j--hip', 'cs-j--knee', 'cs-j--ankle']) {
-      assert.ok(!r.includes(proibida), `micro-rotina não pode animar ${proibida}`)
-    }
-  }
-  // Ritmo lento: 11s ou mais, para não competir com a tarefa real.
-  for (const r of ambientes) {
-    const ms = Number(/Math\.round\((\d+) \/ v\)/.exec(r)?.[1] ?? 0)
-    assert.ok(ms >= 11000, `micro-rotina rápida demais (${ms}ms) — competiria com a tarefa`)
-  }
+  // Determinística: sem sorteio e sem relógio de parede.
+  assert.ok(!/Math\.random/.test(sem(motion + cena + avatar)), 'nada pode ser aleatório')
 })
 
-test('18) agentes ociosos não roubam o foco do agente ativo', () => {
-  const fn = cena.slice(cena.indexOf('function ambienteDe'), cena.indexOf('export default function OfficeScene'))
+test('18) a tarefa real tem prioridade absoluta sobre a rotina ambiental', () => {
+  // A cena só consulta a agenda depois de passar pelo filtro de prioridade.
+  assert.ok(cena.includes('resolveAmbient({'), 'a cena precisa aplicar a prioridade')
+  const filtro = cena.slice(cena.indexOf('const ambienteDe'), cena.indexOf('return (\n    <svg'))
+  assert.ok(filtro.includes('visualState: agent.state'), 'o estado real precisa entrar na decisão')
+  assert.ok(filtro.includes('isFocus: emFoco === agent.key'), 'o foco precisa entrar na decisão')
+  assert.ok(filtro.includes('reducedMotion'), 'a preferência precisa entrar na decisão')
 
-  // Quem está em foco nunca recebe micro-rotina.
-  assert.ok(fn.includes('emFoco === agent.key') && fn.includes('return undefined'),
-    'o agente em foco não pode ter micro-rotina')
-
-  // Quem trabalha, anda, entrega, recebe, falha ou concluiu também não.
-  assert.ok(fn.includes("agent.state !== 'idle'"), 'só idle recebe micro-rotina')
-
-  // E o avatar só aplica a classe quando está realmente parado.
-  assert.ok(avatar.includes("parado && ambient !== undefined"), 'a classe depende de estar parado')
+  // O avatar só liga a rotina quando não há tarefa nenhuma.
+  assert.ok(avatar.includes("const semTarefa = state === 'idle'"), 'a rotina exige ausência de tarefa')
+  assert.ok(avatar.includes('ambientWalking && semTarefa && !reducedMotion'), 'a caminhada ambiental é condicionada')
+  assert.ok(avatar.includes('semTarefa && !reducedMotion ? ambientAction : null'), 'a pose é condicionada')
 
   // O foco continua vindo do estado, e os demais recuam.
   assert.ok(cena.includes("view.agents.find(a => a.state === 'working')?.key"))
   const recuo = /opacity=\{foco \? 1 : ([\d.]+)\}/.exec(cena)
-  assert.ok(recuo, 'os demais precisam recuar')
-  assert.ok(Number(recuo![1]) <= 0.7, `recuo fraco demais: ${recuo![1]}`)
-  // Sem filtro: o custo de rasterização no iOS não compensa a dessaturação.
+  assert.ok(recuo && Number(recuo[1]) <= 0.7, 'os demais precisam recuar')
   assert.ok(!/filter:\s*saturate/.test(cena), 'o recuo não pode usar filtro')
-  assert.ok(cena.includes('emFoco === null || emFoco === key'), 'cena neutra quando ninguém trabalha')
 })
 
 test('as animações pedidas existem e são dirigidas por estado', () => {

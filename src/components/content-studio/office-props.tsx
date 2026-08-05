@@ -249,3 +249,109 @@ export function DeskSign({ label, tint, dark }: { label: string; tint: string; d
     </g>
   )
 }
+
+// ─── Pontos de destino da locomoção ambiental ───────────────────────────────
+// Peças com FUNÇÃO visual: cada uma é o destino de uma rotina, então o
+// deslocamento tem um motivo legível em vez de ser passeio sem propósito.
+
+/** Quadro de planejamento — destino do Estrategista. */
+export function PlanningBoard({ tint = '#8b5cf6' }: { tint?: string }) {
+  return (
+    <g>
+      <rect x="-34" y="-26" width="68" height="50" rx="3" fill="#ffffff" stroke="#cbd5e1" strokeWidth="3" />
+      <rect x="-30" y="-22" width="60" height="42" rx="2" fill="#f8fafc" />
+      {/* Post-its e conexões */}
+      <rect x="-25" y="-17" width="13" height="10" rx="1.5" fill="#fde047" />
+      <rect x="-6" y="-17" width="13" height="10" rx="1.5" fill={tint} opacity="0.5" />
+      <rect x="13" y="-17" width="13" height="10" rx="1.5" fill="#86efac" />
+      <rect x="-16" y="0" width="13" height="10" rx="1.5" fill="#fdba74" />
+      <rect x="4" y="0" width="13" height="10" rx="1.5" fill="#93c5fd" />
+      <path d="M -12 -12 L -9 5 M 0 -7 L 10 0 M 19 -7 L 10 0" stroke={tint} strokeWidth="1.4" opacity="0.6" fill="none" />
+      {/* Suporte */}
+      <path d="M -14 24 L -10 38 M 14 24 L 10 38" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round" />
+    </g>
+  )
+}
+
+/** Painel de ideias — destino do Copywriter. */
+export function IdeaWall({ tint = '#f97316' }: { tint?: string }) {
+  return (
+    <g>
+      <rect x="-30" y="-24" width="60" height="46" rx="3" fill="#e8d5b7" stroke="#b08a5f" strokeWidth="3" />
+      {[[-21, -17], [-3, -17], [15, -17], [-21, 2], [-3, 2], [15, 2]].map(([x, y], i) => (
+        <rect key={i} x={x} y={y} width="14" height="13" rx="1.5"
+          fill={['#fde047', '#fca5a5', '#a7f3d0', '#bfdbfe', '#fdba74', '#ddd6fe'][i]}
+          transform={`rotate(${(i % 3) - 1} ${x + 7} ${y + 6})`} />
+      ))}
+      <circle cx="0" cy="-24" r="3" fill={tint} />
+    </g>
+  )
+}
+
+/** Estação de café — destino do Copywriter. */
+export function CoffeeCorner() {
+  return (
+    <g>
+      <ellipse cx="0" cy="26" rx="30" ry="11" fill="#0b1220" opacity="0.1" />
+      {/* Bancada */}
+      <path d="M -30 8 L 0 22 L 30 8 L 30 14 L 0 28 L -30 14 Z" fill="#a8814f" />
+      <path d="M 0 -2 L 30 8 L 0 22 L -30 8 Z" fill="#d8b183" />
+      {/* Máquina */}
+      <g transform="translate(-8, -6)">
+        <rect x="-11" y="-22" width="22" height="24" rx="3" fill="#334155" />
+        <rect x="-8" y="-19" width="16" height="9" rx="2" fill="#0ea5e9" opacity="0.75" />
+        <rect x="-5" y="-6" width="10" height="4" rx="1" fill="#1e293b" />
+        <circle cx="7" cy="-15" r="1.8" fill="#ef4444" />
+      </g>
+      {/* Canecas na bancada */}
+      <g transform="translate(12, 4) scale(0.75)"><Mug color="#0ea5e9" /></g>
+      <g transform="translate(20, 8) scale(0.7)"><Mug color="#f59e0b" /></g>
+    </g>
+  )
+}
+
+/** Mesa de reunião — destino do Estrategista. */
+export function MeetingTable() {
+  return (
+    <g>
+      <ellipse cx="0" cy="18" rx="44" ry="17" fill="#0b1220" opacity="0.1" />
+      {/* Tampo oval */}
+      <ellipse cx="0" cy="0" rx="44" ry="19" fill="#a8814f" />
+      <ellipse cx="0" cy="-3" rx="44" ry="19" fill="#d8b183" />
+      <ellipse cx="-14" cy="-6" rx="16" ry="6" fill="#ffffff" opacity="0.16" />
+      {/* Pé central */}
+      <rect x="-4" y="10" width="8" height="14" rx="3" fill="#8b6a45" />
+      <ellipse cx="0" cy="24" rx="13" ry="5" fill="#8b6a45" />
+      {/* Documentos e cadeiras laterais */}
+      <g transform="translate(-16, -6) scale(0.8)"><Papers tint="#8b5cf6" /></g>
+      <g transform="translate(14, -4) scale(0.7)"><Mug color="#8b5cf6" /></g>
+      <ellipse cx="-46" cy="2" rx="9" ry="7" fill="#94a3b8" opacity="0.5" />
+      <ellipse cx="46" cy="2" rx="9" ry="7" fill="#94a3b8" opacity="0.5" />
+    </g>
+  )
+}
+
+/** Arquivo e impressora — destino do Pesquisador. */
+export function FileCabinet() {
+  return (
+    <g>
+      <ellipse cx="0" cy="30" rx="24" ry="9" fill="#0b1220" opacity="0.1" />
+      {/* Gavetas */}
+      <rect x="-20" y="-14" width="40" height="44" rx="3" fill="#94a3b8" />
+      <rect x="-20" y="-14" width="40" height="4" rx="2" fill="#cbd5e1" />
+      {[0, 14, 28].map(y => (
+        <g key={y}>
+          <rect x="-16" y={-8 + y} width="32" height="11" rx="1.5" fill="#cbd5e1" />
+          <rect x="-5" y={-4 + y} width="10" height="2.6" rx="1.3" fill="#64748b" />
+        </g>
+      ))}
+      {/* Impressora em cima */}
+      <g transform="translate(0, -20)">
+        <rect x="-17" y="-12" width="34" height="14" rx="2.5" fill="#475569" />
+        <rect x="-13" y="-16" width="26" height="5" rx="1.5" fill="#f8fafc" />
+        <rect x="-11" y="1" width="22" height="3.5" rx="1" fill="#e2e8f0" />
+        <circle cx="12" cy="-5" r="1.6" fill="#22c55e" />
+      </g>
+    </g>
+  )
+}
