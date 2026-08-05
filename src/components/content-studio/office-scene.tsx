@@ -16,13 +16,16 @@
 //   compact — planta em L pensada para retrato, corredor em zigue-zague
 // ============================================================================
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import AgentAvatar, { AGENT_PALETTE } from './agent-avatar'
 import {
   Chair, CoffeeCorner, Desk, DeskSign, Door, FileCabinet, IdeaWall, Keyboard, Lamp,
   MeetingTable, Monitor, Mug, Papers, PlanningBoard, Plant, Shelf, Window,
 } from './office-props'
-import { isAmbientMoving, resolveAmbient, type AmbientState } from './ambient-motion'
+import {
+  allowedAmbientAgents, AT_HOME, isAmbientMoving, isAwayFromDesk, resolveAmbient,
+  type AmbientState,
+} from './ambient-motion'
 import { useAmbientOfficeMotion } from './use-ambient-motion'
 import { OFFICE_AGENT_ORDER, type AgentView, type OfficeView } from '@/lib/content-studio/view-model'
 
@@ -82,6 +85,8 @@ export interface OfficeSceneProps {
   reducedMotion?: boolean
   /** Multiplicador de velocidade da animação (1 = normal, 2 = rápido). */
   speed?: number
+  /** Botão Pausar: congela a cena. O backend segue processando. */
+  paused?: boolean
 }
 
 export default function OfficeScene({
@@ -89,6 +94,7 @@ export default function OfficeScene({
   layout = 'wide',
   reducedMotion = false,
   speed = 1,
+  paused = false,
 }: OfficeSceneProps) {
   const desks = DESKS[layout]
   const wide = layout === 'wide'
@@ -105,28 +111,53 @@ export default function OfficeScene({
     ?? view.agents.find(a => a.state === 'walking')?.key
     ?? null
 
-  // Relógio da locomoção ambiental. Desligado por reduced-motion — e aí todos
-  // permanecem nas próprias mesas, sem nenhum caso especial na cena.
-  const agenda = useAmbientOfficeMotion(OFFICE_AGENT_ORDER, !reducedMotion, v)
+  // Relógio da locomoção ambiental. Desligado por reduced-motion; congelado
+  // (sem zerar) pelo botão Pausar.
+  const clock = useAmbientOfficeMotion(OFFICE_AGENT_ORDER, !reducedMotion, paused, v)
+
+  // Quem pode ter rotina agora: ninguém durante handoff, no máximo um quando
+  // alguém trabalha, todos os ociosos com a cena parada.
+  const permitidos = allowedAmbientAgents(view.agents, emFoco)
 
   /**
-   * Estado ambiental já com a PRIORIDADE DOS EVENTOS aplicada.
+   * COREOGRAFIA DE SAÍDA.
    *
-   * Qualquer estado que não seja `idle` — fila, trabalho, caminhada de handoff,
-   * entrega, erro, conclusão — devolve `task_controlled`, e a cena volta a usar
-   * a posição da tarefa. Como o CSS interpola, o agente CAMINHA de volta em vez
-   * de teleportar.
+   * Quando a tarefa chega com o agente fora da mesa, ele não pode simplesmente
+   * deslizar para lá já com a pose de trabalho. `markReturning` agenda alguns
+   * instantes de `task_returning`: ele volta ANDANDO e só então assume a pose.
+   *
+   * É disparado pelo evento real, mas é puramente visual — nada aqui atrasa,
+   * altera ou bloqueia o backend.
    */
-  const ambienteDe = (agent: AgentView): AmbientState =>
-    resolveAmbient({
+  const { markReturning } = clock
+
+  useEffect(() => {
+    for (const agent of view.agents) {
+      // "Estava fora" vem do ESTADO do relógio, não de uma ref lida no render.
+      const doRelogio = clock.states[agent.key]
+      const estavaFora = doRelogio ? isAwayFromDesk(doRelogio) : false
+      const temTarefa = agent.state !== 'idle'
+      // Erro não faz a volta cosmética: para na hora, onde estiver seguro.
+      if (estavaFora && temTarefa && agent.state !== 'error') markReturning(agent.key)
+    }
+  }, [view.agents, clock.states, markReturning])
+
+  const ambienteDe = (agent: AgentView): AmbientState => {
+    const estado = resolveAmbient({
       agentKey: agent.key,
       visualState: agent.state,
-      isFocus: emFoco === agent.key,
-      elapsedMs: 0,
+      allowed: permitidos.has(agent.key),
+      elapsedMs: clock.elapsedMs,
+      returningUntilMs: clock.returningUntil[agent.key],
       reducedMotion,
-    }).phase === 'task_controlled'
-      ? { phase: 'task_controlled', waypoint: null, action: null }
-      : (agenda[agent.key] ?? { phase: 'at_home_desk', waypoint: null, action: null })
+    })
+
+    // Liberada a rotina, a posição vem da agenda do relógio.
+    if (estado.phase === 'ambient_walking' || estado.phase === 'ambient_at_waypoint') {
+      return clock.states[agent.key] ?? AT_HOME
+    }
+    return estado
+  }
 
   return (
     <svg
@@ -497,7 +528,11 @@ export default function OfficeScene({
 
         const casa = desks[key]
         const amb = ambienteDe(agent)
-        const naRotina = amb.phase !== 'task_controlled' && amb.phase !== 'at_home_desk'
+        // O retorno é uma fase à parte: o agente já tem tarefa, mas ainda está
+        // voltando. Posição = mesa; pose = caminhada. Sem isso ele deslizaria
+        // para a mesa já digitando.
+        const voltandoPraTarefa = amb.phase === 'task_returning'
+        const emWaypoint = amb.phase === 'ambient_walking' || amb.phase === 'ambient_at_waypoint'
 
         // ── PRIORIDADE: a tarefa manda. Só quando o agente está ocioso E fora
         //    do foco a rotina ambiental escolhe onde ele fica.
@@ -512,12 +547,12 @@ export default function OfficeScene({
           dy = 26
         } else if (agent.state === 'walking') {
           dy = 26
-        } else if (naRotina && amb.waypoint) {
+        } else if (emWaypoint && amb.waypoint) {
           // Rotina ambiental: em pé no ponto do escritório.
           alvo = WAYPOINTS[layout][amb.waypoint] ?? casa
           dy = 0
-        } else if (naRotina) {
-          // Voltando: já é a própria mesa, mas ainda de pé.
+        } else if (emWaypoint || voltandoPraTarefa) {
+          // Voltando (por rotina ou por tarefa): a própria mesa, ainda de pé.
           dy = 22
         }
 

@@ -673,8 +673,12 @@ test('18) a tarefa real tem prioridade absoluta sobre a rotina ambiental', () =>
   assert.ok(cena.includes('resolveAmbient({'), 'a cena precisa aplicar a prioridade')
   const filtro = cena.slice(cena.indexOf('const ambienteDe'), cena.indexOf('return (\n    <svg'))
   assert.ok(filtro.includes('visualState: agent.state'), 'o estado real precisa entrar na decisão')
-  assert.ok(filtro.includes('isFocus: emFoco === agent.key'), 'o foco precisa entrar na decisão')
   assert.ok(filtro.includes('reducedMotion'), 'a preferência precisa entrar na decisão')
+
+  // O foco entra pela ENCENAÇÃO: quem está em foco nunca é liberado, e durante
+  // um handoff ninguém é.
+  assert.ok(cena.includes('allowedAmbientAgents(view.agents, emFoco)'), 'o foco precisa entrar na encenação')
+  assert.ok(filtro.includes('allowed: permitidos.has(agent.key)'), 'a liberação precisa ser consultada')
 
   // O avatar só liga a rotina quando não há tarefa nenhuma.
   assert.ok(avatar.includes("const semTarefa = state === 'idle'"), 'a rotina exige ausência de tarefa')

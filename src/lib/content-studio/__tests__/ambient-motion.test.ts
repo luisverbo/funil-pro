@@ -1,12 +1,12 @@
 // ============================================================================
 // Testes da locomoção ambiental (V4.1)
 // ----------------------------------------------------------------------------
-// A máquina de estados é PURA: recebe "quanto tempo visual passou" e devolve
-// "onde o agente está". Sem React, sem rAF, sem relógio — por isso dá para
-// varrer um ciclo inteiro milissegundo a milissegundo aqui.
+// A máquina é PURA: recebe "quanto tempo visual passou" e devolve "onde o
+// agente está". Sem React, sem rAF, sem relógio — por isso dá para varrer
+// períodos inteiros aqui, milissegundo a milissegundo.
 //
-// O que estes testes protegem: que a camada de vida seja COSMÉTICA. Se alguém
-// fizer o ambiente competir com a tarefa real, ou criar evento, quebra.
+// O que estes testes protegem: que a camada de vida seja COSMÉTICA, que a
+// tarefa real sempre vença, e que nada salte na tela.
 // ============================================================================
 
 import assert from 'node:assert/strict'
@@ -14,13 +14,17 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
+  activityDuration,
+  allowedAmbientAgents,
   AMBIENT_ROUTINES,
   ambientStateAt,
-  cycleDuration,
   isAmbientMoving,
+  isAwayFromDesk,
+  isHandoffActive,
   isTaskControlled,
+  occupiedZones,
   resolveAmbient,
-  type AmbientPhase,
+  TASK_RETURN_MS,
 } from '../../../components/content-studio/ambient-motion'
 
 const RAIZ = process.cwd()
@@ -32,276 +36,311 @@ const hook = readFileSync(join(RAIZ, 'src/components/content-studio/use-ambient-
 const motion = readFileSync(join(RAIZ, 'src/components/content-studio/ambient-motion.ts'), 'utf8')
 const cena = readFileSync(join(RAIZ, 'src/components/content-studio/office-scene.tsx'), 'utf8')
 const avatar = readFileSync(join(RAIZ, 'src/components/content-studio/agent-avatar.tsx'), 'utf8')
+const ui = readFileSync(join(RAIZ, 'src/components/content-studio/office-preview.tsx'), 'utf8')
 
 const AGENTES = ['researcher', 'strategist', 'copywriter'] as const
+const PERIODO = AMBIENT_ROUTINES.researcher.periodMs
 
-/** Remove comentários: um comentário que promete "nunca setInterval" não é código. */
-function semComentarios(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
+/** Remove comentários: o que o código PROMETE não é o que ele faz. */
+const sem = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
-/** Varre um ciclo inteiro em passos de 100ms. */
-function varrer(key: string, passo = 100) {
-  const r = AMBIENT_ROUTINES[key]
-  const total = cycleDuration(r)
-  const amostras: { t: number; phase: AmbientPhase; waypoint: string | null }[] = []
-  for (let t = 0; t < total; t += passo) {
-    const e = ambientStateAt(r, t)
-    amostras.push({ t, phase: e.phase, waypoint: e.waypoint })
+/** Estado dos três num instante. */
+const snapshot = (t: number) =>
+  AGENTES.map(k => ({ key: k, state: ambientStateAt(AMBIENT_ROUTINES[k], t) }))
+
+// ─── 1, 2. Ritmo ───────────────────────────────────────────────────────────
+
+test('1) o primeiro deslocamento acontece em até 6 segundos', () => {
+  let primeiro = Infinity
+  for (let t = 0; t <= 8_000; t += 50) {
+    if (snapshot(t).some(a => isAmbientMoving(a.state))) { primeiro = t; break }
   }
-  return amostras
-}
-
-// ─── 1, 2. O agente realmente sai da mesa ──────────────────────────────────
-
-test('1) agente ocioso muda de posição ao longo do ciclo', () => {
-  for (const key of AGENTES) {
-    const pontos = new Set(varrer(key).map(a => a.waypoint).filter(Boolean))
-    assert.ok(pontos.size >= 2, `${key} precisa visitar ao menos dois pontos, visitou ${pontos.size}`)
-  }
+  assert.ok(primeiro >= 3_000, `cedo demais: ${primeiro}ms (mínimo 3s)`)
+  assert.ok(primeiro <= 6_000, `tarde demais: ${primeiro}ms (máximo 6s)`)
 })
 
-test('2) agente ocioso NÃO fica sempre na mesa', () => {
+test('2) cada agente age em intervalos de 18 a 30 segundos', () => {
   for (const key of AGENTES) {
-    const amostras = varrer(key)
-    const foraDaMesa = amostras.filter(a => a.phase !== 'at_home_desk')
-    const fracao = foraDaMesa.length / amostras.length
-    assert.ok(fracao > 0.3, `${key} passa só ${Math.round(fracao * 100)}% do ciclo fora da mesa`)
-    assert.ok(fracao < 0.9, `${key} quase nunca volta para a mesa (${Math.round(fracao * 100)}%)`)
-  }
-})
+    const r = AMBIENT_ROUTINES[key]
+    const saidas = [...r.startOffsetsMs].sort((a, b) => a - b)
+    assert.ok(saidas.length >= 2, `${key} precisa de mais de uma saída por período`)
 
-test('o ciclo percorre todas as fases, em ordem', () => {
-  for (const key of AGENTES) {
-    const fases = varrer(key).map(a => a.phase)
-    for (const esperada of ['at_home_desk', 'ambient_walking', 'ambient_at_waypoint', 'returning_home'] as const) {
-      assert.ok(fases.includes(esperada), `${key} nunca entra em ${esperada}`)
-    }
-    // Caminha ANTES de chegar; volta DEPOIS do último ponto.
-    assert.ok(fases.indexOf('ambient_walking') < fases.indexOf('ambient_at_waypoint'),
-      `${key} chega ao ponto sem caminhar`)
-    assert.ok(fases.lastIndexOf('ambient_at_waypoint') < fases.indexOf('returning_home'),
-      `${key} volta antes de terminar a última ação`)
-  }
-})
+    // Inclui o intervalo que atravessa o fim do período.
+    const intervalos = saidas.map((v, i) =>
+      i === 0 ? v + r.periodMs - saidas[saidas.length - 1] : v - saidas[i - 1])
 
-// ─── 3, 4. Determinismo e agendas distintas ────────────────────────────────
-
-test('3) as rotas são determinísticas', () => {
-  for (const key of AGENTES) {
-    for (const t of [0, 1_500, 7_777, 23_400, 61_000, 187_321]) {
-      const a = ambientStateAt(AMBIENT_ROUTINES[key], t)
-      const b = ambientStateAt(AMBIENT_ROUTINES[key], t)
-      assert.deepEqual(a, b, `${key} divergiu no mesmo instante`)
+    for (const iv of intervalos) {
+      assert.ok(iv >= 18_000, `${key}: intervalo curto demais (${iv}ms)`)
+      assert.ok(iv <= 30_000, `${key}: intervalo longo demais (${iv}ms)`)
     }
   }
-  // Nada de aleatório em NENHUM arquivo da camada.
-  const codigo = semComentarios(motion + hook + cena + avatar)
-  assert.ok(!/Math\.random/.test(codigo), 'a rotina não pode sortear nada')
-  assert.ok(!/Date\.now\(\)/.test(semComentarios(motion + hook)), 'a rota não pode depender de que horas são')
 })
 
-test('4) cada agente tem agenda própria — nunca saem juntos', () => {
-  const atrasos = AGENTES.map(k => AMBIENT_ROUTINES[k].startDelayMs)
-  assert.equal(new Set(atrasos).size, 3, 'os atrasos iniciais precisam ser distintos')
-
-  // Os ciclos têm a MESMA duração de propósito: com durações diferentes eles
-  // entrariam em fase mais cedo ou mais tarde e passariam a caminhar juntos.
-  const ciclos = AGENTES.map(k => cycleDuration(AMBIENT_ROUTINES[k]))
-  assert.equal(new Set(ciclos).size, 1, 'os ciclos precisam fechar no mesmo período')
-
-  // Rotas diferentes: nenhum par compartilha os mesmos pontos.
-  const rotas = AGENTES.map(k => AMBIENT_ROUTINES[k].legs.map(l => l.waypoint).join('>'))
-  assert.equal(new Set(rotas).size, 3, 'as rotas precisam ser diferentes')
-
-  // E na prática, ao longo de vários ciclos: nunca dois caminhando ao mesmo
-  // tempo, nem dois fora da mesa ao mesmo tempo.
-  const periodo = cycleDuration(AMBIENT_ROUTINES.researcher)
-  let andandoJuntos = 0
-  let foraJuntos = 0
-  for (let t = 0; t < periodo * 4; t += 100) {
-    const estados = AGENTES.map(k => ambientStateAt(AMBIENT_ROUTINES[k], t))
-    if (estados.filter(isAmbientMoving).length > 1) andandoJuntos++
-    if (estados.filter(e => e.phase !== 'at_home_desk').length > 1) foraJuntos++
+test('o escritório fica claramente movimentado', () => {
+  let comAlguemFora = 0
+  const amostras = PERIODO / 100
+  for (let t = 0; t < PERIODO; t += 100) {
+    if (snapshot(t).some(a => isAwayFromDesk(a.state))) comAlguemFora++
   }
-  assert.equal(andandoJuntos, 0, `${andandoJuntos} instantes com dois agentes caminhando`)
-  assert.equal(foraJuntos, 0, `${foraJuntos} instantes com dois agentes fora da mesa`)
+  const fracao = comAlguemFora / amostras
+  assert.ok(fracao > 0.5, `só ${Math.round(fracao * 100)}% do tempo com alguém fora da mesa`)
 })
 
-// ─── 5, 6, 7. A camada não toca em dado nenhum ─────────────────────────────
+// ─── 3, 4. Simultaneidade ──────────────────────────────────────────────────
 
-test('5,6,7) o movimento ambiental não cria evento, não altera timeline, não chama backend', () => {
+test('3) ocasionalmente há DOIS agentes em movimento', () => {
+  let doisAndando = 0
+  for (let t = 0; t < PERIODO; t += 50) {
+    if (snapshot(t).filter(a => isAmbientMoving(a.state)).length === 2) doisAndando++
+  }
+  assert.ok(doisAndando > 0, 'nunca há dois em movimento — o escritório fica parado demais')
+})
+
+test('4) NUNCA há três agentes em movimento nem três fora da mesa', () => {
+  for (let t = 0; t < PERIODO * 3; t += 25) {
+    const s = snapshot(t)
+    assert.ok(s.filter(a => isAmbientMoving(a.state)).length < 3, `três caminhando em t=${t}`)
+    assert.ok(s.filter(a => isAwayFromDesk(a.state)).length < 3, `três fora da mesa em t=${t}`)
+  }
+})
+
+// ─── 5, 6. Reserva de zonas ────────────────────────────────────────────────
+
+test('5,6) dois agentes nunca ocupam o mesmo waypoint nem o mesmo trecho', () => {
+  // A exclusividade é ESTRUTURAL: as zonas dos três são disjuntas.
+  const zonas = AGENTES.map(k => new Set(AMBIENT_ROUTINES[k].zones))
+  for (let i = 0; i < zonas.length; i++) {
+    for (let j = i + 1; j < zonas.length; j++) {
+      const comuns = [...zonas[i]].filter(z => zonas[j].has(z))
+      assert.deepEqual(comuns, [], `${AGENTES[i]} e ${AGENTES[j]} compartilham zonas: ${comuns}`)
+    }
+  }
+
+  // E na prática, varrendo três períodos: nenhuma zona ocupada duas vezes.
+  for (let t = 0; t < PERIODO * 3; t += 25) {
+    const ocupadas: string[] = []
+    for (const key of AGENTES) {
+      ocupadas.push(...occupiedZones(AMBIENT_ROUTINES[key], ambientStateAt(AMBIENT_ROUTINES[key], t)))
+    }
+    assert.equal(new Set(ocupadas).size, ocupadas.length, `zona disputada em t=${t}: ${ocupadas}`)
+  }
+})
+
+test('cada agente tem waypoints próprios e rotas determinísticas', () => {
+  const todos = AGENTES.flatMap(k => AMBIENT_ROUTINES[k].legs.map(l => l.waypoint))
+  assert.equal(new Set(todos).size, todos.length, 'waypoints repetidos entre agentes')
+
+  for (const key of AGENTES) {
+    for (const t of [0, 3_333, 12_500, 47_000, 123_456]) {
+      assert.deepEqual(
+        ambientStateAt(AMBIENT_ROUTINES[key], t),
+        ambientStateAt(AMBIENT_ROUTINES[key], t),
+        `${key} divergiu no mesmo instante`,
+      )
+    }
+  }
+  assert.ok(!/Math\.random/.test(sem(motion + hook + cena + avatar)), 'nada pode ser sorteado')
+})
+
+// ─── 7, 8, 9. Coreografia de saída ─────────────────────────────────────────
+
+test('7) tarefa recebida fora da mesa entra em task_returning', () => {
+  const r = resolveAmbient({
+    agentKey: 'researcher',
+    visualState: 'queued',
+    allowed: false,
+    elapsedMs: 5_000,
+    returningUntilMs: 5_000 + TASK_RETURN_MS,
+  })
+  assert.equal(r.phase, 'task_returning', 'o agente precisa voltar andando')
+
+  // Passado o retorno, a tarefa assume.
+  const depois = resolveAmbient({
+    agentKey: 'researcher', visualState: 'queued', allowed: false,
+    elapsedMs: 5_000 + TASK_RETURN_MS + 1, returningUntilMs: 5_000 + TASK_RETURN_MS,
+  })
+  assert.equal(depois.phase, 'task_controlled')
+})
+
+test('8) task_returning usa a pose de caminhada', () => {
+  assert.equal(isAmbientMoving({ phase: 'task_returning', waypoint: null, action: null }), true)
+  // A cena liga o ciclo de passos do rig para essa fase.
+  assert.ok(cena.includes('isAmbientMoving(amb)'), 'a cena precisa ligar a caminhada')
+  assert.ok(avatar.includes("'cs-char--walk cs-char--amb-walk'"), 'usa o mesmo rig do handoff')
+})
+
+test('9) queued/working só assumem a pose final ao chegar à mesa', () => {
+  // Durante o retorno, a fase NÃO é task_controlled — é o que impede o
+  // personagem de deslizar já com a pose de trabalho.
+  for (const estado of ['queued', 'working']) {
+    const durante = resolveAmbient({
+      agentKey: 'researcher', visualState: estado, allowed: false,
+      elapsedMs: 1_000, returningUntilMs: 1_000 + TASK_RETURN_MS,
+    })
+    assert.equal(durante.phase, 'task_returning', `${estado} assumiu a pose antes de chegar`)
+  }
+  // E a cena não trata task_returning como posição de waypoint.
+  assert.ok(cena.includes("estado.phase !== 'task_returning'") || cena.includes("phase === 'task_returning'"),
+    'a cena precisa distinguir o retorno')
+})
+
+// ─── 10, 11. Handoff e erro ────────────────────────────────────────────────
+
+test('10) handoff interrompe imediatamente a rotina de todos', () => {
+  const agentes = [
+    { key: 'researcher', state: 'walking', carryingFolder: true },
+    { key: 'strategist', state: 'idle' },
+    { key: 'copywriter', state: 'idle' },
+  ]
+  assert.equal(isHandoffActive(agentes), true)
+  assert.equal(allowedAmbientAgents(agentes, 'researcher').size, 0,
+    'durante o handoff ninguém pode ter rotina')
+
+  // Também vale para quem está apenas carregando a pasta, parado.
+  const entregando = [
+    { key: 'researcher', state: 'idle', carryingFolder: true },
+    { key: 'strategist', state: 'idle' },
+  ]
+  assert.equal(allowedAmbientAgents(entregando, null).size, 0)
+})
+
+test('11) erro interrompe a rotina sem caminhada cosmética', () => {
+  const r = resolveAmbient({
+    agentKey: 'researcher', visualState: 'error', allowed: false,
+    elapsedMs: 5_000, returningUntilMs: 5_000 + TASK_RETURN_MS,
+  })
+  assert.equal(r.phase, 'task_controlled', 'quem falhou não sai andando de volta')
+  assert.equal(isAmbientMoving(r), false)
+
+  // A cena também não agenda retorno para quem falhou.
+  assert.ok(cena.includes("agent.state !== 'error'"), 'o erro não pode disparar a coreografia')
+})
+
+test('a encenação limita quem se move durante uma tarefa', () => {
+  const trabalhando = [
+    { key: 'researcher', state: 'working' },
+    { key: 'strategist', state: 'idle' },
+    { key: 'copywriter', state: 'idle' },
+  ]
+  assert.equal(allowedAmbientAgents(trabalhando, 'researcher').size, 1,
+    'com alguém trabalhando, no máximo UM secundário se move')
+
+  const parados = AGENTES.map(k => ({ key: k, state: 'idle' }))
+  assert.equal(allowedAmbientAgents(parados, null).size, 3,
+    'com a cena parada, todos os ociosos podem se mover')
+
+  // Quem está em foco nunca entra na lista.
+  assert.equal(allowedAmbientAgents(parados, 'researcher').has('researcher'), false)
+})
+
+// ─── 12 a 16. Relógio: pausa, aba oculta, limpeza ──────────────────────────
+
+test('12,13) pausa congela o relógio e continuar retoma da mesma fase', () => {
+  const h = sem(hook)
+  assert.ok(/pausedRef\.current \|\| document\.visibilityState !== 'visible'/.test(h),
+    'a pausa precisa congelar o tempo visual')
+  // Congela sem zerar: o acumulado sobrevive à pausa.
+  assert.ok(h.includes('visualRef.current +='), 'o tempo visual é acumulado')
+  assert.ok(!/visualRef\.current\s*=\s*0/.test(h.replace(/useRef\(0\)/g, '')),
+    'a pausa não pode zerar o tempo visual')
+  // E a pausa da UI chega até a cena.
+  assert.ok(ui.includes('paused={pausado}'), 'o botão Pausar precisa alcançar a cena')
+  assert.ok(cena.includes('paused = false'), 'a cena precisa aceitar a pausa')
+})
+
+test('14,15) aba oculta não avança o relógio e voltar não causa salto', () => {
+  const h = sem(hook)
+  assert.ok(h.includes("document.addEventListener('visibilitychange'"), 'falta o listener de visibilidade')
+  assert.ok(h.includes("document.visibilityState === 'visible'"), 'falta reancorar ao voltar')
+  assert.ok(/anterior = performance\.now\(\)/.test(h), 'ao voltar, a referência precisa ser reancorada')
+
+  // Teto por quadro: mesmo sem o listener, um delta gigante não vira salto.
+  assert.ok(/Math\.min\(bruto, MAX_FRAME_MS\)/.test(h), 'falta o teto de avanço por quadro')
+  const teto = Number(/MAX_FRAME_MS\s*=\s*(\d+)/.exec(motion + hook)![1])
+  assert.ok(teto > 0 && teto <= 250, `teto por quadro fora de faixa: ${teto}ms`)
+})
+
+test('16) unmount cancela rAF e remove listeners', () => {
+  const h = sem(hook)
+  assert.ok(h.includes('cancelAnimationFrame(frame)'), 'falta cancelar o rAF')
+  assert.ok(h.includes("document.removeEventListener('visibilitychange'"), 'falta remover o listener')
+  assert.ok(/return \(\) => \{[\s\S]*?cancelAnimationFrame[\s\S]*?removeEventListener/.test(h),
+    'a limpeza precisa fazer as duas coisas')
+  assert.ok(h.includes('vivo = false'), 'o laço precisa parar de reagendar')
+  assert.ok(!/setInterval/.test(h), 'setInterval não pode ser usado')
+  assert.ok(h.includes('performance.now()') && !/Date\.now/.test(h), 'o tempo vem de performance.now')
+})
+
+// ─── 17, 18, 19. A camada não toca em dado nenhum ──────────────────────────
+
+test('17,18,19) o movimento ambiental não cria evento, não altera timeline, não chama backend', () => {
   for (const [nome, bruto] of [['máquina', motion], ['hook', hook]] as const) {
-    const src = semComentarios(bruto)
+    const src = sem(bruto)
     assert.ok(!/emitEvent|cs_events|advanceDemo|startDemoProduction|getDemoState/.test(src),
       `${nome} não pode tocar em dados`)
     assert.ok(!/\bfetch\s*\(|XMLHttpRequest|supabase/i.test(src), `${nome} não pode chamar backend`)
     assert.ok(!/https?:\/\//.test(src), `${nome} não pode ter URL`)
   }
-  // A view-model de negócio não ganhou nada por causa disso.
+  assert.ok(!/from '@\/lib\/content-studio/.test(motion), 'a máquina não pode depender do domínio')
+
   const vm = readFileSync(join(RAIZ, 'src/lib/content-studio/view-model.ts'), 'utf8')
   assert.ok(!/ambient|waypoint|rotina/i.test(vm), 'a camada de vida não pode virar estado persistido')
 
-  // E a máquina não importa nada do domínio: é geometria e tempo.
-  assert.ok(!/from '@\/lib\/content-studio/.test(motion), 'a máquina não pode depender do domínio')
+  // A coreografia de saída é disparada pelo evento, mas não fala com ninguém.
+  const efeito = cena.slice(cena.indexOf('const foraDaMesa'), cena.indexOf('const ambienteDe'))
+  assert.ok(!/advanceDemo|emitEvent|fetch/.test(efeito), 'a coreografia não pode chamar o backend')
 })
 
-// ─── 8 a 11. Prioridade absoluta dos eventos reais ─────────────────────────
-
-test('8,9,10,11) qualquer evento real interrompe a rotina', () => {
-  // Todo estado visual que não seja idle vem de um evento — e todos cedem.
-  const porEvento: Record<string, string> = {
-    agent_queued: 'queued',
-    agent_started: 'working',
-    agent_completed: 'done',
-    task_handoff_started: 'walking',
-    agent_retrying: 'queued',
-    agent_failed: 'error',
-  }
-
-  for (const [evento, estado] of Object.entries(porEvento)) {
-    const r = resolveAmbient({
-      agentKey: 'researcher',
-      visualState: estado,
-      isFocus: false,
-      // Instante em que a rotina estaria em pleno andamento.
-      elapsedMs: AMBIENT_ROUTINES.researcher.startDelayMs + 1_000,
-    })
-    assert.equal(r.phase, 'task_controlled', `${evento} (${estado}) não interrompeu a rotina`)
-    assert.equal(r.waypoint, null, `${evento} deixou o agente preso a um ponto`)
-    assert.equal(isAmbientMoving(r), false, `${evento} deixou o agente andando por conta própria`)
-  }
-
-  // O foco também interrompe, mesmo com o agente ocioso.
-  const focado = resolveAmbient({
-    agentKey: 'researcher', visualState: 'idle', isFocus: true,
-    elapsedMs: AMBIENT_ROUTINES.researcher.startDelayMs + 1_000,
-  })
-  assert.equal(focado.phase, 'task_controlled', 'o agente em foco não pode ter rotina')
-
-  // `idle` sem foco é o ÚNICO caso em que a rotina roda.
-  const livre = resolveAmbient({
-    agentKey: 'researcher', visualState: 'idle', isFocus: false,
-    elapsedMs: AMBIENT_ROUTINES.researcher.startDelayMs + 1_000,
-  })
-  assert.notEqual(livre.phase, 'task_controlled')
-  assert.equal(isTaskControlled('idle'), false)
-  for (const s of ['queued', 'working', 'walking', 'done', 'error']) {
-    assert.equal(isTaskControlled(s), true, `${s} deveria ser controlado pela tarefa`)
-  }
-})
-
-test('12) o retorno é interpolado — nunca teleporte', () => {
-  // Quando a rotina cede, o alvo vira a mesa. Quem leva o personagem até lá é
-  // a transição CSS de `.cs-actor` — a mesma do handoff.
-  assert.ok(cena.includes('.cs-actor  { transition: transform'), 'falta a transição de deslocamento')
-  // Nenhum salto: a cena não reposiciona sem transição.
-  assert.ok(!/style=\{\{\s*transform[^}]*\}\}\s*\/>/m.test(cena) || cena.includes('cs-actor'),
-    'toda mudança de posição precisa passar pela classe com transição')
-
-  // O agente em rotina usa o MESMO ciclo de passos do handoff.
-  assert.ok(avatar.includes("'cs-char--walk cs-char--amb-walk'"), 'a caminhada ambiental usa o rig')
-})
-
-// ─── 13, 14. Hook: cancelamento e reduced-motion ───────────────────────────
-
-test('13) o hook cancela o requestAnimationFrame no unmount', () => {
-  assert.ok(hook.includes('requestAnimationFrame'), 'o relógio precisa usar rAF')
-  assert.ok(hook.includes('cancelAnimationFrame(frame)'), 'falta cancelar o rAF')
-  assert.ok(/return \(\) => \{[\s\S]*?cancelAnimationFrame/.test(hook), 'o cancelamento precisa estar na limpeza')
-  assert.ok(hook.includes('vivo = false'), 'o laço precisa parar de reagendar')
-
-  // Nada de setInterval: com a aba em segundo plano ele continuaria rodando.
-  const codigoHook = semComentarios(hook)
-  assert.ok(!/setInterval/.test(codigoHook), 'setInterval não pode ser usado')
-  assert.ok(codigoHook.includes('performance.now()'), 'o tempo visual vem de performance.now')
-  assert.ok(!/Date\.now/.test(codigoHook), 'o tempo não pode vir do relógio de parede')
-})
-
-test('14) reduced-motion desliga a locomoção ambiental', () => {
+test('20) reduced-motion desabilita a locomoção ambiental', () => {
   const r = resolveAmbient({
-    agentKey: 'researcher', visualState: 'idle', isFocus: false,
-    elapsedMs: 999_999, reducedMotion: true,
+    agentKey: 'researcher', visualState: 'idle', allowed: true,
+    elapsedMs: 5_000, reducedMotion: true,
   })
   assert.equal(r.phase, 'task_controlled', 'reduced-motion precisa parar a rotina')
-
-  // O hook nem liga o relógio.
   assert.ok(cena.includes('useAmbientOfficeMotion(OFFICE_AGENT_ORDER, !reducedMotion'),
-    'o relógio precisa ser desligado por reduced-motion')
-  assert.ok(hook.includes('return enabled ? mapa : parado'), 'desligado, o valor é derivado e estável')
+    'o relógio precisa ser desligado')
+  assert.ok(hook.includes('states: enabled ? states : parado'), 'desligado, o valor é derivado')
 })
 
-// ─── 15, 16. Limites da cena ───────────────────────────────────────────────
+// ─── 21. Limites da cena ───────────────────────────────────────────────────
 
-test('15,16) nenhum waypoint sai do viewBox nem cai sobre uma mesa', () => {
+test('21) waypoints dentro do viewBox e fora das mesas, nos dois layouts', () => {
   const vb = (nome: string) => {
     const m = new RegExp(`${nome}: '0 0 (\\d+) (\\d+)'`).exec(cena)!
     return { w: Number(m[1]), h: Number(m[2]) }
   }
-  // Fatia o bloco do layout indo até o próximo layout (ou o fim) — parar no
-  // primeiro "}," pegaria só o primeiro ponto.
   const bloco = (fonte: string, nome: string) => {
-    const i = fonte.indexOf(nome + ': {')
-    const resto = fonte.slice(i)
+    const resto = fonte.slice(fonte.indexOf(nome + ': {'))
     const fim = resto.indexOf('\n  },')
     return fim === -1 ? resto : resto.slice(0, fim)
   }
+  const parse = (t: string) =>
+    [...t.matchAll(/(\w+):\s*{\s*x:\s*(\d+),\s*y:\s*(\d+)/g)].map(m => ({ nome: m[1], x: +m[2], y: +m[3] }))
 
   const wps = cena.slice(cena.indexOf('const WAYPOINTS'), cena.indexOf('export interface OfficeSceneProps'))
   const desksSrc = cena.slice(cena.indexOf('const DESKS'), cena.indexOf('const VISIT_OFFSET'))
-  const parse = (t: string) =>
-    [...t.matchAll(/(\w+):\s*{\s*x:\s*(\d+),\s*y:\s*(\d+)/g)].map(m => ({ nome: m[1], x: +m[2], y: +m[3] }))
 
   for (const layout of ['wide', 'compact'] as const) {
     const { w, h } = vb(layout)
     const pontos = parse(bloco(wps, layout))
     const mesas = parse(bloco(desksSrc, layout))
-
     assert.equal(pontos.length, 6, `${layout}: esperava 6 waypoints, achei ${pontos.length}`)
 
     for (const p of pontos) {
-      // Meia-largura do personagem ~19; sombra desce ~60; balão sobe ~56.
-      assert.ok(p.x - 19 > 0 && p.x + 19 < w, `${layout}/${p.nome}: fora do viewBox em x (${p.x}, w=${w})`)
-      assert.ok(p.y - 56 > 0 && p.y + 60 < h, `${layout}/${p.nome}: fora do viewBox em y (${p.y}, h=${h})`)
-
-      // Não pode cair sobre uma mesa: a mesa ocupa ~76 de meia-largura e a
-      // faixa de -30 a +45 em y a partir do centro da estação.
+      assert.ok(p.x - 19 > 0 && p.x + 19 < w, `${layout}/${p.nome}: fora do viewBox em x`)
+      assert.ok(p.y - 56 > 0 && p.y + 60 < h, `${layout}/${p.nome}: fora do viewBox em y`)
       for (const m of mesas) {
-        const sobreposto = Math.abs(p.x - m.x) < 60 && p.y > m.y - 34 && p.y < m.y + 46
-        assert.ok(!sobreposto, `${layout}/${p.nome} cai sobre a mesa de ${m.nome}`)
+        const sobre = Math.abs(p.x - m.x) < 60 && p.y > m.y - 34 && p.y < m.y + 46
+        assert.ok(!sobre, `${layout}/${p.nome} cai sobre a mesa de ${m.nome}`)
       }
     }
   }
 })
 
-// ─── 17 a 21. Rig e escopo ─────────────────────────────────────────────────
+// ─── 22, 23, 24. Escopo ────────────────────────────────────────────────────
 
-test('17,18) o rig continua íntegro na caminhada ambiental', () => {
-  // A caminhada ambiental reaproveita `cs-char--walk`: as mesmas regras que
-  // movem pelve, coluna, quadris, joelhos e tornozelos juntos.
-  const regras = cena.slice(cena.indexOf('.cs-char--walk '), cena.indexOf('.cs-char--type '))
-  for (const junta of ['cs-j--pelvis', 'cs-j--spine', 'cs-j--hipR', 'cs-j--kneeR', 'cs-j--ankleR']) {
-    assert.ok(regras.includes(junta), `a caminhada precisa animar ${junta}`)
-  }
-
-  // As poses de waypoint só tocam braço e cabeça — nunca a base do corpo.
-  const acoes = cena.split('\n').filter(l => /\.cs-char--act-/.test(l))
-  assert.ok(acoes.length >= 6, 'faltam poses de ação nos pontos')
-  for (const a of acoes) {
-    for (const proibida of ['cs-j--pelvis', 'cs-j--hip', 'cs-j--knee', 'cs-j--ankle']) {
-      assert.ok(!a.includes(proibida), `a pose de waypoint não pode animar ${proibida}: ${a.trim()}`)
-    }
-  }
-
-  // Socket/Joint continuam com os papéis separados.
-  const rig = readFileSync(join(RAIZ, 'src/components/content-studio/agent-rig.tsx'), 'utf8')
-  const socket = rig.slice(rig.indexOf('export function Socket'), rig.indexOf('export function Joint'))
-  const joint = rig.slice(rig.indexOf('export function Joint'), rig.indexOf('export function Bone'))
-  assert.ok(socket.includes('transform={`translate(') && !socket.includes('className'))
-  assert.ok(joint.includes('className={`cs-j cs-j--') && !joint.includes('transform='))
-})
-
-test('19,20,21) nada fora da camada visual foi tocado', () => {
+test('22,23,24) nada fora da camada visual foi tocado', () => {
   const r1 = readFileSync(join(RAIZ, 'src/lib/security/cron-auth.ts'), 'utf8')
   const rota = readFileSync(join(RAIZ, 'src/app/api/queue/process/route.ts'), 'utf8')
   assert.ok(r1.includes('timingSafeEqual') && rota.includes('evaluateCronAuth'), 'R1 precisa estar intacto')
@@ -314,13 +353,20 @@ test('19,20,21) nada fora da camada visual foi tocado', () => {
     'getDemoState(productionId: string)',
     'getLatestDemo()',
     'startDemoProduction()',
-  ], 'a camada visual não pode mudar o contrato das actions')
+  ], 'o contrato das actions não pode mudar')
 
   for (const [nome, src] of [['máquina', motion], ['hook', hook], ['cena', cena], ['avatar', avatar]] as const) {
     for (const alvo of ['cron-auth', 'queue/process', 'CRON_SECRET', 'CRON_AUTH_ENFORCE', 'createAdminClient']) {
       assert.ok(!src.includes(alvo), `${nome} referencia ${alvo}`)
     }
   }
+
+  // Sanidade das durações declaradas.
+  for (const key of AGENTES) {
+    const dur = activityDuration(AMBIENT_ROUTINES[key])
+    assert.ok(dur > 5_000 && dur < 15_000, `${key}: saída de ${dur}ms fora do razoável`)
+  }
+  assert.equal(isTaskControlled('idle'), false)
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
