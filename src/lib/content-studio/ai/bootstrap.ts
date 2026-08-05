@@ -35,3 +35,20 @@ export function resolveContentAIProvider(): ContentAIProvider {
 
   return createAnthropicProvider()
 }
+
+/**
+ * PREFLIGHT de configuração — SEM nenhuma chamada de rede.
+ *
+ * Valida, na ordem: kill switch ligado, ANTHROPIC_API_KEY presente,
+ * CONTENT_AI_MODEL resolvido e não vazio, e que o provedor concreto pode ser
+ * CONSTRUÍDO (construir não faz rede — a primeira requisição só acontece em
+ * `call()`). Lança ContentAIError com código interno (disabled / missing_key /
+ * invalid_config); o chamador converte para UMA mensagem pública.
+ *
+ * Existe para a Server Action de criação checar TUDO isso ANTES de persistir
+ * qualquer coisa: preflight reprovado = zero produção, zero step, zero job,
+ * zero evento.
+ */
+export function preflightContentAI(): void {
+  resolveContentAIProvider()
+}

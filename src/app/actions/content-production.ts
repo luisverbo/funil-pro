@@ -30,7 +30,7 @@ import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 import { drainQueue, startProduction } from '@/lib/content-studio/orchestrator'
-import { isContentAIEnabled } from '@/lib/content-studio/ai/config'
+import { preflightContentAI } from '@/lib/content-studio/ai/bootstrap'
 import { firstBriefMessage, validateBrief, type BriefInput, type ValidBrief } from '@/lib/content-studio/brief'
 import { CAROUSEL_PIPELINE } from '@/lib/content-studio/pipeline'
 import {
@@ -43,7 +43,7 @@ import {
   type ProductionMessageKey,
 } from '@/lib/content-studio/production-guard'
 import {
-  ensureProduction,
+  createWithPreflight,
   type ProductionRepo,
   type ProductionRowLite,
 } from '@/lib/content-studio/production-runner'
@@ -140,21 +140,28 @@ export async function createProduction(input: BriefInput): Promise<ActionResult<
   const tenantId = await currentTenantId()
   if (!tenantId) return fail('unauthenticated')
 
-  // KILL SWITCH — bloqueia ANTES de criar qualquer coisa. Desligado, nenhuma
-  // casca, step ou job destinado à IA é gravado, e nenhuma chamada acontece.
-  // O valor vem só do ambiente do servidor: não é parâmetro desta action.
-  if (!isContentAIEnabled()) return fail('ai_disabled')
-
   const validado = validateBrief(input ?? {})
   if (!validado.ok) {
     // Mensagem de campo é segura: fala do formulário, não do banco.
     return { ok: false, error: firstBriefMessage(validado.errors) }
   }
 
+  // PREFLIGHT de configuração de IA — sem rede — ANTES de qualquer
+  // persistência: kill switch, chave, modelo e construção do provedor.
+  // Reprovado: zero produção, zero step, zero job, zero evento. Os códigos
+  // internos (disabled/missing_key/invalid_config) ficam no log; o navegador
+  // vê uma única mensagem amigável.
+  try {
+    preflightContentAI()
+  } catch (err) {
+    return fail('ai_disabled', err)
+  }
+
   const admin = createAdminClient()
 
   try {
-    const resultado = await ensureProduction(supabaseProductionRepo(admin, tenantId), validado.brief)
+    const resultado = await createWithPreflight(
+      preflightContentAI, supabaseProductionRepo(admin, tenantId), validado.brief)
     if (!resultado.ok) return fail(resultado.reason)
     return readState(admin, tenantId, resultado.productionId)
   } catch (err) {
@@ -242,9 +249,14 @@ export async function advanceProduction(productionId: string): Promise<ActionRes
   if (!tenantId) return fail('unauthenticated')
   if (!idValido(productionId)) return fail('not_found')
 
-  // Avançar executa agentes de IA. Com o kill switch desligado, nada roda —
-  // produções existentes continuam LEGÍVEIS via getProductionState/getLatest.
-  if (!isContentAIEnabled()) return fail('ai_disabled')
+  // Avançar executa agentes de IA: o MESMO preflight barra kill switch
+  // desligado, chave ausente e modelo inválido antes de qualquer job rodar.
+  // Produções existentes continuam LEGÍVEIS via getProductionState/getLatest.
+  try {
+    preflightContentAI()
+  } catch (err) {
+    return fail('ai_disabled', err)
+  }
 
   const admin = createAdminClient()
 

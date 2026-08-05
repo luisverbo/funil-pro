@@ -189,7 +189,11 @@ export function createAnthropicProvider(deps: AnthropicProviderDeps = {}): Conte
             ultimoErro = res.status === 429
               ? new ContentAIError('rate_limited', `status=${res.status}`)
               : new ContentAIError('provider_error', `status=${res.status}`)
-            await wait(retryDelayMs(res.headers?.get?.('retry-after') ?? null))
+            // Só espera se AINDA HAVERÁ outra tentativa: esperar depois da
+            // última chamada falhar seria segurar a Server Action à toa.
+            if (tentativa < AI_MAX_TECH_RETRIES) {
+              await wait(retryDelayMs(res.headers?.get?.('retry-after') ?? null))
+            }
             continue
           }
 

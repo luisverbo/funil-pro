@@ -49,6 +49,9 @@ import {
   computeVerdict, deterministicReview,
 } from '../agents/carousel-ai'
 import { getAgent } from '../agents/registry'
+import { preflightContentAI } from '../ai/bootstrap'
+import { createWithPreflight, type ProductionRepo } from '../production-runner'
+import { validateBrief } from '../brief'
 import { getPipeline } from '../pipeline'
 import type { AgentInput } from '../types'
 
@@ -664,17 +667,19 @@ test('kill-switch) default desligado; só a string exata "true" habilita', () =>
 
 test('kill-switch) desligado bloqueia criação E avanço ANTES de gravar', () => {
   const actions = semComentarios(ler('src/app/actions/content-production.ts'))
-  // createProduction: o gate vem ANTES da validação/ensureProduction.
+  // createProduction: o PREFLIGHT vem antes de qualquer persistência —
+  // inclusive antes de construir o client admin.
   const criar = actions.slice(actions.indexOf('export async function createProduction'))
     .split('\nexport ')[0]
-  const gate = criar.indexOf('isContentAIEnabled()')
-  assert.ok(gate > 0, 'createProduction não checa o kill switch')
-  assert.ok(gate < criar.indexOf('ensureProduction'), 'o gate vem depois da criação')
-  assert.ok(criar.indexOf("fail('ai_disabled')") > 0)
+  const gate = criar.indexOf('preflightContentAI()')
+  assert.ok(gate > 0, 'createProduction não roda o preflight')
+  assert.ok(gate < criar.indexOf('createAdminClient'), 'o preflight vem depois do client')
+  assert.ok(gate < criar.indexOf('createWithPreflight'), 'o preflight vem depois da criação')
+  assert.ok(criar.indexOf("fail('ai_disabled'") > 0)
   // advanceProduction idem, antes do drain.
   const avancar = actions.slice(actions.indexOf('export async function advanceProduction'))
     .split('\nexport ')[0]
-  assert.ok(avancar.indexOf('isContentAIEnabled()') < avancar.indexOf('drainQueue'))
+  assert.ok(avancar.indexOf('preflightContentAI()') < avancar.indexOf('drainQueue'))
   // Leitura NÃO é bloqueada: produções existentes permanecem legíveis.
   for (const leitura of ['getProductionState', 'getLatestProduction', 'listProductions']) {
     const corpo = actions.slice(actions.indexOf(`export async function ${leitura}`))
@@ -691,6 +696,88 @@ test('kill-switch) desligado bloqueia criação E avanço ANTES de gravar', () =
   // A demonstração NÃO passa pelo gate — continua funcionando desligada.
   const demoActions = semComentarios(ler('src/app/actions/content-studio.ts'))
   assert.ok(!demoActions.includes('isContentAIEnabled'), 'a demo ganhou dependência de IA')
+})
+
+// ─── preflight: ZERO escrita quando a configuração não sustenta IA ──────────
+
+test('preflight) configuração inválida = zero persistência; válida = prossegue', async () => {
+  __setContentAIProviderForTests(null)
+  const originalEnabled = process.env.CONTENT_AI_ENABLED
+  const originalKey = process.env.ANTHROPIC_API_KEY
+  const originalModel = process.env.CONTENT_AI_MODEL
+  const originalFetch = globalThis.fetch
+
+  // Repo ESPIÃO: qualquer método chamado conta como escrita/leitura.
+  let toques = 0
+  const espiao: ProductionRepo = {
+    async findByIdempotencyKey() { toques++; return [] },
+    async listOpen() { toques++; return [] },
+    async insert(brief) {
+      toques++
+      return { id: 'p-0', status: 'draft', pipeline_key: 'content_carousel_v1',
+        brief: { ...brief }, created_at: '2026-01-01T00:00:00.000Z' }
+    },
+    async cancel() { toques++ },
+    async materialize() { toques++ },
+  }
+  // fetch envenenado: QUALQUER toque na rede durante o preflight explode.
+  let fetches = 0
+  globalThis.fetch = (async () => { fetches++; throw new Error('rede tocada') }) as typeof fetch
+
+  const v = validateBrief({
+    titulo: 'Teste', tema: 'organização de leads', objetivo: 'responder rápido',
+    publico: 'pequenas empresas', oferta: 'sistema único', tom: 'claro',
+    cta: 'organize', observacoes: '', idempotencyKey: 'chavepreflight01',
+  })
+  if (!v.ok) throw new Error('briefing de teste inválido')
+
+  try {
+    // 1. desligado → zero persistência
+    delete process.env.CONTENT_AI_ENABLED
+    process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
+    await assert.rejects(
+      () => createWithPreflight(preflightContentAI, espiao, v.brief), /content_ai:disabled/)
+    assert.equal(toques, 0, 'desligado tocou a persistência')
+
+    // 2. ligado sem chave → zero persistência
+    process.env.CONTENT_AI_ENABLED = 'true'
+    delete process.env.ANTHROPIC_API_KEY
+    await assert.rejects(
+      () => createWithPreflight(preflightContentAI, espiao, v.brief), /content_ai:missing_key/)
+    assert.equal(toques, 0, 'sem chave tocou a persistência')
+
+    // 3. ligado com modelo vazio → zero persistência
+    process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
+    process.env.CONTENT_AI_MODEL = '   '
+    await assert.rejects(
+      () => createWithPreflight(preflightContentAI, espiao, v.brief), /content_ai:invalid_config/)
+    assert.equal(toques, 0, 'modelo vazio tocou a persistência')
+
+    // 4. configuração válida → a criação prossegue (repo é usado)
+    delete process.env.CONTENT_AI_MODEL
+    const r = await createWithPreflight(preflightContentAI, espiao, v.brief)
+    assert.ok(r.ok, 'configuração válida deveria criar')
+    assert.ok(toques > 0, 'a criação válida não usou o repo')
+
+    // 5. NENHUM caso fez fetch durante o preflight.
+    assert.equal(fetches, 0, `o preflight tocou a rede ${fetches}x`)
+
+    // 6. o cliente não escolhe enabled/chave/modelo: nenhum campo de
+    // configuração de IA sobrevive à lista branca do briefing (a
+    // idempotency_key é do fluxo de criação, não da IA).
+    const chaves = Object.keys(v.brief).filter(c => c !== 'idempotency_key')
+    assert.ok(!chaves.some(c => /enabled|model|api|anthropic/i.test(c)),
+      `campo de configuração vazou: ${chaves}`)
+  } finally {
+    globalThis.fetch = originalFetch
+    for (const [nome, valor] of [
+      ['CONTENT_AI_ENABLED', originalEnabled], ['ANTHROPIC_API_KEY', originalKey],
+      ['CONTENT_AI_MODEL', originalModel],
+    ] as const) {
+      if (valor === undefined) delete process.env[nome]
+      else process.env[nome] = valor
+    }
+  }
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

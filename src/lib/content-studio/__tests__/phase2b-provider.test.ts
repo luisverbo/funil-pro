@@ -26,10 +26,7 @@ import {
   retryDelayMs,
   RETRY_AFTER_CAP_MS,
 } from '../ai/anthropic'
-import { resolveContentAIProvider } from '../ai/bootstrap'
 import { __setContentAIProviderForTests, type AICallRequest } from '../ai/provider'
-import { getAgent } from '../agents/registry'
-import type { AgentInput } from '../types'
 
 const RAIZ = process.cwd()
 const results: { name: string; ok: boolean; error?: string }[] = []
@@ -37,12 +34,6 @@ const suite: { name: string; fn: () => void | Promise<void> }[] = []
 function test(name: string, fn: () => void | Promise<void>) { suite.push({ name, fn }) }
 
 // ─── Utilitários de mock ────────────────────────────────────────────────────
-
-const RESEARCH_JSON = {
-  contexto_do_produto: 'x', objetivo: 'y', perfil_do_publico: 'z',
-  nivel_de_consciencia: 'w', dores_inferidas: ['a'], desejos: ['b'],
-  objecoes: ['c'], hipoteses: ['d'],
-}
 
 interface RespostaFalsa {
   status?: number
@@ -124,77 +115,9 @@ function comChave<T>(fn: () => T): T {
   }
 }
 
-// ─── O teste do GRAFO REAL ──────────────────────────────────────────────────
-// Este arquivo NÃO importa anthropic.ts para provocar registro lateral — os
-// imports acima são de funções puras, e o caminho executado abaixo é o MESMO
-// da produção: getAgent (registry) → carousel-ai → bootstrap. Na primeira
-// versão, este teste falhava com "provider real não carregado".
-
-test('grafo) o entrypoint de produção carrega a implementação Anthropic', async () => {
-  __setContentAIProviderForTests(null)                 // sem provedor de teste
-  const originalEnabled = process.env.CONTENT_AI_ENABLED
-  const originalKey = process.env.ANTHROPIC_API_KEY
-  const originalFetch = globalThis.fetch
-  process.env.CONTENT_AI_ENABLED = 'true'
-  process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
-
-  let alcancouAnthropic = false
-  globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
-    alcancouAnthropic = String(url).startsWith('https://api.anthropic.com')
-    assert.ok((init?.headers as Record<string, string>)['x-api-key'], 'sem chave no header')
-    return {
-      status: 200,
-      headers: { get: () => null },
-      json: async () => anthropicBody(JSON.stringify(RESEARCH_JSON)),
-    } as unknown as Response
-  }) as typeof fetch
-
-  try {
-    const agente = getAgent('cc_researcher')           // entrypoint de produção
-    const input: AgentInput = {
-      envelope: {
-        productionId: 'p', stepId: 's', agentKey: 'cc_researcher',
-        tenantId: 't', attempt: 0, idempotencyKey: 'k',
-      },
-      brief: { tema: 'organização de leads', publico: 'pequenas empresas' },
-      upstream: {}, stepInput: null,
-    }
-    const out = await agente.run(input, {})
-
-    assert.ok(alcancouAnthropic, 'a chamada NÃO alcançou a implementação Anthropic')
-    assert.equal(out.data.pesquisa_externa_realizada, false)
-    assert.equal(out.usage?.provider, 'anthropic')
-  } catch (err) {
-    // O defeito original aparecia exatamente assim:
-    assert.ok(!(err instanceof Error && err.message.includes('provider real não carregado')),
-      'REGRESSÃO: o grafo de produção não carrega o provider real')
-    throw err
-  } finally {
-    globalThis.fetch = originalFetch
-    if (originalEnabled === undefined) delete process.env.CONTENT_AI_ENABLED
-    else process.env.CONTENT_AI_ENABLED = originalEnabled
-    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY
-    else process.env.ANTHROPIC_API_KEY = originalKey
-  }
-})
-
-test('grafo) desabilitado → disabled; sem chave → missing_key; nenhum template', () => {
-  __setContentAIProviderForTests(null)
-  const originalEnabled = process.env.CONTENT_AI_ENABLED
-  const originalKey = process.env.ANTHROPIC_API_KEY
-  try {
-    delete process.env.CONTENT_AI_ENABLED
-    assert.throws(() => resolveContentAIProvider(), /content_ai:disabled/)
-    process.env.CONTENT_AI_ENABLED = 'true'
-    delete process.env.ANTHROPIC_API_KEY
-    assert.throws(() => resolveContentAIProvider(), /content_ai:missing_key/)
-  } finally {
-    if (originalEnabled === undefined) delete process.env.CONTENT_AI_ENABLED
-    else process.env.CONTENT_AI_ENABLED = originalEnabled
-    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY
-    else process.env.ANTHROPIC_API_KEY = originalKey
-  }
-})
+// O teste do GRAFO foi movido para phase2b-graph.test.ts, em PROCESSO
+// SEPARADO: este arquivo importa anthropic.ts diretamente (contexto unitário),
+// o que invalidaria qualquer afirmação sobre o carregamento pelo grafo.
 
 // ─── 1–6: caminho feliz e tokens ────────────────────────────────────────────
 
@@ -248,12 +171,15 @@ test('7) 429 → espera (respeitando Retry-After com teto) → retry → sucesso
   assert.equal(retryDelayMs('lixo'), 1000)
 })
 
-test('8) 500/502/503/529 → no máximo UM retry cada', async () => {
-  for (const status of [500, 502, 503, 529]) {
+test('8) 500/502/503/529 → no máximo UM retry, e SEM espera após a última', async () => {
+  for (const status of [500, 502, 503, 529, 429]) {
     const mock = fetchFalso([{ status, body: {} }, { status, body: {} }, { status, body: {} }])
     const provider = comChave(() => createAnthropicProvider({ fetchFn: mock.fetchFn, wait: mock.wait }))
     await assert.rejects(() => provider.call(reqBase()), /content_ai:(provider_error|rate_limited)/)
     assert.equal(mock.chamadas.length, 2, `status ${status}: ${mock.chamadas.length} chamadas`)
+    // A espera acontece SÓ entre a 1ª e a 2ª chamada — nunca depois da última
+    // falhar: seria segurar a Server Action por nada.
+    assert.equal(mock.esperas.length, 1, `status ${status}: ${mock.esperas.length} esperas`)
     assert.equal(classifyHttpStatus(status), 'retryable')
   }
 })

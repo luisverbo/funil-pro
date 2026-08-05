@@ -18,9 +18,17 @@ export const CONTENT_AI_PROVIDER = 'anthropic' as const
 /**
  * KILL SWITCH do rollout. Default DESLIGADO: só a string exata "true" habilita.
  *
- * Lido a cada chamada (não congelado na carga do módulo): desligar a variável
- * no ambiente desliga a IA sem redeploy de código. O navegador não alcança
- * isto — nenhuma action aceita o valor como parâmetro.
+ * SEMÂNTICA NA VERCEL: a variável é lida em runtime PELO DEPLOYMENT — mudar o
+ * valor no painel NÃO afeta deployments já publicados; é preciso um novo
+ * deployment/redeploy para o valor novo valer. Rollout:
+ *   1. deploy com CONTENT_AI_ENABLED ausente/false (IA desligada);
+ *   2. verificar que produções antigas continuam legíveis;
+ *   3. configurar CONTENT_AI_ENABLED=true em Production;
+ *   4. configurar/conferir CONTENT_AI_MODEL;
+ *   5. redeploy;
+ *   6. o usuário cria manualmente uma produção canário.
+ *
+ * O navegador não alcança isto — nenhuma action aceita o valor como parâmetro.
  */
 export function isContentAIEnabled(): boolean {
   return process.env.CONTENT_AI_ENABLED === 'true'
