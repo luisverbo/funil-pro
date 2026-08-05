@@ -154,6 +154,12 @@ export interface AgentUsage {
   outputTokens?: number
   imagesGenerated?: number
   costCents?: number
+  /** Duração da(s) chamada(s) de IA em ms. */
+  durationMs?: number
+  /** Chamadas HTTP feitas nesta execução (1, ou 2 com retry técnico). */
+  aiCalls?: number
+  /** Versão do prompt usada — auditável (ex.: copywriter_v1). */
+  promptVersion?: string
 }
 
 export interface AgentArtifact {

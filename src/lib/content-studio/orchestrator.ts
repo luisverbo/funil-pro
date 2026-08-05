@@ -423,7 +423,13 @@ async function maybeAutoRevise(
     }
 
     const proximo = ciclo + 1
-    const avisos = revisor?.output?.data?.avisos
+    // Instruções ESTRUTURADAS do revisor (2B) com fallback nos avisos (2A), e
+    // a versão anterior do texto — o copywriter corrige, não reescreve do zero.
+    const dadosRevisor = revisor?.output?.data as Record<string, unknown> | undefined
+    const instrucoes = Array.isArray(dadosRevisor?.revision_instructions)
+      ? (dadosRevisor.revision_instructions as string[])
+      : Array.isArray(dadosRevisor?.avisos) ? (dadosRevisor.avisos as string[]) : []
+    const anterior = alvo.output?.data ?? null
     await store.updateStep(alvo.id, {
       status: 'pending',
       output: null,
@@ -431,7 +437,8 @@ async function maybeAutoRevise(
       completed_at: null,
       input: {
         revision_cycle: proximo,
-        revision_notes: Array.isArray(avisos) ? (avisos as string[]).slice(0, 10) : [],
+        revision_notes: instrucoes.slice(0, 10),
+        previous_copy: anterior,
       },
     })
 

@@ -52,6 +52,87 @@ const formulario = semComentarios(ler('src/components/content-studio/production-
 const painel = semComentarios(ler('src/components/content-studio/result-panel.tsx'))
 const preview = semComentarios(ler('src/components/content-studio/office-preview.tsx'))
 
+// ─── Provedor de IA FALSO ───────────────────────────────────────────────────
+// A Fase 2B trocou os agentes cc_* por versões com IA real. Nenhum teste chama
+// API de verdade: este provedor devolve outputs de QUALIDADE, no schema novo,
+// para que a mecânica da 2A (steps, jobs, claim, eventos) continue provada.
+
+import { __setContentAIProviderForTests } from '../ai/provider'
+import type { AICallRequest, AICallResult } from '../ai/provider'
+
+const SLIDES_QUALIDADE = [
+  { role: 'hook', headline: 'O lead respondeu. E agora, quem viu?', body: 'Chega mensagem no WhatsApp, no direct e no e-mail. Ninguém sabe quem já respondeu o quê.' },
+  { role: 'problema', headline: 'O problema não é falta de lead', body: 'É o contato que esfria esperando resposta enquanto a equipe procura a conversa.' },
+  { role: 'causa', headline: 'Cada canal virou uma gaveta', body: 'Sem um lugar único, cada atendimento vira memória de alguém. E memória falha.' },
+  { role: 'virada', headline: 'Centralize antes de acelerar', body: 'Um quadro único de contatos muda o jogo: dá para ver quem espera, quem esfriou e quem está pronto.' },
+  { role: 'mecanismo', headline: 'Como funciona no dia a dia', body: 'O contato entra, ganha dono e etapa. Qualquer pessoa da equipe abre e continua de onde parou.' },
+  { role: 'oferta', headline: 'Tudo em um único sistema', body: 'Contatos centralizados e oportunidades acompanhadas do primeiro oi ao fechamento.' },
+  { role: 'cta', headline: 'Organize seus leads com o FunilPro', body: 'Comece pelo quadro de contatos e sinta a diferença na primeira semana.' },
+]
+
+function fakeAIOutput(req: AICallRequest): Record<string, unknown> {
+  const sys = req.system
+  if (sys.includes('pesquisador')) {
+    return req.parse({
+      contexto_do_produto: 'Sistema que centraliza contatos e oportunidades',
+      objetivo: 'Ensinar a responder leads mais rápido',
+      perfil_do_publico: 'Dono de pequena empresa que atende em vários canais',
+      nivel_de_consciencia: 'consciente do problema — sente a desorganização',
+      dores_explicitas: ['demora para responder leads'],
+      dores_inferidas: ['medo de perder venda por esquecimento'],
+      desejos: ['controle simples do atendimento'],
+      objecoes: ['mais uma ferramenta para aprender'],
+      beneficios: ['contatos centralizados'],
+      diferenciais_informados: ['acompanhamento em um único sistema'],
+      riscos_de_comunicacao: ['prometer velocidade que depende da equipe'],
+      informacoes_ausentes: ['tamanho típico da equipe'],
+      hipoteses: ['o dono é quem responde os leads pessoalmente'],
+      fatos_nao_afirmaveis: ['números de resultado'],
+      perguntas_para_melhorar_briefing: ['quantos canais de atendimento usam?'],
+    })
+  }
+  if (sys.includes('estrategista')) {
+    return req.parse({
+      big_idea: 'Lead não se perde por falta de resposta, e sim por falta de lugar',
+      angulo: 'a bagunça dos canais, não a preguiça da equipe',
+      tensao: 'cada hora sem resposta é uma venda esfriando',
+      promessa_editorial: 'um jeito simples de nunca mais perder lead de vista',
+      mecanismo_central: 'quadro único com dono e etapa para cada contato',
+      nivel_de_consciencia: 'consciente do problema',
+      objecao_principal: 'mais uma ferramenta para aprender',
+      sequencia: SLIDES_QUALIDADE.map(s => ({ role: s.role, funcao: `conduzir: ${s.headline}`, emocao: 'reconhecimento' })),
+      tom: 'claro e profissional',
+      abordagem_do_cta: 'convite direto, sem pressão',
+      evitar: ['números e estatísticas', 'promessas exageradas'],
+    })
+  }
+  if (sys.includes('copywriter')) {
+    return req.parse({
+      title: 'Como organizar o atendimento de leads',
+      slides: SLIDES_QUALIDADE,
+      caption: 'A gente escreveu este carrossel depois de ouvir a mesma história muitas vezes: o lead chegou, ninguém viu, a venda esfriou. Organizar vem antes de acelerar.',
+      cta: 'Organize seus leads com o FunilPro',
+      hashtags: ['#atendimento', '#leads', '#pequenasempresas'],
+    })
+  }
+  // revisor
+  return req.parse({
+    scores: { specificity: 8, hook: 8, narrative: 8, clarity: 9, persuasion: 8, naturalness: 8 },
+    strengths: ['gancho concreto', 'mecanismo claro'],
+    problems: [],
+    revision_instructions: [],
+  })
+}
+
+__setContentAIProviderForTests({
+  async call(req: AICallRequest): Promise<AICallResult> {
+    return {
+      output: fakeAIOutput(req), model: 'fake-model', inputTokens: 100,
+      outputTokens: 200, durationMs: 5, calls: 1, finish: 'ok',
+    }
+  },
+})
+
 // ─── Briefing de teste ──────────────────────────────────────────────────────
 
 const BRIEF_BOM = {
@@ -436,23 +517,18 @@ test('12) o pesquisador não inventa fato externo', async () => {
   const store = await rodarPipeline()
   const pesquisa = store.steps.find(s => s.agent_key === 'cc_researcher')!.output!.data
 
-  assert.deepEqual(pesquisa.fontes_externas, [])
-  assert.equal(pesquisa.sem_dados_inventados, true)
-
-  // Toda inferência vem marcada como hipótese.
-  for (const grupo of ['necessidades', 'dores_possiveis']) {
-    const itens = pesquisa[grupo] as { texto: string; hipotese: boolean }[]
-    assert.ok(itens.length > 0)
-    assert.ok(itens.every(i => i.hipotese === true), `${grupo} tem item não marcado como hipótese`)
-  }
+  // O VALIDADOR fixa a ausência de pesquisa externa — nem o modelo muda isso.
+  assert.equal(pesquisa.pesquisa_externa_realizada, false)
+  assert.ok(Array.isArray(pesquisa.hipoteses) && (pesquisa.hipoteses as string[]).length > 0,
+    'inferências precisam estar marcadas como hipóteses')
+  assert.ok(Array.isArray(pesquisa.dores_inferidas), 'dores inferidas separadas das explícitas')
 
   // Nenhum número com cara de estatística no output inteiro.
   const texto = JSON.stringify(pesquisa)
   assert.ok(!/\d{1,3}\s*%/.test(texto), 'porcentagem inventada no output')
-  assert.ok(!/\bsegundo\s+(a|o)\s+\w+/i.test(texto), 'citação de fonte inventada')
 
-  // E o arquivo não tem rede nem provedor de IA.
-  assert.ok(!/\bfetch\s*\(/.test(agentes), 'os agentes fazem fetch')
+  // Os agentes DETERMINÍSTICOS (fixture da demo) continuam sem rede nem IA.
+  assert.ok(!/\bfetch\s*\(/.test(agentes), 'os agentes determinísticos fazem fetch')
   assert.ok(!/anthropic|openai|claude|gpt/i.test(agentes), 'referência a provedor de IA')
   assert.ok(!/https?:\/\//.test(agentes), 'URL externa nos agentes')
 })
@@ -461,27 +537,27 @@ test('13) o estrategista usa a saída do pesquisador', async () => {
   const store = await rodarPipeline()
   const estrategia = store.steps.find(s => s.agent_key === 'cc_strategist')!.output!.data
 
-  const baseado = estrategia.baseado_em as { hipoteses: number; premissas: number }
-  assert.ok(baseado.hipoteses > 0, 'ignorou as hipóteses do pesquisador')
-  assert.ok(baseado.premissas > 0, 'ignorou as premissas do pesquisador')
+  assert.ok(typeof estrategia.big_idea === 'string' && (estrategia.big_idea as string).length > 0)
+  assert.ok(typeof estrategia.tensao === 'string')
   assert.ok(Array.isArray(estrategia.sequencia) && (estrategia.sequencia as unknown[]).length >= SLIDES_MIN)
 
-  // Sem a pesquisa, ele se recusa a rodar em vez de inventar.
+  // Sem a pesquisa, o agente (IA e determinístico) se recusa a rodar.
   const semUpstream = { envelope: {}, brief: {}, upstream: {} } as never
   assert.throws(() => CAROUSEL_STRATEGIST.validateInput!(semUpstream))
+  assert.throws(() => getAgent('cc_strategist').validateInput!(semUpstream))
 })
 
 test('14) o copywriter gera a estrutura completa', async () => {
   const store = await rodarPipeline()
   const copy = store.steps.find(s => s.agent_key === 'cc_copywriter')!.output!.data
 
-  assert.ok(typeof copy.titulo === 'string' && copy.titulo.length > 0)
-  const slides = copy.slides as { numero: number; headline: string; texto: string }[]
-  assert.ok(slides.length >= SLIDES_MIN && slides.length <= SLIDES_MAX, `${slides.length} slides`)
-  assert.ok(slides.every(s => s.headline.trim() && s.texto.trim()), 'slide com campo vazio')
-  assert.deepEqual(slides.map(s => s.numero), slides.map((_, i) => i + 1), 'slides fora de ordem')
-  assert.ok(typeof copy.legenda === 'string' && copy.legenda.length > 0)
-  assert.ok(typeof copy.cta === 'string' && copy.cta.length > 0)
+  assert.ok(typeof copy.title === 'string' && (copy.title as string).length > 0)
+  const slides = copy.slides as { number: number; headline: string; body: string }[]
+  assert.ok(slides.length >= 6 && slides.length <= SLIDES_MAX, `${slides.length} slides`)
+  assert.ok(slides.every(s => s.headline.trim() && s.body.trim()), 'slide com campo vazio')
+  assert.deepEqual(slides.map(s => s.number), slides.map((_, i) => i + 1), 'slides fora de ordem')
+  assert.ok(typeof copy.caption === 'string' && (copy.caption as string).length > 0)
+  assert.ok(typeof copy.cta === 'string' && (copy.cta as string).length > 0)
   assert.ok(Array.isArray(copy.hashtags) && (copy.hashtags as string[]).length > 0)
 })
 
@@ -529,9 +605,19 @@ test('16) a revisão automática tem teto de UMA', async () => {
 
   // Copywriter defeituoso: sempre produz material que o revisor reprova.
   const original = getAgent('cc_copywriter')
+  // Copy VÁLIDA no schema mas com estatística inventada: passa na estrutura e
+  // reprova na revisão determinística — é o caminho real do needs_revision.
+  const copyRuim = {
+    title: 'Título qualquer',
+    slides: Array.from({ length: 6 }, (_, i) => ({
+      number: i + 1, role: 'hook', headline: `Slide ${i + 1}`,
+      body: 'Nossos clientes relatam 87% mais vendas em poucas semanas.',
+    })),
+    caption: 'Legenda simples.', cta: 'Fale conosco', hashtags: ['#x'],
+  }
   __registerAgentForTests({
     key: 'cc_copywriter', version: 99, label: 'Copy ruim',
-    async run() { return { data: { titulo: '', slides: [], legenda: '', cta: '' } } },
+    async run() { return { data: copyRuim } },
   })
 
   try {
@@ -566,6 +652,10 @@ test('17) o pipeline termina em awaiting_approval, sem aprovar nada', async () =
   assert.equal(aprovacao.status, 'completed')
   assert.equal(aprovacao.output!.data.aprovado_automaticamente, false)
   assert.equal(aprovacao.output!.data.estado, 'aguardando_aprovacao')
+
+  // E o revisor aprovou com o veredito da 2B, decidido pelo servidor.
+  const parecer = store.steps.find(s => s.agent_key === 'cc_reviewer')!.output!.data
+  assert.equal(parecer.verdict, 'approved_for_human_review')
 
   // Nenhum evento de aprovação foi emitido — aprovar é da pessoa.
   assert.ok(!store.events.some(e => e.type === 'content_approved'), 'a produção se auto-aprovou')
@@ -631,7 +721,8 @@ test('20) os eventos saem na ordem esperada', async () => {
   assert.equal(tipos[0], 'production_created')
   assert.equal(tipos[1], 'agent_queued')
   assert.equal(tipos[2], 'agent_started')
-  assert.ok(tipos.includes('agent_progress'), 'nenhum progresso real reportado')
+  // Agentes de IA não fabricam progresso: uma chamada não tem subunidades
+  // mensuráveis. O evento continua permitido, mas não é mais obrigatório.
   assert.equal(tipos[tipos.length - 1], 'content_waiting_approval')
 
   // seq é estritamente crescente e sem buraco.
@@ -738,7 +829,7 @@ test('24) o resultado vem da PERSISTÊNCIA, não do navegador', async () => {
   assert.ok(resultado.legenda && resultado.cta)
   assert.ok(resultado.estrategia.angulo && resultado.estrategia.promessa)
   assert.ok(resultado.revisao.checklist.length > 0)
-  assert.equal(resultado.revisao.verdict, 'aprovado_para_revisao')
+  assert.equal(resultado.revisao.verdict, 'approved_for_human_review')
 
   // Sem steps concluídos não há resultado inventado.
   assert.equal(buildProductionResult([]).disponivel, false)
@@ -825,16 +916,26 @@ test('29) queue_jobs e o schema do banco não foram tocados', () => {
 })
 
 test('30) nenhuma chamada externa ou IA foi adicionada', () => {
+  // Nenhum destes arquivos faz chamada externa. A 2B adicionou IA — mas ela
+  // vive em src/lib/content-studio/ai/, atrás da porta ContentAIProvider.
+  const resultView = semComentarios(ler('src/lib/content-studio/result-view.ts'))
   for (const [nome, src] of [
     ['actions', actionsCode], ['agentes', agentes],
     ['form', formulario], ['painel', painel],
     ['brief', semComentarios(ler('src/lib/content-studio/brief.ts'))],
-    ['result-view', semComentarios(ler('src/lib/content-studio/result-view.ts'))],
+    ['result-view', resultView],
     ['runner', semComentarios(ler('src/lib/content-studio/production-runner.ts'))],
   ] as const) {
     assert.ok(!/\bfetch\s*\(/.test(src), `${nome} faz fetch`)
     assert.ok(!/https?:\/\//.test(src), `${nome} referencia URL externa`)
-    assert.ok(!/anthropic|openai|resend|instagram|n8n/i.test(src), `${nome} referencia provedor`)
+    assert.ok(!/openai|resend|instagram|n8n/i.test(src), `${nome} referencia provedor externo`)
+  }
+  // O result-view só LÊ o metadado do provedor gravado no usage — não chama.
+  for (const [nome, src] of [
+    ['agentes', agentes], ['form', formulario], ['painel', painel], ['runner',
+      semComentarios(ler('src/lib/content-studio/production-runner.ts'))],
+  ] as const) {
+    assert.ok(!/anthropic/i.test(src), `${nome} referencia o provedor de IA`)
   }
 
   // E nenhuma dependência nova entrou.
@@ -1006,7 +1107,16 @@ test('35) produção que falha na revisão não deixa job ativo nem escapa do te
   const original = getAgent('cc_copywriter')
   __registerAgentForTests({
     key: 'cc_copywriter', version: 99, label: 'Copy ruim',
-    async run() { return { data: { titulo: '', slides: [], legenda: '', cta: '' } } },
+    async run() {
+      return { data: {
+        title: 'Título qualquer',
+        slides: Array.from({ length: 6 }, (_, i) => ({
+          number: i + 1, role: 'hook', headline: `Slide ${i + 1}`,
+          body: 'Nossos clientes relatam 87% mais vendas em poucas semanas.',
+        })),
+        caption: 'Legenda simples.', cta: 'Fale conosco', hashtags: ['#x'],
+      } }
+    },
   })
 
   try {

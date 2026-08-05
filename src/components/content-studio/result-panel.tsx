@@ -62,6 +62,20 @@ export default function ResultPanel({ result, aguardandoAprovacao }: ResultPanel
             revisado {result.revisionCycle}×
           </span>
         )}
+        {/* Selo de IA real — só aparece quando algum step foi gerado por IA. */}
+        {result.ai.usedRealAI && (
+          <span
+            className="rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700"
+            title={`${result.ai.totalCalls} chamada(s) de IA`}
+          >
+            ✦ IA real
+          </span>
+        )}
+        {result.revisao.media !== null && (
+          <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-600 tabular-nums">
+            nota {result.revisao.media.toFixed(1)}
+          </span>
+        )}
       </div>
 
       {result.titulo && (
@@ -120,6 +134,24 @@ export default function ResultPanel({ result, aguardandoAprovacao }: ResultPanel
       {result.cta && (
         <Bloco titulo="Chamada para ação">
           <p className="text-sm font-semibold text-gray-900">{result.cta}</p>
+        </Bloco>
+      )}
+
+      {Object.keys(revisao.scores).length > 0 && (
+        <Bloco titulo="Notas do revisor">
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(revisao.scores).map(([k, v]) => (
+              <span
+                key={k}
+                className={`rounded-lg px-2 py-1 text-[11px] font-semibold tabular-nums ${
+                  v >= 7 ? 'bg-emerald-50 text-emerald-700'
+                  : v >= 5 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+                }`}
+              >
+                {k} {v}
+              </span>
+            ))}
+          </div>
         </Bloco>
       )}
 
