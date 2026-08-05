@@ -149,7 +149,7 @@ export async function createProduction(input: BriefInput): Promise<ActionResult<
 
   try {
     const resultado = await ensureProduction(supabaseProductionRepo(admin, tenantId), validado.brief)
-    if (!resultado.ok) return fail('too_many_open')
+    if (!resultado.ok) return fail(resultado.reason)
     return readState(admin, tenantId, resultado.productionId)
   } catch (err) {
     return fail('create_failed', err)
@@ -261,6 +261,14 @@ export async function advanceProduction(productionId: string): Promise<ActionRes
   const store = createSupabaseContentStore(admin, { tenantId, productionId })
 
   try {
+    // RETOMADA de materialização interrompida. Se a criação caiu no meio
+    // (produção gravada, mas steps ou primeiro job não), a produção fica em
+    // draft/queued sem nada na fila — e só drenar seria um no-op eterno.
+    // `startProduction` é idempotente: com tudo no lugar, não duplica nada;
+    // com algo faltando, completa exatamente o que faltou.
+    if (row!.status === 'draft' || row!.status === 'queued') {
+      await startProduction(store, productionId)
+    }
     await drainQueue(store, PRODUCTION_MAX_JOBS_PER_CALL)
   } catch (err) {
     // Falhar ao avançar não pode esconder a timeline: seguimos para devolver o

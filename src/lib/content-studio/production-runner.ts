@@ -31,6 +31,7 @@ import {
   pickWinningProduction,
   type ProductionAdmissionRow,
 } from './production-guard'
+import { BRIEF_FIELDS } from './brief'
 import type { ValidBrief } from './brief'
 
 export type ProductionRowLite = ProductionAdmissionRow & { created_at: string }
@@ -51,7 +52,24 @@ export interface ProductionRepo {
 
 export type EnsureProductionResult =
   | { ok: true; productionId: string; reused: boolean; canceled: string[] }
-  | { ok: false; reason: 'too_many_open' }
+  | { ok: false; reason: 'too_many_open' | 'idempotency_conflict' }
+
+/**
+ * Os DOIS briefings dizem a mesma coisa?
+ *
+ * A chave de idempotência afirma "este é o mesmo envio de antes" — e isso só é
+ * verdade se o CONTEÚDO também for o mesmo. Sem esta comparação, uma chave
+ * repetida com briefing diferente devolveria silenciosamente uma produção cujo
+ * conteúdo não corresponde ao que a pessoa acabou de escrever, e ela aprovaria
+ * (Fase 2B) um material de outro pedido.
+ */
+export function sameBrief(
+  a: Record<string, unknown> | null,
+  b: Record<string, unknown> | null,
+): boolean {
+  if (!a || !b) return false
+  return BRIEF_FIELDS.every(f => (a[f] ?? '') === (b[f] ?? ''))
+}
 
 /**
  * Garante UMA produção por chave de idempotência.
@@ -63,10 +81,14 @@ export async function ensureProduction(
   repo: ProductionRepo,
   brief: ValidBrief,
 ): Promise<EnsureProductionResult> {
-  // 1) Mesmo envio de novo? Devolve a de antes. Nada é criado.
+  // 1) Mesmo envio de novo? Só se o CONTEÚDO também for o mesmo.
+  //    Chave igual + briefing igual    -> devolve a de antes, nada é criado.
+  //    Chave igual + briefing diferente -> conflito explícito. Nunca reaproveita
+  //    em silêncio, nunca cria uma segunda produção ativa com a mesma chave.
   const mesmas = await repo.findByIdempotencyKey(brief.idempotency_key)
   const jaCriada = pickWinningProduction(mesmas)
   if (jaCriada) {
+    if (!sameBrief(jaCriada.brief, brief)) return { ok: false, reason: 'idempotency_conflict' }
     await repo.materialize(jaCriada.id)   // idempotente: nada duplica
     return { ok: true, productionId: jaCriada.id, reused: true, canceled: [] }
   }
@@ -89,6 +111,13 @@ export async function ensureProduction(
   // 5) Cancela as perdedoras ANTES de qualquer materialização.
   const perdedoras = candidatas.filter(p => p.id !== vencedora.id).map(p => p.id)
   if (perdedoras.length > 0) await repo.cancel(perdedoras)
+
+  // Corrida patológica: outra chamada venceu com a MESMA chave mas briefing
+  // DIFERENTE. A nossa já foi cancelada acima — devolver a vencedora aqui
+  // entregaria conteúdo que não é o deste envio. Conflito explícito.
+  if (vencedora.id !== minha.id && !sameBrief(vencedora.brief, brief)) {
+    return { ok: false, reason: 'idempotency_conflict' }
+  }
 
   // 6) Só agora, e só a vencedora, ganha steps e fila.
   await repo.materialize(vencedora.id)

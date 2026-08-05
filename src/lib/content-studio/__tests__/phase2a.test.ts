@@ -24,10 +24,10 @@ import { CAROUSEL_STRATEGIST, reviewCopy, SLIDES_MAX, SLIDES_MIN } from '../agen
 import { __registerAgentForTests, getAgent } from '../agents/registry'
 import { validateBrief } from '../brief'
 import {
-  admitProduction, isOpenProduction, isRealProduction,
+  admitProduction, isOpenProduction, isRealProduction, pickWinningProduction,
   PRODUCTION_MAX_JOBS_PER_CALL, safeProductionMessage,
 } from '../production-guard'
-import { ensureProduction, type ProductionRepo, type ProductionRowLite } from '../production-runner'
+import { ensureProduction, sameBrief, type ProductionRepo, type ProductionRowLite } from '../production-runner'
 import { buildProductionResult } from '../result-view'
 import { buildOfficeView, deskOf } from '../view-model'
 import { DEMO_BRIEF_MODE } from '../demo-guard'
@@ -847,6 +847,190 @@ test('30) nenhuma chamada externa ou IA foi adicionada', () => {
   // Os agentes declaram custo zero, e é verdade.
   assert.ok(agentes.includes("provider: 'none'"))
   assert.ok(agentes.includes('costCents: 0'))
+})
+
+// ─── 31–35: lacunas encontradas na auditoria final ──────────────────────────
+
+/** Repo em memória com rastreio de materialização por produção. */
+function repoAuditavel() {
+  const criadas: ProductionRowLite[] = []
+  const materializadas: string[] = []
+  let seq = 0
+  const repo: ProductionRepo = {
+    async findByIdempotencyKey(key) {
+      return criadas.filter(p => (p.brief as Record<string, unknown>)?.idempotency_key === key)
+    },
+    async listOpen() { return criadas.filter(isOpenProduction) },
+    async insert(brief) {
+      const row: ProductionRowLite = {
+        id: `p-${seq}`, status: 'draft', pipeline_key: CAROUSEL_PIPELINE.key,
+        brief: { ...brief }, created_at: `2026-01-01T00:00:0${seq}.000Z`,
+      }
+      seq++
+      criadas.push(row)
+      return row
+    },
+    async cancel(ids) { for (const p of criadas) if (ids.includes(p.id)) p.status = 'canceled' },
+    async materialize(id) { materializadas.push(id) },
+  }
+  return { repo, criadas, materializadas }
+}
+
+test('31) cinco criações concorrentes convergem: UMA produção, só ela materializada', async () => {
+  const { repo, criadas, materializadas } = repoAuditavel()
+  const brief = briefValido()
+
+  const cinco = await Promise.all(Array.from({ length: 5 }, () => ensureProduction(repo, brief)))
+  const oks = cinco.filter(r => r.ok)
+  assert.equal(oks.length, 5, 'todas as chamadas com o mesmo envio devem convergir, não falhar')
+
+  const ids = new Set(oks.map(r => (r as { productionId: string }).productionId))
+  assert.equal(ids.size, 1, `as cinco chamadas devolveram ${ids.size} produções diferentes`)
+  const vencedoraId = [...ids][0]
+
+  // Só uma viva; todas as outras canceladas ANTES de qualquer materialização.
+  const vivas = criadas.filter(p => p.status !== 'canceled')
+  assert.equal(vivas.length, 1)
+  assert.equal(vivas[0].id, vencedoraId)
+
+  // Steps/jobs/eventos nascem na materialização — e só a vencedora a recebeu.
+  assert.ok(materializadas.length >= 1)
+  assert.ok(materializadas.every(id => id === vencedoraId),
+    `materializou perdedora: ${materializadas.filter(id => id !== vencedoraId)}`)
+
+  // Empate de created_at: o id desempata de forma determinística e estável.
+  const empate = [
+    { id: 'b', created_at: '2026-01-01T00:00:00.000Z' },
+    { id: 'a', created_at: '2026-01-01T00:00:00.000Z' },
+  ]
+  const eleita1 = pickWinningProduction(empate)!.id
+  const eleita2 = pickWinningProduction([...empate].reverse())!.id
+  assert.equal(eleita1, 'a')
+  assert.equal(eleita1, eleita2, 'a eleição precisa ser independente da ordem de leitura')
+})
+
+test('32) chave repetida com briefing DIFERENTE vira conflito explícito', async () => {
+  const { repo, criadas } = repoAuditavel()
+  const brief = briefValido()
+
+  const primeira = await ensureProduction(repo, brief)
+  assert.ok(primeira.ok)
+
+  // Mesma chave, conteúdo diferente: nunca reaproveitar em silêncio.
+  const adulterado = { ...brief, tema: 'assunto completamente diferente' }
+  const segunda = await ensureProduction(repo, adulterado)
+  assert.ok(!segunda.ok, 'reaproveitou produção com conteúdo incompatível')
+  if (!segunda.ok) assert.equal(segunda.reason, 'idempotency_conflict')
+
+  // Nenhuma segunda produção ativa foi criada.
+  assert.equal(criadas.filter(p => p.status !== 'canceled').length, 1)
+
+  // Mensagem pública do conflito é segura.
+  const msg = safeProductionMessage('idempotency_conflict')
+  assert.ok(!/cs_|sql|tenant|constraint|supabase/i.test(msg))
+
+  // Mesmo conteúdo continua reaproveitando normalmente.
+  const terceira = await ensureProduction(repo, { ...brief })
+  assert.ok(terceira.ok && terceira.reused)
+
+  // A comparação cobre exatamente os campos do briefing.
+  assert.equal(sameBrief(brief, { ...brief }), true)
+  assert.equal(sameBrief(brief, { ...brief, cta: 'outro' }), false)
+  assert.equal(sameBrief(null, brief), false)
+})
+
+test('33) materialização interrompida se recupera de forma idempotente', async () => {
+  // Store cujo insertJob falha na primeira chamada — simula a conexão caindo
+  // entre criar os steps e enfileirar o primeiro job.
+  const store = new MemoryStore()
+  store.criar(CAROUSEL_PIPELINE.key, briefValido())
+  const insertJobOriginal = store.insertJob.bind(store)
+  let falhas = 1
+  store.insertJob = async job => {
+    if (falhas > 0) { falhas--; throw new Error('conexão interrompida') }
+    return insertJobOriginal(job)
+  }
+
+  await assert.rejects(() => startProduction(store, 'prod-1'))
+
+  // Estado intermediário: produção SEM job na fila, steps criados.
+  assert.equal(store.jobs.length, 0)
+  assert.ok(store.steps.length > 0)
+  const statusIntermediario = store.productions.get('prod-1')!.status
+  assert.ok(['draft', 'queued'].includes(statusIntermediario))
+
+  // Retomada: a MESMA chamada idempotente completa o que faltou, sem duplicar.
+  await startProduction(store, 'prod-1')
+  assert.equal(store.jobs.length, 1, 'a retomada não enfileirou o primeiro job')
+  assert.equal(store.events.filter(e => e.type === 'production_created').length, 1,
+    'a retomada duplicou o evento de criação')
+  assert.equal(store.steps.length, CAROUSEL_PIPELINE.steps.length)
+
+  // E dali o pipeline vai até o fim normalmente.
+  await drainQueue(store, 40)
+  assert.equal(store.productions.get('prod-1')!.status, 'awaiting_approval')
+
+  // A action expõe essa retomada: advanceProduction rematerializa draft/queued.
+  const trecho = actionsCode.slice(actionsCode.indexOf('export async function advanceProduction'))
+    .split('\nexport ')[0]
+  assert.ok(/status === 'draft' \|\| row!\.status === 'queued'/.test(trecho),
+    'advanceProduction perdeu a retomada de materialização')
+  assert.ok(trecho.includes('await startProduction(store, productionId)'))
+})
+
+test('34) número vindo do BRIEFING não é tratado como inventado', () => {
+  const brief = { tema: 'mentoria', oferta: '50% de desconto até sexta' }
+  const slides = Array.from({ length: 6 }, (_, i) => ({
+    numero: i + 1, papel: 'gancho', headline: `H${i}`, texto: 'texto sobre mentoria',
+  }))
+
+  // O copy repete o número que a PESSOA escreveu na oferta: legítimo.
+  const legitimo = {
+    titulo: 'Mentoria com condição especial', cta: 'chame no direct',
+    legenda: 'Aproveite: 50% de desconto até sexta.', slides,
+  }
+  const r1 = reviewCopy(legitimo, brief)
+  assert.equal(r1.verdict, 'aprovado_para_revisao',
+    `número do briefing reprovado: ${r1.avisos.join('; ')}`)
+
+  // Um número que NÃO está no briefing continua sendo barrado.
+  const inventado = {
+    ...legitimo, legenda: '87% dos alunos dobram o faturamento em 30 dias.',
+  }
+  const r2 = reviewCopy(inventado, brief)
+  assert.equal(r2.verdict, 'needs_revision')
+  assert.ok(r2.avisos.some(a => /inventada/i.test(a)))
+})
+
+test('35) produção que falha na revisão não deixa job ativo nem escapa do teto', async () => {
+  const original = getAgent('cc_copywriter')
+  __registerAgentForTests({
+    key: 'cc_copywriter', version: 99, label: 'Copy ruim',
+    async run() { return { data: { titulo: '', slides: [], legenda: '', cta: '' } } },
+  })
+
+  try {
+    const store = await rodarPipeline()
+    assert.equal(store.productions.get('prod-1')!.status, 'failed')
+
+    // Nenhum job pendente ou rodando sobra numa produção morta.
+    const ativos = store.jobs.filter(j => j.status === 'pending' || j.status === 'running')
+    assert.equal(ativos.length, 0, `produção failed com ${ativos.length} job(s) ativo(s)`)
+
+    // Ciclo 2 não existe em NENHUM lugar: nem step, nem job, nem evento.
+    assert.ok(!store.jobs.some(j => j.dedupe_key.endsWith(':cycle:2')), 'job de cycle 2 criado')
+    const ciclos = store.events
+      .filter(e => e.type === 'agent_reprocessed')
+      .map(e => e.payload.revision_cycle)
+    assert.deepEqual(ciclos, [1])
+
+    // Chamadas extras depois da falha: no-op absoluto.
+    const eventosAntes = store.events.length
+    await drainQueue(store, 10)
+    assert.equal(store.events.length, eventosAntes)
+  } finally {
+    __registerAgentForTests(original)
+  }
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

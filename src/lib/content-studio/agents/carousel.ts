@@ -359,10 +359,22 @@ export function reviewCopy(
   add('coerencia_briefing', 'Coerente com o tema do briefing',
     !primeiraPalavra || corpo.includes(primeiraPalavra), true)
 
-  // Fatos inventados.
+  // Fatos inventados — com uma exceção deliberada: o que veio LITERALMENTE do
+  // briefing não é invenção. Se a oferta diz "50% de desconto", o número é da
+  // pessoa, não do agente; reprová-lo derrubaria briefings legítimos (e, com o
+  // teto de uma revisão, a produção inteira). A régua é textual e estrita:
+  // só isenta o trecho que aparece igual em algum campo do briefing.
+  const briefTexto = Object.values(brief)
+    .filter((v): v is string => typeof v === 'string')
+    .join('\n')
+    .toLowerCase()
+
   const encontrados: string[] = []
   for (const { re, nome } of PADROES_INVENTADOS) {
-    if (re.test(corpo)) encontrados.push(nome)
+    const global = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g')
+    for (const m of corpo.matchAll(global)) {
+      if (!briefTexto.includes(m[0])) { encontrados.push(nome); break }
+    }
   }
   add('sem_dados_inventados', 'Sem estatística ou fonte inventada',
     encontrados.length === 0, true,
