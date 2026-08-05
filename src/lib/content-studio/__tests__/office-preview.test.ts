@@ -460,9 +460,12 @@ test('10) nenhum arquivo do R1 é tocado por este módulo', () => {
   }
 })
 
-test('a página não está no menu lateral ainda', () => {
+test('a página só entra no menu sob autorização do servidor', () => {
+  // A partir do Quick Create: o item existe, mas SOMENTE atrás da prop
+  // showContentStudio decidida no servidor (nav.test.ts cobre o helper).
   const sidebar = readFileSync(join(RAIZ, 'src/components/layout/sidebar.tsx'), 'utf8')
-  assert.ok(!sidebar.includes('content-studio'), 'a rota não deveria estar no menu nesta versão')
+  assert.ok(sidebar.includes('showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV'),
+    'o item deve ser condicional à prop do servidor')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

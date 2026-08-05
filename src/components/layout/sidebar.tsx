@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/app/actions/auth'
-import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, LayoutTemplate, Globe, Shield, Bot, Camera, Network } from 'lucide-react'
+import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, LayoutTemplate, Globe, Shield, Bot, Camera, Network, Sparkles } from 'lucide-react'
 
 const NAV = [
   { href: '/funnels',       label: 'Funis',              Icon: LayoutGrid },
@@ -19,6 +19,9 @@ const NAV = [
   { href: '/settings',      label: 'Configurações',       Icon: Settings },
 ]
 
+// Item condicional: só entra quando o SERVIDOR autorizou (prop showContentStudio).
+const CONTENT_STUDIO_ITEM = { href: '/content-studio', label: 'Content Studio', Icon: Sparkles }
+
 const STORAGE_KEY = 'funilpro:sidebar-collapsed'
 const EXPANDED_W = 240
 const COLLAPSED_W = 64
@@ -26,6 +29,8 @@ const COLLAPSED_W = 64
 interface Props {
   displayName: string
   isAdmin?: boolean
+  /** Decidido no servidor (layout) via canShowContentStudioNav. */
+  showContentStudio?: boolean
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -39,7 +44,7 @@ function FunnelLogo({ size = 24 }: { size?: number }) {
   )
 }
 
-export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMobileClose }: Props) {
+export default function Sidebar({ displayName, isAdmin, showContentStudio = false, mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -137,7 +142,7 @@ export default function Sidebar({ displayName, isAdmin, mobileOpen = false, onMo
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV.map(({ href, label, Icon }) => {
+          {(showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV).map(({ href, label, Icon }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
             return (
               <Link

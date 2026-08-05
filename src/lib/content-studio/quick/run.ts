@@ -32,6 +32,15 @@ export const QUICK_PROFILE = { maxOutputTokens: 2600, timeoutMs: 90_000 }
 
 export interface QuickRunResult {
   ok: boolean
+  /**
+   * O que esta EXECUÇÃO fez:
+   *   created         -> ganhou o claim, chamou a IA e concluiu
+   *   reused          -> o step já estava concluído (nenhuma chamada)
+   *   in_progress     -> outra execução está gerando AGORA (nenhuma chamada)
+   *   failed_existing -> o step já falhou antes (nenhuma nova tentativa)
+   *   failed          -> esta execução ganhou o claim e a IA falhou
+   */
+  state: 'created' | 'reused' | 'in_progress' | 'failed_existing' | 'failed'
   /** Código seguro quando falhou (content_ai:*) ou 'unknown'. */
   errorCode?: string
 }
@@ -47,37 +56,55 @@ export async function runQuickCarousel(
   production: ProductionRow,
   brief: ValidQuickBrief,
 ): Promise<QuickRunResult> {
-  // Step único, materializado à mão (não há pipeline de orquestrador rodando).
+  // CLAIM ATÔMICO PELA INSERÇÃO DO STEP. A eleição das cascas converge para
+  // uma production_id, mas VÁRIAS requisições podem materializar a vencedora.
+  // A primitiva de exclusão é o índice único uq_cs_steps_prod_index
+  // (production_id, step_index): o step nasce JÁ em `running`, com started_at,
+  // e só a execução que recebeu `inserted=true` conquistou o trabalho.
+  // Perdedoras leem o estado e saem — sem provider, sem evento, sem escrita.
+  const agora = new Date().toISOString()
   const { rows, inserted } = await store.insertSteps([{
     production_id: production.id,
     tenant_id: production.tenant_id,
     agent_key: QUICK_AGENT_KEY,
     step_index: 0,
     depends_on: [],
-    status: 'pending',
+    status: 'running',
     input: null,
     output: null,
     attempt: 0,
     error: null,
-    started_at: null,
+    started_at: agora,
     completed_at: null,
   }])
   const step = rows[0]
 
-  if (inserted) {
-    await store.emitEvent({
-      productionId: production.id,
-      type: 'production_created',
-      payload: { pipeline_key: production.pipeline_key, steps: 1 },
-    })
+  if (!inserted) {
+    // Outra execução é (ou foi) a dona do trabalho. NENHUM caminho daqui toca
+    // o provider, emite evento ou sobrescreve started_at/output.
+    switch (step.status) {
+      case 'completed':
+        return { ok: true, state: 'reused' }
+      case 'failed':
+        // A falha já aconteceu e foi persistida — repetir automaticamente
+        // seria uma segunda chamada paga sem decisão humana.
+        return { ok: false, state: 'failed_existing', errorCode: 'already_failed' }
+      case 'running':
+        return { ok: true, state: 'in_progress' }
+      default:
+        // 'pending' é INALCANÇÁVEL para o quick (o step nasce running). Se um
+        // estado legado/inesperado aparecer, a decisão segura é NÃO chamar o
+        // provider sem um claim conquistado — tratamos como em andamento.
+        return { ok: true, state: 'in_progress' }
+    }
   }
 
-  // Reentrada (duplo clique/retry de rede na MESMA produção): se o step já
-  // concluiu, não há o que refazer — e jamais uma segunda chamada de IA.
-  if (!inserted && step.status === 'completed') return { ok: true }
-
-  const inicio = new Date().toISOString()
-  await store.updateStep(step.id, { status: 'running', started_at: inicio, error: null })
+  // Só o VENCEDOR do claim passa deste ponto.
+  await store.emitEvent({
+    productionId: production.id,
+    type: 'production_created',
+    payload: { pipeline_key: production.pipeline_key, steps: 1 },
+  })
   await store.updateProductionStatus(production.id, 'running')
   await store.emitEvent({
     productionId: production.id,
@@ -130,7 +157,7 @@ export async function runQuickCarousel(
       type: 'content_waiting_approval',
       payload: { steps: 1, final_status: 'awaiting_approval' },
     })
-    return { ok: true }
+    return { ok: true, state: 'created' }
   } catch (err) {
     // Depois do retry técnico do provider: FALHA. Sem segunda etapa, sem
     // revisor separado, sem reagendamento — e nunca `running` eterno.
@@ -153,7 +180,7 @@ export async function runQuickCarousel(
     await store.updateProductionStatus(production.id, 'failed')
 
     const code = (err as { code?: string }).code
-    return { ok: false, errorCode: typeof code === 'string' ? code : 'unknown' }
+    return { ok: false, state: 'failed', errorCode: typeof code === 'string' ? code : 'unknown' }
   }
 }
 

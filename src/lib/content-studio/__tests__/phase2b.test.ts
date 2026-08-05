@@ -565,8 +565,9 @@ test('29) nenhum endpoint público foi criado', () => {
   const proxy = ler('src/proxy.ts')
   const publicos = /PUBLIC_PREFIXES[\s\S]*?\]/.exec(proxy)?.[0] ?? ''
   assert.ok(!/content-studio|content-production|content-ai|cs_/.test(publicos))
+  // O item do menu existe, mas apenas atrás da prop decidida no servidor.
   const sidebar = ler('src/components/layout/sidebar.tsx')
-  assert.ok(!sidebar.includes('/content-studio'))
+  assert.ok(sidebar.includes('showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV'))
 })
 
 test('30) nenhum arquivo do R1 foi alterado', () => {

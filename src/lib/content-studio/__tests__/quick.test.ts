@@ -463,10 +463,29 @@ test('C2) replay sequencial: uma produção, uma materialização (uma chamada)'
   // e no C2-reentrada abaixo. Aqui: nenhuma produção duplicada.
 })
 
-test('C2) cinco simultâneas com a mesma chave: uma vencedora, perdedoras sem nada', async () => {
+test('C2) cinco simultâneas com a mesma chave: uma vencedora, UMA chamada de provider', async () => {
+  // DISTINÇÃO que importa: "materialize foi SOLICITADO" (pode acontecer várias
+  // vezes, sempre sobre a vencedora) != "a execução GANHOU o claim" (uma única,
+  // pela inserção do step). Aqui o materialize é o runQuickCarousel REAL, e a
+  // contagem é de chamadas efetivas ao provider.
+  const contador = { calls: 0 }
+  __setContentAIProviderForTests(providerBom(contador))
+
+  const brief = quickBrief()
+  const stores = new Map<string, MemStore>()
   const estado = { criadas: [] as ProductionRowLite[], materializadas: [] as string[] }
   const repo = repoQuick(estado)
-  const brief = quickBrief()
+  // materialize real: um MemStore por produção (mesma semântica do Supabase,
+  // com o índice único de step dentro de cada produção).
+  repo.materialize = async (id: string) => {
+    estado.materializadas.push(id)
+    let st = stores.get(id)
+    if (!st) { st = new MemStore(); stores.set(id, st) }
+    const row = estado.criadas.find(p => p.id === id)!
+    let prod = st.productions.get('prod-q')
+    if (!prod) prod = st.criar(QUICK_PIPELINE_KEY, row.brief ?? {})
+    await runQuickCarousel(st, prod, brief)
+  }
 
   const cinco = await Promise.all(Array.from({ length: 5 }, () => ensureProduction(repo, brief, QUICK_COMPARE_FIELDS)))
   const oks = cinco.filter(r => r.ok)
@@ -476,9 +495,13 @@ test('C2) cinco simultâneas com a mesma chave: uma vencedora, perdedoras sem na
   const vencedora = [...ids][0]
 
   assert.equal(estado.criadas.filter(p => p.status !== 'canceled').length, 1)
-  // SÓ a vencedora materializa — perdedora nunca alcança a chamada de IA.
+  // Materialize pode ter sido SOLICITADO mais de uma vez — sempre na vencedora.
   assert.ok(estado.materializadas.every(id => id === vencedora),
     `perdedora materializada: ${estado.materializadas.filter(id => id !== vencedora)}`)
+  // Mas o provider foi chamado UMA vez: o claim do step decide, não a eleição.
+  assert.equal(contador.calls, 1, `${contador.calls} chamadas de provider`)
+  const st = stores.get(vencedora)!
+  assert.equal(st.events.filter(e => e.type === 'agent_started').length, 1)
 })
 
 test('C2) mesma chave com conteúdo diferente → conflito; sem produção nova', async () => {
@@ -534,6 +557,80 @@ test('C2) reentrada na MESMA produção com step concluído: zero nova chamada d
   assert.ok(r2.ok)
   assert.equal(contador.calls, 1, 'reentrada fez SEGUNDA chamada paga')
   assert.equal(store.events.filter(e => e.type === 'agent_started').length, 1)
+})
+
+// ─── CLAIM: barreira concorrente sobre a MESMA produção ─────────────────────
+
+test('claim) 5 materializações concorrentes: UMA chamada de provider, um started', async () => {
+  // Provider BLOQUEADO por barreira: a 1ª execução entra e fica presa; as
+  // outras 4 tentam materializar com o step ainda `running`.
+  let liberar!: () => void
+  const barreira = new Promise<void>(r => { liberar = r })
+  const contador = { calls: 0 }
+  __setContentAIProviderForTests({
+    async call(req) {
+      contador.calls++
+      await barreira
+      return {
+        output: req.parse(CARROSSEL_BOM), model: 'fake-model', inputTokens: 100,
+        outputTokens: 300, durationMs: 9, calls: 1, finish: 'ok',
+      }
+    },
+  })
+
+  const v = validateQuickInput(ENTRADA_BOA)
+  if (!v.ok) throw new Error('inválido')
+  const store = new MemStore()
+  const producao = store.criar(QUICK_PIPELINE_KEY, v.brief)
+
+  // 1ª execução conquista o claim e fica presa no provider.
+  const primeira = runQuickCarousel(store, producao, v.brief)
+  await new Promise(r => setImmediate(r))
+  assert.equal(contador.calls, 1, 'a primeira não chegou ao provider')
+
+  // As outras 4 chegam com o step `running`.
+  const concorrentes = await Promise.all(
+    Array.from({ length: 4 }, () => runQuickCarousel(store, producao, v.brief)))
+
+  // ANTES de liberar: uma chamada, um step, um agent_started, nenhum output.
+  assert.equal(contador.calls, 1, `provider chamado ${contador.calls}x — corrida de claim`)
+  assert.equal(store.steps.length, 1)
+  assert.equal(store.events.filter(e => e.type === 'agent_started').length, 1,
+    'agent_started duplicado')
+  assert.equal(store.steps[0].output, null, 'concorrente escreveu output')
+  for (const c of concorrentes) {
+    assert.equal(c.state, 'in_progress', `concorrente devolveu ${c.state}`)
+  }
+
+  // Libera: a original conclui normalmente.
+  liberar()
+  const r1 = await primeira
+  assert.equal(r1.state, 'created')
+  assert.equal(store.productions.get('prod-q')!.status, 'awaiting_approval')
+  assert.equal(store.events.filter(e => e.type === 'agent_completed').length, 1)
+  assert.equal(store.events.filter(e => e.type === 'content_waiting_approval').length, 1)
+  assert.equal(contador.calls, 1, 'chamada adicional após liberar')
+})
+
+test('claim) inserted=false com step failed: devolve a falha, sem nova tentativa', async () => {
+  __setContentAIProviderForTests({
+    async call() { throw new ContentAIError('invalid_request', 'status=400', { httpStatus: 400 }) },
+  })
+  const v = validateQuickInput(ENTRADA_BOA)
+  if (!v.ok) throw new Error('inválido')
+  const store = new MemStore()
+  const producao = store.criar(QUICK_PIPELINE_KEY, v.brief)
+  await runQuickCarousel(store, producao, v.brief)
+  assert.equal(store.steps[0].status, 'failed')
+
+  // Replay: NÃO tenta de novo automaticamente, não emite nada novo.
+  const contador = { calls: 0 }
+  __setContentAIProviderForTests(providerBom(contador))
+  const eventosAntes = store.events.length
+  const r = await runQuickCarousel(store, producao, v.brief)
+  assert.equal(r.state, 'failed_existing', `replay devolveu ${r.state}`)
+  assert.equal(contador.calls, 0, 'replay de step failed chamou o provider')
+  assert.equal(store.events.length, eventosAntes)
 })
 
 // ─── C3: feedback visual sem evento sintético ───────────────────────────────
