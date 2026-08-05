@@ -27,7 +27,6 @@ export interface AICallRequest {
   /** Valida e converte o JSON devolvido. Lançar erro = resposta inválida. */
   parse: (raw: unknown) => Record<string, unknown>
   maxOutputTokens: number
-  temperature: number
   timeoutMs: number
   /**
    * Identificador seguro da execução (produção+step+tentativa). Vai para o

@@ -913,8 +913,8 @@ test('canário) erro fatal do provider: sem agent_retrying, job falha, produçã
   assert.equal(falhas[0].payload.error_code, 'invalid_request')
   assert.equal(falhas[0].payload.http_status, 400)
   assert.equal(falhas[0].payload.provider_error_type, 'invalid_request_error')
-  assert.ok(String(falhas[0].payload.error).startsWith('content_ai:invalid_request'),
-    'a mensagem persistida não é o código seguro')
+  // Erro de IA estruturado: SEM campo textual — só código/status/tipo.
+  assert.ok(!('error' in falhas[0].payload), 'evento de IA persistiu mensagem textual')
 
   // Job falhou de vez (sem pending/retry), step failed, produção failed.
   const researcher = store.steps.find(s => s.agent_key === 'cc_ai_researcher')!
@@ -948,6 +948,7 @@ test('canário) erro RETENTÁVEL continua com o retry de job (backoff)', async (
   assert.equal(retries.length, 1, 'retentável deveria reagendar o job')
   assert.equal(retries[0].payload.error_code, 'rate_limited')
   assert.equal(retries[0].payload.http_status, 429)
+  assert.ok(!('error' in retries[0].payload), 'retry de IA persistiu mensagem textual')
   assert.equal(store.jobs[0].status, 'pending', 'o job não voltou para a fila')
   assert.notEqual(store.productions.get('prod-1')!.status, 'failed')
 })

@@ -100,7 +100,6 @@ function reqBase(): AICallRequest {
       return o
     },
     maxOutputTokens: 100,
-    temperature: 0.2,
     timeoutMs: 5_000,
     executionId: 'teste:exec:a0',
   }
@@ -372,6 +371,82 @@ test('cache) cache_control usa a MESMA combinação já em produção em chat.ts
   assert.ok(chat.includes("'anthropic-version': '2023-06-01'"))
   assert.ok(impl.includes("cache_control: { type: 'ephemeral' }"))
   assert.ok(impl.includes("'anthropic-version': '2023-06-01'"))
+})
+
+// ─── REGRESSÃO DO CANÁRIO: o request que o Sonnet 5 aceita ──────────────────
+
+test('request) Sonnet 5 não recebe sampling parameters não padrão', async () => {
+  // A causa CONFIRMADA do canário: o Sonnet 5 rejeita com 400 qualquer request
+  // com temperature/top_p/top_k fora do padrão — e mandávamos temperature
+  // sempre (0.2–0.8). Este teste inspeciona o BODY real enviado.
+  const originalKey = process.env.ANTHROPIC_API_KEY
+  const original = process.env.CONTENT_AI_MODEL
+  process.env.ANTHROPIC_API_KEY = 'sk-teste-nao-real'
+  process.env.CONTENT_AI_MODEL = 'claude-sonnet-5'
+  try {
+    const mock = fetchFalso([{ body: anthropicBody('{"ok":true}') }])
+    const provider = createAnthropicProvider({ fetchFn: mock.fetchFn, wait: mock.wait })
+    await provider.call(reqBase())
+
+    const body = JSON.parse(mock.chamadas[0].body) as Record<string, unknown>
+    assert.equal(body.model, 'claude-sonnet-5')
+    assert.ok(!('temperature' in body), 'temperature voltou ao payload')
+    assert.ok(!('top_p' in body), 'top_p entrou no payload')
+    assert.ok(!('top_k' in body), 'top_k entrou no payload')
+    assert.equal(body.max_tokens, 100)
+    assert.ok(Array.isArray(body.system) && body.system.length === 1)
+    assert.ok(Array.isArray(body.messages) && body.messages.length === 1)
+    // thinking DESLIGADO explicitamente — sem budget_tokens.
+    assert.deepEqual(body.thinking, { type: 'disabled' })
+    assert.ok(!JSON.stringify(body.thinking).includes('budget'), 'budget_tokens vazou')
+  } finally {
+    if (original === undefined) delete process.env.CONTENT_AI_MODEL
+    else process.env.CONTENT_AI_MODEL = original
+    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY
+    else process.env.ANTHROPIC_API_KEY = originalKey
+  }
+})
+
+test('request) 413 fatal; 409/504 retentáveis; request_id do corpo como fallback', async () => {
+  // 413 request_too_large: repetir o MESMO request não conserta.
+  const m413 = fetchFalso([{ status: 413, body: { type: 'error', error: { type: 'request_too_large' } } }])
+  const p413 = comChave(() => createAnthropicProvider({ fetchFn: m413.fetchFn, wait: m413.wait }))
+  await assert.rejects(() => p413.call(reqBase()), (err: Error) => {
+    assert.equal((err as Error & { agentErrorDisposition?: string }).agentErrorDisposition, 'fatal')
+    return true
+  })
+  assert.equal(m413.chamadas.length, 1, '413 foi repetido')
+
+  // 409 conflict e 504 timeout_error: transitórios, um retry.
+  for (const [status, tipo] of [[409, 'conflict_error'], [504, 'timeout_error']] as const) {
+    const mock = fetchFalso([
+      { status, body: { type: 'error', error: { type: tipo } } },
+      { status, body: { type: 'error', error: { type: tipo } } },
+    ])
+    const provider = comChave(() => createAnthropicProvider({ fetchFn: mock.fetchFn, wait: mock.wait }))
+    await assert.rejects(() => provider.call(reqBase()), (err: Error) => {
+      assert.equal((err as Error & { agentErrorDisposition?: string }).agentErrorDisposition, 'retryable')
+      return true
+    })
+    assert.equal(mock.chamadas.length, 2, `status ${status}: ${mock.chamadas.length} chamadas`)
+  }
+
+  // request_id: sem header, o corpo serve de fallback — só no log interno.
+  const logs: string[] = []
+  const originalError = console.error
+  console.error = (...a: unknown[]) => { logs.push(a.map(String).join(' ')) }
+  try {
+    const mock = fetchFalso([{
+      status: 400,
+      body: { type: 'error', request_id: 'req_do_corpo_789', error: { type: 'invalid_request_error' } },
+    }])
+    const provider = comChave(() => createAnthropicProvider({ fetchFn: mock.fetchFn, wait: mock.wait }))
+    await assert.rejects(() => provider.call(reqBase()))
+    assert.ok(logs.some(l => l.includes('request_id=req_do_corpo_789')),
+      'o request_id do corpo não foi usado como fallback no log')
+  } finally {
+    console.error = originalError
+  }
 })
 
 // ─── CANÁRIO: HTTP 400 real reproduzido ─────────────────────────────────────

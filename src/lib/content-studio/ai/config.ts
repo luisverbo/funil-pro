@@ -58,18 +58,24 @@ export function resolveContentAIModel(): string {
   return limpo
 }
 
-/** Perfil de chamada por papel. Teto de saída conservador: carrossel é curto. */
+/**
+ * Perfil de chamada por papel. Teto de saída conservador: carrossel é curto.
+ *
+ * SEM sampling parameters — e não é omissão: o Claude Sonnet 5 rejeita com
+ * HTTP 400 qualquer request com temperature/top_p/top_k fora do padrão, e foi
+ * exatamente isso que derrubou o primeiro canário (perfis 0.2–0.8). O caráter
+ * de cada agente (criativo vs. rigoroso) é responsabilidade dos PROMPTS.
+ */
 export interface AICallProfile {
   maxOutputTokens: number
-  temperature: number
   timeoutMs: number
 }
 
 export const AI_PROFILES: Record<string, AICallProfile> = {
-  researcher: { maxOutputTokens: 1800, temperature: 0.3, timeoutMs: 60_000 },
-  strategist: { maxOutputTokens: 1800, temperature: 0.6, timeoutMs: 60_000 },
-  copywriter: { maxOutputTokens: 2200, temperature: 0.8, timeoutMs: 90_000 },
-  reviewer:   { maxOutputTokens: 1400, temperature: 0.2, timeoutMs: 60_000 },
+  researcher: { maxOutputTokens: 1800, timeoutMs: 60_000 },
+  strategist: { maxOutputTokens: 1800, timeoutMs: 60_000 },
+  copywriter: { maxOutputTokens: 2200, timeoutMs: 90_000 },
+  reviewer:   { maxOutputTokens: 1400, timeoutMs: 60_000 },
 }
 
 /** No máximo UM retry técnico por chamada (timeout, 429/529, JSON inválido). */

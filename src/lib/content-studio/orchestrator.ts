@@ -283,6 +283,10 @@ async function handleFailure(
   // Campos SEGUROS para os eventos (error_code, http_status, error.type) —
   // nunca a mensagem bruta do provedor.
   const extras = agentErrorEventPayload(err)
+  // Erro de IA ESTRUTURADO (tem error_code): o evento carrega SÓ os campos
+  // seguros, sem `error` textual. Erro genérico (validação de agente, bug):
+  // mantém a mensagem interna — ela nasce no nosso código, não no provedor.
+  const payloadErro = 'error_code' in extras ? extras : { error: message, ...extras }
 
   const nextAttempt = job.attempt + 1
   // FATAL não reagenda: 400/401/403/404, modelo/config inválidos, refusal e
@@ -300,7 +304,7 @@ async function handleFailure(
       type: 'agent_retrying',
       stepId: step.id,
       agentKey: step.agent_key,
-      payload: { attempt: nextAttempt, retry_at: retryAt.toISOString(), error: message, ...extras },
+      payload: { attempt: nextAttempt, retry_at: retryAt.toISOString(), ...payloadErro },
     })
     return { status: 'retrying', job, stepId: step.id, agentKey: step.agent_key, error: message }
   }
@@ -312,7 +316,7 @@ async function handleFailure(
     type: 'agent_failed',
     stepId: step.id,
     agentKey: step.agent_key,
-    payload: { attempt: job.attempt, error: message, ...extras },
+    payload: { attempt: job.attempt, ...payloadErro },
   })
   // Um step esgotado trava o pipeline: a produção falha por inteiro em vez de
   // ficar "rodando" para sempre sem nenhum job na fila.
