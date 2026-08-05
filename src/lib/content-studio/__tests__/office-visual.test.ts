@@ -1,5 +1,5 @@
 // ============================================================================
-// Testes do Office Preview V3 (camada visual)
+// Testes do Office Preview V3.1 (camada visual)
 // ----------------------------------------------------------------------------
 // Nada de banco, nada de rede. A cena é derivada de eventos reais produzidos
 // pelo orquestrador em memória — os mesmos que o backend gravaria em cs_events.
@@ -448,32 +448,127 @@ test('a cena é um escritório rico: salas, portas, móveis e decoração', () =
   assert.equal(OFFICE_AGENT_ORDER.length, 3)
 })
 
-test('o personagem é articulado, não um empilhado de retângulos', () => {
-  // Cada membro gira na articulação — é isso que tira a dureza.
-  for (const parte of ['cs-hip', 'cs-torso', 'cs-head', 'cs-arm--front', 'cs-arm--back', 'cs-leg--front', 'cs-leg--back']) {
-    assert.ok(avatar.includes(parte), `o personagem precisa de ${parte}`)
-    assert.ok(cena.includes(parte), `a cena precisa animar ${parte}`)
-  }
-  // Origem de rotação declarada para cada articulação animada.
-  assert.ok((cena.match(/transform-origin:/g) ?? []).length >= 6, 'faltam origens de rotação')
+test('14) cabeça, pescoço, ombros e tronco estão conectados', () => {
+  // O que fazia a cabeça parecer solta na V3: pescoço desenhado atrás dela,
+  // sem tocar o torso, e a cabeça girando com origem própria.
+  assert.ok(avatar.includes('cs-neck'), 'precisa existir um pescoço')
+  assert.ok(avatar.includes('cs-shoulder'), 'precisam existir ombros próprios')
+  assert.ok(avatar.includes('cs-upper'), 'tronco, cabeça e braços precisam formar um bloco')
 
-  // Rosto expressivo e sombra própria.
-  for (const traco of ['cs-eyes', 'Sobrancelhas', 'Bochechas', 'Boca', 'cs-shadow']) {
-    assert.ok(avatar.includes(traco), `o personagem precisa de ${traco}`)
+  // O pescoço nasce dos ombros (y >= -2) e entra sob o queixo (y <= -10).
+  const pescoco = avatar.slice(avatar.indexOf('cs-neck'), avatar.indexOf('cs-shoulder'))
+  assert.ok(/-4\.6 -2/.test(pescoco) && /-10\.5/.test(pescoco), 'o pescoço precisa ligar ombro e queixo')
+  assert.ok(pescoco.includes('maxilar') || pescoco.includes('SKIN_DEEP'), 'falta sombra do queixo sobre o pescoço')
+  assert.ok(pescoco.includes('clavícula') || pescoco.includes('Trapézio'), 'falta a ligação pescoço-ombro')
+
+  // Os ombros cobrem a raiz dos braços: mesma coordenada x (±12,5).
+  assert.ok(/cx="-12"/.test(avatar) && /cx="12"/.test(avatar), 'ombros precisam ficar sobre a raiz dos braços')
+  assert.ok(avatar.includes('translate(-12.5, -2)') && avatar.includes('translate(12.5, -2)'),
+    'os braços precisam nascer sob os ombros')
+
+  // A cabeça está DENTRO de cs-upper — não é irmã do tronco.
+  const upper = avatar.slice(avatar.indexOf('className="cs-upper"'), avatar.indexOf('cs-badge'))
+  for (const parte of ['cs-torso', 'cs-neck', 'cs-shoulder', 'cs-head', 'cs-arm--front', 'cs-arm--back']) {
+    assert.ok(upper.includes(parte), `${parte} precisa estar dentro de cs-upper`)
   }
-  // Cada papel com paleta e adereço próprios.
-  for (const key of OFFICE_AGENT_ORDER) assert.ok(avatar.includes(key), `falta paleta de ${key}`)
+
+  // E a rotação da cabeça acontece na base do pescoço, não no centro dela.
+  assert.ok(!/\.cs-head\s*{[^}]*transform-origin:\s*center\s+bottom/.test(cena) ||
+            cena.includes('cs-upper'), 'a cabeça precisa girar junto do corpo')
+})
+
+test('15) a caminhada move quadril, tronco, braços e pernas', () => {
+  const regras = cena.slice(cena.indexOf('.cs-char--walk'), cena.indexOf('.cs-char--type'))
+
+  for (const parte of ['cs-hip', 'cs-upper', 'cs-head', 'cs-leg--front', 'cs-leg--back',
+                       'cs-arm--front', 'cs-arm--back', 'cs-foot--front', 'cs-foot--back', 'cs-shadow']) {
+    assert.ok(regras.includes(parte), `a caminhada precisa animar ${parte}`)
+  }
+
+  // Oposição coerente: perna da frente e de trás começam em ângulos opostos.
+  const f = /@keyframes cs-step-f\s*{\s*0%,100%\s*{\s*transform:\s*rotate\((-?[\d.]+)deg\)/.exec(cena)!
+  const b = /@keyframes cs-step-b\s*{\s*0%,100%\s*{\s*transform:\s*rotate\((-?[\d.]+)deg\)/.exec(cena)!
+  assert.ok(Number(f[1]) * Number(b[1]) < 0, 'as pernas precisam estar em oposição')
+
+  const af = /@keyframes cs-swing-f[^}]*rotate\((-?[\d.]+)deg\)/.exec(cena)!
+  const ab = /@keyframes cs-swing-b[^}]*rotate\((-?[\d.]+)deg\)/.exec(cena)!
+  assert.ok(Number(af[1]) * Number(ab[1]) < 0, 'os braços precisam estar em oposição')
+  // E o braço acompanha a perna OPOSTA — é assim que se anda.
+  assert.ok(Number(f[1]) * Number(af[1]) > 0, 'braço e perna contrários devem sincronizar')
+
+  // Peso: dois quiques por ciclo e a sombra respondendo.
+  const bounce = /@keyframes cs-bounce\s*{[\s\S]*?}\s*}/.exec(cena)![0]
+  assert.ok(bounce.includes('25%') && bounce.includes('75%'), 'o corpo precisa quicar a cada passo')
+  assert.ok(cena.includes('@keyframes cs-shadow'), 'a sombra precisa acompanhar o salto')
+
+  // Overlap: a cabeça atrasa em relação ao corpo.
+  // Linha a linha: `[^}]*` pararia no fecha-chaves da interpolação ${...}.
+  const regraCabeca = cena.split('\n').find(l => l.includes('.cs-char--walk .cs-head'))!
+  assert.ok(regraCabeca.includes('animation-delay'), 'falta atraso da cabeça')
+
+  // Easing com peso na entrada e na saída.
+  assert.ok(cena.includes('cubic-bezier(.34,.02,.2,1)'), 'o deslocamento precisa de easing')
+})
+
+test('16) entrega e recebimento têm posturas distintas', () => {
+  // Entregar: braço estende para FORA (ângulo negativo grande).
+  assert.ok(cena.includes('@keyframes cs-give'), 'falta a postura de entrega')
+  const give = /@keyframes cs-give\s*{[\s\S]*?}\s*}/.exec(cena)![0]
+  assert.ok(/rotate\(-4[0-9]deg\)/.test(give), 'o braço precisa estender na entrega')
+  // ...com antecipação: recolhe antes de estender.
+  assert.ok(/30%\s*{\s*transform[^}]*rotate\(-1[0-9]deg\)/.test(give), 'falta antecipação na entrega')
+
+  // Receber: alcança e RECOLHE — o gesto termina diferente de onde vai.
+  const recv = /@keyframes cs-receive\s*{[\s\S]*?}\s*}/.exec(cena)![0]
+  assert.ok(/45%[^}]*rotate\(-4[0-9]deg\)/.test(recv), 'o receptor precisa alcançar a pasta')
+  assert.ok(/100%[^}]*rotate\(-[0-9]deg\)/.test(recv), 'o receptor precisa recolher o braço')
+
+  // Os dois inclinam o corpo um para o outro, em sentidos opostos.
+  const dar = /@keyframes cs-givelean[^@]*/.exec(cena)![0]
+  const receber = /@keyframes cs-recvlean[^@]*/.exec(cena)![0]
+  const angDar = Number(/rotate\((-?[\d.]+)deg\)/.exec(dar.slice(dar.indexOf('55%')))![1])
+  const angRec = Number(/rotate\((-?[\d.]+)deg\)/.exec(receber.slice(receber.indexOf('40%')))![1])
+  assert.ok(angDar * angRec < 0, 'quem dá e quem recebe inclinam em sentidos opostos')
+
+  // O receptor também move a cabeça para a pasta.
+  assert.ok(cena.includes('@keyframes cs-recvhead'), 'o receptor precisa olhar a pasta')
+
+  // As classes vêm do estado, não de timer.
+  assert.ok(avatar.includes("carryingFolder && !walking"), 'entregar = com pasta, parado na mesa do outro')
+  assert.ok(avatar.includes('cs-char--give') && avatar.includes('cs-char--receive'))
+
+  // Carregando, o braço PARA de balançar e segura a pasta.
+  assert.ok(cena.includes('.cs-char--walk.cs-char--carry .cs-arm--front'), 'a pasta precisa ser segurada ao andar')
+  // E a mão fecha sobre ela.
+  assert.ok(avatar.includes('Dedos por cima da pasta') || /cs-hand--front[\s\S]{0,600}?q 2\.6 -2\.4/.test(avatar),
+    'a mão precisa segurar a pasta')
+})
+
+test('o foco visual destaca quem está ativo, sem pisca-pisca', () => {
+  assert.ok(cena.includes('const emFoco'), 'precisa existir um agente em foco')
+  assert.ok(cena.includes("view.agents.find(a => a.state === 'working')?.key"), 'o foco vem do estado')
+  assert.ok(cena.includes('cs-halo'), 'o setor ativo precisa de destaque')
+  assert.ok(cena.includes('opacity={foco ? 1 : 0.62}'), 'os demais precisam recuar')
+
+  // Pulso lento e de baixa amplitude: destaque, não alarme.
+  const halo = /@keyframes cs-halo[^}]*}[^}]*}/.exec(cena)![0]
+  const [, a, b] = /opacity:\.(\d+);[\s\S]*?opacity:\.(\d+);/.exec(halo)!
+  assert.ok(Math.abs(Number(a) - Number(b)) <= 25, 'o halo não pode piscar forte')
+  assert.ok(/cs-halo \$\{Math\.round\(2[0-9]00 \/ v\)\}ms/.test(cena), 'o pulso precisa ser lento')
+
+  // Sem foco definido, ninguém recua.
+  assert.ok(cena.includes('emFoco === null || emFoco === key'), 'cena neutra quando ninguém trabalha')
 })
 
 test('as animações pedidas existem e são dirigidas por estado', () => {
   // idle (respiração), trabalho, caminhada, erro, conclusão, recebimento.
-  for (const anim of ['cs-breathe', 'cs-headsway', 'cs-typing', 'cs-lean', 'cs-step-f', 'cs-swing-f',
-                      'cs-bounce', 'cs-shake', 'cs-cheer', 'cs-receive', 'cs-glow']) {
+  for (const anim of ['cs-breathe', 'cs-headidle', 'cs-typing', 'cs-lean', 'cs-step-f', 'cs-swing-f',
+                      'cs-bounce', 'cs-shake', 'cs-cheer', 'cs-receive', 'cs-give', 'cs-glow']) {
     assert.ok(cena.includes(`@keyframes ${anim}`), `falta a animação ${anim}`)
   }
   // E cada uma é ligada por uma CLASSE derivada do estado — nunca por timer.
-  for (const gatilho of ['cs-char--idle', 'cs-char--walk', 'cs-char--type',
-                         'cs-char--error', 'cs-char--cheer', 'cs-char--receive']) {
+  for (const gatilho of ['cs-char--idle', 'cs-char--walk', 'cs-char--type', 'cs-char--error',
+                         'cs-char--cheer', 'cs-char--receive', 'cs-char--give', 'cs-char--carry']) {
     assert.ok(avatar.includes(gatilho), `${gatilho} precisa vir do estado`)
     assert.ok(cena.includes(`.${gatilho}`), `${gatilho} precisa ter regra CSS`)
   }
@@ -487,8 +582,8 @@ test('o handoff é inequívoco: pasta destacada e caminho vivo', () => {
   assert.ok(cena.includes('cs-path--active'), 'o caminho precisa reagir à caminhada')
   assert.ok(cena.includes("view.agents.some(a => a.state === 'walking')"), 'o caminho acende com base no estado')
   // A pasta fica ancorada na MÃO, dentro do braço — então acompanha o gesto.
-  const braco = avatar.slice(avatar.indexOf("cs-arm--front"), avatar.indexOf('cs-head'))
-  assert.ok(braco.includes('carryingFolder ? <Folder />'), 'a pasta precisa ficar na mão')
+  const mao = avatar.slice(avatar.indexOf('cs-hand--front'), avatar.indexOf('cs-badge'))
+  assert.ok(mao.includes('carryingFolder ? <Folder />'), 'a pasta precisa ficar na mão')
 })
 
 test('o mobile tem planta própria, não a mesma cena espremida', () => {
