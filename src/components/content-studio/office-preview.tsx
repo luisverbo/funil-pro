@@ -68,7 +68,6 @@ export default function OfficePreview() {
 
   const [velocidade, setVelocidade] = useState<Velocidade>('normal')
   const [pausado, setPausado] = useState(false)
-  const [timelineAberta, setTimelineAberta] = useState(false)
 
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
@@ -321,28 +320,14 @@ export default function OfficePreview() {
         </p>
       )}
 
-      {/* Linha do tempo */}
+      {/* Linha do tempo — cabeçalho, botão de ocultar e rolagem vivem no painel */}
       <section className="rounded-3xl border border-gray-100 bg-white shadow-sm p-4 sm:p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <h2 className="text-sm font-bold text-gray-900">Linha do tempo</h2>
-          {view.timeline.length > 0 && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-              {view.timeline.length}
-            </span>
-          )}
-          {/* No celular a timeline começa recolhida para o escritório caber. */}
-          <button
-            onClick={() => setTimelineAberta(a => !a)}
-            aria-expanded={timelineAberta}
-            className="sm:hidden ml-auto rounded-lg border border-gray-200 px-2.5 py-1 text-[12px] font-semibold text-gray-600"
-          >
-            {timelineAberta ? 'Ocultar' : 'Ver timeline'}
-          </button>
-        </div>
-
-        <div className={timelineAberta ? '' : 'hidden sm:block'}>
-          <TimelinePanel entries={view.timeline} currentSeq={eventoAtual} vazio={vazio} />
-        </div>
+        <TimelinePanel
+          entries={view.timeline}
+          currentSeq={eventoAtual}
+          vazio={vazio}
+          reducedMotion={reducedMotion}
+        />
       </section>
 
       <p className="mt-4 text-xs text-gray-400">
