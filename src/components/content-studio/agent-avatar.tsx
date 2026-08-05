@@ -21,6 +21,7 @@
 
 import React from 'react'
 import { Blob, Bone, Joint, Shoe, Socket } from './agent-rig'
+import type { AmbientAction } from './ambient-motion'
 import type { AgentVisualState } from '@/lib/content-studio/view-model'
 
 export interface AgentPalette {
@@ -172,8 +173,10 @@ export interface AgentAvatarProps {
   carryingFolder: boolean
   received?: boolean
   reducedMotion?: boolean
-  /** Micro-rotina cosmética (0–2). Só decora; não vem de evento. */
-  ambient?: number
+  /** Caminhando por rotina ambiental (cosmético). Nunca durante a tarefa. */
+  ambientWalking?: boolean
+  /** Ação no ponto de destino: alcançar, apontar, observar, ler. */
+  ambientAction?: AmbientAction | null
 }
 
 export default function AgentAvatar({
@@ -182,7 +185,8 @@ export default function AgentAvatar({
   carryingFolder,
   received = false,
   reducedMotion = false,
-  ambient,
+  ambientWalking = false,
+  ambientAction = null,
 }: AgentAvatarProps) {
   const p = AGENT_PALETTE[agentKey] ?? AGENT_PALETTE.researcher
 
@@ -191,7 +195,11 @@ export default function AgentAvatar({
   const erro = state === 'error'
   const pronto = state === 'done'
   const entregando = carryingFolder && !walking
-  const parado = !walking && !working
+  // A tarefa sempre vence: rotina ambiental só existe se nada real acontece.
+  const semTarefa = state === 'idle'
+  const andandoAmbiente = ambientWalking && semTarefa && !reducedMotion
+  const acao = semTarefa && !reducedMotion ? ambientAction : null
+  const parado = !walking && !working && !andandoAmbiente
 
   const classes = [
     'cs-char',
@@ -203,8 +211,11 @@ export default function AgentAvatar({
     !reducedMotion && entregando ? 'cs-char--give' : '',
     !reducedMotion && received ? 'cs-char--receive' : '',
     carryingFolder ? 'cs-char--carry' : '',
-    // Micro-rotina: só quando o agente está ocioso E fora do foco.
-    !reducedMotion && parado && ambient !== undefined ? `cs-char--amb${ambient}` : '',
+    // Locomoção ambiental: o MESMO ciclo de passos do handoff. O que muda é
+    // apenas quem escolheu o destino.
+    andandoAmbiente ? 'cs-char--walk cs-char--amb-walk' : '',
+    // Pose no ponto de destino.
+    acao ? `cs-char--act-${acao}` : '',
   ].filter(Boolean).join(' ')
 
   return (

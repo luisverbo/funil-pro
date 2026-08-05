@@ -304,6 +304,7 @@ export default function OfficePreview() {
             layout={compact ? 'compact' : 'wide'}
             reducedMotion={reducedMotion}
             speed={FATOR[velocidade]}
+            paused={pausado}
           />
         )}
       </section>

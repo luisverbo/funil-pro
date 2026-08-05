@@ -16,11 +16,17 @@
 //   compact — planta em L pensada para retrato, corredor em zigue-zague
 // ============================================================================
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import AgentAvatar, { AGENT_PALETTE } from './agent-avatar'
 import {
-  Chair, Desk, DeskSign, Door, Keyboard, Lamp, Monitor, Mug, Papers, Plant, Shelf, Window,
+  Chair, CoffeeCorner, Desk, DeskSign, Door, FileCabinet, IdeaWall, Keyboard, Lamp,
+  MeetingTable, Monitor, Mug, Papers, PlanningBoard, Plant, Shelf, Window,
 } from './office-props'
+import {
+  allowedAmbientAgents, AT_HOME, isAmbientMoving, isAwayFromDesk, resolveAmbient,
+  type AmbientState,
+} from './ambient-motion'
+import { useAmbientOfficeMotion } from './use-ambient-motion'
 import { OFFICE_AGENT_ORDER, type AgentView, type OfficeView } from '@/lib/content-studio/view-model'
 
 export type SceneLayout = 'wide' | 'compact'
@@ -47,31 +53,40 @@ const VIEWBOX: Record<SceneLayout, string> = {
   compact: '0 0 470 620',
 }
 
+/**
+ * Pontos do escritório onde um agente ocioso pode ir parar.
+ *
+ * Coordenadas do PERSONAGEM (onde ele fica em pé), não do móvel: ele para AO
+ * LADO da estante, não dentro dela. Todas escolhidas fora da faixa das mesas,
+ * para ninguém atravessar mobiliário.
+ */
+const WAYPOINTS: Record<SceneLayout, Record<string, { x: number; y: number }>> = {
+  wide: {
+    shelf:   { x: 100, y: 356 },   // Pesquisador: estante
+    window:  { x: 240, y: 350 },   // Pesquisador: janela
+    board:   { x: 400, y: 356 },   // Estrategista: quadro de planejamento
+    meeting: { x: 560, y: 350 },   // Estrategista: mesa de reunião
+    coffee:  { x: 720, y: 356 },   // Copywriter: café
+    ideas:   { x: 868, y: 350 },   // Copywriter: painel de ideias
+  },
+  compact: {
+    shelf:   { x: 246, y: 150 },
+    window:  { x: 246, y: 226 },
+    board:   { x: 226, y: 300 },
+    meeting: { x: 226, y: 386 },
+    coffee:  { x: 246, y: 462 },
+    ideas:   { x: 246, y: 540 },
+  },
+}
+
 export interface OfficeSceneProps {
   view: OfficeView
   layout?: SceneLayout
   reducedMotion?: boolean
   /** Multiplicador de velocidade da animação (1 = normal, 2 = rápido). */
   speed?: number
-}
-
-/**
- * Micro-rotina de ambiente — a camada de "vida" do escritório.
- *
- * Puramente COSMÉTICA e deliberadamente limitada:
- *   • só para quem está OCIOSO (idle) — nunca durante trabalho, caminhada,
- *     entrega, recebimento, erro ou conclusão;
- *   • nunca para quem está EM FOCO — o agente da tarefa real jamais é
- *     confundido com alguém "só se mexendo";
- *   • o índice vem da POSIÇÃO na cena, não de sorteio: a cena renderizada no
- *     servidor é idêntica à do cliente, e a captura é reproduzível.
- *
- * Não deriva de evento, não gera evento, não toca na timeline.
- */
-function ambienteDe(agent: AgentView, emFoco: string | null, indice: number): number | undefined {
-  if (agent.state !== 'idle') return undefined
-  if (emFoco === agent.key) return undefined
-  return indice % 3
+  /** Botão Pausar: congela a cena. O backend segue processando. */
+  paused?: boolean
 }
 
 export default function OfficeScene({
@@ -79,6 +94,7 @@ export default function OfficeScene({
   layout = 'wide',
   reducedMotion = false,
   speed = 1,
+  paused = false,
 }: OfficeSceneProps) {
   const desks = DESKS[layout]
   const wide = layout === 'wide'
@@ -94,6 +110,54 @@ export default function OfficeScene({
     view.agents.find(a => a.state === 'working')?.key
     ?? view.agents.find(a => a.state === 'walking')?.key
     ?? null
+
+  // Relógio da locomoção ambiental. Desligado por reduced-motion; congelado
+  // (sem zerar) pelo botão Pausar.
+  const clock = useAmbientOfficeMotion(OFFICE_AGENT_ORDER, !reducedMotion, paused, v)
+
+  // Quem pode ter rotina agora: ninguém durante handoff, no máximo um quando
+  // alguém trabalha, todos os ociosos com a cena parada.
+  const permitidos = allowedAmbientAgents(view.agents, emFoco)
+
+  /**
+   * COREOGRAFIA DE SAÍDA.
+   *
+   * Quando a tarefa chega com o agente fora da mesa, ele não pode simplesmente
+   * deslizar para lá já com a pose de trabalho. `markReturning` agenda alguns
+   * instantes de `task_returning`: ele volta ANDANDO e só então assume a pose.
+   *
+   * É disparado pelo evento real, mas é puramente visual — nada aqui atrasa,
+   * altera ou bloqueia o backend.
+   */
+  const { markReturning } = clock
+
+  useEffect(() => {
+    for (const agent of view.agents) {
+      // "Estava fora" vem do ESTADO do relógio, não de uma ref lida no render.
+      const doRelogio = clock.states[agent.key]
+      const estavaFora = doRelogio ? isAwayFromDesk(doRelogio) : false
+      const temTarefa = agent.state !== 'idle'
+      // Erro não faz a volta cosmética: para na hora, onde estiver seguro.
+      if (estavaFora && temTarefa && agent.state !== 'error') markReturning(agent.key)
+    }
+  }, [view.agents, clock.states, markReturning])
+
+  const ambienteDe = (agent: AgentView): AmbientState => {
+    const estado = resolveAmbient({
+      agentKey: agent.key,
+      visualState: agent.state,
+      allowed: permitidos.has(agent.key),
+      elapsedMs: clock.elapsedMs,
+      returningUntilMs: clock.returningUntil[agent.key],
+      reducedMotion,
+    })
+
+    // Liberada a rotina, a posição vem da agenda do relógio.
+    if (estado.phase === 'ambient_walking' || estado.phase === 'ambient_at_waypoint') {
+      return clock.states[agent.key] ?? AT_HOME
+    }
+    return estado
+  }
 
   return (
     <svg
@@ -208,11 +272,17 @@ export default function OfficeScene({
         @keyframes cs-recvLean{ 0%,100% { transform: rotate(0deg); } 42% { transform: rotate(4.6deg); } }
         @keyframes cs-recvHead{ 0%,100% { transform: rotate(0deg); } 42% { transform: rotate(-7deg); } }
 
-        /* ── micro-rotinas de ambiente (cosméticas) ─────────────────── */
-        @keyframes cs-amb-look { 0%,64%,100% { transform: rotate(0deg); } 74%,88% { transform: rotate(-13deg); } }
-        @keyframes cs-amb-read { 0%,54%,100% { transform: rotate(-4deg); } 68%,86% { transform: rotate(-40deg); } }
-        @keyframes cs-amb-shift{ 0%,70%,100% { transform: rotate(0deg); } 80%,90% { transform: rotate(2.6deg); } }
-        @keyframes cs-amb-tap  { 0%,46%,100% { transform: rotate(3deg); } 58%,72% { transform: rotate(-9deg); } }
+        /* ── ações nos pontos do escritório ──────────────────────────
+           Cada uma é uma pose mantida (forwards) enquanto o agente está no
+           ponto. A transition das juntas cobre a entrada e a saída. */
+        @keyframes cs-reach   { 0% { transform: rotate(0deg); } 100% { transform: rotate(-72deg); } }
+        @keyframes cs-reachEl { 0% { transform: rotate(0deg); } 100% { transform: rotate(-18deg); } }
+        @keyframes cs-point   { 0% { transform: rotate(0deg); } 100% { transform: rotate(-58deg); } }
+        @keyframes cs-pointEl { 0% { transform: rotate(0deg); } 100% { transform: rotate(-30deg); } }
+        @keyframes cs-observe { 0%,100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+        @keyframes cs-readArm { 0% { transform: rotate(0deg); } 100% { transform: rotate(-40deg); } }
+        @keyframes cs-readEl  { 0% { transform: rotate(0deg); } 100% { transform: rotate(62deg); } }
+        @keyframes cs-readHd  { 0%,100% { transform: rotate(6deg); } 50% { transform: rotate(10deg); } }
 
         /* ── outros ──────────────────────────────────────────────────── */
         @keyframes cs-blink   { 0%,100% { opacity:.9; } 50% { opacity:.5; } }
@@ -279,15 +349,17 @@ export default function OfficeScene({
         .cs-char--error .cs-j--head  { animation: cs-shake 640ms ease-in-out 3; }
         .cs-char--cheer              { animation: cs-cheer 1000ms cubic-bezier(.3,.6,.3,1) 2; }
 
-        /* Micro-rotinas: só decoram, e cada agente tem a sua para não
-           sincronizarem. Nunca tocam pelve, quadril ou joelho — nada que
-           possa ser confundido com "esse aqui está trabalhando". */
-        .cs-char--amb0 .cs-j--head      { animation: cs-amb-look ${Math.round(11000 / v)}ms ease-in-out infinite; }
-        .cs-char--amb0 .cs-j--shoulderR { animation: cs-amb-tap ${Math.round(11000 / v)}ms ease-in-out infinite; }
-        .cs-char--amb1 .cs-j--shoulderL { animation: cs-amb-read ${Math.round(13000 / v)}ms ease-in-out infinite; }
-        .cs-char--amb1 .cs-j--head      { animation: cs-amb-look ${Math.round(13000 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(2200 / v)}ms; }
-        .cs-char--amb2 .cs-j--spine     { animation: cs-amb-shift ${Math.round(15000 / v)}ms ease-in-out infinite; }
-        .cs-char--amb2 .cs-j--head      { animation: cs-amb-look ${Math.round(15000 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(4200 / v)}ms; }
+        /* Ações no ponto de destino. Só existem quando a rotina ambiental
+           está ativa — qualquer evento real remove a classe, e a transition
+           das juntas devolve o braço ao repouso sem estalo. */
+        .cs-char--act-reach .cs-j--shoulderR   { animation: cs-reach ${Math.round(520 / v)}ms ease-out forwards; }
+        .cs-char--act-reach .cs-j--elbowR      { animation: cs-reachEl ${Math.round(520 / v)}ms ease-out forwards; }
+        .cs-char--act-point .cs-j--shoulderR   { animation: cs-point ${Math.round(480 / v)}ms ease-out forwards; }
+        .cs-char--act-point .cs-j--elbowR      { animation: cs-pointEl ${Math.round(480 / v)}ms ease-out forwards; }
+        .cs-char--act-observe .cs-j--head      { animation: cs-observe ${Math.round(4200 / v)}ms ease-in-out infinite; }
+        .cs-char--act-read .cs-j--shoulderR    { animation: cs-readArm ${Math.round(520 / v)}ms ease-out forwards; }
+        .cs-char--act-read .cs-j--elbowR       { animation: cs-readEl ${Math.round(520 / v)}ms ease-out forwards; }
+        .cs-char--act-read .cs-j--head         { animation: cs-readHd ${Math.round(3400 / v)}ms ease-in-out infinite; }
 
         .cs-folder-glow { animation: cs-glow ${Math.round(1300 / v)}ms ease-in-out infinite; }
         .cs-screen-lines{ animation: cs-blink ${Math.round(1500 / v)}ms ease-in-out infinite; }
@@ -357,32 +429,43 @@ export default function OfficeScene({
         </g>
       )}
 
-      {/* ─── Mobiliário de canto ────────────────────────────────────── */}
+      {/* ─── Pontos de destino: cada um é o motivo de uma caminhada ──── */}
       {wide ? (
         <g>
-          <g transform="translate(58, 262)"><Shelf /></g>
-          <g transform="translate(910, 268) scale(1.15)"><Plant /></g>
-          <g transform="translate(322, 292) scale(0.95)"><Plant /></g>
-          <g transform="translate(636, 292) scale(0.95)"><Plant /></g>
+          {/* Setor do Pesquisador */}
+          <g transform="translate(62, 330)"><Shelf /></g>
+          <g transform="translate(272, 316) scale(0.92)"><FileCabinet /></g>
+          {/* Setor do Estrategista */}
+          <g transform="translate(404, 322) scale(0.95)"><PlanningBoard /></g>
+          <g transform="translate(590, 366) scale(0.82)"><MeetingTable /></g>
+          {/* Setor do Copywriter */}
+          <g transform="translate(700, 344) scale(0.92)"><CoffeeCorner /></g>
+          <g transform="translate(898, 318) scale(0.92)"><IdeaWall /></g>
+          {/* Verde nos cantos */}
+          <g transform="translate(340, 388) scale(0.8)"><Plant /></g>
+          <g transform="translate(650, 300) scale(0.75)"><Plant /></g>
         </g>
       ) : (
         <g>
-          <g transform="translate(400, 205) scale(0.85)"><Shelf /></g>
-          <g transform="translate(50, 320) scale(0.9)"><Plant /></g>
-          <g transform="translate(402, 552) scale(0.95)"><Plant /></g>
+          <g transform="translate(300, 138) scale(0.72)"><Shelf /></g>
+          <g transform="translate(310, 262) scale(0.68)"><PlanningBoard /></g>
+          <g transform="translate(316, 384) scale(0.6)"><MeetingTable /></g>
+          <g transform="translate(306, 452) scale(0.7)"><CoffeeCorner /></g>
+          <g transform="translate(310, 540) scale(0.7)"><IdeaWall /></g>
+          <g transform="translate(52, 322) scale(0.8)"><Plant /></g>
         </g>
       )}
 
       {/* ─── Corredor: o caminho da pasta ───────────────────────────── */}
       <g>
         <path
-          d={wide ? 'M 96 372 L 864 372' : 'M 214 228 L 330 386 L 214 542'}
-          stroke="#b9c7d8" strokeWidth={wide ? 26 : 22} strokeLinecap="round" fill="none" opacity="0.55"
+          d={wide ? 'M 96 384 L 864 384' : 'M 200 200 L 258 386 L 200 560'}
+          stroke="#b9c7d8" strokeWidth={wide ? 30 : 26} strokeLinecap="round" fill="none" opacity="0.5"
         />
         <path
           className={view.agents.some(a => a.state === 'walking') ? 'cs-path cs-path--active' : 'cs-path'}
-          d={wide ? 'M 96 372 L 864 372' : 'M 214 228 L 330 386 L 214 542'}
-          stroke="#94a3b8" strokeWidth="2.6" strokeDasharray="10 18" fill="none" opacity="0.85"
+          d={wide ? 'M 96 384 L 864 384' : 'M 200 200 L 258 386 L 200 560'}
+          stroke="#94a3b8" strokeWidth="2.6" strokeDasharray="10 18" fill="none" opacity="0.8"
         />
       </g>
 
@@ -439,19 +522,43 @@ export default function OfficeScene({
       })}
 
       {/* ─── Personagens ────────────────────────────────────────────── */}
-      {OFFICE_AGENT_ORDER.map((key, i) => {
+      {OFFICE_AGENT_ORDER.map(key => {
         const agent = byKey.get(key)
         if (!agent) return null
 
-        // A posição vem de `atDesk`, que veio dos eventos.
         const casa = desks[key]
-        const alvo = desks[agent.atDesk] ?? casa
-        const visitando = agent.atDesk !== key
+        const amb = ambienteDe(agent)
+        // O retorno é uma fase à parte: o agente já tem tarefa, mas ainda está
+        // voltando. Posição = mesa; pose = caminhada. Sem isso ele deslizaria
+        // para a mesa já digitando.
+        const voltandoPraTarefa = amb.phase === 'task_returning'
+        const emWaypoint = amb.phase === 'ambient_walking' || amb.phase === 'ambient_at_waypoint'
 
-        // Ao chegar na mesa do colega, para AO LADO — não em cima dele.
-        const dx = visitando ? (alvo.x >= casa.x ? -VISIT_OFFSET[layout] : VISIT_OFFSET[layout]) : 0
-        // Em pé fica um pouco à frente da mesa; sentado, atrás dela.
-        const dy = visitando || agent.state === 'walking' ? 26 : -4
+        // ── PRIORIDADE: a tarefa manda. Só quando o agente está ocioso E fora
+        //    do foco a rotina ambiental escolhe onde ele fica.
+        let alvo = desks[agent.atDesk] ?? casa
+        let dx = 0
+        let dy = -4
+
+        if (agent.atDesk !== key) {
+          // Handoff em curso: ao lado da mesa do colega, de pé.
+          alvo = desks[agent.atDesk] ?? casa
+          dx = alvo.x >= casa.x ? -VISIT_OFFSET[layout] : VISIT_OFFSET[layout]
+          dy = 26
+        } else if (agent.state === 'walking') {
+          dy = 26
+        } else if (emWaypoint && amb.waypoint) {
+          // Rotina ambiental: em pé no ponto do escritório.
+          alvo = WAYPOINTS[layout][amb.waypoint] ?? casa
+          dy = 0
+        } else if (emWaypoint || voltandoPraTarefa) {
+          // Voltando (por rotina ou por tarefa): a própria mesa, ainda de pé.
+          dy = 22
+        }
+
+        // A caminhada do rig liga tanto no handoff real quanto no ambiente —
+        // é o MESMO ciclo de passos, só muda quem decidiu o destino.
+        const andando = agent.state === 'walking' || isAmbientMoving(amb)
 
         return (
           <g
@@ -465,7 +572,8 @@ export default function OfficeScene({
               carryingFolder={agent.carryingFolder}
               received={agent.receivedFolder}
               reducedMotion={reducedMotion}
-              ambient={ambienteDe(agent, emFoco, i)}
+              ambientWalking={andando && agent.state !== 'walking'}
+              ambientAction={amb.phase === 'ambient_at_waypoint' ? amb.action : null}
             />
             <Bubble agent={agent} />
           </g>
