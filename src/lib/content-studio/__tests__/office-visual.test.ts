@@ -473,7 +473,8 @@ test('14) o rig mantém o personagem conectado: nenhuma junta pode saltar', () =
   }
 
   // E toda junta gira na própria origem, que é onde o Socket a colocou.
-  assert.ok(/\.cs-j\s*{\s*transform-origin:\s*0 0;\s*}/.test(cena), 'falta a origem única das juntas')
+  const regraJ = /\.cs-j\s*{([\s\S]*?)}/.exec(cena)![1]
+  assert.ok(/transform-origin:\s*0 0/.test(regraJ), 'falta a origem única das juntas')
 
   // A cadeia completa existe, do chão à cabeça.
   for (const junta of ['pelvis', 'spine', 'neck', 'head', 'shoulderL', 'shoulderR',
@@ -543,6 +544,106 @@ test('16) entrega e recebimento têm poses distintas e completas', () => {
   assert.ok(cena.includes('.cs-char--walk.cs-char--carry .cs-j--shoulderR'), 'a pasta precisa ser segurada')
 })
 
+test('S1) Safari: toda junta tem reference box e origem explícitos', () => {
+  // O valor inicial de `transform-box` para SVG varia entre implementações.
+  // Sem declará-lo, a origem de rotação de CADA junta muda de navegador para
+  // navegador — no Safari o membro giraria em torno de outro ponto.
+  const regra = /\.cs-j\s*{([\s\S]*?)}/.exec(cena)![1]
+  assert.ok(/transform-box:\s*view-box/.test(regra), 'falta transform-box explícito nas juntas')
+  assert.ok(/transform-origin:\s*0 0/.test(regra), 'a junta precisa girar na própria origem')
+
+  // Toda animação que usa scale/rotate precisa de reference box declarado —
+  // senão escala a partir do centro do viewBox, não do próprio elemento.
+  const linhas = cena.split('\n')
+  for (const linha of linhas) {
+    if (!linha.includes('transform-origin:')) continue
+    if (linha.trim().startsWith('//') || linha.trim().startsWith('*')) continue
+    const naRegraDasJuntas = linha.includes('transform-origin: 0 0')
+    assert.ok(
+      naRegraDasJuntas || linha.includes('transform-box:'),
+      `transform-origin sem transform-box (o Safari escolheria outro ponto): ${linha.trim()}`,
+    )
+  }
+
+  // A sombra ESCALA — é o caso mais sensível de todos.
+  const sombra = linhas.find(l => l.includes('.cs-char--walk .cs-shadow'))!
+  assert.ok(sombra.includes('transform-box: fill-box'), 'a sombra precisa escalar na própria caixa')
+})
+
+test('S2) a troca de estado devolve as juntas ao repouso sem estalo', () => {
+  // Quando uma classe sai — o `forwards` da entrega, o `--carry` que trava o
+  // braço — o transform desaparece de uma vez. A transition interpola essa
+  // volta, e é o que impede o membro de piscar para a pose neutra.
+  const regra = /\.cs-j\s*{([\s\S]*?)}/.exec(cena)![1]
+  assert.ok(/transition:\s*transform/.test(regra), 'falta transição de retorno nas juntas')
+
+  const ms = Number(/transition:\s*transform\s+(\d+)ms/.exec(regra)![1])
+  assert.ok(ms >= 150 && ms <= 600, `retorno fora de faixa confortável: ${ms}ms`)
+
+  // Todo estado que TRAVA uma junta com transform estático precisa da rede.
+  const travas = cena.split('\n').filter(l => /animation:\s*none/.test(l) && l.includes('transform:'))
+  assert.ok(travas.length >= 2, 'as travas de pose precisam existir')
+  for (const t of travas) {
+    assert.ok(/\.cs-j--/.test(t), `trava fora de uma junta: ${t.trim()}`)
+  }
+
+  // `forwards` só é aceitável porque a transition cobre a saída.
+  assert.ok(/cs-giveArm[^;]*forwards/.test(cena), 'a entrega precisa manter a pose')
+})
+
+test('S3) mobile: sem filtro contínuo e nada é cortado no viewBox', () => {
+  // `filter` num grupo grande obriga o Safari/iOS a manter uma camada
+  // rasterizada enquanto durar — custo contínuo por um efeito decorativo.
+  assert.ok(!/filter:\s*(saturate|blur|drop-shadow|grayscale)/.test(cena),
+    'filtro contínuo na cena — caro no iOS')
+  assert.ok(!/<filter\b/.test(cena + props + avatar), 'filtro SVG na cena — caro no iOS')
+
+  // Animação só existe onde o elemento é realmente desenhado.
+  assert.ok(cena.includes('{on && (') || props.includes('{on && ('),
+    'as linhas do monitor só devem existir com o monitor aceso')
+  assert.ok(avatar.includes('carryingFolder ? <Folder />'), 'o glow só existe com a pasta')
+
+  // O personagem cabe no viewBox mesmo deslocado para a mesa do colega.
+  const vb = (nome: string) => {
+    const m = new RegExp(`${nome}: '0 0 (\\d+) (\\d+)'`).exec(cena)!
+    return { w: Number(m[1]), h: Number(m[2]) }
+  }
+  const bloco = cena.slice(cena.indexOf('const DESKS'), cena.indexOf('const VISIT_OFFSET'))
+  const parse = (t: string) => [...t.matchAll(/x:\s*(\d+),\s*y:\s*(\d+)/g)].map(m => ({ x: +m[1], y: +m[2] }))
+  const mesas = {
+    wide: parse(bloco.slice(bloco.indexOf('wide:'), bloco.indexOf('compact:'))),
+    compact: parse(bloco.slice(bloco.indexOf('compact:'))),
+  }
+  const offsets = /VISIT_OFFSET[^=]*=\s*{\s*wide:\s*(\d+),\s*compact:\s*(\d+)/.exec(cena)!
+  const visita = { wide: Number(offsets[1]), compact: Number(offsets[2]) }
+
+  // Meia-largura do personagem (~19) + deslocamento da visita.
+  for (const layout of ['wide', 'compact'] as const) {
+    const { w, h } = vb(layout)
+    for (const { x, y } of mesas[layout]) {
+      const esq = x - visita[layout] - 19
+      const dir = x + visita[layout] + 19
+      assert.ok(esq > 0, `${layout}: personagem cortado à esquerda (x=${x})`)
+      assert.ok(dir < w, `${layout}: personagem cortado à direita (x=${x}, w=${w})`)
+      // Em pé fica 26px à frente da mesa; a sombra vai até ~+60.
+      assert.ok(y + 26 + 60 < h, `${layout}: personagem cortado embaixo (y=${y}, h=${h})`)
+      assert.ok(y - 56 > 0, `${layout}: balão cortado no topo (y=${y})`)
+    }
+  }
+})
+
+test('S4) reduced-motion desliga também as micro-rotinas', () => {
+  // Duas camadas: o CSS mata toda animação da cena...
+  const bloco = /@media \(prefers-reduced-motion: reduce\)\s*{([\s\S]*?)}\s*}/.exec(cena)![1]
+  assert.ok(/animation:\s*none\s*!important/.test(bloco), 'reduced-motion precisa parar as animações')
+  assert.ok(/transition:\s*none\s*!important/.test(bloco), 'reduced-motion precisa parar as transições')
+  assert.ok(/\.cs-scene \*/.test(bloco), 'a regra precisa alcançar a cena inteira — inclusive o ambiente')
+
+  // ...e o avatar nem chega a aplicar a classe de ambiente.
+  assert.ok(/!reducedMotion && parado && ambient !== undefined/.test(avatar),
+    'a classe de ambiente precisa depender de reducedMotion')
+})
+
 test('17) micro-rotinas são cosméticas: não tocam backend nem timeline', () => {
   assert.ok(cena.includes('function ambienteDe'), 'falta a camada de vida')
 
@@ -588,8 +689,11 @@ test('18) agentes ociosos não roubam o foco do agente ativo', () => {
 
   // O foco continua vindo do estado, e os demais recuam.
   assert.ok(cena.includes("view.agents.find(a => a.state === 'working')?.key"))
-  assert.ok(cena.includes('opacity={foco ? 1 : 0.55}'), 'os demais precisam recuar')
-  assert.ok(cena.includes("saturate(.62)"), 'os demais precisam dessaturar')
+  const recuo = /opacity=\{foco \? 1 : ([\d.]+)\}/.exec(cena)
+  assert.ok(recuo, 'os demais precisam recuar')
+  assert.ok(Number(recuo![1]) <= 0.7, `recuo fraco demais: ${recuo![1]}`)
+  // Sem filtro: o custo de rasterização no iOS não compensa a dessaturação.
+  assert.ok(!/filter:\s*saturate/.test(cena), 'o recuo não pode usar filtro')
   assert.ok(cena.includes('emFoco === null || emFoco === key'), 'cena neutra quando ninguém trabalha')
 })
 

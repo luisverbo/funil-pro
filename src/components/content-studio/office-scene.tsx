@@ -140,12 +140,26 @@ export default function OfficeScene({
            chegada. É o easing que separa "andar" de "deslizar". */
         .cs-actor  { transition: transform var(--cs-walk) cubic-bezier(.34,.02,.2,1); }
         .cs-screen { transition: fill 340ms ease; }
-        .cs-station{ transition: opacity 480ms ease, filter 480ms ease; }
+        .cs-station{ transition: opacity 480ms ease; }
 
         /* TODA junta gira em torno da própria origem — o Socket já a colocou
            no lugar. Nenhum keyframe precisa (nem pode) mexer em translate, e é
-           por isso que nada salta quando uma animação começa ou termina. */
-        .cs-j { transform-origin: 0 0; }
+           por isso que nada salta quando uma animação começa ou termina.
+           
+           transform-box DECLARADO de propósito: o valor inicial para SVG
+           varia entre implementações, e um reference box diferente moveria a
+           origem de rotação de toda junta. Fixá-lo aqui tira o Safari (e
+           qualquer outro) do palpite.
+           
+           A transition é a rede de segurança das trocas de estado: quando uma
+           classe sai — o forwards da entrega, o --carry que trava o braço —
+           a junta volta ao repouso INTERPOLANDO em vez de estalar. É o que
+           impede o membro de piscar para a pose neutra. */
+        .cs-j {
+          transform-box: view-box;
+          transform-origin: 0 0;
+          transition: transform 320ms cubic-bezier(.3,.1,.2,1);
+        }
 
         /* ── repouso em pé ────────────────────────────────────────────── */
         @keyframes cs-breathe { 0%,100% { transform: rotate(0deg) translateY(0); } 50% { transform: rotate(0deg) translateY(-1.2px); } }
@@ -210,7 +224,9 @@ export default function OfficeScene({
         @keyframes cs-halo    { 0%,100% { opacity:.30; } 50% { opacity:.52; } }
 
         /* Repouso em pé: respira, a cabeça oscila, os braços acompanham. */
-        .cs-char--idle .cs-torso        { animation: cs-breathe ${Math.round(3600 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
+        /* cs-breathe só translada: origem irrelevante, e declará-la seria uma
+           dependência inútil de reference box. */
+        .cs-char--idle .cs-torso        { animation: cs-breathe ${Math.round(3600 / v)}ms ease-in-out infinite; }
         .cs-char--idle .cs-j--head      { animation: cs-headidle ${Math.round(5000 / v)}ms ease-in-out infinite; }
         .cs-char--idle .cs-j--neck      { animation: cs-neckidle ${Math.round(5000 / v)}ms ease-in-out infinite; }
         .cs-char--idle .cs-j--shoulderR { animation: cs-armidleR ${Math.round(4200 / v)}ms ease-in-out infinite; }
@@ -220,7 +236,10 @@ export default function OfficeScene({
         /* Caminhando. A pelve e a coluna girando em oposição são o que dá
            centro de massa; joelho e tornozelo dobrando dão a transferência. */
         .cs-char--walk                  { animation: cs-bounce ${Math.round(640 / v)}ms ease-in-out infinite; }
-        .cs-char--walk .cs-shadow       { animation: cs-shadow ${Math.round(640 / v)}ms ease-in-out infinite; transform-origin: center; }
+        /* fill-box: a sombra encolhe em torno do PRÓPRIO centro. Com o
+           reference box do viewBox ela escalaria a partir do meio da cena e
+           sairia de baixo do personagem. */
+        .cs-char--walk .cs-shadow       { animation: cs-shadow ${Math.round(640 / v)}ms ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
         .cs-char--walk .cs-j--pelvis    { animation: cs-pelvis ${Math.round(640 / v)}ms ease-in-out infinite; }
         .cs-char--walk .cs-j--spine     { animation: cs-spine ${Math.round(640 / v)}ms ease-in-out infinite; }
         .cs-char--walk .cs-j--head      { animation: cs-headlag ${Math.round(640 / v)}ms ease-in-out infinite; animation-delay: ${Math.round(95 / v)}ms; }
@@ -273,7 +292,7 @@ export default function OfficeScene({
         .cs-folder-glow { animation: cs-glow ${Math.round(1300 / v)}ms ease-in-out infinite; }
         .cs-screen-lines{ animation: cs-blink ${Math.round(1500 / v)}ms ease-in-out infinite; }
         .cs-path--active{ animation: cs-dash ${Math.round(900 / v)}ms linear infinite; }
-        .cs-leaves      { animation: cs-leafsway ${Math.round(5200 / v)}ms ease-in-out infinite; transform-origin: center bottom; }
+        .cs-leaves      { animation: cs-leafsway ${Math.round(5200 / v)}ms ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
         .cs-halo        { animation: cs-halo ${Math.round(2600 / v)}ms ease-in-out infinite; }
 
         /* O usuário mandou parar de mexer: paramos tudo. */
@@ -378,12 +397,14 @@ export default function OfficeScene({
         const foco = emFoco === null || emFoco === key
 
         return (
+          // Recuo só por opacidade. `filter` obriga o Safari/iOS a rasterizar
+          // o grupo inteiro numa camada própria e mantê-la enquanto durar —
+          // caro demais para um efeito que a opacidade já resolve.
           <g
             key={key}
             className="cs-station"
             transform={`translate(${pos.x}, ${pos.y})`}
-            opacity={foco ? 1 : 0.55}
-            style={foco ? undefined : { filter: 'saturate(.62)' }}
+            opacity={foco ? 1 : 0.5}
           >
             {/* Halo do setor em foco — pulso lento, longe de pisca-pisca */}
             {emFoco === key && (
