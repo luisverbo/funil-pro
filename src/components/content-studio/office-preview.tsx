@@ -18,6 +18,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExtern
 
 import { advanceDemo, getDemoState, getLatestDemo, startDemoProduction } from '@/app/actions/content-studio'
 import {
+  advanceProduction,
+  createProduction,
+  getLatestProduction,
+  getProductionState,
+  listProductions,
+  type ProductionSummary,
+} from '@/app/actions/content-production'
+import { emptyProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
+import type { BriefField } from '@/lib/content-studio/brief'
+import ProductionForm from './production-form'
+import ResultPanel from './result-panel'
+import {
   buildOfficeView,
   productionStatusLabel,
   type OfficeView,
@@ -25,6 +37,15 @@ import {
 import type { PublicEvent } from '@/lib/content-studio/demo-guard'
 import OfficeScene from './office-scene'
 import TimelinePanel from './timeline-panel'
+
+/**
+ * Demonstração e produção real são FONTES SEPARADAS.
+ *
+ * Nunca compartilham lista de eventos: trocar de modo zera o que está na tela e
+ * recarrega do lado certo. Misturar as duas mostraria um escritório dirigido
+ * por eventos de duas produções diferentes — e a timeline viraria ficção.
+ */
+type Modo = 'demo' | 'producao'
 
 const REVEAL_MS = 950         // ritmo base de revelação dos eventos gravados
 const TICK_MS = 400           // intervalo entre pedidos de avanço ao servidor
@@ -69,16 +90,40 @@ export default function OfficePreview() {
   const [velocidade, setVelocidade] = useState<Velocidade>('normal')
   const [pausado, setPausado] = useState(false)
 
+  // ─── Produção real ───────────────────────────────────────────────────────
+  const [modo, setModo] = useState<Modo>('producao')
+  const [result, setResult] = useState<ProductionResult>(emptyProductionResult)
+  const [producoes, setProducoes] = useState<ProductionSummary[]>([])
+  const [criando, setCriando] = useState(false)
+  const [erroBrief, setErroBrief] = useState<string | null>(null)
+
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
 
   const cancelled = useRef(false)
   useEffect(() => () => { cancelled.current = true }, [])
 
-  // Carrega a última demonstração do tenant, se houver.
+  /**
+   * Retomada ao abrir a página — só LEITURA.
+   *
+   * Recarregar NUNCA cria produção: as duas funções chamadas aqui apenas leem
+   * a última produção (ou demonstração) já persistida. Se não houver nenhuma, a
+   * tela fica vazia esperando o briefing.
+   */
   useEffect(() => {
     let vivo = true
-    getLatestDemo()
+
+    // Duas chamadas distintas, sem união de tipos: a produção real devolve
+    // `result`, a demonstração não. Unir as duas aqui esconderia essa diferença.
+    const carregar = modo === 'demo'
+      ? getLatestDemo().then(res => (
+          res.ok
+            ? { ok: true as const, data: res.data && { ...res.data, result: emptyProductionResult() } }
+            : res
+        ))
+      : getLatestProduction()
+
+    carregar
       .then(res => {
         if (!vivo) return
         if (!res.ok) { setError(res.error); return }
@@ -87,12 +132,23 @@ export default function OfficePreview() {
           setStatus(res.data.production.status)
           setAllEvents(res.data.events)
           setRevealed(res.data.events.length) // já aconteceu: mostra completa
+          setResult(res.data.result)
         }
       })
-      .catch(() => { if (vivo) setError('Não foi possível carregar a demonstração. Tente novamente.') })
+      .catch(() => { if (vivo) setError('Não foi possível carregar. Tente novamente.') })
       .finally(() => { if (vivo) setLoading(false) })
     return () => { vivo = false }
-  }, [])
+  }, [modo])
+
+  // Lista de produções para o seletor. Só leitura, só do tenant da sessão.
+  useEffect(() => {
+    if (modo !== 'producao') return
+    let vivo = true
+    listProductions()
+      .then(res => { if (vivo && res.ok) setProducoes(res.data) })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [modo, productionId])
 
   // Revela os eventos já gravados, um a um. Nunca cria evento.
   // Pausar apenas suspende ESTE efeito — o backend não sabe que existe pausa.
@@ -178,6 +234,124 @@ export default function OfficePreview() {
     setStatus(res.data.production.status)
   }, [productionId])
 
+  /**
+   * Troca a fonte exibida.
+   *
+   * O reset acontece AQUI, no evento, e não no efeito de carga: nenhum evento
+   * do modo anterior pode sobreviver à transição, e limpar antes da chamada
+   * garante que a tela nunca mostre a mistura por um instante sequer.
+   */
+  const trocarModo = useCallback((proximo: Modo) => {
+    setModo(atual => {
+      if (atual === proximo) return atual
+      setLoading(true)
+      setAllEvents([])
+      setRevealed(0)
+      setResult(emptyProductionResult())
+      setProducoes([])
+      setProductionId(null)
+      setStatus(null)
+      setError(null)
+      setErroBrief(null)
+      setPausado(false)
+      return proximo
+    })
+  }, [])
+
+  /**
+   * Laço de avanço da produção real.
+   *
+   * O cliente só pede "processe o próximo passo". Ele não escolhe agente, não
+   * envia status e não envia output — tudo isso é decidido e gravado no
+   * servidor. Repetir a chamada é seguro: sem job aberto, é no-op.
+   */
+  const avancarAteParar = useCallback(async (id: string) => {
+    const limite = Date.now() + MAX_TOTAL_MS
+    let semProgresso = 0
+    let ultimoTotal = -1
+
+    for (let i = 0; i < MAX_TICKS; i++) {
+      if (cancelled.current) return
+      if (Date.now() > limite) {
+        setError('A produção demorou mais que o esperado. Recarregue para ver o andamento.')
+        return
+      }
+
+      const res = await advanceProduction(id)
+      if (cancelled.current) return
+      if (!res.ok) { setError(res.error); return }
+
+      setAllEvents(res.data.events)
+      setStatus(res.data.production.status)
+      setResult(res.data.result)
+
+      if (!res.data.pending) return   // acabou: para imediatamente
+
+      semProgresso = res.data.events.length === ultimoTotal ? semProgresso + 1 : 0
+      ultimoTotal = res.data.events.length
+      if (semProgresso >= MAX_SEM_PROGRESSO) {
+        setError('A produção parou de avançar. Tente novamente.')
+        return
+      }
+
+      await new Promise(r => setTimeout(r, TICK_MS))
+    }
+  }, [])
+
+  /** Cria a produção a partir do briefing e acompanha até o portão de aprovação. */
+  const iniciarProducao = useCallback(async (
+    valores: Record<BriefField, string>,
+    idempotencyKey: string,
+  ) => {
+    if (criando || running) return
+
+    setErroBrief(null)
+    setError(null)
+    setCriando(true)
+    setRunning(true)
+    setPausado(false)
+    setAllEvents([])
+    setRevealed(0)
+    setResult(emptyProductionResult())
+
+    try {
+      // A chave viaja com o briefing: dois envios iguais devolvem a MESMA
+      // produção, mesmo que o botão desabilitado não tenha segurado o segundo.
+      const criada = await createProduction({ ...valores, idempotencyKey })
+      if (!criada.ok) { setErroBrief(criada.error); return }
+      if (cancelled.current) return
+
+      const id = criada.data.production.id
+      setProductionId(id)
+      setStatus(criada.data.production.status)
+      setAllEvents(criada.data.events)
+      setResult(criada.data.result)
+
+      if (criada.data.pending) await avancarAteParar(id)
+    } catch {
+      setErroBrief('Não foi possível iniciar a produção. Tente novamente.')
+    } finally {
+      if (!cancelled.current) { setCriando(false); setRunning(false) }
+    }
+  }, [avancarAteParar, criando, running])
+
+  /** Troca a produção exibida. Só lê — nunca dispara execução. */
+  const abrirProducao = useCallback(async (id: string) => {
+    if (running) return
+    setError(null)
+    setPausado(false)
+    setRevealed(0)
+    setAllEvents([])
+    setResult(emptyProductionResult())
+
+    const res = await getProductionState(id)
+    if (!res.ok) { setError(res.error); return }
+    setProductionId(id)
+    setStatus(res.data.production.status)
+    setAllEvents(res.data.events)
+    setResult(res.data.result)
+  }, [running])
+
   const vazio = !loading && allEvents.length === 0 && !running
   const estadoCor =
     status === 'failed' ? 'text-rose-600'
@@ -221,8 +395,58 @@ export default function OfficePreview() {
         </div>
       </header>
 
+      {/* Seletor de fonte: demonstração e produção real nunca se misturam. */}
+      <div
+        className="mb-3 inline-flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden"
+        role="group"
+        aria-label="O que mostrar no escritório"
+      >
+        {([['producao', 'Produção'], ['demo', 'Demonstração']] as const).map(([valor, rotulo]) => (
+          <button
+            key={valor}
+            type="button"
+            onClick={() => trocarModo(valor)}
+            disabled={running || criando}
+            aria-pressed={modo === valor}
+            className={`px-4 py-2.5 text-sm font-bold transition-colors disabled:opacity-50 ${
+              modo === valor ? 'bg-indigo-500 text-white' : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {/* Briefing — só no modo produção. Não some por causa da timeline. */}
+      {modo === 'producao' && (
+        <ProductionForm onSubmit={iniciarProducao} enviando={criando} erro={erroBrief} />
+      )}
+
+      {/* Produções do tenant — trocar de produção só LÊ, nunca executa. */}
+      {modo === 'producao' && producoes.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <label htmlFor="cs-producao" className="text-[12px] font-semibold text-gray-600">
+            Produção
+          </label>
+          <select
+            id="cs-producao"
+            value={productionId ?? ''}
+            disabled={running || criando}
+            onChange={e => { void abrirProducao(e.target.value) }}
+            className="max-w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 disabled:opacity-50"
+          >
+            {producoes.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.title ?? 'Sem título'} — {productionStatusLabel(p.status)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* Controles — HUD compacto, tudo numa faixa */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        {modo === 'demo' && (
         <button
           onClick={iniciar}
           disabled={running}
@@ -231,11 +455,12 @@ export default function OfficePreview() {
           <span aria-hidden>{running ? '⏳' : '▶'}</span>
           {running ? 'Executando...' : 'Iniciar demonstração'}
         </button>
+        )}
 
         <div className="inline-flex rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <button
             onClick={reiniciar}
-            disabled={running || !productionId}
+            disabled={running || !productionId || modo !== 'demo'}
             className="px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
             title="Reproduz de novo os eventos já gravados"
           >
@@ -318,6 +543,11 @@ export default function OfficePreview() {
         <p className="mb-4 rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-800">
           A produção falhou. A linha do tempo mostra em qual agente parou.
         </p>
+      )}
+
+      {/* Resultado — conteúdo vindo pronto do servidor, lido de cs_steps */}
+      {modo === 'producao' && (
+        <ResultPanel result={result} aguardandoAprovacao={status === 'awaiting_approval'} />
       )}
 
       {/* Linha do tempo — cabeçalho, botão de ocultar e rolagem vivem no painel */}

@@ -354,9 +354,22 @@ test('produção forjada pelo cliente fica presa ao pipeline stub, sem custo', a
   // 3. Nenhum agente com IA está registrado — não há o que o pipeline alcance.
   assert.ok(!/anthropic|openai/i.test(registry))
 
-  // 4. Só existem dois pipelines, ambos de stub.
+  // 4. Existem outros pipelines (a Fase 2A acrescentou o de produção), e a
+  //    garantia que importa não é a CONTAGEM: é que a demonstração continua
+  //    presa ao seu, e que NENHUM pipeline alcança um agente com IA.
   const chaves = [...pipeline.matchAll(/key: '([^']+)'/g)].map(m => m[1])
-  assert.deepEqual(chaves.sort(), ['office_demo_v1', 'stub_v1'])
+  assert.ok(chaves.includes('office_demo_v1') && chaves.includes('stub_v1'))
+  assert.equal(DEMO_PIPELINE_KEY, 'office_demo_v1',
+    'a demonstração mudou de pipeline — o guard precisa acompanhar')
+
+  // Todo agente registrado é determinístico e declara custo zero.
+  const carrossel = readFileSync(
+    join(RAIZ, 'src/lib/content-studio/agents/carousel.ts'), 'utf8')
+  const carrosselSemComentarios = carrossel
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+  assert.ok(!/\bfetch\s*\(/.test(carrosselSemComentarios))
+  assert.ok(!/anthropic|openai|claude|gpt/i.test(carrosselSemComentarios))
+  assert.ok(!carrosselSemComentarios.includes('process.env'))
 })
 
 test('mesmo forjando o brief, o cliente não escolhe o pipeline', () => {
