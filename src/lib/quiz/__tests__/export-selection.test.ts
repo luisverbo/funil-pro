@@ -120,10 +120,65 @@ test('7) a tela oferece os dois formatos e a escolha de páginas', () => {
   assert.ok(v.includes("handleExport('csv')") && v.includes("handleExport('pdf')"),
     'faltou um dos formatos')
   assert.ok(v.includes('Baixar CSV') && v.includes('Gerar PDF'), 'rótulos dos botões ausentes')
-  assert.ok(v.includes('Marcar todas') && v.includes('Desmarcar todas'), 'sem atalho de seleção')
+  assert.ok(v.includes('Marcar/desmarcar todas') && v.includes('Desmarcar vazias'),
+    'sem atalho de seleção em massa')
   // O botão da barra abre a seleção — não baixa direto, como fazia antes.
   assert.ok(v.includes('onClick={abrirExport}'), 'o botão ainda baixaria sem perguntar')
   assert.ok(!v.includes('exportLeadsCSV'), 'a exportação antiga (tudo de uma vez) continua ligada')
+})
+
+test('8) seleção por COLUNA: cada pergunta pode entrar ou sair sozinha', () => {
+  const a = ler(ACTION)
+  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  assert.ok(corpo.includes('const filtroColunas'), 'sem filtro por coluna')
+  assert.ok(corpo.includes('const querColuna = (chave: string) => !filtroColunas || filtroColunas.has(chave)'),
+    'o filtro de coluna não é lista branca')
+  // Sem filtro = tudo (nada quebra para quem não escolhe).
+  assert.ok(corpo.includes('!filtroColunas ||'), 'ausência de filtro deveria manter todas as colunas')
+  // Página que perdeu todas as colunas some do cabeçalho composto.
+  assert.ok(corpo.includes('const paginasComColuna = escolhidas.filter'),
+    'página sem coluna escolhida ainda contaria para o rótulo')
+
+  const v = ler(VIEW)
+  assert.ok(v.includes('columnKeys: [...colunasSel]'), 'a tela não envia a seleção por coluna')
+})
+
+test('9) colunas VAZIAS são visíveis e desmarcáveis em um clique', () => {
+  const a = ler(ACTION)
+  const estrutura = corpoDe(a, 'export async function getExportStructure')
+  assert.ok(estrutura.includes('respondentes[coluna.chave]?.size ?? 0'),
+    'a contagem por coluna não é calculada')
+  // Conta LEADS distintos, não eventos: quem corrigiu a resposta conta uma vez.
+  assert.ok(estrutura.includes('.add(ev.lead_id as string)'), 'contaria eventos em vez de leads')
+
+  const v = ler(VIEW)
+  assert.ok(v.includes("{c.respostas === 0 ? 'sem respostas' : `${c.respostas} resp.`}"),
+    'a tela não mostra quais colunas estão vazias')
+  assert.ok(v.includes('Desmarcar vazias'), 'sem atalho para tirar as colunas vazias')
+  // O padrão já vem sem as vazias — mas elas continuam LISTADAS para marcar.
+  assert.ok(v.includes('const comResposta = r.paginas.flatMap'), 'a seleção inicial ignora a contagem')
+})
+
+test('10) ocultar coluna é reversível, visível e não apaga dado', () => {
+  const v = ler(VIEW)
+  assert.ok(v.includes('function useColunasOcultas'), 'sem controle de colunas ocultas')
+  const hook = corpoDe(v, 'function useColunasOcultas')
+  // Preferência de leitura: navegador, por quiz — nunca o banco.
+  assert.ok(hook.includes('`quiz-colunas-ocultas:${quizId}`'), 'a preferência não é por quiz')
+  assert.ok(!/supabase|fetch\(/i.test(hook), 'ocultar coluna não pode tocar o servidor')
+  // Fonte externa lida do jeito certo (a regra de lint do projeto reprova
+  // setState dentro de efeito).
+  assert.ok(v.includes('useSyncExternalStore(subscribe, getSnapshot'), 'leitura do storage em efeito')
+  assert.ok(hook.includes('cache.current = { bruto, valor: new Set(lista) }'),
+    'snapshot sem cache causaria renderização infinita')
+
+  // O estado é VISÍVEL e desfazível.
+  assert.ok(v.includes("{ocultas.size === 1 ? 'coluna oculta' : 'colunas ocultas'}"),
+    'nada avisa que existem colunas ocultas')
+  assert.ok(v.includes('onClick={mostrarTodas}'), 'sem como trazer as colunas de volta')
+  // A tabela respeita a preferência no cabeçalho E nas linhas.
+  assert.ok((v.match(/pages\.filter\(p => !ocultas\.has\(p\.id\)\)/g) ?? []).length >= 2,
+    'cabeçalho e linhas precisam esconder a mesma coluna')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

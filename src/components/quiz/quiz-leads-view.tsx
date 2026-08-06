@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import {
   getQuizLeads, getQuizStats, resetQuizLeads, getAnswerBreakdown,
   getExportStructure, exportLeadsTable, type ExportPageInfo, type ExportTable,
@@ -78,6 +78,69 @@ function iconeCampo(tipo: string): string {
   if (tipo === 'field_text' || tipo === 'field_textarea') return '👤'
   if (tipo === 'field_number' || tipo === 'field_date') return '🔢'
   return '•'
+}
+
+/** Chaves das colunas de lead — o servidor usa as mesmas na exportação. */
+const COLUNAS_LEAD_CHAVES = [
+  'lead:id', 'lead:data', 'lead:status', 'lead:nome', 'lead:email',
+  'lead:telefone', 'lead:score', 'lead:resultado', 'lead:utm_source', 'lead:utm_campaign',
+]
+
+/**
+ * Colunas ocultas, guardadas no navegador por quiz.
+ *
+ * `useSyncExternalStore` em vez de useEffect + setState: o localStorage é uma
+ * fonte EXTERNA, e ler dela dentro de um efeito dispara renderização em
+ * cascata (a regra de lint do projeto reprova, com razão). No servidor o
+ * snapshot é sempre vazio — a primeira pintura nunca diverge da hidratação.
+ */
+function useColunasOcultas(quizId: string) {
+  const chave = `quiz-colunas-ocultas:${quizId}`
+  const cache = useRef<{ bruto: string | null; valor: Set<string> }>({ bruto: null, valor: new Set() })
+
+  const subscribe = useCallback((notificar: () => void) => {
+    const onChange = () => notificar()
+    window.addEventListener('storage', onChange)
+    window.addEventListener('quiz-colunas-ocultas', onChange)
+    return () => {
+      window.removeEventListener('storage', onChange)
+      window.removeEventListener('quiz-colunas-ocultas', onChange)
+    }
+  }, [])
+
+  const getSnapshot = useCallback(() => {
+    // A MESMA referência precisa voltar enquanto o conteúdo não mudar, senão
+    // o React re-renderiza para sempre.
+    let bruto: string | null = null
+    try { bruto = localStorage.getItem(chave) } catch { bruto = null }
+    if (bruto !== cache.current.bruto) {
+      let lista: string[] = []
+      try { lista = bruto ? (JSON.parse(bruto) as string[]) : [] } catch { lista = [] }
+      cache.current = { bruto, valor: new Set(lista) }
+    }
+    return cache.current.valor
+  }, [chave])
+
+  const VAZIO = useRef(new Set<string>())
+  const ocultas = useSyncExternalStore(subscribe, getSnapshot, () => VAZIO.current)
+
+  const gravar = useCallback((novo: Set<string>) => {
+    try {
+      if (novo.size === 0) localStorage.removeItem(chave)
+      else localStorage.setItem(chave, JSON.stringify([...novo]))
+    } catch { /* sem persistência: a sessão atual ainda funciona */ }
+    window.dispatchEvent(new Event('quiz-colunas-ocultas'))
+  }, [chave])
+
+  const alternar = useCallback((pageId: string) => {
+    const novo = new Set(getSnapshot())
+    if (novo.has(pageId)) novo.delete(pageId); else novo.add(pageId)
+    gravar(novo)
+  }, [getSnapshot, gravar])
+
+  const mostrarTodas = useCallback(() => gravar(new Set()), [gravar])
+
+  return { ocultas, alternar, mostrarTodas }
 }
 
 // Derive what happened on a given page for a lead
@@ -314,7 +377,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   // Seleção de exportação: quais páginas, se inclui os dados do lead, e erro.
   const [exportOpen, setExportOpen] = useState(false)
   const [paginasExport, setPaginasExport] = useState<ExportPageInfo[]>([])
-  const [paginasSel, setPaginasSel] = useState<Set<string>>(new Set())
+  const [colunasSel, setColunasSel] = useState<Set<string>>(new Set())
   const [incluirLeadExport, setIncluirLeadExport] = useState(true)
   const [erroExport, setErroExport] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
@@ -337,6 +400,8 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     return () => clearTimeout(t)
   }, [searchInput])
 
+  const { ocultas, alternar: alternarOculta, mostrarTodas } = useColunasOcultas(quizId)
+
   /** Abre o seletor de exportação já sabendo quais páginas existem. */
   async function abrirExport() {
     setErroExport(null)
@@ -345,8 +410,11 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       const r = await getExportStructure(quizId)
       if ('error' in r) { setErroExport(r.error); return }
       setPaginasExport(r.paginas)
-      // Começa com TUDO marcado: quem quiser filtrar, desmarca.
-      setPaginasSel(new Set(r.paginas.map(p => p.id)))
+      // Começa marcando o que TEM resposta: coluna que ninguém preencheu só
+      // atrapalha a planilha, mas continua visível para ser marcada à mão.
+      const comResposta = r.paginas.flatMap(p => p.colunas.filter(c => c.respostas > 0).map(c => c.chave))
+      const todas = r.paginas.flatMap(p => p.colunas.map(c => c.chave))
+      setColunasSel(new Set([...COLUNAS_LEAD_CHAVES, ...(comResposta.length > 0 ? comResposta : todas)]))
     }
   }
 
@@ -402,7 +470,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     setErroExport(null)
     try {
       const t = await exportLeadsTable(quizId, {
-        pageIds: [...paginasSel],
+        columnKeys: [...colunasSel],
         incluirLead: incluirLeadExport,
       })
       if ('error' in t) { setErroExport(t.error); return }
@@ -503,6 +571,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
             </svg>
           </button>
 
+          {/* Colunas ocultas: o estado precisa ser VISÍVEL e reversível. */}
+          {ocultas.size > 0 && (
+            <button
+              onClick={mostrarTodas}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-200 bg-amber-50 rounded-lg text-amber-700 hover:bg-amber-100 transition">
+              {ocultas.size} {ocultas.size === 1 ? 'coluna oculta' : 'colunas ocultas'} · mostrar todas
+            </button>
+          )}
+
           {/* Export — abre a SELEÇÃO; nada é baixado antes da escolha. */}
           <button onClick={abrirExport} disabled={exporting}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
@@ -551,12 +628,23 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                       Lead / Data
                     </th>
                     <th className="text-left px-3 py-3 font-semibold text-gray-500 whitespace-nowrap w-24">Status</th>
-                    {pages.map(p => {
+                    {pages.filter(p => !ocultas.has(p.id)).map(p => {
                       const reached = reachCount[p.id] ?? 0
                       const rate = total > 0 ? Math.round((reached / total) * 100) : 0
                       return (
                         <th key={p.id} className="text-left px-3 py-3 font-semibold text-gray-500 min-w-[120px]">
-                          <div className="truncate max-w-[140px]" title={p.title}>{p.title}</div>
+                          <div className="flex items-start gap-1">
+                            <div className="truncate max-w-[120px]" title={p.title}>{p.title}</div>
+                            {/* Ocultar esta coluna da leitura — não apaga nada. */}
+                            <button
+                              onClick={() => alternarOculta(p.id)}
+                              title="Ocultar esta coluna"
+                              className="ml-auto shrink-0 text-gray-300 hover:text-rose-500 transition-colors">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          </div>
                           <div className="mt-0.5">
                             <div className="flex items-center gap-1">
                               <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
@@ -586,7 +674,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                         )}
                       </td>
                       <td className="px-3 py-3">{statusBadge(lead.status)}</td>
-                      {pages.map(p => {
+                      {pages.filter(p => !ocultas.has(p.id)).map(p => {
                         const cell = pageCellValue(lead, p.id)
                         const reached = cell.state !== 'none'
                         // O que foi respondido NESTA página — nunca o contato do
@@ -700,43 +788,81 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
 
                 <div className="pt-1">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Páginas</span>
-                    <button
-                      onClick={() => setPaginasSel(
-                        paginasSel.size === paginasExport.length ? new Set() : new Set(paginasExport.map(p => p.id)),
-                      )}
-                      className="text-[11px] font-semibold text-indigo-600 hover:underline">
-                      {paginasSel.size === paginasExport.length ? 'Desmarcar todas' : 'Marcar todas'}
-                    </button>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Colunas</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setColunasSel(atual => {
+                          const novo = new Set(atual)
+                          for (const p of paginasExport) {
+                            for (const c of p.colunas) if (c.respostas === 0) novo.delete(c.chave)
+                          }
+                          return novo
+                        })}
+                        className="text-[11px] font-semibold text-gray-500 hover:text-gray-700 hover:underline">
+                        Desmarcar vazias
+                      </button>
+                      <button
+                        onClick={() => {
+                          const todas = paginasExport.flatMap(p => p.colunas.map(c => c.chave))
+                          setColunasSel(atual => {
+                            const marcadas = todas.filter(c => atual.has(c)).length
+                            const base = new Set([...atual].filter(c => c.startsWith('lead:')))
+                            return marcadas === todas.length ? base : new Set([...base, ...todas])
+                          })
+                        }}
+                        className="text-[11px] font-semibold text-indigo-600 hover:underline">
+                        Marcar/desmarcar todas
+                      </button>
+                    </div>
                   </div>
 
                   {paginasExport.length === 0 ? (
-                    <p className="text-xs text-gray-400">Carregando páginas…</p>
+                    <p className="text-xs text-gray-400">Carregando colunas…</p>
                   ) : (
-                    <div className="space-y-1">
-                      {paginasExport.map(p => (
-                        <label key={p.id}
-                          className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 cursor-pointer transition ${
-                            paginasSel.has(p.id) ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-indigo-200'
-                          } ${p.colunas.length === 0 ? 'opacity-50' : ''}`}>
-                          <input type="checkbox" checked={paginasSel.has(p.id)}
-                            disabled={p.colunas.length === 0}
-                            onChange={() => setPaginasSel(atual => {
-                              const novo = new Set(atual)
-                              if (novo.has(p.id)) novo.delete(p.id); else novo.add(p.id)
-                              return novo
-                            })}
-                            className="w-4 h-4 mt-0.5 accent-indigo-600" />
-                          <span className="min-w-0">
-                            <span className="block text-sm text-gray-800 truncate">{p.titulo}</span>
-                            <span className="block text-[11px] text-gray-500 truncate">
-                              {p.colunas.length === 0
-                                ? 'sem perguntas'
-                                : p.colunas.map(c => c.rotulo).join(' · ')}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
+                    <div className="space-y-2.5">
+                      {paginasExport.filter(p => p.colunas.length > 0).map(p => {
+                        const chaves = p.colunas.map(c => c.chave)
+                        const marcadas = chaves.filter(c => colunasSel.has(c)).length
+                        return (
+                          <div key={p.id} className="rounded-lg border border-gray-200 overflow-hidden">
+                            {/* Cabeçalho da página: marca/desmarca as colunas dela de uma vez */}
+                            <label className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 cursor-pointer">
+                              <input type="checkbox"
+                                checked={marcadas === chaves.length}
+                                ref={el => { if (el) el.indeterminate = marcadas > 0 && marcadas < chaves.length }}
+                                onChange={() => setColunasSel(atual => {
+                                  const novo = new Set(atual)
+                                  if (marcadas === chaves.length) chaves.forEach(c => novo.delete(c))
+                                  else chaves.forEach(c => novo.add(c))
+                                  return novo
+                                })}
+                                className="w-4 h-4 accent-indigo-600" />
+                              <span className="text-xs font-bold text-gray-700 truncate">{p.titulo}</span>
+                              <span className="ml-auto text-[10px] text-gray-400">{marcadas}/{chaves.length}</span>
+                            </label>
+
+                            {/* Uma linha por PERGUNTA — é a coluna que sai no arquivo */}
+                            <div className="divide-y divide-gray-100">
+                              {p.colunas.map(c => (
+                                <label key={c.chave}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-indigo-50/40">
+                                  <input type="checkbox" checked={colunasSel.has(c.chave)}
+                                    onChange={() => setColunasSel(atual => {
+                                      const novo = new Set(atual)
+                                      if (novo.has(c.chave)) novo.delete(c.chave); else novo.add(c.chave)
+                                      return novo
+                                    })}
+                                    className="w-4 h-4 accent-indigo-600" />
+                                  <span className="text-sm text-gray-700 truncate">{c.rotulo}</span>
+                                  <span className={`ml-auto text-[10px] shrink-0 ${c.respostas === 0 ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
+                                    {c.respostas === 0 ? 'sem respostas' : `${c.respostas} resp.`}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

@@ -405,7 +405,12 @@ export async function getQuizStats(quizId: string): Promise<
 
 // ─── Exportação com SELEÇÃO de páginas ──────────────────────────────────────
 
-export interface ExportColumn { chave: string; rotulo: string }
+export interface ExportColumn {
+  chave: string
+  rotulo: string
+  /** Quantos leads responderam esta coluna — 0 = coluna vazia. */
+  respostas: number
+}
 export interface ExportPageInfo { id: string; titulo: string; colunas: ExportColumn[] }
 export interface ExportTable {
   titulo: string
@@ -428,7 +433,32 @@ export async function getExportStructure(
     }
     const admin = createAdminClient()
     const { data: pageRow } = await admin.from('pages').select('quiz_data').eq('id', quizId).single()
-    return { paginas: estruturaDePaginas(pageRow?.quiz_data) }
+    const paginas = estruturaDePaginas(pageRow?.quiz_data)
+
+    // Contagem REAL por coluna: é o que permite à tela dizer "sem respostas"
+    // em vez de a pessoa descobrir só depois de abrir o arquivo.
+    const { data: eventos } = await admin
+      .from('quiz_lead_events')
+      .select('lead_id, block_id, event_type, value')
+      .eq('quiz_id', quizId)
+      .in('event_type', ['choice_selected', 'text_entered'])
+
+    const respondentes: Record<string, Set<string>> = {}
+    for (const ev of eventos ?? []) {
+      const blockId = ev.block_id as string | null
+      if (!blockId) continue
+      const v = ev.value as { selected?: unknown; text?: unknown } | null
+      const cru = v?.selected ?? v?.text
+      const valor = Array.isArray(cru) ? (cru as unknown[]).join('') : String(cru ?? '').trim()
+      if (!valor) continue
+      ;(respondentes[blockId] = respondentes[blockId] ?? new Set()).add(ev.lead_id as string)
+    }
+    for (const pagina of paginas) {
+      for (const coluna of pagina.colunas) {
+        coluna.respostas = respondentes[coluna.chave]?.size ?? 0
+      }
+    }
+    return { paginas }
   } catch (err) {
     return { error: String(err) }
   }
@@ -455,22 +485,23 @@ function estruturaDePaginas(quizData: unknown): ExportPageInfo[] {
       .map(b => ({
         chave: b.id,
         rotulo: (b.config?.label || b.config?.question || 'Pergunta').replace(/\s+/g, ' ').trim().slice(0, 60),
+        respostas: 0,   // preenchido por getExportStructure
       })),
   }))
 }
 
 /** Colunas de identificação/origem do lead — opcionais na exportação. */
 const COLUNAS_LEAD: ExportColumn[] = [
-  { chave: 'lead:id', rotulo: 'ID' },
-  { chave: 'lead:data', rotulo: 'Data' },
-  { chave: 'lead:status', rotulo: 'Status' },
-  { chave: 'lead:nome', rotulo: 'Nome' },
-  { chave: 'lead:email', rotulo: 'E-mail' },
-  { chave: 'lead:telefone', rotulo: 'Telefone' },
-  { chave: 'lead:score', rotulo: 'Score' },
-  { chave: 'lead:resultado', rotulo: 'Resultado' },
-  { chave: 'lead:utm_source', rotulo: 'Origem' },
-  { chave: 'lead:utm_campaign', rotulo: 'Campanha' },
+  { chave: 'lead:id', rotulo: 'ID', respostas: 0 },
+  { chave: 'lead:data', rotulo: 'Data', respostas: 0 },
+  { chave: 'lead:status', rotulo: 'Status', respostas: 0 },
+  { chave: 'lead:nome', rotulo: 'Nome', respostas: 0 },
+  { chave: 'lead:email', rotulo: 'E-mail', respostas: 0 },
+  { chave: 'lead:telefone', rotulo: 'Telefone', respostas: 0 },
+  { chave: 'lead:score', rotulo: 'Score', respostas: 0 },
+  { chave: 'lead:resultado', rotulo: 'Resultado', respostas: 0 },
+  { chave: 'lead:utm_source', rotulo: 'Origem', respostas: 0 },
+  { chave: 'lead:utm_campaign', rotulo: 'Campanha', respostas: 0 },
 ]
 
 /**
@@ -485,7 +516,7 @@ const COLUNAS_LEAD: ExportColumn[] = [
  */
 export async function exportLeadsTable(
   quizId: string,
-  opts?: { pageIds?: string[]; incluirLead?: boolean },
+  opts?: { pageIds?: string[]; columnKeys?: string[]; incluirLead?: boolean },
 ): Promise<ExportTable | { error: string }> {
   try {
     const tenantId = await getTenantId()
@@ -498,17 +529,24 @@ export async function exportLeadsTable(
       .from('pages').select('title, quiz_data').eq('id', quizId).single()
     const todas = estruturaDePaginas(pageRow?.quiz_data)
 
-    // Lista branca: só páginas que EXISTEM neste quiz entram, na ordem do quiz.
+    // Lista branca em DOIS níveis: página e coluna. Chave que não pertence a
+    // este quiz simplesmente não vira coluna — o cliente não escolhe conteúdo,
+    // só filtra o que o servidor já conhece.
     const escolhidas = Array.isArray(opts?.pageIds) && opts!.pageIds!.length > 0
       ? todas.filter(p => opts!.pageIds!.includes(p.id))
       : todas
 
+    const filtroColunas = Array.isArray(opts?.columnKeys) ? new Set(opts!.columnKeys!) : null
+    const querColuna = (chave: string) => !filtroColunas || filtroColunas.has(chave)
+
     const incluirLead = opts?.incluirLead !== false
+    const paginasComColuna = escolhidas.filter(p => p.colunas.some(c => querColuna(c.chave)))
     const colunas: ExportColumn[] = [
-      ...(incluirLead ? COLUNAS_LEAD : []),
-      ...escolhidas.flatMap(p => p.colunas.map(c => ({
+      ...(incluirLead ? COLUNAS_LEAD.filter(c => querColuna(c.chave)) : []),
+      ...paginasComColuna.flatMap(p => p.colunas.filter(c => querColuna(c.chave)).map(c => ({
         chave: c.chave,
-        rotulo: escolhidas.length > 1 ? `${p.titulo} — ${c.rotulo}` : c.rotulo,
+        rotulo: paginasComColuna.length > 1 ? `${p.titulo} — ${c.rotulo}` : c.rotulo,
+        respostas: c.respostas,
       }))),
     ]
     if (colunas.length === 0) return { error: 'Selecione ao menos uma página com perguntas' }
