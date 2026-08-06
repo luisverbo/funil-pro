@@ -889,7 +889,9 @@ test('24) o resultado vem da PERSISTÊNCIA, não do navegador', async () => {
   // boolean de confirmação — jamais alimentado por `result`.
   assert.ok(!/useEffect/.test(painel), 'o painel guarda efeitos próprios')
   const estados = [...painel.matchAll(/useState(?:<[^>]*>)?\(([^)]*)\)/g)].map(m => m[1].trim())
-  assert.ok(estados.every(v => v === 'false'), `useState fora de confirmação: ${estados.join(', ')}`)
+  assert.ok(estados.every(v => v === 'false' || v === 'null'),
+    `useState fora de confirmação/ampliação: ${estados.join(', ')}`)
+  assert.ok(!estados.some(v => v.includes('result')), 'useState alimentado pelo resultado')
 
   // E o servidor é quem monta.
   assert.ok(actionsCode.includes('buildProductionResult((steps.data ?? []) as StepRow[])'))

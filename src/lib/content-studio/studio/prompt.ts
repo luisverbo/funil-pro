@@ -24,7 +24,7 @@ import type { StudioCopy, StudioStrategy, ValidStudioBrief } from './schema'
 
 export const STUDIO_STRATEGIST_PROMPT_VERSION = 'studio_strategist_v1'
 export const STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v1'
-export const STUDIO_DESIGNER_PROMPT_VERSION = 'studio_designer_v1'
+export const STUDIO_DESIGNER_PROMPT_VERSION = 'studio_designer_v2'
 
 function sanitizar(valor: string): string {
   return valor.replace(/<\/?dados_do_pedido>/gi, '').replace(/<\/?material_aprovado>/gi, '')
@@ -220,13 +220,24 @@ export function studioDesignerSystem(brief: ValidStudioBrief): string {
 NÃO reescreve a copy: você define a DIREÇÃO VISUAL do carrossel e entrega, por
 slide, um prompt de imagem que outra pessoa (ou um gerador) executaria.
 
-Pense como quem vai diagramar: o que aparece, onde aparece, com qual peso.
-A direção precisa ser COERENTE do primeiro ao último slide (mesma família
-visual), com variação de ritmo — nem todo slide pode ser igual.
+A RÉGUA DO SEU TRABALHO — direção pobre é reprovada:
+  POBRE: "fundo escuro com um ícone de celular"
+  RICA:  "mesa de trabalho vista de cima em luz lateral de fim de tarde;
+  em primeiro plano, mão organizando cartões coloridos em colunas; ao fundo,
+  desfocado, um ambiente de escritório com plantas — sensação de ordem chegando"
+
+Para CADA slide, o campo composition + imagePrompt precisa definir uma CENA
+COMPLETA: assunto principal concreto (objeto/ambiente/ação — não um ícone),
+o que há em primeiro plano, no plano médio e no fundo, a iluminação (direção,
+temperatura, intensidade), o enquadramento e a distância de câmera, materiais
+e texturas visíveis, e o ponto focal. Use metáfora visual quando ajudar.
+Indique em "layout" a área que fica CALMA para o texto entrar depois.
+Cada slide deve ter CONTINUIDADE com o anterior: mesma família de luz, paleta
+e materiais — uma série de campanha, não cinco imagens soltas.
 
 ${HONESTIDADE}
-Não escreva na direção visual nenhum número, resultado ou selo que o pedido não
-sustente: o que você descrever vira arte publicada.
+Não descreva pessoas reais, marcas de terceiros, logotipos, resultados ou
+características de produto que o pedido não informou.
 
 Responda SOMENTE com um objeto JSON, sem texto antes ou depois:
 {
@@ -240,11 +251,11 @@ Responda SOMENTE com um objeto JSON, sem texto antes ou depois:
     {
       "number": 1,
       "style": "estilo visual DESTE slide",
-      "composition": "ideia de composição / enquadramento",
+      "composition": "a CENA: assunto, primeiro plano, plano médio, fundo, luz, câmera",
       "elements": ["elementos principais que aparecem"],
       "colors": "direção de cores deste slide",
-      "layout": "onde entram headline, texto e imagem",
-      "imagePrompt": "prompt de imagem pronto, descritivo e autossuficiente"
+      "layout": "onde entram headline, texto e imagem (área calma para a copy)",
+      "imagePrompt": "prompt de imagem pronto: cena completa, iluminação, materiais, enquadramento, ponto focal"
     }
   ]
 }
@@ -252,8 +263,8 @@ Responda SOMENTE com um objeto JSON, sem texto antes ou depois:
 Regras:
 - EXATAMENTE ${brief.slides} slides, na mesma ordem da copy.
 - O slide 1 precisa de contraste e peso: é ele que segura o polegar.
-- "imagePrompt" descreve CENA e ESTILO (composição, luz, cor, enquadramento) —
-  não repita a headline dentro dele como se fosse legenda.
+- "imagePrompt" descreve CENA e ESTILO — nunca "um ícone de X" nem "fundo
+  escuro vazio"; nada de texto/letras/números dentro da imagem.
 - Nada de marcas de terceiros, rostos de pessoas reais ou logotipos alheios.
 - Português do Brasil.
 - ${ANTI_INJECTION}`

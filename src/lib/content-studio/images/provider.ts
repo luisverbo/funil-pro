@@ -15,7 +15,14 @@
 
 export const STUDIO_IMAGE_MODEL = 'gpt-image-1'
 export const STUDIO_IMAGE_SIZE = '1024x1024'
-export const STUDIO_IMAGE_QUALITY = 'medium'
+
+/**
+ * Qualidades PERMITIDAS — decididas no servidor a partir do enum do cliente
+ * (quick -> medium, premium -> high). Nunca texto livre.
+ */
+export const STUDIO_IMAGE_QUALITIES = ['medium', 'high'] as const
+export type StudioImageQuality = (typeof STUDIO_IMAGE_QUALITIES)[number]
+export const STUDIO_IMAGE_QUALITY: StudioImageQuality = 'medium'
 
 /** Timeout da chamada de imagem. Cabe em maxDuration=60s com folga p/ compor+salvar. */
 export const STUDIO_IMAGE_TIMEOUT_MS = 45_000
@@ -28,6 +35,8 @@ export interface StudioImageRequest {
   prompt: string
   /** Identificação para log — nunca vai para a OpenAI além do necessário. */
   executionId: string
+  /** Qualidade JÁ validada pelo servidor (lista branca). */
+  quality?: StudioImageQuality
 }
 
 export interface StudioImageResult {
@@ -88,7 +97,8 @@ export function createOpenAIImageProvider(): StudioImageProvider {
             prompt: req.prompt,
             n: 1,
             size: STUDIO_IMAGE_SIZE,
-            quality: STUDIO_IMAGE_QUALITY,
+            // Só valores da lista branca chegam aqui; o padrão é o mais barato.
+            quality: req.quality ?? STUDIO_IMAGE_QUALITY,
           }),
           signal: controller.signal,
         })
@@ -131,7 +141,7 @@ export function createOpenAIImageProvider(): StudioImageProvider {
           bytes,
           model: STUDIO_IMAGE_MODEL,
           size: STUDIO_IMAGE_SIZE,
-          quality: STUDIO_IMAGE_QUALITY,
+          quality: req.quality ?? STUDIO_IMAGE_QUALITY,
           durationMs: Date.now() - inicio,
         }
       } catch (raw) {

@@ -50,6 +50,8 @@ import {
 } from '@/lib/content-studio/view-model'
 import type { PublicEvent } from '@/lib/content-studio/demo-guard'
 import { PRODUCTION_TERMINAL, safeProductionMessage } from '@/lib/content-studio/production-guard'
+import type { ImagePreset } from '@/lib/content-studio/images/prompt'
+import type { ImageMode } from '@/lib/content-studio/images/modes'
 import OfficeScene from './office-scene'
 import TimelinePanel from './timeline-panel'
 
@@ -138,6 +140,10 @@ export default function OfficePreview() {
   const [erroImagem, setErroImagem] = useState<string | null>(null)
   /** Slide cuja geração está em voo — o botão daquele slide entra em loading. */
   const [gerandoSlide, setGerandoSlide] = useState<number | null>(null)
+  // Qualidade e estilo da geração de imagens — enums de lista branca; o
+  // servidor revalida e decide os valores reais.
+  const [modoImagem, setModoImagem] = useState<ImageMode>('premium')
+  const [presetImagem, setPresetImagem] = useState<ImagePreset>('editorial_premium')
   const [aprovando, setAprovando] = useState(false)
   // Gerenciamento de produções: painel, confirmação pendente e toast.
   const [gerenciando, setGerenciando] = useState(false)
@@ -561,7 +567,7 @@ export default function OfficePreview() {
     setGerandoImagens(true)
     setGerandoSlide(slide)
     try {
-      const r = await generateStudioSlideImage(productionId, slide, retry ? { retry: true } : undefined)
+      const r = await generateStudioSlideImage(productionId, slide, { ...(retry ? { retry: true } : {}), mode: modoImagem, preset: presetImagem })
       if (cancelled.current) return
       if (!r.ok) { setErroImagem(r.error); return }
       aplicarEstado(r.data)
@@ -574,7 +580,7 @@ export default function OfficePreview() {
     } finally {
       if (!cancelled.current) { setGerandoImagens(false); setGerandoSlide(null) }
     }
-  }, [aplicarEstado, criando, gerandoImagens, productionId, running])
+  }, [aplicarEstado, criando, gerandoImagens, modoImagem, presetImagem, productionId, running])
 
   /**
    * "Gerar todas": laço FECHADO — cada requisição gera A PRÓXIMA imagem que
@@ -591,7 +597,7 @@ export default function OfficePreview() {
       let anterior = -1
       let ultimo: ProductionState | null = null
       for (let i = 0; i < 10; i++) {
-        const r = await generateAllStudioSlideImages(productionId)
+        const r = await generateAllStudioSlideImages(productionId, { mode: modoImagem, preset: presetImagem })
         if (cancelled.current) return
         if (!r.ok) { setErroImagem(r.error); break }
         ultimo = r.data
@@ -617,7 +623,7 @@ export default function OfficePreview() {
     } finally {
       if (!cancelled.current) setGerandoImagens(false)
     }
-  }, [aplicarEstado, criando, gerandoImagens, productionId, running])
+  }, [aplicarEstado, criando, gerandoImagens, modoImagem, presetImagem, productionId, running])
 
   /** Volta a tela ao estado inicial (nenhuma produção selecionada). */
   const limparTela = useCallback(() => {
@@ -1129,6 +1135,10 @@ export default function OfficePreview() {
           gerandoSlide={gerandoSlide}
           progressoImagens={progressoImagens}
           erroImagem={erroImagem}
+          modoImagem={modoImagem}
+          onModoImagem={setModoImagem}
+          presetImagem={presetImagem}
+          onPresetImagem={setPresetImagem}
         />
       )}
 
