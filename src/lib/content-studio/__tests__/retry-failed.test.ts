@@ -437,6 +437,20 @@ test('12) CAUSA RAIZ: texto longo é APARADO, não derruba a resposta paga', asy
   assert.ok(prompt.includes('headline até 90 caracteres'), 'prompt não declara limites')
 })
 
+test('13) UI: com agente running, a tela relê o estado sozinha até o retry aparecer', () => {
+  const ui = ler('src/components/content-studio/office-preview.tsx')
+  const efeito = ui.slice(ui.indexOf('AUTO-ATUALIZAÇÃO enquanto um agente'))
+  const corpo = efeito.slice(0, efeito.indexOf('recuperacao.running, recuperando, running])') + 50)
+  // Só roda enquanto o SERVIDOR disser running — e para em qualquer ação ativa.
+  assert.ok(corpo.includes('if (!recuperacao.running || !productionId || criando || running || recuperando) return'),
+    'polling sem os freios')
+  // Releitura barata: getProductionState (nenhuma chamada de IA), a cada 20s.
+  assert.ok(corpo.includes('getProductionState(productionId)'), 'não relê o estado')
+  assert.ok(corpo.includes('20_000'), 'intervalo diferente do combinado')
+  assert.ok(corpo.includes('aplicarEstado(r.data)'), 'estado relido não entra na tela')
+  assert.ok(corpo.includes('clearInterval'), 'intervalo sem limpeza')
+})
+
 test('11) R1 intacto; nenhuma migration; nenhuma variável nova', () => {
   assert.ok(ler('src/lib/security/cron-auth.ts').includes('timingSafeEqual'))
   assert.ok(ler('src/app/api/queue/process/route.ts').includes('evaluateCronAuth'))
