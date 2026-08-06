@@ -14,6 +14,7 @@
 // ============================================================================
 
 import type { CheckItem } from './agents/carousel'
+import { describeImageFailure } from './images/failure'
 import type { StepRow } from './types'
 
 /** Vereditos possíveis do revisor — 2A e 2B. */
@@ -65,6 +66,8 @@ export interface ResultSlideImage {
   modelo: string | null
   modo: 'quick' | 'premium' | null
   tentativa: number
+  /** Motivo LEGÍVEL da falha, vindo do step persistido. Null quando não falhou. */
+  erro: string | null
 }
 
 export interface ProductionResult {
@@ -98,7 +101,7 @@ export interface ProductionResult {
   highlights: string[][]
   /** Modo viral: capa + slides de texto renderizados. null nas demais. */
   viral: {
-    cover: { status: 'nao_gerado' | 'gerando' | 'pronto' | 'falhou'; url: string | null; modelo: string | null; qualidade: string | null; tentativa: number; intensity: string | null; accentHex: string | null }
+    cover: { status: 'nao_gerado' | 'gerando' | 'pronto' | 'falhou'; url: string | null; modelo: string | null; qualidade: string | null; tentativa: number; intensity: string | null; accentHex: string | null; erro: string | null }
     textSlides: { slide: number; url: string }[]
   } | null
   /** true quando há material suficiente para mostrar o painel. */
@@ -298,6 +301,7 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
           tentativa: stepCapa.attempt ?? 0,
           intensity: typeof capaData?.intensity === 'string' ? capaData.intensity : null,
           accentHex: typeof capaData?.accentHex === 'string' ? capaData.accentHex : null,
+          erro: stepCapa.status === 'failed' ? describeImageFailure(stepCapa.error) : null,
         },
         textSlides: (Array.isArray(capaData?.textSlides) ? capaData.textSlides : [])
           .filter((t): t is { slide: number; url: string } =>
@@ -323,6 +327,8 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
       modelo: typeof dados?.model === 'string' ? dados.model : null,
       modo: dados?.mode === 'quick' || dados?.mode === 'premium' ? dados.mode : null,
       tentativa: stepImagem?.attempt ?? 0,
+      // O motivo vem do que o servidor GRAVOU — não de suposição da tela.
+      erro: stepImagem?.status === 'failed' ? describeImageFailure(stepImagem.error) : null,
     }
   })
 

@@ -26,6 +26,7 @@ import {
   retryDelayMs,
   RETRY_AFTER_CAP_MS,
 } from '../ai/anthropic'
+import { AI_MIN_ATTEMPT_MS } from '../ai/config'
 import { __setContentAIProviderForTests, type AICallRequest } from '../ai/provider'
 
 const RAIZ = process.cwd()
@@ -168,8 +169,23 @@ test('7) 429 → espera (respeitando Retry-After com teto) → retry → sucesso
   const r = await provider.call(reqBase())
   assert.equal(r.calls, 2)
   assert.equal(r.finish, 'ok_after_retry')
-  // Retry-After de 120s foi respeitado, mas com TETO curto.
-  assert.deepEqual(mock.esperas, [RETRY_AFTER_CAP_MS])
+  // Retry-After de 120s foi respeitado, mas com TETO curto — E a espera nunca
+  // come o tempo que a RETENTATIVA precisa (o timeout é orçamento TOTAL).
+  assert.equal(mock.esperas.length, 1)
+  assert.ok(mock.esperas[0] <= RETRY_AFTER_CAP_MS, 'teto do Retry-After furado')
+  assert.ok(mock.esperas[0] <= 5_000 - AI_MIN_ATTEMPT_MS,
+    'a espera consumiu o tempo útil da retentativa')
+  assert.ok(mock.esperas[0] > 2_000, 'a espera encolheu além do necessário')
+
+  // Com orçamento FOLGADO, a espera é exatamente o teto — o cap segue intacto.
+  const folgado = fetchFalso([
+    { status: 429, body: {}, headers: { 'retry-after': '120' } },
+    { body: anthropicBody('{"ok":true}') },
+  ])
+  const p2 = comChave(() => createAnthropicProvider({ fetchFn: folgado.fetchFn, wait: folgado.wait }))
+  await p2.call({ ...reqBase(), timeoutMs: 40_000 })
+  assert.deepEqual(folgado.esperas, [RETRY_AFTER_CAP_MS])
+
   assert.equal(retryDelayMs('2'), 2000)
   assert.equal(retryDelayMs(null), 1000)
   assert.equal(retryDelayMs('lixo'), 1000)

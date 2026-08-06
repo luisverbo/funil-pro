@@ -191,6 +191,12 @@ const EVENT_LABEL: Record<EventType, string> = {
 }
 
 const BAD: EventType[] = ['agent_failed', 'publication_failed', 'content_rejected']
+
+/**
+ * Agentes que produzem ARTEFATO sob demanda (arte final), não etapas do
+ * pipeline. A falha de um deles é do artefato — a produção segue válida.
+ */
+const ARTIFACT_AGENTS = new Set<string>(['cst_image_designer'])
 const GOOD: EventType[] = ['agent_completed', 'content_approved', 'publication_completed', 'content_waiting_approval']
 
 function emptyAgent(key: string): AgentView {
@@ -299,11 +305,18 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
           agent.atDesk = agent.key
           agent.carryingFolder = false
         }
-        view.failed = true
+        // A ARTE é artefato sob demanda: uma imagem que falhou NÃO derruba a
+        // produção. Sem esta distinção, a tela mostrava "Produção concluída"
+        // e "A produção falhou" ao mesmo tempo — a segunda vinha do step de
+        // imagem, com o texto inteiro já aprovado.
+        if (!ARTIFACT_AGENTS.has(event.agent_key ?? '')) view.failed = true
         break
 
       case 'agent_retrying':
         if (agent) { agent.state = 'queued'; agent.bubble = 'Tentando de novo' }
+        // Retomada em curso: a falha ANTERIOR deixa de valer. Sem isto, o
+        // banner vermelho sobrevivia a um retry bem-sucedido.
+        if (!ARTIFACT_AGENTS.has(event.agent_key ?? '')) view.failed = false
         break
 
       case 'task_handoff_started': {
@@ -344,6 +357,9 @@ export function buildOfficeView(events: ViewEvent[]): OfficeView {
 
       case 'content_waiting_approval':
         view.finished = true
+        // Chegou ao portão humano: o pipeline de texto terminou inteiro.
+        // Qualquer falha anterior já foi superada por uma retomada.
+        view.failed = false
         break
 
       default:

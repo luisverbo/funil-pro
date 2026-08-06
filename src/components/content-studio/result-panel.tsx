@@ -309,6 +309,13 @@ export default function ResultPanel({
                           </button>
                         )}
                       </div>
+                      {/* MOTIVO da falha — vindo do step persistido, não de
+                          suposição da tela. Sem ele, o clique "não fazia nada". */}
+                      {img.status === 'falhou' && img.erro && (
+                        <p className="mt-1.5 rounded-lg bg-rose-50 border border-rose-200 px-2.5 py-1.5 text-[11px] text-rose-800 break-words">
+                          {img.erro}
+                        </p>
+                      )}
                       {img.status === 'pronto' && img.url && (
                         <div className="mt-2">
                           {/* ARTE FINAL composta (copy + fundo), não só o background. */}
@@ -421,7 +428,35 @@ export default function ResultPanel({
                 <p className="text-[12px] text-fuchsia-800">
                   Este formato usa apenas <strong>1 geração de imagem</strong>. Os demais slides são montados pelo FunilPro.
                 </p>
+                {/* Qualidade da FOTO: Premium é o padrão; Rápida existe para
+                    quando a Premium passa do tempo limite da requisição. */}
+                {onModoImagem && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-gray-500">Qualidade:</span>
+                    {(['premium', 'quick'] as const).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        disabled={gerandoCapa}
+                        onClick={() => onModoImagem(m)}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+                          modoImagem === m
+                            ? 'bg-fuchsia-600 text-white'
+                            : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {m === 'premium' ? 'Premium' : 'Rápida'}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {result.viral?.cover.status === 'falhou' && result.viral.cover.erro && (
+                <p className="mt-2 rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-[12px] text-rose-800 break-words">
+                  {result.viral.cover.erro}
+                </p>
+              )}
 
               {result.viral?.cover.status === 'pronto' && result.viral.cover.url && (
                 <div className="mt-3">
