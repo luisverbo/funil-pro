@@ -399,6 +399,44 @@ test('10) UI: banner acionável com motivo + botão que repete só o agente', ()
   assert.ok(corpo.includes('recovery.running || r.data.recovery.available'), 'laço sem freio de recovery')
 })
 
+test('12) CAUSA RAIZ: texto longo é APARADO, não derruba a resposta paga', async () => {
+  // O defeito real de produção: "slides[0].headline: excede 90 caracteres"
+  // matava a chamada inteira do Copywriter — e o retry repetia o estilo.
+  const { makeCopyParser, makeStrategyParser } = await import('../studio/schema')
+  const brief = briefStudio()
+  const parse = makeCopyParser(brief)
+
+  const copy = copyBoa()
+  copy.slides[0].headline =
+    'Uma headline gigantesca que o modelo escreveu empolgado e que passa com folga dos noventa caracteres permitidos pelo layout'
+  const ok = parse(copy) as { slides: { headline: string }[] }
+  assert.ok(ok.slides[0].headline.length <= 90, 'headline não foi aparada')
+  assert.ok(ok.slides[0].headline.endsWith('…'), 'aparo sem reticências')
+  assert.ok(!/\s$/.test(ok.slides[0].headline), 'aparo com espaço solto')
+  // Corte em fronteira de palavra: nunca termina no meio de uma palavra longa.
+  assert.ok(ok.slides[0].headline.length >= 60, 'aparo curto demais')
+
+  // body/caption/cta também aparam; o Estrategista idem.
+  copy.slides[1].body = 'palavra '.repeat(80)
+  const ok2 = parse(copy) as { slides: { body: string }[] }
+  assert.ok(ok2.slides[1].body.length <= 320)
+
+  const parseStrat = makeStrategyParser(brief)
+  const plano = planoBom() as ReturnType<typeof planoBom> & { bigIdea: string }
+  plano.bigIdea = 'ideia '.repeat(120)
+  const okStrat = parseStrat(plano) as { bigIdea: string }
+  assert.ok(okStrat.bigIdea.length <= 300)
+
+  // Falha DURA continua onde deve: estrutura, não estilo.
+  assert.throws(() => parse({ ...copyBoa(), slides: copyBoa().slides.slice(0, 2) }), /slides/)
+  assert.throws(() => parse({ ...copyBoa(), title: 42 }), /esperado texto/)
+
+  // E o prompt agora DECLARA os limites (v3) — o modelo tinha como saber.
+  const prompt = ler('src/lib/content-studio/studio/prompt.ts')
+  assert.ok(prompt.includes("STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v3'"))
+  assert.ok(prompt.includes('headline até 90 caracteres'), 'prompt não declara limites')
+})
+
 test('11) R1 intacto; nenhuma migration; nenhuma variável nova', () => {
   assert.ok(ler('src/lib/security/cron-auth.ts').includes('timingSafeEqual'))
   assert.ok(ler('src/app/api/queue/process/route.ts').includes('evaluateCronAuth'))
