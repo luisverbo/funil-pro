@@ -27,6 +27,8 @@ import {
   generateAllStudioSlideImages,
   generateStudioSlideImage,
   listProductions,
+  approveContentProduction,
+  rejectContentProduction,
   removeAllOpenContentProductions,
   removeContentProduction,
   type RemoveResult,
@@ -125,6 +127,12 @@ export default function OfficePreview() {
   const [avisoContinuacao, setAvisoContinuacao] = useState<string | null>(null)
   const [gerandoImagens, setGerandoImagens] = useState(false)
   const [progressoImagens, setProgressoImagens] = useState<{ done: number; total: number } | null>(null)
+  // Erro do FLUXO DE IMAGENS, escopado ao painel (nunca o banner global) e à
+  // produção selecionada — trocar de produção ou de modo o limpa.
+  const [erroImagem, setErroImagem] = useState<string | null>(null)
+  /** Slide cuja geração está em voo — o botão daquele slide entra em loading. */
+  const [gerandoSlide, setGerandoSlide] = useState<number | null>(null)
+  const [aprovando, setAprovando] = useState(false)
   // Gerenciamento de produções: painel, confirmação pendente e toast.
   const [gerenciando, setGerenciando] = useState(false)
   const [confirmacao, setConfirmacao] = useState<
@@ -323,6 +331,10 @@ export default function OfficePreview() {
       setErroBrief(null)
       setPausado(false)
       setQuickGenerating(false)
+      setErroImagem(null)
+      setGerandoSlide(null)
+      setProgressoImagens(null)
+      setAvisoContinuacao(null)
       return proximo
     })
   }, [])
@@ -399,6 +411,7 @@ export default function OfficePreview() {
     if (criando || running) return
     setErroBrief(null)
     setError(null)
+    setErroImagem(null)
     setAvisoContinuacao(null)
     setCriando(true)
     setRunning(true)
@@ -531,17 +544,24 @@ export default function OfficePreview() {
    */
   const gerarImagem = useCallback(async (slide: number, retry: boolean) => {
     if (criando || running || gerandoImagens || !productionId) return
-    setError(null)
+    // Ação nova = erro velho fora. O erro de imagem vive NO painel de imagens,
+    // nunca no banner global — e sucesso o apaga.
+    setErroImagem(null)
     setGerandoImagens(true)
+    setGerandoSlide(slide)
     try {
       const r = await generateStudioSlideImage(productionId, slide, retry ? { retry: true } : undefined)
       if (cancelled.current) return
-      if (!r.ok) { setError(r.error); return }
+      if (!r.ok) { setErroImagem(r.error); return }
       aplicarEstado(r.data)
+      const img = r.data.result.imagens.find(i => i.numero === slide)
+      if (img?.status === 'falhou') {
+        setErroImagem('A imagem deste slide falhou. Use "Tentar novamente" quando quiser.')
+      }
     } catch {
-      setError('Não foi possível gerar a imagem. Tente novamente.')
+      setErroImagem('Não foi possível gerar a imagem. Tente novamente.')
     } finally {
-      if (!cancelled.current) setGerandoImagens(false)
+      if (!cancelled.current) { setGerandoImagens(false); setGerandoSlide(null) }
     }
   }, [aplicarEstado, criando, gerandoImagens, productionId, running])
 
@@ -553,23 +573,36 @@ export default function OfficePreview() {
    */
   const gerarTodas = useCallback(async () => {
     if (criando || running || gerandoImagens || !productionId) return
-    setError(null)
+    setErroImagem(null)
     setGerandoImagens(true)
     setProgressoImagens(null)
     try {
       let anterior = -1
+      let ultimo: ProductionState | null = null
       for (let i = 0; i < 10; i++) {
         const r = await generateAllStudioSlideImages(productionId)
         if (cancelled.current) return
-        if (!r.ok) { setError(r.error); break }
+        if (!r.ok) { setErroImagem(r.error); break }
+        ultimo = r.data
         aplicarEstado(r.data)
         setProgressoImagens({ done: r.data.imagesDone, total: r.data.imagesTotal })
         if (r.data.imagesDone >= r.data.imagesTotal) break
         if (r.data.imagesDone === anterior) break  // sem progresso: parar
         anterior = r.data.imagesDone
       }
+      // Resumo honesto: quantas ficaram prontas e quantas falharam. As que já
+      // estavam prontas permanecem — falha de uma não derruba as outras.
+      if (ultimo) {
+        const prontas = ultimo.result.imagens.filter(i => i.status === 'pronto').length
+        const falhas = ultimo.result.imagens.filter(i => i.status === 'falhou').length
+        if (falhas > 0) {
+          setErroImagem(`${prontas} de ${ultimo.result.imagens.length} imagens prontas; ${falhas} ${falhas === 1 ? 'falhou' : 'falharam'}. Use "Tentar novamente" nos slides que faltaram.`)
+        } else if (prontas === ultimo.result.imagens.length) {
+          setToast(`Todas as ${prontas} imagens do carrossel estão prontas.`)
+        }
+      }
     } catch {
-      setError('Não foi possível gerar as imagens. Tente novamente.')
+      setErroImagem('Não foi possível gerar as imagens. Tente novamente.')
     } finally {
       if (!cancelled.current) setGerandoImagens(false)
     }
@@ -642,10 +675,61 @@ export default function OfficePreview() {
     }
   }, [aplicarRemocao, removendo])
 
+  /** APROVA a produção no portão humano — CAS awaiting_approval -> approved. */
+  const aprovarProducao = useCallback(async () => {
+    if (aprovando || removendo || !productionId) return
+    setError(null)
+    setErroImagem(null)
+    setAprovando(true)
+    try {
+      const r = await approveContentProduction(productionId)
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      aplicarEstado(r.data)
+      // O seletor reflete o novo status sem refetch.
+      setProducoes(atual => atual.map(p =>
+        p.id === productionId ? { ...p, status: r.data.production.status } : p))
+      setToast('Produção aprovada!')
+    } catch {
+      setError('Não foi possível aprovar. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setAprovando(false)
+    }
+  }, [aplicarEstado, aprovando, productionId, removendo])
+
+  /**
+   * REPROVA: grava o evento content_rejected e ARQUIVA a produção (status
+   * canceled — sai da lista e da cota; histórico e artes ficam). A confirmação
+   * na tela diz exatamente isso antes do clique.
+   */
+  const reprovarProducao = useCallback(async () => {
+    if (aprovando || removendo || !productionId) return
+    setError(null)
+    setErroImagem(null)
+    setAprovando(true)
+    try {
+      const r = await rejectContentProduction(productionId)
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      await aplicarRemocao(r.data)
+      setToast('Produção reprovada e arquivada. Crie uma nova versão quando quiser.')
+    } catch {
+      setError('Não foi possível reprovar. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setAprovando(false)
+    }
+  }, [aplicarRemocao, aprovando, productionId, removendo])
+
   /** Troca a produção exibida. Só lê — nunca dispara execução. */
   const abrirProducao = useCallback(async (id: string) => {
     if (running) return
+    // NENHUM erro sobrevive à troca de produção: cada erro pertence à ação e
+    // à produção em que nasceu.
     setError(null)
+    setErroBrief(null)
+    setErroImagem(null)
+    setProgressoImagens(null)
+    setGerandoSlide(null)
     setPausado(false)
     setRevealed(0)
     setAllEvents([])
@@ -969,10 +1053,16 @@ export default function OfficePreview() {
         <ResultPanel
           result={result}
           aguardandoAprovacao={status === 'awaiting_approval'}
+          aprovado={status === 'approved'}
+          onAprovar={aprovarProducao}
+          onReprovar={reprovarProducao}
+          aprovando={aprovando}
           onGerarImagem={gerarImagem}
           onGerarTodas={gerarTodas}
           gerandoImagens={gerandoImagens}
+          gerandoSlide={gerandoSlide}
           progressoImagens={progressoImagens}
+          erroImagem={erroImagem}
         />
       )}
 

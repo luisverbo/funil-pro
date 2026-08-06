@@ -38,16 +38,27 @@ function Bloco({ titulo, children }: { titulo: string; children: React.ReactNode
 
 export interface ResultPanelProps {
   result: ProductionResult
-  /** Estado da produção — só para o selo do topo. */
+  /** Estado da produção — para o selo e os botões de aprovação. */
   aguardandoAprovacao: boolean
+  /** true quando a produção já foi aprovada — os botões dão lugar ao selo. */
+  aprovado?: boolean
+  /** Aprovação humana do portão awaiting_approval. */
+  onAprovar?: () => void
+  /** Reprovação: arquiva com evento content_rejected (confirmada antes). */
+  onReprovar?: () => void
+  aprovando?: boolean
   /** Gera/regenera a ARTE de um slide (geração Studio). retry = explícito. */
   onGerarImagem?: (slide: number, retry: boolean) => void
   /** Gera as artes que faltam, uma a uma, com progresso. */
   onGerarTodas?: () => void
   /** true enquanto alguma geração de imagem está em voo. */
   gerandoImagens?: boolean
+  /** Slide específico em geração — o botão DELE entra em loading. */
+  gerandoSlide?: number | null
   /** Progresso do "Gerar todas" — ex.: 2 de 6. */
   progressoImagens?: { done: number; total: number } | null
+  /** Erro do fluxo de imagens, escopado a ESTE painel. */
+  erroImagem?: string | null
 }
 
 const IMAGEM_STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
@@ -58,9 +69,15 @@ const IMAGEM_STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
 }
 
 export default function ResultPanel({
-  result, aguardandoAprovacao,
-  onGerarImagem, onGerarTodas, gerandoImagens = false, progressoImagens = null,
+  result, aguardandoAprovacao, aprovado = false,
+  onAprovar, onReprovar, aprovando = false,
+  onGerarImagem, onGerarTodas, gerandoImagens = false, gerandoSlide = null,
+  progressoImagens = null, erroImagem = null,
 }: ResultPanelProps) {
+  // Confirmações locais: custo do "Gerar todas" e a reprovação.
+  const [confirmaTodas, setConfirmaTodas] = React.useState(false)
+  const [confirmaReprovar, setConfirmaReprovar] = React.useState(false)
+
   if (!result.disponivel) return null
 
   // Imagens só existem na geração Studio (Designer concluído) e quando a tela
@@ -78,6 +95,11 @@ export default function ResultPanel({
         {aguardandoAprovacao && (
           <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
             aguardando aprovação
+          </span>
+        )}
+        {aprovado && (
+          <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-[11px] font-bold text-white">
+            ✓ aprovado
           </span>
         )}
         {result.revisionCycle > 0 && (
@@ -109,6 +131,61 @@ export default function ResultPanel({
           </span>
         )}
       </div>
+
+      {/* ── Portão humano: aprovar ou reprovar ─────────────────────────── */}
+      {aguardandoAprovacao && onAprovar && onReprovar && (
+        <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5">
+          {confirmaReprovar ? (
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Reprovar esta produção?</p>
+              <p className="mt-0.5 text-[12px] text-gray-600">
+                Ela será arquivada e sairá da lista; o histórico e as imagens ficam
+                preservados. Você poderá criar uma nova versão no lugar.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={aprovando}
+                  onClick={() => setConfirmaReprovar(false)}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  disabled={aprovando}
+                  onClick={() => { setConfirmaReprovar(false); onReprovar() }}
+                  className="rounded-xl bg-rose-500 px-3 py-1.5 text-[12px] font-bold text-white hover:bg-rose-600 disabled:opacity-50"
+                >
+                  {aprovando ? 'Reprovando…' : 'Confirmar reprovação'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="min-w-0 flex-1 text-sm font-semibold text-emerald-900">
+                Satisfeito com o resultado?
+              </p>
+              <button
+                type="button"
+                disabled={aprovando}
+                onClick={onAprovar}
+                className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {aprovando ? 'Aprovando…' : '✓ Aprovar'}
+              </button>
+              <button
+                type="button"
+                disabled={aprovando}
+                onClick={() => setConfirmaReprovar(true)}
+                className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-bold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+              >
+                Reprovar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {result.titulo && (
         <Bloco titulo="Título">
@@ -153,14 +230,22 @@ export default function ResultPanel({
                 {comImagens && (() => {
                   const img = imagemDe(slide.numero)
                   if (!img) return null
-                  const selo = IMAGEM_STATUS_LABEL[img.status]
+                  // Em voo: o clique JÁ aconteceu — o slide mostra "gerando"
+                  // imediatamente, sem esperar o retorno do servidor.
+                  const emVoo = gerandoSlide === slide.numero
+                  const selo = IMAGEM_STATUS_LABEL[emVoo ? 'gerando' : img.status]
                   return (
                     <div className="mt-2 border-t border-gray-100 pt-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${selo.cor}`}>
                           🖼 {selo.txt}
                         </span>
-                        {img.status === 'nao_gerado' && (
+                        {emVoo && (
+                          <span className="text-[11px] font-semibold text-indigo-500" role="status">
+                            ⏳ Gerando…
+                          </span>
+                        )}
+                        {!emVoo && img.status === 'nao_gerado' && (
                           <button
                             type="button"
                             disabled={gerandoImagens}
@@ -170,7 +255,7 @@ export default function ResultPanel({
                             Gerar imagem
                           </button>
                         )}
-                        {img.status === 'pronto' && (
+                        {!emVoo && img.status === 'pronto' && (
                           <button
                             type="button"
                             disabled={gerandoImagens}
@@ -180,7 +265,7 @@ export default function ResultPanel({
                             Regenerar
                           </button>
                         )}
-                        {img.status === 'falhou' && (
+                        {!emVoo && img.status === 'falhou' && (
                           <button
                             type="button"
                             disabled={gerandoImagens}
@@ -213,22 +298,51 @@ export default function ResultPanel({
 
           {/* ── Gerar todas — com o custo dito ANTES do clique ── */}
           {comImagens && onGerarTodas && (
-            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5">
-              <button
-                type="button"
-                disabled={gerandoImagens}
-                onClick={onGerarTodas}
-                className="rounded-xl bg-gradient-to-b from-indigo-500 to-violet-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:brightness-110 disabled:opacity-50"
-              >
-                {gerandoImagens ? 'Gerando…' : 'Gerar imagens do carrossel'}
-              </button>
-              <p className="text-[12px] text-indigo-700">
-                Custo: uma geração de imagem por slide ({result.imagens.length} no total).
-              </p>
-              {progressoImagens && (
-                <span className="ml-auto rounded-lg bg-white px-2.5 py-1 text-[12px] font-bold text-indigo-700 tabular-nums">
-                  {progressoImagens.done} de {progressoImagens.total} imagens
-                </span>
+            <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5">
+              {confirmaTodas && !gerandoImagens ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="min-w-0 flex-1 text-sm font-semibold text-indigo-900">
+                    Será feita uma geração por slide ({result.imagens.length} no total). Continuar?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmaTodas(false)}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-gray-600 hover:bg-gray-50"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmaTodas(false); onGerarTodas() }}
+                    className="rounded-xl bg-gradient-to-b from-indigo-500 to-violet-600 px-4 py-1.5 text-[12px] font-bold text-white shadow-sm hover:brightness-110"
+                  >
+                    Confirmar e gerar
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={gerandoImagens}
+                    onClick={() => setConfirmaTodas(true)}
+                    className="rounded-xl bg-gradient-to-b from-indigo-500 to-violet-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:brightness-110 disabled:opacity-50"
+                  >
+                    {gerandoImagens ? '⏳ Gerando…' : 'Gerar imagens do carrossel'}
+                  </button>
+                  <p className="text-[12px] text-indigo-700">
+                    Custo: uma geração de imagem por slide ({result.imagens.length} no total).
+                  </p>
+                  {progressoImagens && (
+                    <span className="ml-auto rounded-lg bg-white px-2.5 py-1 text-[12px] font-bold text-indigo-700 tabular-nums" role="status">
+                      {progressoImagens.done} de {progressoImagens.total} imagens
+                    </span>
+                  )}
+                </div>
+              )}
+              {erroImagem && (
+                <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[12px] text-rose-800">
+                  {erroImagem}
+                </p>
               )}
             </div>
           )}

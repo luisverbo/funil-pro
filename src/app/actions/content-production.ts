@@ -460,6 +460,115 @@ export async function removeAllOpenContentProductions(): Promise<ActionResult<Re
   }
 }
 
+// ─── Aprovação humana do portão awaiting_approval ───────────────────────────
+
+/**
+ * APROVA uma produção que está no portão humano.
+ *
+ * O status `approved` e o evento `content_approved` JÁ EXISTEM no sistema
+ * desde a Fase 1 (nenhum enum novo): esta action só liga o botão à transição.
+ * CAS estrito: SÓ awaiting_approval → approved. Cancelada, running, failed ou
+ * de outro tenant nunca aprovam. Replay em produção já aprovada é sucesso
+ * seguro (idempotente), sem evento duplicado.
+ */
+export async function approveContentProduction(productionId: string): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+  if (!idValido(productionId)) return fail('not_found')
+
+  const admin = createAdminClient()
+
+  try {
+    const { data: row } = await admin
+      .from('cs_productions')
+      .select(SELECT_LITE)
+      .eq('tenant_id', tenantId)          // <- tenant da SESSÃO
+      .eq('id', productionId)
+      .maybeSingle()
+
+    const candidata = (row ?? null) as ProductionAdmissionRow | null
+    if (!candidata) return fail('not_found')
+    if (!PRODUCTION_PIPELINE_KEYS.includes(candidata.pipeline_key)) return fail('wrong_pipeline')
+
+    // Idempotência: já aprovada devolve o estado sem nova transição/evento.
+    if (candidata.status !== 'approved') {
+      const store = createSupabaseContentStore(admin, { tenantId, productionId })
+      const transicionou = await store.transitionProductionStatus(
+        productionId, ['awaiting_approval'], 'approved',
+      )
+      if (!transicionou) return fail('not_advanceable')
+      await store.emitEvent({
+        productionId,
+        type: 'content_approved',
+        payload: { by: 'human' },
+      })
+    }
+    return readState(admin, tenantId, productionId)
+  } catch (err) {
+    return fail('approve_failed', err)
+  }
+}
+
+/**
+ * REPROVA uma produção no portão humano — de forma explícita e honesta.
+ *
+ * O sistema NÃO tem status `rejected` e NÃO suporta re-iterar uma produção
+ * concluída (steps completos são reutilizados, nunca reescritos). Sem inventar
+ * enum: reprovar grava o evento oficial `content_rejected` (existe desde a
+ * Fase 1, aparece na timeline como "Recusado") e ARQUIVA a produção com o
+ * status existente `canceled` — ela sai da lista e da cota, o histórico e as
+ * artes ficam intactos, e a pessoa cria uma nova versão no lugar. A UI diz
+ * exatamente isso antes do clique.
+ *
+ * CAS estrito: SÓ awaiting_approval → canceled por este caminho.
+ */
+export async function rejectContentProduction(productionId: string): Promise<ActionResult<RemoveResult>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+  if (!idValido(productionId)) return fail('not_found')
+
+  const admin = createAdminClient()
+
+  try {
+    const { data: row } = await admin
+      .from('cs_productions')
+      .select(SELECT_LITE)
+      .eq('tenant_id', tenantId)
+      .eq('id', productionId)
+      .maybeSingle()
+
+    const candidata = (row ?? null) as ProductionAdmissionRow | null
+    if (!candidata) return fail('not_found')
+    if (!PRODUCTION_PIPELINE_KEYS.includes(candidata.pipeline_key)) return fail('wrong_pipeline')
+
+    let removed = 0
+    if (candidata.status === 'awaiting_approval') {
+      const store = createSupabaseContentStore(admin, { tenantId, productionId })
+      const transicionou = await store.transitionProductionStatus(
+        productionId, ['awaiting_approval'], 'canceled',
+      )
+      if (transicionou) {
+        removed = 1
+        // O evento fica DEPOIS do CAS: só quem realmente reprovou o grava.
+        await store.emitEvent({
+          productionId,
+          type: 'content_rejected',
+          payload: { by: 'human' },
+        })
+      }
+    } else if (candidata.status !== 'canceled') {
+      // Fora do portão (running, approved...) não é reprovável por aqui.
+      return fail('not_advanceable')
+    }
+    // canceled: replay idempotente, sucesso seguro.
+
+    const lista = await listAfterRemoval(admin, tenantId)
+    return { ok: true, data: { removed, ...lista } }
+  } catch (err) {
+    return fail('approve_failed', err)
+  }
+}
+
 // ─── Imagens da geração Studio (sob demanda, nunca automáticas) ─────────────
 
 /** Storage real: bucket `quiz-assets` (o MESMO de uploadQuizImage), bytes only. */
@@ -538,7 +647,9 @@ export async function generateStudioSlideImage(
     return readState(admin, tenantId, productionId)
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('studio_images:')) {
-      return fail('ai_disabled', err)
+      // Mensagem PRÓPRIA do fluxo de imagens — a da copy confundia o usuário
+      // (e escondia a causa real: OPENAI_API_KEY ausente no ambiente).
+      return fail('images_unavailable', err)
     }
     return fail('create_failed', err)
   }
@@ -586,7 +697,9 @@ export async function generateAllStudioSlideImages(
     return { ok: true, data: { ...estado.data, imagesDone: prontas, imagesTotal: total } }
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('studio_images:')) {
-      return fail('ai_disabled', err)
+      // Mensagem PRÓPRIA do fluxo de imagens — a da copy confundia o usuário
+      // (e escondia a causa real: OPENAI_API_KEY ausente no ambiente).
+      return fail('images_unavailable', err)
     }
     return fail('create_failed', err)
   }

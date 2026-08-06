@@ -161,6 +161,8 @@ export const PRODUCTION_MESSAGES = {
   remove_failed: 'Não foi possível remover a produção. Tente novamente.',
   idempotency_conflict: 'Este envio entrou em conflito com outro. Recarregue a página e tente novamente.',
   ai_disabled: 'A geração com IA está temporariamente indisponível.',
+  images_unavailable: 'A geração de imagens não está configurada neste ambiente (chave da OpenAI ausente).',
+  approve_failed: 'Não foi possível concluir a ação. Recarregue a página e tente novamente.',
   create_failed: 'Não foi possível iniciar a produção. Tente novamente.',
   read_failed: 'Não foi possível carregar a produção. Tente novamente.',
 } as const
