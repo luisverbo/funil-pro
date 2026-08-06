@@ -322,7 +322,7 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
     'generateAllStudioSlideImages', 'generateStudioSlideImage', 'generateViralCoverImage',
     'getLatestProduction', 'getProductionState', 'listProductions',
     'rejectContentProduction', 'removeAllOpenContentProductions', 'removeContentProduction',
-    'retryStaleStudioProduction',
+    'retryFailedStudioProduction', 'retryStaleStudioProduction',
   ])
 
   for (const nome of exportadas) {

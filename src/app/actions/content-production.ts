@@ -54,7 +54,7 @@ import { buildProductionResult, type ProductionResult } from '@/lib/content-stud
 import { runQuickCarousel } from '@/lib/content-studio/quick/run'
 import { QUICK_COMPARE_FIELDS, validateQuickInput, type QuickInput, type ValidQuickBrief } from '@/lib/content-studio/quick/schema'
 import {
-  isStaleRunningStep, retryStaleStudioStep, runStudioCarousel,
+  isStaleRunningStep, retryFailedStudioStep, retryStaleStudioStep, runStudioCarousel,
   STUDIO_REQUEST_BUDGET_MS,
 } from '@/lib/content-studio/studio/run'
 import { STUDIO_AGENT_LABELS, STUDIO_AGENT_ORDER } from '@/lib/content-studio/studio/schema'
@@ -101,7 +101,15 @@ export interface ProductionState {
    *   available=true            -> abandonado; o botão de retomada aparece
    *   agentLabel                -> rótulo amigável do papel travado
    */
-  recovery: { available: boolean; running: boolean; agentLabel?: string }
+  recovery: {
+    available: boolean
+    running: boolean
+    agentLabel?: string
+    /** true quando a retomada é de um step `failed` (produção falhou). */
+    failedStep?: boolean
+    /** Motivo persistido da falha (cs_steps.error, truncado) — diagnóstico. */
+    reason?: string
+  }
 }
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -374,6 +382,52 @@ export async function retryStaleStudioProduction(productionId: string): Promise<
 
     const store = createSupabaseContentStore(admin, { tenantId, productionId })
     await retryStaleStudioStep(store, production, brief)
+    return readState(admin, tenantId, productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+/**
+ * Backend do botão "Tentar novamente o {agente}" de uma produção `failed`:
+ * repete SOMENTE o step de texto que falhou (CAS failed→running — dois
+ * cliques, uma chamada), traz a produção de volta de `failed` e segue o fluxo
+ * normal. Steps já concluídos nunca são refeitos. É uma nova chamada PAGA —
+ * por isso é uma action separada, jamais disparada sozinha.
+ */
+export async function retryFailedStudioProduction(productionId: string): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+  if (!idValido(productionId)) return fail('not_found')
+
+  const admin = createAdminClient()
+
+  const { data: row } = await admin
+    .from('cs_productions')
+    .select('*')
+    .eq('tenant_id', tenantId)          // <- tenant da SESSÃO
+    .eq('id', productionId)
+    .maybeSingle()
+
+  const production = (row ?? null) as ProductionRow | null
+  if (!production) return fail('not_found')
+  if (production.pipeline_key !== STUDIO_PIPELINE.key) return fail('wrong_pipeline')
+  // SÓ produção falhada — os outros estados têm seus próprios caminhos.
+  if (production.status !== 'failed') return fail('not_failed')
+
+  const brief = production.brief as ValidStudioBrief | null
+  if (!brief || typeof brief.tema !== 'string') return fail('invalid_brief')
+
+  try {
+    // A retomada é uma chamada PAGA: o preflight barra antes de qualquer
+    // escrita se a IA estiver desligada/mal configurada.
+    preflightContentAI()
+
+    const store = createSupabaseContentStore(admin, { tenantId, productionId })
+    await retryFailedStudioStep(store, production, brief)
     return readState(admin, tenantId, productionId)
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('content_ai:')) {
@@ -1226,6 +1280,30 @@ function studioRecovery(steps: StepRow[]): { available: boolean; running: boolea
   return { available: false, running: true, agentLabel }
 }
 
+/**
+ * Produção `failed`: qual step de TEXTO falhou, e por quê? O motivo vem do
+ * `error` persistido no step (já truncado na gravação) — é o que permite à
+ * pessoa decidir se vale pagar uma nova tentativa.
+ */
+function studioFailureRecovery(steps: StepRow[]): ProductionState['recovery'] {
+  const porAgente = new Map(steps.map(s => [s.agent_key, s]))
+  for (const key of STUDIO_AGENT_ORDER) {
+    const st = porAgente.get(key)
+    if (st?.status === 'completed') continue
+    if (st?.status === 'failed') {
+      return {
+        available: true,
+        running: false,
+        failedStep: true,
+        agentLabel: STUDIO_AGENT_LABELS[key] ?? key,
+        reason: typeof st.error === 'string' ? st.error.slice(0, 200) : undefined,
+      }
+    }
+    break
+  }
+  return { available: false, running: false }
+}
+
 async function readState(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
@@ -1268,9 +1346,15 @@ async function readState(
       pending: row.pipeline_key === STUDIO_PIPELINE.key
         ? studioPending(row.status, (steps.data ?? []) as StepRow[])
         : (jobs.count ?? 0) > 0,
-      recovery: row.pipeline_key === STUDIO_PIPELINE.key && !PRODUCTION_TERMINAL.includes(row.status)
-        ? studioRecovery((steps.data ?? []) as StepRow[])
-        : { available: false, running: false },
+      recovery: row.pipeline_key !== STUDIO_PIPELINE.key
+        ? { available: false, running: false }
+        : row.status === 'failed'
+          // Falha persistida: a retomada é OUTRO caminho (retryFailed), mas o
+          // estado — qual agente falhou e por quê — vem daqui, do servidor.
+          ? studioFailureRecovery((steps.data ?? []) as StepRow[])
+          : !PRODUCTION_TERMINAL.includes(row.status)
+            ? studioRecovery((steps.data ?? []) as StepRow[])
+            : { available: false, running: false },
       // Montado aqui, no servidor, a partir do que os agentes gravaram.
       result: buildProductionResult((steps.data ?? []) as StepRow[]),
     },
