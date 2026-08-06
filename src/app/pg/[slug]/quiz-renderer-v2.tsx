@@ -689,7 +689,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         {['single_choice', 'multi_choice', 'yes_no'].includes(block.type) && (
           <div>
             {config.question && (
-              <div className="text-center mb-6">
+              <div className="mb-6" style={{ textAlign: config.question_align ?? 'center' }}>
                 <h2 className="text-2xl md:text-3xl font-bold" style={{ color: theme.textColor }}>{resolveVars(config.question)}</h2>
                 {config.subtitle && <p className="mt-1" style={{ color: theme.mutedColor }}>{resolveVars(config.subtitle)}</p>}
               </div>
@@ -779,7 +779,12 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'scale' && (
           <div className="text-center">
-            {config.question && <h2 className="text-2xl font-bold mb-6" style={{ color: theme.textColor }}>{config.question}</h2>}
+            {config.question && (
+              <h2 className="text-2xl font-bold mb-6"
+                style={{ color: theme.textColor, textAlign: config.question_align ?? 'center' }}>
+                {config.question}
+              </h2>
+            )}
             <div className="flex flex-wrap justify-center gap-3">
               {(() => {
                 // #20: clampa para nunca gerar 0/negativo (travaria um scale obrigatório)
@@ -1056,7 +1061,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           const embed = config.video_answer_url ? getYoutubeEmbed(config.video_answer_url) : null
           return (
             <div>
-              {config.question && <h2 className="text-2xl font-bold text-center mb-4" style={{ color: theme.textColor }}>{config.question}</h2>}
+              {config.question && <h2 className="text-2xl font-bold mb-4" style={{ color: theme.textColor, textAlign: config.question_align ?? 'center' }}>{config.question}</h2>}
               {embed && <div className="aspect-video rounded-xl overflow-hidden bg-black mb-4"><iframe src={embed} className="w-full h-full" allowFullScreen /></div>}
               <div className="space-y-3">
                 {(config.options ?? []).map((opt: BlockOption) => {

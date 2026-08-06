@@ -105,6 +105,12 @@ export interface BlockConfig {
   // Choice/scale blocks
   question?: string
   subtitle?: string
+  /**
+   * Alinhamento do TÍTULO/subtítulo dos blocos de pergunta (escolha única,
+   * múltipla, sim/não, escala, vídeo-resposta). Ausente = 'center', que era o
+   * comportamento fixo no código: quizzes já publicados não mudam de aparência.
+   */
+  question_align?: 'left' | 'center' | 'right'
   options?: BlockOption[]
   scale_min?: number
   scale_max?: number

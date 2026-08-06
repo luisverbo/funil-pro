@@ -446,12 +446,15 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
   let summary: React.ReactNode = null
 
   if (['single_choice', 'multi_choice', 'yes_no'].includes(block.type)) {
+    // O preview do canvas mostra o MESMO alinhamento que a página publicada —
+    // sem isso, a tela do editor mentiria sobre o resultado final.
+    const alinhamento = config.question_align ?? 'center'
     summary = (
       <div>
-        <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">
+        <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2" style={{ textAlign: alinhamento }}>
           {config.question || <span className="text-gray-400 italic">Pergunta sem texto</span>}
         </p>
-        {config.subtitle && <p className="text-xs text-gray-500 mt-0.5">{config.subtitle}</p>}
+        {config.subtitle && <p className="text-xs text-gray-500 mt-0.5" style={{ textAlign: alinhamento }}>{config.subtitle}</p>}
         {(config.options ?? []).length > 0 && (
           <div className="mt-2 space-y-1">
             {(config.options ?? []).slice(0, 3).map(opt => (
@@ -1241,6 +1244,17 @@ function BlockEditor({
             <input value={config.subtitle ?? ''} onChange={e => setConfigKey('subtitle', e.target.value)}
               className={inputCls} placeholder="Ex: Escolha uma opção" />
           </div>
+          <div>
+            <label className={labelCls}>Alinhamento do texto</label>
+            <div className="flex gap-1.5">
+              {(['left', 'center', 'right'] as const).map(a => (
+                <button key={a} onClick={() => setConfigKey('question_align', a)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.question_align ?? 'center') === a ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'}`}>
+                  {a === 'left' ? 'Esquerda' : a === 'center' ? 'Centro' : 'Direita'}
+                </button>
+              ))}
+            </div>
+          </div>
           <OptionList options={config.options ?? []} pages={pages} onChange={opts => setConfigKey('options', opts)} />
           {block.type === 'multi_choice' && (
             <div className={sectionCls}>
@@ -1262,6 +1276,17 @@ function BlockEditor({
             <label className={labelCls}>Pergunta</label>
             <textarea value={config.question ?? ''} onChange={e => setConfigKey('question', e.target.value)}
               rows={2} className={inputCls + ' resize-none'} placeholder="Como você avalia...?" />
+          </div>
+          <div>
+            <label className={labelCls}>Alinhamento do texto</label>
+            <div className="flex gap-1.5">
+              {(['left', 'center', 'right'] as const).map(a => (
+                <button key={a} onClick={() => setConfigKey('question_align', a)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.question_align ?? 'center') === a ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'}`}>
+                  {a === 'left' ? 'Esquerda' : a === 'center' ? 'Centro' : 'Direita'}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
