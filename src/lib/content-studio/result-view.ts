@@ -102,6 +102,10 @@ export interface ProductionResult {
   /** Modo viral: capa + slides de texto renderizados. null nas demais. */
   viral: {
     cover: { status: 'nao_gerado' | 'gerando' | 'pronto' | 'falhou'; url: string | null; modelo: string | null; qualidade: string | null; tentativa: number; intensity: string | null; accentHex: string | null; erro: string | null }
+    /** Quantas imagens a OpenAI gerou nesta produção (tentativas inclusas). */
+    geracoesOpenAI: number
+    /** Quantos slides o FunilPro montou sem tocar na OpenAI. */
+    slidesGratuitos: number
     textSlides: { slide: number; url: string }[]
   } | null
   /** true quando há material suficiente para mostrar o painel. */
@@ -307,6 +311,10 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
           .filter((t): t is { slide: number; url: string } =>
             !!t && typeof t === 'object' && typeof (t as { url?: unknown }).url === 'string')
           .map(t => ({ slide: t.slide, url: t.url })),
+        // CUSTO REAL: cada tentativa da CAPA é uma imagem paga; os slides de
+        // texto são montados aqui, com sharp, e não tocam a OpenAI.
+        geracoesOpenAI: (stepCapa.attempt ?? 0) + 1,
+        slidesGratuitos: Math.max(slides.length - 1, 0),
       }
     : null
 

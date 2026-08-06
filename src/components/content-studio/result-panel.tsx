@@ -452,6 +452,17 @@ export default function ResultPanel({
                 )}
               </div>
 
+              {/* CUSTO REAL desta produção — contagem vinda dos steps, não
+                  estimativa: é o que responde "por que gastei na OpenAI?". */}
+              {result.viral && result.viral.cover.status !== 'nao_gerado' && (
+                <p className="mt-2 rounded-xl bg-white/70 border border-fuchsia-200 px-3 py-2 text-[12px] text-gray-700">
+                  <strong>{result.viral.geracoesOpenAI}</strong>
+                  {result.viral.geracoesOpenAI === 1 ? ' imagem gerada' : ' imagens geradas'} na OpenAI
+                  {result.viral.cover.tentativa > 0 && ' (contando as tentativas anteriores da capa)'} ·{' '}
+                  <strong>{result.viral.slidesGratuitos} slides</strong> montados pelo FunilPro, sem custo de IA.
+                </p>
+              )}
+
               {result.viral?.cover.status === 'falhou' && result.viral.cover.erro && (
                 <p className="mt-2 rounded-xl bg-rose-50 border border-rose-200 px-3 py-2 text-[12px] text-rose-800 break-words">
                   {result.viral.cover.erro}

@@ -983,7 +983,12 @@ test('30) nenhuma chamada externa ou IA foi adicionada', () => {
   ] as const) {
     assert.ok(!/\bfetch\s*\(/.test(src), `${nome} faz fetch`)
     assert.ok(!/https?:\/\//.test(src), `${nome} referencia URL externa`)
-    assert.ok(!/openai|resend|instagram|n8n/i.test(src), `${nome} referencia provedor externo`)
+    // O que se proíbe é INTEGRAÇÃO: importar cliente de provedor ou chamá-lo.
+    // Citar o nome do provedor em TEXTO de interface é permitido — e é o que
+    // deixa o custo transparente para quem paga a conta.
+    assert.ok(!/from\s+['"][^'"]*(openai|resend|instagram|n8n)/i.test(src),
+      `${nome} importa cliente de provedor externo`)
+    assert.ok(!/new\s+(OpenAI|Resend)\b/.test(src), `${nome} instancia cliente de provedor`)
   }
   // O result-view só LÊ o metadado do provedor gravado no usage — não chama.
   for (const [nome, src] of [
