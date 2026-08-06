@@ -637,7 +637,7 @@ test('19) UI: botões, custo dito antes, progresso "N de M"', () => {
   assert.ok(painel.includes('aspect-square'), 'preview fora da proporção de carrossel')
 
   const preview = semComentarios(ler('src/components/content-studio/office-preview.tsx'))
-  const gerarTodas = preview.slice(preview.indexOf('const gerarTodas'), preview.indexOf('const abrirProducao'))
+  const gerarTodas = preview.slice(preview.indexOf('const gerarTodas'), preview.indexOf('const limparTela'))
   assert.ok(!gerarTodas.includes('setInterval'), 'polling em gerarTodas')
   assert.ok(gerarTodas.includes('for (let i = 0; i < 10'), 'laço sem teto fechado')
   assert.ok(gerarTodas.includes('imagesDone === anterior'), 'sem parada por estagnação')

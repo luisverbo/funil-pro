@@ -27,6 +27,9 @@ import {
   generateAllStudioSlideImages,
   generateStudioSlideImage,
   listProductions,
+  removeAllOpenContentProductions,
+  removeContentProduction,
+  type RemoveResult,
   type ProductionState,
   type ProductionSummary,
 } from '@/app/actions/content-production'
@@ -43,6 +46,7 @@ import {
   type OfficeView,
 } from '@/lib/content-studio/view-model'
 import type { PublicEvent } from '@/lib/content-studio/demo-guard'
+import { PRODUCTION_TERMINAL, safeProductionMessage } from '@/lib/content-studio/production-guard'
 import OfficeScene from './office-scene'
 import TimelinePanel from './timeline-panel'
 
@@ -121,6 +125,16 @@ export default function OfficePreview() {
   const [avisoContinuacao, setAvisoContinuacao] = useState<string | null>(null)
   const [gerandoImagens, setGerandoImagens] = useState(false)
   const [progressoImagens, setProgressoImagens] = useState<{ done: number; total: number } | null>(null)
+  // Gerenciamento de produções: painel, confirmação pendente e toast.
+  const [gerenciando, setGerenciando] = useState(false)
+  const [confirmacao, setConfirmacao] = useState<
+    | { tipo: 'uma'; id: string; titulo: string; aberta: boolean }
+    | { tipo: 'todas'; qtd: number }
+    | null
+  >(null)
+  const [removendo, setRemovendo] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const abrirProducaoRef = useRef<(id: string) => Promise<void>>(async () => {})
 
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
@@ -561,6 +575,73 @@ export default function OfficePreview() {
     }
   }, [aplicarEstado, criando, gerandoImagens, productionId, running])
 
+  /** Volta a tela ao estado inicial (nenhuma produção selecionada). */
+  const limparTela = useCallback(() => {
+    setProductionId(null)
+    setPipelineAtual(null)
+    setStatus(null)
+    setAllEvents([])
+    setRevealed(0)
+    setResult(emptyProductionResult())
+    setStudioPendente(false)
+    setAvisoContinuacao(null)
+    setProgressoImagens(null)
+  }, [])
+
+  /**
+   * Aplica o retorno das ações de remoção: lista nova no seletor e, se a
+   * produção selecionada saiu da lista, seleciona a mais recente restante —
+   * ou limpa a tela quando não sobra nenhuma. Tudo sem refresh.
+   */
+  const aplicarRemocao = useCallback(async (dados: RemoveResult) => {
+    setProducoes(dados.productions)
+    if (dados.removed > 0) {
+      setToast('Produção removida. Agora você pode criar outra.')
+      // O limite deixou de valer: o aviso antigo sai da frente do formulário.
+      if (erroBrief === safeProductionMessage('too_many_open')) setErroBrief(null)
+    }
+    const selecionadaSumiu = productionId && !dados.productions.some(p => p.id === productionId)
+    if (selecionadaSumiu) {
+      const maisRecente = dados.productions[0]
+      if (maisRecente) await abrirProducaoRef.current(maisRecente.id)
+      else limparTela()
+    }
+  }, [erroBrief, limparTela, productionId])
+
+  /** Remove UMA produção (soft delete no servidor). Idempotente. */
+  const removerProducao = useCallback(async (id: string) => {
+    if (removendo) return
+    setRemovendo(true)
+    setError(null)
+    try {
+      const r = await removeContentProduction(id)
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      await aplicarRemocao(r.data)
+    } catch {
+      setError('Não foi possível remover a produção. Tente novamente.')
+    } finally {
+      if (!cancelled.current) { setRemovendo(false); setConfirmacao(null) }
+    }
+  }, [aplicarRemocao, removendo])
+
+  /** Cancela TODAS as abertas do tenant — o servidor decide quais são. */
+  const removerTodasAbertas = useCallback(async () => {
+    if (removendo) return
+    setRemovendo(true)
+    setError(null)
+    try {
+      const r = await removeAllOpenContentProductions()
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      await aplicarRemocao(r.data)
+    } catch {
+      setError('Não foi possível remover as produções. Tente novamente.')
+    } finally {
+      if (!cancelled.current) { setRemovendo(false); setConfirmacao(null) }
+    }
+  }, [aplicarRemocao, removendo])
+
   /** Troca a produção exibida. Só lê — nunca dispara execução. */
   const abrirProducao = useCallback(async (id: string) => {
     if (running) return
@@ -579,6 +660,16 @@ export default function OfficePreview() {
     // reabrir uma produção Studio incompleta mostra o botão de continuar.
     aplicarEstado(res.data)
   }, [aplicarEstado, running])
+
+  // `aplicarRemocao` é declarado antes de `abrirProducao`; o ref quebra o nó.
+  useEffect(() => { abrirProducaoRef.current = abrirProducao }, [abrirProducao])
+
+  // O toast se recolhe sozinho.
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 5000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   const vazio = !loading && allEvents.length === 0 && !running
   const estadoCor =
@@ -705,6 +796,37 @@ export default function OfficePreview() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => setGerenciando(true)}
+            disabled={running || criando}
+            aria-label="Gerenciar produções"
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          >
+            <span aria-hidden>🗑</span>
+            <span className="ml-1 hidden sm:inline">Gerenciar</span>
+          </button>
+        </div>
+      )}
+
+      {/* Limite atingido: além do aviso, o CAMINHO para resolver */}
+      {modo === 'producao' && erroBrief === safeProductionMessage('too_many_open') && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="min-w-0 flex-1 text-sm font-semibold text-amber-900">{erroBrief}</p>
+          <button
+            type="button"
+            onClick={() => setGerenciando(true)}
+            className="shrink-0 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-amber-600"
+          >
+            Gerenciar produções
+          </button>
+        </div>
+      )}
+
+      {/* Toast de confirmação */}
+      {toast && (
+        <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5" role="status">
+          <p className="text-sm font-semibold text-emerald-800">✓ {toast}</p>
         </div>
       )}
 
@@ -879,6 +1001,137 @@ export default function OfficePreview() {
                 : 'Crie um carrossel para começar.'}{' '}
         Os eventos exibidos são lidos de <code>cs_events</code>.
       </p>
+
+      {/* ── Painel Gerenciar produções (modal, desktop e mobile) ─────────── */}
+      {gerenciando && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-6"
+          onClick={() => { if (!removendo) { setGerenciando(false); setConfirmacao(null) } }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Gerenciar produções"
+            onClick={e => e.stopPropagation()}
+            className="animate-modal-in max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 shadow-2xl sm:max-w-lg sm:rounded-3xl sm:p-5"
+          >
+            {confirmacao ? (
+              // ── Confirmação — nada de window.confirm ──
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  {confirmacao.tipo === 'todas'
+                    ? `Remover ${confirmacao.qtd} ${confirmacao.qtd === 1 ? 'produção' : 'produções'} em andamento?`
+                    : confirmacao.aberta ? 'Cancelar e remover esta produção?' : 'Remover esta produção da lista?'}
+                </h3>
+                {confirmacao.tipo === 'uma' && (
+                  <p className="mt-1 truncate text-sm font-semibold text-gray-600">{confirmacao.titulo}</p>
+                )}
+                <p className="mt-2 text-sm text-gray-600">
+                  {confirmacao.tipo === 'todas'
+                    ? 'Elas não continuarão sendo processadas.'
+                    : confirmacao.aberta
+                      ? 'O processamento será interrompido e ela sumirá da lista.'
+                      : 'O histórico será preservado no sistema.'}
+                </p>
+                <p className="mt-1 text-[12px] text-gray-400">
+                  A produção será removida da lista e não continuará sendo processada.
+                </p>
+                <div className="mt-4 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={removendo}
+                    onClick={() => setConfirmacao(null)}
+                    className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={removendo}
+                    onClick={() => {
+                      if (confirmacao.tipo === 'todas') void removerTodasAbertas()
+                      else void removerProducao(confirmacao.id)
+                    }}
+                    className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold text-white hover:bg-rose-600 disabled:opacity-50"
+                  >
+                    {removendo ? 'Removendo…' : 'Confirmar remoção'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // ── Lista de produções ──
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-bold text-gray-900">Gerenciar produções</h3>
+                  <button
+                    type="button"
+                    onClick={() => setGerenciando(false)}
+                    aria-label="Fechar"
+                    className="rounded-lg px-2 py-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="mt-0.5 text-[12px] text-gray-500">
+                  Remover é definitivo para a lista; o histórico fica preservado no sistema.
+                </p>
+
+                {(() => {
+                  const abertas = producoes.filter(p => !PRODUCTION_TERMINAL.includes(p.status))
+                  return abertas.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={removendo}
+                      onClick={() => setConfirmacao({ tipo: 'todas', qtd: abertas.length })}
+                      className="mt-3 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"
+                    >
+                      Limpar todas em andamento ({abertas.length})
+                    </button>
+                  )
+                })()}
+
+                <ul className="mt-3 space-y-2">
+                  {producoes.length === 0 && (
+                    <li className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                      Nenhuma produção na lista.
+                    </li>
+                  )}
+                  {producoes.map(p => {
+                    const aberta = !PRODUCTION_TERMINAL.includes(p.status)
+                    const modoTexto =
+                      p.pipelineKey === 'content_carousel_studio_v1' ? 'Studio (IA + design)'
+                      : p.pipelineKey === 'content_carousel_quick_v1' ? 'Criação rápida (IA)'
+                      : p.pipelineKey === 'content_carousel_ai_v1' ? 'Briefing avançado (IA)'
+                      : 'Determinístico'
+                    return (
+                      <li key={p.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2.5">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-gray-900">{p.title ?? 'Sem título'}</p>
+                          <p className="text-[12px] text-gray-500">
+                            {productionStatusLabel(p.status)} · {modoTexto} · {new Date(p.createdAt).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={removendo}
+                          onClick={() => setConfirmacao({ tipo: 'uma', id: p.id, titulo: p.title ?? 'Sem título', aberta })}
+                          className={`shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-bold transition-colors disabled:opacity-50 ${
+                            aberta
+                              ? 'bg-rose-500 text-white hover:bg-rose-600'
+                              : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {aberta ? 'Cancelar e remover' : 'Remover da lista'}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
