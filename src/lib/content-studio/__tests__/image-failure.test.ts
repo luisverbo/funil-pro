@@ -20,6 +20,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { describeImageFailure } from '../images/failure'
+import {
+  STUDIO_IMAGE_PERSIST_MARGIN_MS, STUDIO_IMAGE_ROUTE_MAX_DURATION_MS, STUDIO_IMAGE_TIMEOUT_MS,
+} from '../images/provider'
 import { buildProductionResult } from '../result-view'
 import { buildOfficeView } from '../view-model'
 import { STUDIO_COPYWRITER_KEY, STUDIO_DESIGNER_KEY, STUDIO_STRATEGIST_KEY } from '../studio/schema'
@@ -237,6 +240,25 @@ test('7) a capa aceita qualidade EXPLÍCITA — servidor decide o valor real', (
 
   const ui = ler('src/components/content-studio/result-panel.tsx')
   assert.ok(ui.includes("{m === 'premium' ? 'Premium' : 'Rápida'}"), 'sem seletor de qualidade na capa')
+})
+
+test('9) CAUSA DO TIMEOUT: a imagem ganha tempo real dentro da rota', () => {
+  // O erro visto em produção ("A geração passou do tempo limite") vinha de um
+  // orçamento de 45s para uma geração que leva mais: qualidade alta em formato
+  // vertical. Agora o teto da rota é o do Fluid Compute e o timeout cabe nele.
+  const pagina = ler('src/app/(dashboard)/content-studio/page.tsx')
+  const m = /export const maxDuration = (\d+)/.exec(pagina)
+  assert.ok(m, 'página sem maxDuration')
+  const rotaMs = Number(m![1]) * 1000
+  assert.equal(rotaMs, STUDIO_IMAGE_ROUTE_MAX_DURATION_MS, 'a constante diverge da rota')
+  assert.ok(rotaMs <= 300_000, 'acima de 300s o deploy é recusado por plano')
+
+  // INVARIANTE: geração + margem de composição/upload cabe na rota.
+  assert.ok(STUDIO_IMAGE_TIMEOUT_MS + STUDIO_IMAGE_PERSIST_MARGIN_MS <= rotaMs,
+    'timeout de imagem não cabe no maxDuration')
+  // E o tempo entregue à geração é MAIOR que o que falhava (45s).
+  assert.ok(STUDIO_IMAGE_TIMEOUT_MS > 45_000, 'o orçamento continua no valor que falhava')
+  assert.ok(STUDIO_IMAGE_PERSIST_MARGIN_MS >= 30_000, 'margem de composição/upload simbólica')
 })
 
 test('8) R1 intacto; nenhuma migration; nenhum segredo exposto', () => {

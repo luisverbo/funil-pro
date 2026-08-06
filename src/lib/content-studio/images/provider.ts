@@ -27,8 +27,31 @@ export const STUDIO_IMAGE_QUALITIES = ['medium', 'high'] as const
 export type StudioImageQuality = (typeof STUDIO_IMAGE_QUALITIES)[number]
 export const STUDIO_IMAGE_QUALITY: StudioImageQuality = 'medium'
 
-/** Timeout da chamada de imagem. Cabe em maxDuration=60s com folga p/ compor+salvar. */
-export const STUDIO_IMAGE_TIMEOUT_MS = 45_000
+/**
+ * Timeout da chamada de imagem.
+ *
+ * Era 45s "para caber em maxDuration=60s" — e essa conta é justamente a causa
+ * do erro visto em produção: `gpt-image-1` em qualidade alta e 1024×1536 leva
+ * mais que isso, então TODA capa Premium morria em `studio_images:timeout`.
+ * Com a rota em 300s (Fluid Compute), a geração ganha o tempo que realmente
+ * precisa e ainda sobram ~70s para compor, salvar e responder.
+ *
+ * INVARIANTE (conferido em teste): TIMEOUT + MARGEM <= maxDuration da rota.
+ */
+export const STUDIO_IMAGE_TIMEOUT_MS = 230_000
+
+/** Tempo reservado para compor (sharp), subir ao Storage e persistir o step. */
+export const STUDIO_IMAGE_PERSIST_MARGIN_MS = 60_000
+
+/** maxDuration declarado na rota que hospeda as Server Actions de imagem. */
+export const STUDIO_IMAGE_ROUTE_MAX_DURATION_MS = 300_000
+
+{
+  // Configuração impossível não deve nem carregar.
+  if (STUDIO_IMAGE_TIMEOUT_MS + STUDIO_IMAGE_PERSIST_MARGIN_MS > STUDIO_IMAGE_ROUTE_MAX_DURATION_MS) {
+    throw new Error('studio_images: timeout não cabe no maxDuration da rota')
+  }
+}
 
 /** Teto do corpo decodificado — um PNG 1024² honesto fica muito abaixo disso. */
 export const STUDIO_IMAGE_MAX_BYTES = 24 * 1024 * 1024

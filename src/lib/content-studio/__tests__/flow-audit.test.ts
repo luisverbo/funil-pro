@@ -17,6 +17,7 @@ import { join } from 'node:path'
 
 import { createAnthropicProvider } from '../ai/anthropic'
 import { AI_MIN_ATTEMPT_MS } from '../ai/config'
+import { STUDIO_REQUEST_BUDGET_MS } from '../studio/run'
 import {
   studioDesignerSystem, STUDIO_DESIGNER_PROMPT_VERSION, STUDIO_DESIGNER_VIRAL_PROMPT_VERSION,
 } from '../studio/prompt'
@@ -115,7 +116,11 @@ test('3) o invariante de tempo agora é verdadeiro de ponta a ponta', () => {
   assert.ok(anthropic.includes('if (restanteMs < AI_MIN_ATTEMPT_MS) break'),
     'tentativa sem tempo útil ainda abre')
   const pagina = ler('src/app/(dashboard)/content-studio/page.tsx')
-  assert.ok(pagina.includes('export const maxDuration = 60'), 'página sem maxDuration')
+  const m = /export const maxDuration = (\d+)/.exec(pagina)
+  assert.ok(m, 'página sem maxDuration')
+  // O orçamento de TEXTO precisa caber no limite da rota, com folga real.
+  assert.ok(STUDIO_REQUEST_BUDGET_MS + 10_000 <= Number(m![1]) * 1000,
+    'orçamento de texto sem folga dentro do maxDuration')
 })
 
 // ════════════════════════════════════════════════════════════════════════════
