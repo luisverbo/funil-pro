@@ -18,6 +18,7 @@ import React from 'react'
 import type { ProductionResult } from '@/lib/content-studio/result-view'
 import { IMAGE_PRESET_LABELS, IMAGE_PRESETS, type ImagePreset } from '@/lib/content-studio/images/prompt'
 import { IMAGE_MODES, type ImageMode } from '@/lib/content-studio/images/modes'
+import { VIRAL_INTENSITIES, type ViralIntensity } from '@/lib/content-studio/images/viral-prompt'
 
 const PAPEL_LABEL: Record<string, string> = {
   gancho: 'Gancho',
@@ -67,6 +68,18 @@ export interface ResultPanelProps {
   /** Preset visual escolhido — controlado pelo pai. */
   presetImagem?: ImagePreset
   onPresetImagem?: (p: ImagePreset) => void
+  /** Modo visual persistido da produção (viral_cover_text_v1 | per_slide_v1). */
+  visualMode?: string | null
+  /** Gera/regenera a CAPA do modo viral (uma chamada por carrossel). */
+  onGerarCapa?: (retry: boolean) => void
+  gerandoCapa?: boolean
+  intensidadeCapa?: ViralIntensity
+  onIntensidadeCapa?: (i: ViralIntensity) => void
+}
+
+const INTENSIDADE_LABELS: Record<ViralIntensity, string> = {
+  forte: 'Forte',
+  curiosidade_maxima: 'Curiosidade máxima',
 }
 
 const MODO_LABELS: Record<ImageMode, { nome: string; hint: string }> = {
@@ -87,6 +100,8 @@ export default function ResultPanel({
   onGerarImagem, onGerarTodas, gerandoImagens = false, gerandoSlide = null,
   progressoImagens = null, erroImagem = null,
   modoImagem = 'premium', onModoImagem, presetImagem = 'editorial_premium', onPresetImagem,
+  visualMode = null, onGerarCapa, gerandoCapa = false,
+  intensidadeCapa = 'curiosidade_maxima', onIntensidadeCapa,
 }: ResultPanelProps) {
   const [ampliada, setAmpliada] = React.useState<string | null>(null)
   // Confirmações locais: custo do "Gerar todas" e a reprovação.
@@ -95,9 +110,12 @@ export default function ResultPanel({
 
   if (!result.disponivel) return null
 
-  // Imagens só existem na geração Studio (Designer concluído) e quando a tela
-  // forneceu os handlers — produções antigas não ganham botões fantasmas.
-  const comImagens = result.visual.disponivel && result.imagens.length > 0 && !!onGerarImagem
+  // Modo VIRAL: uma foto (capa) + slides de texto — os controles por slide e
+  // o "Gerar todas" NÃO existem aqui. Produções antigas mantêm os antigos.
+  const ehViral = visualMode === 'viral_cover_text_v1'
+  // Imagens por slide só existem na geração Studio POR-SLIDE (Designer
+  // concluído) e quando a tela forneceu os handlers.
+  const comImagens = !ehViral && result.visual.disponivel && result.imagens.length > 0 && !!onGerarImagem
   const imagemDe = (numero: number) => result.imagens.find(i => i.numero === numero)
 
   const { revisao } = result
@@ -337,6 +355,120 @@ export default function ResultPanel({
           </ol>
 
           {/* ── Gerar todas — com o custo dito ANTES do clique ── */}
+          {ehViral && result.visual.disponivel && onGerarCapa && (
+            <div className="mt-3 rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-fuchsia-100 px-2.5 py-0.5 text-[11px] font-bold text-fuchsia-700">
+                  Viral — capa com foto
+                </span>
+                {onIntensidadeCapa && (
+                  <div className="flex items-center gap-1.5" role="group" aria-label="Intensidade da capa">
+                    {VIRAL_INTENSITIES.map(i => (
+                      <button
+                        key={i}
+                        type="button"
+                        disabled={gerandoCapa}
+                        onClick={() => onIntensidadeCapa(i)}
+                        aria-pressed={intensidadeCapa === i}
+                        className={`rounded-lg px-2.5 py-1.5 text-[12px] font-bold transition-colors disabled:opacity-50 ${
+                          intensidadeCapa === i ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {INTENSIDADE_LABELS[i]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {result.viral?.cover.accentHex && (
+                  <span className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-500">
+                    Cor
+                    <span className="inline-block h-4 w-4 rounded-full border border-gray-200" style={{ backgroundColor: result.viral.cover.accentHex }} />
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                {(!result.viral || result.viral.cover.status === 'nao_gerado') && (
+                  <button
+                    type="button"
+                    disabled={gerandoCapa}
+                    onClick={() => onGerarCapa(false)}
+                    className="rounded-xl bg-gradient-to-b from-fuchsia-500 to-purple-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:brightness-110 disabled:opacity-50"
+                  >
+                    {gerandoCapa ? '⏳ Gerando…' : 'Gerar foto da capa'}
+                  </button>
+                )}
+                {result.viral?.cover.status === 'pronto' && (
+                  <button
+                    type="button"
+                    disabled={gerandoCapa}
+                    onClick={() => onGerarCapa(true)}
+                    className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {gerandoCapa ? '⏳ Gerando…' : 'Regenerar capa'}
+                  </button>
+                )}
+                {result.viral?.cover.status === 'falhou' && (
+                  <button
+                    type="button"
+                    disabled={gerandoCapa}
+                    onClick={() => onGerarCapa(true)}
+                    className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold text-white hover:bg-rose-600 disabled:opacity-50"
+                  >
+                    Tentar novamente
+                  </button>
+                )}
+                <p className="text-[12px] text-fuchsia-800">
+                  Este formato usa apenas <strong>1 geração de imagem</strong>. Os demais slides são montados pelo FunilPro.
+                </p>
+              </div>
+
+              {result.viral?.cover.status === 'pronto' && result.viral.cover.url && (
+                <div className="mt-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={result.viral.cover.url}
+                    alt="Capa do carrossel (arte final)"
+                    loading="lazy" decoding="async" width={1080} height={1350}
+                    className="w-full max-w-[420px] cursor-zoom-in rounded-xl border border-gray-200 object-cover"
+                    style={{ aspectRatio: '4 / 5' }}
+                    onClick={() => setAmpliada(result.viral!.cover.url)}
+                  />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+                    <span>
+                      Arte final · {result.viral.cover.qualidade === 'high' ? 'Premium' : 'Rápida'}
+                      {result.viral.cover.modelo ? ` · ${result.viral.cover.modelo}` : ''} · tentativa {result.viral.cover.tentativa + 1}
+                    </span>
+                    <button type="button" onClick={() => setAmpliada(result.viral!.cover.url)} className="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-semibold text-gray-600 hover:bg-gray-50">Ampliar</button>
+                    <a href={result.viral.cover.url} download="slide-1.jpg" target="_blank" rel="noreferrer" className="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-semibold text-gray-600 hover:bg-gray-50">Baixar imagem</a>
+                  </div>
+
+                  {/* Slides internos: pretos, montados pelo FunilPro. */}
+                  {result.viral.textSlides.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {result.viral.textSlides.map(t => (
+                        <div key={t.slide}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={t.url}
+                            alt={`Slide ${t.slide} (texto)`}
+                            loading="lazy" decoding="async" width={1080} height={1350}
+                            className="w-full cursor-zoom-in rounded-lg border border-gray-200 object-cover"
+                            style={{ aspectRatio: '4 / 5' }}
+                            onClick={() => setAmpliada(t.url)}
+                          />
+                          <a href={t.url} download={`slide-${t.slide}.jpg`} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11px] font-semibold text-gray-500 hover:text-gray-700">
+                            Baixar slide {t.slide}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {comImagens && (onModoImagem || onPresetImagem) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {onModoImagem && (

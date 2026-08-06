@@ -94,6 +94,13 @@ export interface ProductionResult {
   slidesPedidos: number | null
   /** Arte final por slide — um item por slide da copy (geração Studio). */
   imagens: ResultSlideImage[]
+  /** Trechos de marca-texto por slide (índice = numero-1). Vazio sem viral. */
+  highlights: string[][]
+  /** Modo viral: capa + slides de texto renderizados. null nas demais. */
+  viral: {
+    cover: { status: 'nao_gerado' | 'gerando' | 'pronto' | 'falhou'; url: string | null; modelo: string | null; qualidade: string | null; tentativa: number; intensity: string | null; accentHex: string | null }
+    textSlides: { slide: number; url: string }[]
+  } | null
   /** true quando há material suficiente para mostrar o painel. */
   disponivel: boolean
   /** Metadados de IA agregados — para o selo "IA real" e contagem de chamadas. */
@@ -133,6 +140,8 @@ const RESULTADO_VAZIO: ProductionResult = {
   visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
   slidesPedidos: null,
   imagens: [],
+  highlights: [],
+  viral: null,
   disponivel: false,
   ai: { ...AI_META_VAZIO },
 }
@@ -210,6 +219,8 @@ function buildQuickResult(data: Record<string, unknown>, steps: StepRow[]): Prod
     visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
     slidesPedidos: null,
     imagens: [],
+    highlights: [],
+    viral: null,
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }
@@ -260,6 +271,40 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
       layout: texto(s.layout) ?? '',
       promptImagem: texto(s.imagePrompt) ?? '',
     }))
+
+  // Marca-textos sugeridos pelo Copywriter (v2) — ausentes viram [].
+  const highlights: string[][] = slidesBrutos
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .map(s => (Array.isArray(s.highlights) ? s.highlights : [])
+      .filter((h): h is string => typeof h === 'string').slice(0, 2))
+
+  // Modo VIRAL: o step da capa (índice 101) com kind='viral_cover' carrega a
+  // capa E os slides de texto renderizados — nunca reinterpretado de outra
+  // geração.
+  const stepCapa = steps.find(
+    st => st.agent_key === 'cst_image_designer' && st.step_index === 101,
+  )
+  const capaData = (stepCapa?.output?.data ?? null) as Record<string, unknown> | null
+  const ehViral = capaData?.kind === 'viral_cover'
+    || (stepCapa?.input as Record<string, unknown> | null)?.kind === 'viral_cover'
+  const viral = ehViral && stepCapa
+    ? {
+        cover: {
+          status: (stepCapa.status === 'completed' ? 'pronto'
+            : stepCapa.status === 'failed' ? 'falhou' : 'gerando') as 'nao_gerado' | 'gerando' | 'pronto' | 'falhou',
+          url: stepCapa.status === 'completed' && typeof capaData?.url === 'string' ? capaData.url : null,
+          modelo: typeof capaData?.model === 'string' ? capaData.model : null,
+          qualidade: typeof capaData?.quality === 'string' ? capaData.quality : null,
+          tentativa: stepCapa.attempt ?? 0,
+          intensity: typeof capaData?.intensity === 'string' ? capaData.intensity : null,
+          accentHex: typeof capaData?.accentHex === 'string' ? capaData.accentHex : null,
+        },
+        textSlides: (Array.isArray(capaData?.textSlides) ? capaData.textSlides : [])
+          .filter((t): t is { slide: number; url: string } =>
+            !!t && typeof t === 'object' && typeof (t as { url?: unknown }).url === 'string')
+          .map(t => ({ slide: t.slide, url: t.url })),
+      }
+    : null
 
   // ── Arte final por slide: steps cst_image_designer (step_index 100+N). O
   // status vem do STEP persistido — a tela nunca inventa "pronto".
@@ -313,6 +358,8 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
     },
     slidesPedidos: slides.length > 0 ? slides.length : null,
     imagens,
+    highlights,
+    viral,
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }
@@ -389,6 +436,8 @@ export function buildProductionResult(steps: StepRow[]): ProductionResult {
     visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
     slidesPedidos: null,
     imagens: [],
+    highlights: [],
+    viral: null,
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }

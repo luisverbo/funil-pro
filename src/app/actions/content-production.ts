@@ -64,6 +64,9 @@ import {
   type ImageMode, type StudioImageStorage,
 } from '@/lib/content-studio/images/run'
 import { isValidImagePreset, type ImagePreset } from '@/lib/content-studio/images/prompt'
+import { runViralCover } from '@/lib/content-studio/images/viral-run'
+import { isValidViralIntensity } from '@/lib/content-studio/images/viral-prompt'
+import { VIRAL_VISUAL_MODE } from '@/lib/content-studio/images/viral'
 import {
   STUDIO_COMPARE_FIELDS, validateStudioInput,
   type StudioInput, type ValidStudioBrief,
@@ -80,6 +83,8 @@ export interface ProductionSummary {
   createdAt: string
   /** Identidade da geração — o rodapé descreve o modo por ela. */
   pipelineKey: string
+  /** Modo VISUAL persistido no brief (viral_cover_text_v1 | per_slide_v1). */
+  visualMode: string | null
 }
 
 export interface ProductionState {
@@ -417,6 +422,8 @@ async function listAfterRemoval(
     productions: reais.map(r => ({
       id: r.id, title: r.title, status: r.status, createdAt: r.created_at,
       pipelineKey: r.pipeline_key,
+      visualMode: typeof (r.brief as Record<string, unknown> | null)?.visual_mode === 'string'
+        ? (r.brief as Record<string, unknown>).visual_mode as string : null,
     })),
     openCount: reais.filter(r => isOpenProduction(r)).length,
   }
@@ -516,6 +523,45 @@ export async function removeAllOpenContentProductions(): Promise<ActionResult<Re
     return { ok: true, data: { removed, ...lista } }
   } catch (err) {
     return fail('remove_failed', err)
+  }
+}
+
+// ─── Capa do modo VIRAL: UMA chamada de imagem por carrossel ────────────────
+
+/**
+ * Gera a CAPA fotográfica do modo viral e renderiza os slides de texto — o
+ * custo visual do carrossel inteiro é UMA geração. O cliente envia só o id e
+ * enums de lista branca; modelo, qualidade (sempre high), tamanho, prompt,
+ * cor e storage são do servidor. Regeneração só com retry explícito.
+ */
+export async function generateViralCoverImage(
+  productionId: string,
+  opts?: { retry?: boolean; intensity?: string },
+): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+
+  const admin = createAdminClient()
+  const carga = await loadStudioProductionForImages(admin, tenantId, productionId)
+  if (!carga.ok) return fail(carga.key)
+  // SÓ o modo viral usa este caminho — produção por-slide continua no antigo.
+  if ((carga.production.brief as Record<string, unknown> | null)?.visual_mode !== VIRAL_VISUAL_MODE) {
+    return fail('wrong_pipeline')
+  }
+
+  try {
+    preflightStudioImages()
+    const store = createSupabaseContentStore(admin, { tenantId, productionId })
+    await runViralCover(store, studioImageStorage(admin), carga.production, {
+      retry: opts?.retry === true,
+      intensity: isValidViralIntensity(opts?.intensity) ? opts.intensity : undefined,
+    })
+    return readState(admin, tenantId, productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('studio_images:')) {
+      return fail('images_unavailable', err)
+    }
+    return fail('create_failed', err)
   }
 }
 
@@ -691,6 +737,10 @@ export async function generateStudioSlideImage(
   const admin = createAdminClient()
   const carga = await loadStudioProductionForImages(admin, tenantId, productionId)
   if (!carga.ok) return fail(carga.key)
+  // Produção do modo VIRAL não usa imagens por slide — o slot da capa é dela.
+  if ((carga.production.brief as Record<string, unknown> | null)?.visual_mode === VIRAL_VISUAL_MODE) {
+    return fail('wrong_pipeline')
+  }
 
   try {
     // Preflight SEM rede antes de qualquer escrita: sem OPENAI_API_KEY não
@@ -733,6 +783,10 @@ export async function generateAllStudioSlideImages(
   const admin = createAdminClient()
   const carga = await loadStudioProductionForImages(admin, tenantId, productionId)
   if (!carga.ok) return fail(carga.key)
+
+  if ((carga.production.brief as Record<string, unknown> | null)?.visual_mode === VIRAL_VISUAL_MODE) {
+    return fail('wrong_pipeline')
+  }
 
   try {
     preflightStudioImages()
@@ -1132,6 +1186,8 @@ export async function listProductions(): Promise<ActionResult<ProductionSummary[
     data: rows.filter(isRealProduction).map(r => ({
       id: r.id, title: r.title, status: r.status, createdAt: r.created_at,
       pipelineKey: r.pipeline_key,
+      visualMode: typeof (r.brief as Record<string, unknown> | null)?.visual_mode === 'string'
+        ? (r.brief as Record<string, unknown>).visual_mode as string : null,
     })),
   }
 }
@@ -1176,7 +1232,7 @@ async function readState(
   productionId: string,
 ): Promise<ActionResult<ProductionState>> {
   const [producao, eventos, steps, jobs] = await Promise.all([
-    admin.from('cs_productions').select('id, status, title, created_at, pipeline_key')
+    admin.from('cs_productions').select('id, status, title, created_at, pipeline_key, brief')
       .eq('id', productionId).eq('tenant_id', tenantId).maybeSingle(),
     admin.from('cs_events').select('*')
       .eq('tenant_id', tenantId).eq('production_id', productionId)
@@ -1193,7 +1249,7 @@ async function readState(
 
   const row = producao.data as {
     id: string; status: ProductionRow['status']; title: string | null
-    created_at: string; pipeline_key: string
+    created_at: string; pipeline_key: string; brief: Record<string, unknown> | null
   }
 
   return {
@@ -1202,6 +1258,7 @@ async function readState(
       production: {
         id: row.id, title: row.title, status: row.status,
         createdAt: row.created_at, pipelineKey: row.pipeline_key,
+        visualMode: typeof row.brief?.visual_mode === 'string' ? row.brief.visual_mode : null,
       },
       // tenant_id é removido de cada evento antes de sair do servidor.
       events: ((eventos.data ?? []) as StoredEvent[]).map(toPublicEvent),

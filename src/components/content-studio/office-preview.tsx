@@ -26,6 +26,7 @@ import {
   getProductionState,
   generateAllStudioSlideImages,
   generateStudioSlideImage,
+  generateViralCoverImage,
   listProductions,
   approveContentProduction,
   rejectContentProduction,
@@ -52,6 +53,7 @@ import type { PublicEvent } from '@/lib/content-studio/demo-guard'
 import { PRODUCTION_TERMINAL, safeProductionMessage } from '@/lib/content-studio/production-guard'
 import type { ImagePreset } from '@/lib/content-studio/images/prompt'
 import type { ImageMode } from '@/lib/content-studio/images/modes'
+import type { ViralIntensity } from '@/lib/content-studio/images/viral-prompt'
 import OfficeScene from './office-scene'
 import TimelinePanel from './timeline-panel'
 
@@ -144,6 +146,10 @@ export default function OfficePreview() {
   // servidor revalida e decide os valores reais.
   const [modoImagem, setModoImagem] = useState<ImageMode>('premium')
   const [presetImagem, setPresetImagem] = useState<ImagePreset>('editorial_premium')
+  // Modo viral: intensidade da capa + geração em voo.
+  const [intensidadeCapa, setIntensidadeCapa] = useState<ViralIntensity>('curiosidade_maxima')
+  const [gerandoCapa, setGerandoCapa] = useState(false)
+  const [visualModeAtual, setVisualModeAtual] = useState<string | null>(null)
   const [aprovando, setAprovando] = useState(false)
   // Gerenciamento de produções: painel, confirmação pendente e toast.
   const [gerenciando, setGerenciando] = useState(false)
@@ -404,6 +410,7 @@ export default function OfficePreview() {
     setStudioPendente(
       estado.production.pipelineKey === 'content_carousel_studio_v1' && estado.pending,
     )
+    setVisualModeAtual(estado.production.visualMode)
     setRecuperacao(estado.recovery ?? { available: false, running: false })
     if (!estado.pending) setAvisoContinuacao(null)
   }, [])
@@ -624,6 +631,25 @@ export default function OfficePreview() {
       if (!cancelled.current) setGerandoImagens(false)
     }
   }, [aplicarEstado, criando, gerandoImagens, modoImagem, presetImagem, productionId, running])
+
+  /** CAPA viral: UMA chamada de imagem para o carrossel inteiro. */
+  const gerarCapa = useCallback(async (retry: boolean) => {
+    if (criando || running || gerandoCapa || !productionId) return
+    setErroImagem(null)
+    setGerandoCapa(true)
+    try {
+      const r = await generateViralCoverImage(productionId, {
+        ...(retry ? { retry: true } : {}), intensity: intensidadeCapa,
+      })
+      if (cancelled.current) return
+      if (!r.ok) { setErroImagem(r.error); return }
+      aplicarEstado(r.data)
+    } catch {
+      setErroImagem('Não foi possível gerar a capa. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setGerandoCapa(false)
+    }
+  }, [aplicarEstado, criando, gerandoCapa, intensidadeCapa, productionId, running])
 
   /** Volta a tela ao estado inicial (nenhuma produção selecionada). */
   const limparTela = useCallback(() => {
@@ -1139,6 +1165,11 @@ export default function OfficePreview() {
           onModoImagem={setModoImagem}
           presetImagem={presetImagem}
           onPresetImagem={setPresetImagem}
+          visualMode={visualModeAtual}
+          onGerarCapa={gerarCapa}
+          gerandoCapa={gerandoCapa}
+          intensidadeCapa={intensidadeCapa}
+          onIntensidadeCapa={setIntensidadeCapa}
         />
       )}
 

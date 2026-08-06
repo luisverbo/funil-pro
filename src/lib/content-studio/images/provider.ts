@@ -15,6 +15,9 @@
 
 export const STUDIO_IMAGE_MODEL = 'gpt-image-1'
 export const STUDIO_IMAGE_SIZE = '1024x1024'
+/** Tamanhos suportados pelo gpt-image-1 — lista branca do servidor. */
+export const STUDIO_IMAGE_SIZES = ['1024x1024', '1024x1536'] as const
+export type StudioImageSize = (typeof STUDIO_IMAGE_SIZES)[number]
 
 /**
  * Qualidades PERMITIDAS — decididas no servidor a partir do enum do cliente
@@ -37,6 +40,8 @@ export interface StudioImageRequest {
   executionId: string
   /** Qualidade JÁ validada pelo servidor (lista branca). */
   quality?: StudioImageQuality
+  /** Tamanho da lista branca — vertical 1024x1536 para a capa viral. */
+  size?: StudioImageSize
 }
 
 export interface StudioImageResult {
@@ -96,7 +101,7 @@ export function createOpenAIImageProvider(): StudioImageProvider {
             model: STUDIO_IMAGE_MODEL,
             prompt: req.prompt,
             n: 1,
-            size: STUDIO_IMAGE_SIZE,
+            size: req.size ?? STUDIO_IMAGE_SIZE,
             // Só valores da lista branca chegam aqui; o padrão é o mais barato.
             quality: req.quality ?? STUDIO_IMAGE_QUALITY,
           }),
@@ -140,7 +145,7 @@ export function createOpenAIImageProvider(): StudioImageProvider {
         return {
           bytes,
           model: STUDIO_IMAGE_MODEL,
-          size: STUDIO_IMAGE_SIZE,
+          size: req.size ?? STUDIO_IMAGE_SIZE,
           quality: req.quality ?? STUDIO_IMAGE_QUALITY,
           durationMs: Date.now() - inicio,
         }
