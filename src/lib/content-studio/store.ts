@@ -130,17 +130,22 @@ export function createSupabaseContentStore(
       if (error) throw new Error(`updateStep: ${error.message}`)
     },
 
-    async transitionStepStatus(stepId, expectedStatuses, patch) {
+    async transitionStepStatus(stepId, expectedStatuses, patch, expectedStartedAt) {
       // CAS igual ao da produção: o predicado de status vai NA PRÓPRIA UPDATE
       // e as linhas afetadas dizem quem venceu — nunca read-then-write.
-      const { data, error } = await db
+      let query = db
         .from('cs_steps')
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', stepId)
         .eq('tenant_id', tenantId)
         .eq('production_id', productionId)
         .in('status', [...expectedStatuses])
-        .select('id')
+      // Predicado de POSSE: o started_at lido precisa ainda ser o atual —
+      // é isto que impede dois "Tentar novamente" de vencerem juntos.
+      if (expectedStartedAt === null) query = query.is('started_at', null)
+      else if (expectedStartedAt !== undefined) query = query.eq('started_at', expectedStartedAt)
+
+      const { data, error } = await query.select('id')
       if (error) throw new Error(`transitionStepStatus: ${error.message}`)
       return (data ?? []).length > 0
     },

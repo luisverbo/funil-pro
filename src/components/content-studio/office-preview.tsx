@@ -31,6 +31,7 @@ import {
   rejectContentProduction,
   removeAllOpenContentProductions,
   removeContentProduction,
+  retryStaleStudioProduction,
   type RemoveResult,
   type ProductionState,
   type ProductionSummary,
@@ -125,6 +126,11 @@ export default function OfficePreview() {
   // e exige um clique consciente.
   const [studioPendente, setStudioPendente] = useState(false)
   const [avisoContinuacao, setAvisoContinuacao] = useState<string | null>(null)
+  // Situação do step running (decidida pelo SERVIDOR): recente = aguardar;
+  // abandonado = botão explícito de retomada. Nunca decidido pelo relógio
+  // do navegador.
+  const [recuperacao, setRecuperacao] = useState<{ available: boolean; running: boolean; agentLabel?: string }>({ available: false, running: false })
+  const [recuperando, setRecuperando] = useState(false)
   const [gerandoImagens, setGerandoImagens] = useState(false)
   const [progressoImagens, setProgressoImagens] = useState<{ done: number; total: number } | null>(null)
   // Erro do FLUXO DE IMAGENS, escopado ao painel (nunca o banner global) e à
@@ -392,6 +398,7 @@ export default function OfficePreview() {
     setStudioPendente(
       estado.production.pipelineKey === 'content_carousel_studio_v1' && estado.pending,
     )
+    setRecuperacao(estado.recovery ?? { available: false, running: false })
     if (!estado.pending) setAvisoContinuacao(null)
   }, [])
 
@@ -439,6 +446,9 @@ export default function OfficePreview() {
       // no máximo MAX_CONTINUACOES, cada iteração executa trabalho real (um
       // agente) ou devolve estado terminal — sem setInterval, sem polling.
       for (let i = 0; i < MAX_CONTINUACOES && r.ok && r.data.pending; i++) {
+        // Step em execução (recente ou abandonado)? PARAR: continuar não faz
+        // trabalho — o estado correto (aguarde / retomar) já está na tela.
+        if (r.data.recovery.running || r.data.recovery.available) break
         const proximo = await continueStudioProduction(id)
         if (cancelled.current) return
         if (!proximo.ok) { setErroBrief(proximo.error); break }
@@ -482,6 +492,7 @@ export default function OfficePreview() {
       aplicarEstado(r.data)
 
       for (let i = 0; i < MAX_CONTINUACOES && r.ok && r.data.pending; i++) {
+        if (r.data.recovery.running || r.data.recovery.available) break
         const proximo = await continueStudioProduction(productionId)
         if (cancelled.current) return
         if (!proximo.ok) { setErroBrief(proximo.error); break }
@@ -674,6 +685,27 @@ export default function OfficePreview() {
       if (!cancelled.current) { setRemovendo(false); setConfirmacao(null) }
     }
   }, [aplicarRemocao, removendo])
+
+  /**
+   * RETOMADA EXPLÍCITA de um step abandonado — o backend confere de novo se
+   * ele está realmente stale. Uma nova chamada de IA será feita; o texto do
+   * banner avisa antes, porque a anterior pode ter consumido tokens.
+   */
+  const tentarNovamenteStep = useCallback(async () => {
+    if (criando || running || recuperando || !productionId) return
+    setError(null)
+    setRecuperando(true)
+    try {
+      const r = await retryStaleStudioProduction(productionId)
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      aplicarEstado(r.data)
+    } catch {
+      setError('Não foi possível retomar a produção. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setRecuperando(false)
+    }
+  }, [aplicarEstado, criando, productionId, recuperando, running])
 
   /** APROVA a produção no portão humano — CAS awaiting_approval -> approved. */
   const aprovarProducao = useCallback(async () => {
@@ -992,25 +1024,59 @@ export default function OfficePreview() {
         </div>
       )}
 
-      {/* Produção Studio incompleta — retomada EXPLÍCITA, nunca automática */}
+      {/* Produção Studio incompleta — três situações DISTINTAS, decididas
+          pelo SERVIDOR: step recente (aguarde), step abandonado (retomada
+          explícita e paga) ou primeiro agente faltando (continuar). */}
       {modo === 'producao' && studioPendente && !criando && !quickGenerating && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-amber-900">
-              {avisoContinuacao ?? 'Esta produção parou no meio — os agentes que já trabalharam estão salvos.'}
+        recuperacao.available ? (
+          // ── STALE: nada de "Continuar" fingindo avanço — retomada consciente.
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-rose-900">
+                O trabalho do {recuperacao.agentLabel ?? 'agente'} foi interrompido antes de terminar.
+              </p>
+              <p className="text-[12px] text-rose-700 mt-0.5">
+                Uma nova chamada de IA será feita. O que já foi concluído não se repete.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={recuperando}
+              onClick={tentarNovamenteStep}
+              className="shrink-0 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-rose-600 disabled:opacity-50"
+            >
+              {recuperando ? '⏳ Retomando…' : `Tentar novamente o ${recuperacao.agentLabel ?? 'agente'}`}
+            </button>
+          </div>
+        ) : recuperacao.running ? (
+          // ── RUNNING recente: só informação — nenhum botão que pague de novo.
+          <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
+            <p className="text-sm font-semibold text-indigo-800">
+              O {recuperacao.agentLabel ?? 'agente'} ainda está trabalhando.
             </p>
-            <p className="text-[12px] text-amber-700 mt-0.5">
-              Continuar executa apenas os agentes que faltam; nada é refeito.
+            <p className="text-[12px] text-indigo-600 mt-0.5">
+              Aguarde alguns instantes e recarregue a produção para ver o progresso.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={continuarProducao}
-            className="shrink-0 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
-          >
-            Continuar produção
-          </button>
-        </div>
+        ) : (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-amber-900">
+                {avisoContinuacao ?? 'Esta produção parou no meio — os agentes que já trabalharam estão salvos.'}
+              </p>
+              <p className="text-[12px] text-amber-700 mt-0.5">
+                Continuar executa apenas os agentes que faltam; nada é refeito.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={continuarProducao}
+              className="shrink-0 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
+            >
+              Continuar produção
+            </button>
+          </div>
+        )
       )}
 
       {/* Erro */}
