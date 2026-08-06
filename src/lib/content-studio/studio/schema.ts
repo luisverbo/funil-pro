@@ -385,6 +385,12 @@ export interface StudioVisual extends Record<string, unknown> {
     mood: string
   }
   slides: StudioVisualSlide[]
+  /**
+   * Direção da CAPA no modo viral (bloco `cover` do Designer). Opcional: o
+   * gerador da capa revalida tudo em `coerceDesignerCover` e cai na derivação
+   * determinística se ausente/inválido.
+   */
+  cover?: Record<string, unknown>
 }
 
 export function makeVisualParser(brief: ValidStudioBrief) {
@@ -424,11 +430,31 @@ export function makeVisualParser(brief: ValidStudioBrief) {
       }),
     }
 
+    // Bloco `cover` (modo viral): repassado por LISTA BRANCA de campos, cada
+    // um saneado — o gerador da capa revalida tudo em coerceDesignerCover.
+    if (o.cover && typeof o.cover === 'object' && !Array.isArray(o.cover)) {
+      const c = o.cover as Record<string, unknown>
+      const cover: Record<string, unknown> = {}
+      for (const k of ['coverConcept', 'visualQuestion', 'mainSubject', 'foreground',
+        'middleGround', 'background', 'reactions', 'visibleConsequence',
+        'camera', 'lens', 'lighting', 'colorGrade', 'realismGuards'] as const) {
+        if (typeof c[k] === 'string') cover[k] = (c[k] as string).replace(/\s+/g, ' ').trim().slice(0, 600)
+      }
+      if (Array.isArray(c.curiosityMechanisms)) {
+        cover.curiosityMechanisms = c.curiosityMechanisms
+          .filter((m): m is string => typeof m === 'string')
+          .slice(0, 2)
+      }
+      if (Object.keys(cover).length > 0) out.cover = cover
+    }
+
     // O Designer descreve imagem — mas continua proibido de AFIRMAR número,
     // resultado ou fonte que o pedido não sustenta (isso vira texto no slide).
     const textos = [
       out.direction.style, out.direction.palette, out.direction.mood,
       ...out.slides.flatMap(s => [s.composition, s.imagePrompt, ...s.elements]),
+      // A direção da capa vira prompt de imagem — passa pela mesma régua.
+      ...Object.values(out.cover ?? {}).filter((v): v is string => typeof v === 'string'),
     ]
     const inventados = findUnsupportedClaims(textos, brief)
     if (inventados.length > 0) {

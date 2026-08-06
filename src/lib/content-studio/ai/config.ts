@@ -82,6 +82,13 @@ export const AI_PROFILES: Record<string, AICallProfile> = {
 export const AI_MAX_TECH_RETRIES = 1
 
 /**
+ * Tempo MÍNIMO útil para valer a pena abrir mais uma tentativa. O timeoutMs
+ * de cada call() é orçamento TOTAL (retries inclusos): com menos que isto
+ * sobrando, retentar só produziria outro abort — o erro anterior é lançado.
+ */
+export const AI_MIN_ATTEMPT_MS = 2_000
+
+/**
  * Tentativas de JOB que ainda podem chamar IA.
  *
  * O motor da Fase 1 dá até 3 tentativas por job (backoff 1/5/15min). Sem esta

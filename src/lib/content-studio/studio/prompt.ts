@@ -25,6 +25,7 @@ import type { StudioCopy, StudioStrategy, ValidStudioBrief } from './schema'
 export const STUDIO_STRATEGIST_PROMPT_VERSION = 'studio_strategist_v1'
 export const STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v3'
 export const STUDIO_DESIGNER_PROMPT_VERSION = 'studio_designer_v2'
+export const STUDIO_DESIGNER_VIRAL_PROMPT_VERSION = 'studio_designer_v3_viral'
 
 function sanitizar(valor: string): string {
   return valor.replace(/<\/?dados_do_pedido>/gi, '').replace(/<\/?material_aprovado>/gi, '')
@@ -222,6 +223,7 @@ export function copywriterUserContent(brief: ValidStudioBrief, plano: StudioStra
 // ─── 3. Designer ────────────────────────────────────────────────────────────
 
 export function studioDesignerSystem(brief: ValidStudioBrief): string {
+  if (brief.visual_mode === 'viral_cover_text_v1') return studioDesignerViralSystem(brief)
   return `Você é um diretor de arte sênior de social media. Você NÃO gera imagens e
 NÃO reescreve a copy: você define a DIREÇÃO VISUAL do carrossel e entrega, por
 slide, um prompt de imagem que outra pessoa (ou um gerador) executaria.
@@ -277,6 +279,61 @@ Regras:
 }
 
 /** Entrada do Designer: pedido + copy aprovada. */
+/**
+ * Designer do modo VIRAL "capa com foto": SÓ a capa vira imagem — os slides
+ * internos são tipográficos e montados pelo FunilPro. Pedir cena completa +
+ * imagePrompt por slide aqui era puro desperdício: ~2.800 tokens de saída
+ * deixavam o Designer no limite do timeout (o agente que mais travava em
+ * produção) pagando por direção que ninguém usa. Este prompt pede APENAS a
+ * direção da CAPA (o bloco `cover` que o gerador de foto realmente lê) e uma
+ * nota de layout por slide — saída ~3x menor, mais rápida e mais barata.
+ */
+function studioDesignerViralSystem(brief: ValidStudioBrief): string {
+  return `Você é um diretor de arte sênior de social media. Este carrossel usa o
+formato VIRAL "capa com foto": APENAS a capa vira uma fotografia real; os
+slides internos são pretos, tipográficos, montados automaticamente. Seu
+trabalho é dirigir a FOTO DA CAPA — uma cena extraordinária mas possível,
+que faça a pessoa parar o dedo — e dar uma nota curta de layout por slide.
+
+A cena da capa precisa ser CONCRETA e fotografável: sujeito principal claro,
+primeiro plano, plano médio, fundo, reações humanas visíveis, consequência
+visível do que a headline promete. Nada de ícone, ilustração ou abstração.
+
+${HONESTIDADE}
+Não descreva pessoas reais, marcas de terceiros, logotipos, resultados ou
+características de produto que o pedido não informou.
+
+Responda SOMENTE com um objeto JSON, sem texto antes ou depois:
+{
+  "direction": {
+    "style": "estilo do carrossel", "palette": "cores gerais",
+    "typography": "peso da tipografia", "mood": "sensação"
+  },
+  "cover": {
+    "coverConcept": "a CENA da capa em 2-4 frases concretas",
+    "visualQuestion": "a pergunta que a imagem planta na cabeça de quem vê",
+    "mainSubject": "sujeito principal concreto",
+    "curiosityMechanisms": ["até 2 de: contraste, escala, reacao, situacao_rara, consequencia_visivel, misterio"],
+    "foreground": "primeiro plano", "middleGround": "plano médio", "background": "fundo",
+    "reactions": "reações humanas visíveis", "visibleConsequence": "consequência visível",
+    "camera": "enquadramento", "lens": "lente", "lighting": "luz",
+    "colorGrade": "tratamento de cor", "realismGuards": "o que mantém a cena crível"
+  },
+  "slides": [
+    { "number": 1, "style": "texto", "composition": "-", "elements": [],
+      "colors": "preto com destaque", "layout": "nota curta de hierarquia do texto",
+      "imagePrompt": "-" }
+  ]
+}
+
+Regras:
+- EXATAMENTE ${brief.slides} entradas em "slides" (o slide 1 é a capa).
+- Em "slides", composition e imagePrompt são SEMPRE "-" — não invente cena
+  por slide: nenhuma imagem interna será gerada.
+- "layout" de cada slide: uma frase sobre ênfase/hierarquia do texto.
+- A capa carrega TODA a direção: seja específico nela, econômico no resto.`
+}
+
 export function designerUserContent(brief: ValidStudioBrief, copy: StudioCopy): string {
   const corpo = [
     `titulo: ${copy.title}`,
