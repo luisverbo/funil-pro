@@ -33,7 +33,8 @@ cat > "$OUT/tsconfig.json" <<JSON
   },
   "include": [
     "$RAIZ/src/lib/content-studio/__tests__/*.test.ts",
-    "$RAIZ/src/lib/security/__tests__/*.test.ts"
+    "$RAIZ/src/lib/security/__tests__/*.test.ts",
+    "$RAIZ/src/lib/quiz/__tests__/*.test.ts"
   ]
 }
 JSON
@@ -57,7 +58,9 @@ SOMA=0
 TOTAL=0
 FALHAS=0
 
-for arquivo in "$OUT"/lib/content-studio/__tests__/*.test.js "$OUT"/lib/security/__tests__/*.test.js; do
+for arquivo in "$OUT"/lib/content-studio/__tests__/*.test.js \
+               "$OUT"/lib/security/__tests__/*.test.js \
+               "$OUT"/lib/quiz/__tests__/*.test.js; do
   [ -e "$arquivo" ] || continue
   nome="$(basename "$arquivo")"
   linha="$(cd "$RAIZ" && CS_OUT="$OUT" NODE_PATH="$RAIZ/node_modules" \
