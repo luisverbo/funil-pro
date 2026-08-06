@@ -17,7 +17,7 @@ import { join } from 'node:path'
 
 import { createAnthropicProvider } from '../ai/anthropic'
 import { AI_MIN_ATTEMPT_MS } from '../ai/config'
-import { STUDIO_REQUEST_BUDGET_MS } from '../studio/run'
+import { STUDIO_PROFILES, STUDIO_REQUEST_BUDGET_MS } from '../studio/run'
 import {
   studioDesignerSystem, STUDIO_DESIGNER_PROMPT_VERSION, STUDIO_DESIGNER_VIRAL_PROMPT_VERSION,
 } from '../studio/prompt'
@@ -108,8 +108,20 @@ test('2) erro retentável RÁPIDO ainda ganha o retry — dentro do orçamento',
 test('3) o invariante de tempo agora é verdadeiro de ponta a ponta', () => {
   // timeout do agente é orçamento TOTAL da call() — então o pior caso de uma
   // requisição volta a ser timeout + margens, que cabe no maxDuration.
-  const run = ler('src/lib/content-studio/studio/run.ts')
-  assert.ok(run.includes('STUDIO_REQUEST_BUDGET_MS = 45_000'))
+  // O orçamento é conferido pelo VALOR, não pelo literal no arquivo: ele
+  // acompanha o maxDuration da rota, e fixá-lo aqui foi o que deixou o
+  // Designer com 35s depois que a rota subiu para 300s.
+  assert.ok(STUDIO_REQUEST_BUDGET_MS >= 90_000,
+    'orçamento curto demais para uma resposta real de agente')
+  // Cada agente precisa de tempo de verdade: 35s foi o que matou o Designer.
+  for (const [k, p] of Object.entries(STUDIO_PROFILES)) {
+    assert.ok(p.timeoutMs >= 60_000, `${k} com timeout curto demais (${p.timeoutMs}ms)`)
+    assert.ok(p.timeoutMs + 7_000 <= STUDIO_REQUEST_BUDGET_MS, `${k} não cabe no orçamento`)
+  }
+  // E o cliente não pode desistir antes do servidor terminar as 3 etapas.
+  const ui = ler('src/components/content-studio/office-preview.tsx')
+  const mCont = /const MAX_CONTINUACOES = (\d+)/.exec(ui)
+  assert.ok(mCont && Number(mCont[1]) >= 4, 'a tela desiste antes de o pipeline terminar')
   const anthropic = ler('src/lib/content-studio/ai/anthropic.ts')
   assert.ok(anthropic.includes('req.timeoutMs - (Date.now() - inicio)'),
     'provider sem orçamento total')

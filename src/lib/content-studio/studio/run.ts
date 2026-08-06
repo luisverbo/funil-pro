@@ -75,11 +75,18 @@ export const STUDIO_PERSISTENCE_MARGIN_MS = 5_000
 export const STUDIO_DISPATCH_MARGIN_MS = 2_000
 
 /**
- * Orçamento de UMA requisição. A rota declara maxDuration = 60s; este número
- * precisa ficar ABAIXO disso com folga real (aqui: 15s), porque as margens
- * cobrem o trabalho do runner — não o overhead da plataforma.
+ * Orçamento de UMA requisição.
+ *
+ * HISTÓRICO IMPORTANTE: era 45s porque a rota declarava maxDuration = 60s.
+ * Quando a rota subiu para 300s (Fluid Compute), este número ficou para trás —
+ * e foi exatamente ele que produziu `content_ai:timeout: 35000ms` no Designer
+ * em produção: o agente tinha 35s para uma resposta que leva mais. O teto da
+ * rota não é o orçamento; o orçamento é este, e ele agora tem folga real.
+ *
+ * Continua UM AGENTE POR REQUISIÇÃO de propósito: é o que faz a cena do
+ * escritório mostrar progresso a cada etapa em vez de congelar por minutos.
  */
-export const STUDIO_REQUEST_BUDGET_MS = 45_000
+export const STUDIO_REQUEST_BUDGET_MS = 120_000
 
 /**
  * Perfil de cada agente. O invariante — conferido por teste e reafirmado em
@@ -90,12 +97,12 @@ export const STUDIO_REQUEST_BUDGET_MS = 45_000
  *
  * E o portão exige as DUAS margens além do timeout, então a folga real de
  * overhead de cada agente é `orçamento − (timeout + margens)` — no pior caso
- * (35s), ainda sobram 3s de tolerância além da folga de despacho.
+ * (90s), ainda sobram 23s de tolerância além da folga de despacho.
  */
 export const STUDIO_PROFILES = {
-  [STUDIO_STRATEGIST_KEY]: { maxOutputTokens: 1200, timeoutMs: 30_000 },
-  [STUDIO_COPYWRITER_KEY]: { maxOutputTokens: 2600, timeoutMs: 35_000 },
-  [STUDIO_DESIGNER_KEY]: { maxOutputTokens: 2800, timeoutMs: 35_000 },
+  [STUDIO_STRATEGIST_KEY]: { maxOutputTokens: 1200, timeoutMs: 70_000 },
+  [STUDIO_COPYWRITER_KEY]: { maxOutputTokens: 2600, timeoutMs: 90_000 },
+  [STUDIO_DESIGNER_KEY]: { maxOutputTokens: 2800, timeoutMs: 90_000 },
 } as const
 
 for (const [k, p] of Object.entries(STUDIO_PROFILES)) {
@@ -110,19 +117,19 @@ for (const [k, p] of Object.entries(STUDIO_PROFILES)) {
 // ─── Step running abandonado ────────────────────────────────────────────────
 
 /**
- * Idade mínima para considerar um step `running` ABANDONADO. Precisa ser
- * maior que tudo o que uma execução legítima pode durar: o maior timeout de
- * agente (35s) + margem de persistência (5s) + margem de despacho (2s) e o
- * próprio maxDuration da rota (60s). 120s é o dobro do teto da plataforma —
- * um step running mais velho que isso não tem execução viva por trás: a
- * Server Action morreu (deploy, queda de conexão, kill) depois do claim e
- * antes de persistir completed/failed.
+ * Idade mínima para considerar um step `running` ABANDONADO.
+ *
+ * Precisa ser MAIOR que tudo o que uma execução legítima pode durar: o maior
+ * timeout de agente (90s) + margem de persistência (5s) + margem de despacho
+ * (2s). Declarar stale cedo demais é pior que esperar: ofereceria o botão de
+ * retomada para um agente que ainda está trabalhando, e o clique pagaria uma
+ * segunda chamada à toa. 180s dá o dobro do pior caso legítimo.
  */
-export const STUDIO_STALE_RUNNING_MS = 120_000
+export const STUDIO_STALE_RUNNING_MS = 180_000
 
 {
   const maiorTimeout = Math.max(...Object.values(STUDIO_PROFILES).map(p => p.timeoutMs))
-  const teto = Math.max(maiorTimeout + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS, 60_000)
+  const teto = maiorTimeout + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
   if (STUDIO_STALE_RUNNING_MS <= teto) {
     throw new Error('studio: limite de stale menor que uma execução legítima')
   }
