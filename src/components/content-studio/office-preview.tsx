@@ -856,6 +856,26 @@ export default function OfficePreview() {
     return () => clearTimeout(t)
   }, [toast])
 
+  /**
+   * AUTO-ATUALIZAÇÃO enquanto um agente de texto está `running`: quem decide
+   * "abandonado" é o relógio do SERVIDOR dentro do readState — mas esse
+   * julgamento só acontecia quando a pessoa recarregava a página, então o
+   * banner "ainda está trabalhando" nunca virava o botão de retomada sozinho.
+   * Releitura barata (só leitura, nenhuma chamada de IA) a cada 20s, somente
+   * enquanto o servidor disser `recovery.running` — para no available/idle.
+   */
+  useEffect(() => {
+    if (!recuperacao.running || !productionId || criando || running || recuperando) return
+    const t = setInterval(async () => {
+      try {
+        const r = await getProductionState(productionId)
+        if (cancelled.current || !r.ok) return
+        aplicarEstado(r.data)
+      } catch { /* rede oscilou: a próxima batida tenta de novo */ }
+    }, 20_000)
+    return () => clearInterval(t)
+  }, [aplicarEstado, criando, productionId, recuperacao.running, recuperando, running])
+
   const vazio = !loading && allEvents.length === 0 && !running
   const estadoCor =
     status === 'failed' ? 'text-rose-600'
