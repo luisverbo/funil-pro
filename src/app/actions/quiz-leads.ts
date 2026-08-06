@@ -402,3 +402,166 @@ export async function getQuizStats(quizId: string): Promise<
     return { error: String(err) }
   }
 }
+
+// ─── Exportação com SELEÇÃO de páginas ──────────────────────────────────────
+
+export interface ExportColumn { chave: string; rotulo: string }
+export interface ExportPageInfo { id: string; titulo: string; colunas: ExportColumn[] }
+export interface ExportTable {
+  titulo: string
+  colunas: ExportColumn[]
+  linhas: string[][]
+}
+
+/**
+ * Estrutura exportável do quiz: quais páginas existem e quais colunas cada uma
+ * gera. Serve para a tela montar a seleção SEM adivinhar nada — os rótulos são
+ * os mesmos que o construtor mostra.
+ */
+export async function getExportStructure(
+  quizId: string,
+): Promise<{ paginas: ExportPageInfo[] } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const admin = createAdminClient()
+    const { data: pageRow } = await admin.from('pages').select('quiz_data').eq('id', quizId).single()
+    return { paginas: estruturaDePaginas(pageRow?.quiz_data) }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Blocos que produzem RESPOSTA — os únicos que viram coluna. */
+const BLOCOS_DE_RESPOSTA = new Set([
+  'single_choice', 'multi_choice', 'yes_no', 'scale', 'video_answer',
+  'field_text', 'field_email', 'field_phone', 'field_number', 'field_textarea',
+  'field_date', 'field_height', 'field_weight',
+])
+
+type QuizDataBruto = {
+  pages?: { id: string; title?: string; blocks?: { id: string; type: string; config?: { label?: string; question?: string } }[] }[]
+} | null
+
+function estruturaDePaginas(quizData: unknown): ExportPageInfo[] {
+  const dados = (quizData ?? null) as QuizDataBruto
+  return (dados?.pages ?? []).map((p, i) => ({
+    id: p.id,
+    titulo: p.title || `Página ${i + 1}`,
+    colunas: (p.blocks ?? [])
+      .filter(b => BLOCOS_DE_RESPOSTA.has(b.type))
+      .map(b => ({
+        chave: b.id,
+        rotulo: (b.config?.label || b.config?.question || 'Pergunta').replace(/\s+/g, ' ').trim().slice(0, 60),
+      })),
+  }))
+}
+
+/** Colunas de identificação/origem do lead — opcionais na exportação. */
+const COLUNAS_LEAD: ExportColumn[] = [
+  { chave: 'lead:id', rotulo: 'ID' },
+  { chave: 'lead:data', rotulo: 'Data' },
+  { chave: 'lead:status', rotulo: 'Status' },
+  { chave: 'lead:nome', rotulo: 'Nome' },
+  { chave: 'lead:email', rotulo: 'E-mail' },
+  { chave: 'lead:telefone', rotulo: 'Telefone' },
+  { chave: 'lead:score', rotulo: 'Score' },
+  { chave: 'lead:resultado', rotulo: 'Resultado' },
+  { chave: 'lead:utm_source', rotulo: 'Origem' },
+  { chave: 'lead:utm_campaign', rotulo: 'Campanha' },
+]
+
+/**
+ * Tabela pronta para exportar, com as PÁGINAS ESCOLHIDAS.
+ *
+ * O que muda em relação ao CSV anterior: (1) a pessoa escolhe as páginas, em
+ * vez de baixar tudo; (2) cada PERGUNTA vira uma coluna própria — antes a
+ * página inteira virava uma coluna só e as respostas se sobrescreviam, então
+ * uma página com nome, telefone e e-mail exportava um único valor.
+ *
+ * A montagem é toda no servidor: o cliente só formata em CSV ou PDF.
+ */
+export async function exportLeadsTable(
+  quizId: string,
+  opts?: { pageIds?: string[]; incluirLead?: boolean },
+): Promise<ExportTable | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const admin = createAdminClient()
+
+    const { data: pageRow } = await admin
+      .from('pages').select('title, quiz_data').eq('id', quizId).single()
+    const todas = estruturaDePaginas(pageRow?.quiz_data)
+
+    // Lista branca: só páginas que EXISTEM neste quiz entram, na ordem do quiz.
+    const escolhidas = Array.isArray(opts?.pageIds) && opts!.pageIds!.length > 0
+      ? todas.filter(p => opts!.pageIds!.includes(p.id))
+      : todas
+
+    const incluirLead = opts?.incluirLead !== false
+    const colunas: ExportColumn[] = [
+      ...(incluirLead ? COLUNAS_LEAD : []),
+      ...escolhidas.flatMap(p => p.colunas.map(c => ({
+        chave: c.chave,
+        rotulo: escolhidas.length > 1 ? `${p.titulo} — ${c.rotulo}` : c.rotulo,
+      }))),
+    ]
+    if (colunas.length === 0) return { error: 'Selecione ao menos uma página com perguntas' }
+
+    const { data: leads, error } = await admin
+      .from('quiz_leads').select('*')
+      .eq('quiz_id', quizId).eq('tenant_id', tenantId)
+      .order('started_at', { ascending: false })
+    if (error) return { error: error.message }
+
+    // Respostas por BLOCO (não por página): é o que permite uma coluna por
+    // pergunta. O evento mais recente do bloco vence — o lead pode corrigir.
+    const { data: eventos } = await admin
+      .from('quiz_lead_events')
+      .select('lead_id, block_id, event_type, value, created_at')
+      .eq('quiz_id', quizId)
+      .in('event_type', ['choice_selected', 'text_entered'])
+      .order('created_at', { ascending: true })
+
+    const porLead: Record<string, Record<string, string>> = {}
+    for (const ev of eventos ?? []) {
+      const blockId = ev.block_id as string | null
+      if (!blockId) continue
+      const v = ev.value as { selected?: unknown; text?: unknown } | null
+      const cru = v?.selected ?? v?.text
+      const valor = Array.isArray(cru) ? (cru as unknown[]).join(' | ') : String(cru ?? '').trim()
+      if (!valor) continue
+      const lid = ev.lead_id as string
+      porLead[lid] = porLead[lid] || {}
+      porLead[lid][blockId] = valor
+    }
+
+    const linhas = (leads ?? []).map(lead => {
+      const respostas = porLead[lead.id] ?? {}
+      return colunas.map(c => {
+        switch (c.chave) {
+          case 'lead:id': return String(lead.id).slice(0, 8)
+          case 'lead:data': return lead.started_at ? new Date(lead.started_at).toLocaleString('pt-BR') : ''
+          case 'lead:status': return String(lead.status ?? '')
+          case 'lead:nome': return String(lead.name ?? '')
+          case 'lead:email': return String(lead.email ?? '')
+          case 'lead:telefone': return String(lead.phone ?? '')
+          case 'lead:score': return String(lead.score ?? 0)
+          case 'lead:resultado': return String(lead.result_shown ?? '')
+          case 'lead:utm_source': return String(lead.utm_source ?? '')
+          case 'lead:utm_campaign': return String(lead.utm_campaign ?? '')
+          default: return respostas[c.chave] ?? ''
+        }
+      })
+    })
+
+    return { titulo: String(pageRow?.title ?? 'Quiz'), colunas, linhas }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
