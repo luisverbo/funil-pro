@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getQuizLeads, getQuizStats, resetQuizLeads, exportLeadsCSV, getAnswerBreakdown,
+  getQuizLeads, getQuizStats, resetQuizLeads, getAnswerBreakdown,
+  getExportStructure, exportLeadsTable, type ExportPageInfo, type ExportTable,
   type QuizLead, type QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
 import type { QuizPage } from '@/app/actions/quiz-v2'
@@ -310,6 +311,12 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   const [selectedLead, setSelectedLead] = useState<QuizLeadWithEvents | null>(null)
   const [resetting, setResetting] = useState(false)
   const [exporting, setExporting] = useState(false)
+  // Seleção de exportação: quais páginas, se inclui os dados do lead, e erro.
+  const [exportOpen, setExportOpen] = useState(false)
+  const [paginasExport, setPaginasExport] = useState<ExportPageInfo[]>([])
+  const [paginasSel, setPaginasSel] = useState<Set<string>>(new Set())
+  const [incluirLeadExport, setIncluirLeadExport] = useState(true)
+  const [erroExport, setErroExport] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
 
   const load = useCallback(async () => {
@@ -330,17 +337,91 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     return () => clearTimeout(t)
   }, [searchInput])
 
-  async function handleExport() {
-    setExporting(true)
-    const result = await exportLeadsCSV(quizId)
-    if ('csv' in result) {
-      const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = `quiz-leads-${quizId.slice(0, 6)}.csv`; a.click()
-      URL.revokeObjectURL(url)
+  /** Abre o seletor de exportação já sabendo quais páginas existem. */
+  async function abrirExport() {
+    setErroExport(null)
+    setExportOpen(true)
+    if (paginasExport.length === 0) {
+      const r = await getExportStructure(quizId)
+      if ('error' in r) { setErroExport(r.error); return }
+      setPaginasExport(r.paginas)
+      // Começa com TUDO marcado: quem quiser filtrar, desmarca.
+      setPaginasSel(new Set(r.paginas.map(p => p.id)))
     }
-    setExporting(false)
+  }
+
+  /** CSV com escape correto (vírgula, aspas e quebra de linha no valor). */
+  function montarCsv(t: ExportTable): string {
+    const esc = (v: string) =>
+      /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+    return [t.colunas.map(c => esc(c.rotulo)), ...t.linhas.map(l => l.map(esc))]
+      .map(l => l.join(','))
+      .join('\n')
+  }
+
+  /**
+   * PDF sem dependência nova: uma janela de impressão com a tabela pronta e o
+   * diálogo do navegador em "Salvar como PDF". Todo o conteúdo é escapado —
+   * resposta de lead nunca vira HTML.
+   */
+  function abrirPdf(t: ExportTable) {
+    const esc = (v: string) => v
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+    const cab = t.colunas.map(c => `<th>${esc(c.rotulo)}</th>`).join('')
+    const corpo = t.linhas
+      .map(l => `<tr>${l.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`)
+      .join('')
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>${esc(t.titulo)} — respostas</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm; }
+  body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #111827; }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  p.sub { font-size: 11px; color: #6b7280; margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 10px; }
+  th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 700; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+</style></head><body>
+<h1>${esc(t.titulo)}</h1>
+<p class="sub">${t.linhas.length} ${t.linhas.length === 1 ? 'resposta' : 'respostas'} · gerado em ${esc(new Date().toLocaleString('pt-BR'))}</p>
+<table><thead><tr>${cab}</tr></thead><tbody>${corpo}</tbody></table>
+</body></html>`
+    const janela = window.open('', '_blank')
+    if (!janela) { setErroExport('O navegador bloqueou a janela. Libere pop-ups para gerar o PDF.'); return }
+    janela.document.write(html)
+    janela.document.close()
+    janela.focus()
+    setTimeout(() => janela.print(), 400)
+  }
+
+  async function handleExport(formato: 'csv' | 'pdf') {
+    setExporting(true)
+    setErroExport(null)
+    try {
+      const t = await exportLeadsTable(quizId, {
+        pageIds: [...paginasSel],
+        incluirLead: incluirLeadExport,
+      })
+      if ('error' in t) { setErroExport(t.error); return }
+      if (t.linhas.length === 0) { setErroExport('Nenhuma resposta para exportar.'); return }
+
+      if (formato === 'csv') {
+        // BOM: o Excel em pt-BR precisa dele para não quebrar acentuação.
+        const blob = new Blob(['\uFEFF' + montarCsv(t)], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `quiz-${quizId.slice(0, 6)}.csv`; a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        abrirPdf(t)
+      }
+      setExportOpen(false)
+    } finally {
+      setExporting(false)
+    }
   }
 
   async function handleReset() {
@@ -422,13 +503,13 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
             </svg>
           </button>
 
-          {/* Export */}
-          <button onClick={handleExport} disabled={exporting}
+          {/* Export — abre a SELEÇÃO; nada é baixado antes da escolha. */}
+          <button onClick={abrirExport} disabled={exporting}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            {exporting ? 'Exportando…' : 'Exportar CSV'}
+            {exporting ? 'Exportando…' : 'Exportar'}
           </button>
 
           {/* Reset */}
@@ -595,6 +676,98 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
           </div>
         )}
       </div>
+
+      {/* Seleção de exportação: páginas + formato */}
+      {exportOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setExportOpen(false)} />
+          <div className="fixed z-50 inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h3 className="text-sm font-bold text-gray-900">Exportar respostas</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Escolha o que entra no arquivo. Cada pergunta vira uma coluna.
+                </p>
+              </div>
+
+              <div className="px-5 py-4 max-h-[50vh] overflow-y-auto space-y-3">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={incluirLeadExport}
+                    onChange={e => setIncluirLeadExport(e.target.checked)}
+                    className="w-4 h-4 accent-indigo-600" />
+                  <span>Dados do lead <span className="text-gray-400">(ID, data, status, contato, origem)</span></span>
+                </label>
+
+                <div className="pt-1">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Páginas</span>
+                    <button
+                      onClick={() => setPaginasSel(
+                        paginasSel.size === paginasExport.length ? new Set() : new Set(paginasExport.map(p => p.id)),
+                      )}
+                      className="text-[11px] font-semibold text-indigo-600 hover:underline">
+                      {paginasSel.size === paginasExport.length ? 'Desmarcar todas' : 'Marcar todas'}
+                    </button>
+                  </div>
+
+                  {paginasExport.length === 0 ? (
+                    <p className="text-xs text-gray-400">Carregando páginas…</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {paginasExport.map(p => (
+                        <label key={p.id}
+                          className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 cursor-pointer transition ${
+                            paginasSel.has(p.id) ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-indigo-200'
+                          } ${p.colunas.length === 0 ? 'opacity-50' : ''}`}>
+                          <input type="checkbox" checked={paginasSel.has(p.id)}
+                            disabled={p.colunas.length === 0}
+                            onChange={() => setPaginasSel(atual => {
+                              const novo = new Set(atual)
+                              if (novo.has(p.id)) novo.delete(p.id); else novo.add(p.id)
+                              return novo
+                            })}
+                            className="w-4 h-4 mt-0.5 accent-indigo-600" />
+                          <span className="min-w-0">
+                            <span className="block text-sm text-gray-800 truncate">{p.titulo}</span>
+                            <span className="block text-[11px] text-gray-500 truncate">
+                              {p.colunas.length === 0
+                                ? 'sem perguntas'
+                                : p.colunas.map(c => c.rotulo).join(' · ')}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {erroExport && (
+                  <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-700">
+                    {erroExport}
+                  </p>
+                )}
+              </div>
+
+              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                <button onClick={() => setExportOpen(false)}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800">
+                  Cancelar
+                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleExport('csv')} disabled={exporting}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    {exporting ? 'Gerando…' : 'Baixar CSV'}
+                  </button>
+                  <button onClick={() => handleExport('pdf')} disabled={exporting}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {exporting ? 'Gerando…' : 'Gerar PDF'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Detail panel */}
       {selectedLead && (
