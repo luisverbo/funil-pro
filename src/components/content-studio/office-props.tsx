@@ -42,7 +42,8 @@ export function Desk({ tint }: { tint: string }) {
       <path d="M -76 2 L 0 34 L 76 2 L 76 10 L 0 42 L -76 10 Z" fill="#a8814f" />
       {/* Tampo */}
       <g>
-        <path d="M 0 -30 L 76 2 L 0 34 L -76 2 Z" fill="#d8b183" />
+        <path d="M 0 -30 L 76 2 L 0 34 L -76 2 Z" fill="url(#cs-wood)" />
+        <path d="M 0 -30 L 76 2 L 0 34 L -76 2 Z" fill="none" stroke="#6b4a2a" strokeWidth="1.2" opacity="0.35" />
         <path d="M 0 -30 L 76 2 L 0 34 L -76 2 Z" fill={tint} opacity="0.13" />
         {/* Reflexo suave no tampo */}
         <path d="M -46 0 L -8 -16 L 6 -10 L -32 6 Z" fill="#ffffff" opacity="0.18" />
@@ -82,8 +83,11 @@ export function Monitor({ on, tint }: { on: boolean; tint: string }) {
       {/* Pé */}
       <path d="M -9 14 L 9 14 L 6 18 L -6 18 Z" fill="#334155" />
       <rect x="-13" y="17" width="26" height="3.5" rx="1.75" fill="#1e293b" />
+      {/* Halo de luz da tela — o brilho que "acende" a sala no jogo */}
+      {on && <ellipse cx="0" cy="-3" rx="44" ry="26" fill={tint} opacity="0.18" />}
       {/* Corpo */}
       <rect x="-27" y="-20" width="54" height="35" rx="3.5" fill="#111827" />
+      <rect x="-27" y="-20" width="54" height="35" rx="3.5" fill="none" stroke="#000000" strokeWidth="1" opacity="0.3" />
       <rect x="-25" y="-18" width="50" height="30" rx="2.5" fill={on ? tint : '#334155'} className="cs-screen" />
       {on && (
         <>
@@ -295,7 +299,7 @@ export function CoffeeCorner() {
       <ellipse cx="0" cy="26" rx="30" ry="11" fill="#0b1220" opacity="0.1" />
       {/* Bancada */}
       <path d="M -30 8 L 0 22 L 30 8 L 30 14 L 0 28 L -30 14 Z" fill="#a8814f" />
-      <path d="M 0 -2 L 30 8 L 0 22 L -30 8 Z" fill="#d8b183" />
+      <path d="M 0 -2 L 30 8 L 0 22 L -30 8 Z" fill="url(#cs-wood)" />
       {/* Máquina */}
       <g transform="translate(-8, -6)">
         <rect x="-11" y="-22" width="22" height="24" rx="3" fill="#334155" />
@@ -317,7 +321,7 @@ export function MeetingTable() {
       <ellipse cx="0" cy="18" rx="44" ry="17" fill="#0b1220" opacity="0.1" />
       {/* Tampo oval */}
       <ellipse cx="0" cy="0" rx="44" ry="19" fill="#a8814f" />
-      <ellipse cx="0" cy="-3" rx="44" ry="19" fill="#d8b183" />
+      <ellipse cx="0" cy="-3" rx="44" ry="19" fill="url(#cs-wood)" />
       <ellipse cx="-14" cy="-6" rx="16" ry="6" fill="#ffffff" opacity="0.16" />
       {/* Pé central */}
       <rect x="-4" y="10" width="8" height="14" rx="3" fill="#8b6a45" />
