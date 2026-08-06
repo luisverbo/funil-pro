@@ -16,6 +16,8 @@
 
 import React from 'react'
 import type { ProductionResult } from '@/lib/content-studio/result-view'
+import { IMAGE_PRESET_LABELS, IMAGE_PRESETS, type ImagePreset } from '@/lib/content-studio/images/prompt'
+import { IMAGE_MODES, type ImageMode } from '@/lib/content-studio/images/modes'
 
 const PAPEL_LABEL: Record<string, string> = {
   gancho: 'Gancho',
@@ -59,6 +61,17 @@ export interface ResultPanelProps {
   progressoImagens?: { done: number; total: number } | null
   /** Erro do fluxo de imagens, escopado a ESTE painel. */
   erroImagem?: string | null
+  /** Modo de qualidade escolhido (quick|premium) — controlado pelo pai. */
+  modoImagem?: ImageMode
+  onModoImagem?: (m: ImageMode) => void
+  /** Preset visual escolhido — controlado pelo pai. */
+  presetImagem?: ImagePreset
+  onPresetImagem?: (p: ImagePreset) => void
+}
+
+const MODO_LABELS: Record<ImageMode, { nome: string; hint: string }> = {
+  quick: { nome: 'Rápida', hint: 'menor qualidade e menor consumo' },
+  premium: { nome: 'Premium', hint: 'melhor acabamento e pode custar mais' },
 }
 
 const IMAGEM_STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
@@ -73,7 +86,9 @@ export default function ResultPanel({
   onAprovar, onReprovar, aprovando = false,
   onGerarImagem, onGerarTodas, gerandoImagens = false, gerandoSlide = null,
   progressoImagens = null, erroImagem = null,
+  modoImagem = 'premium', onModoImagem, presetImagem = 'editorial_premium', onPresetImagem,
 }: ResultPanelProps) {
+  const [ampliada, setAmpliada] = React.useState<string | null>(null)
   // Confirmações locais: custo do "Gerar todas" e a reprovação.
   const [confirmaTodas, setConfirmaTodas] = React.useState(false)
   const [confirmaReprovar, setConfirmaReprovar] = React.useState(false)
@@ -277,17 +292,42 @@ export default function ResultPanel({
                         )}
                       </div>
                       {img.status === 'pronto' && img.url && (
-                        // Preview em proporção de carrossel (quadrado), lazy.
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={img.url}
-                          alt={`Arte do slide ${slide.numero}`}
-                          loading="lazy"
-                          decoding="async"
-                          width={1080}
-                          height={1080}
-                          className="mt-2 aspect-square w-full max-w-[280px] rounded-xl border border-gray-200 object-cover"
-                        />
+                        <div className="mt-2">
+                          {/* ARTE FINAL composta (copy + fundo), não só o background. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img.url}
+                            alt={`Arte final do slide ${slide.numero}`}
+                            loading="lazy"
+                            decoding="async"
+                            width={1080}
+                            height={1080}
+                            className="aspect-square w-full max-w-[460px] cursor-zoom-in rounded-xl border border-gray-200 object-cover"
+                            onClick={() => setAmpliada(img.url)}
+                          />
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+                            <span>
+                              Arte final · {img.modo === 'quick' ? 'Rápida' : img.modo === 'premium' ? 'Premium' : '—'}
+                              {img.modelo ? ` · ${img.modelo}` : ''} · tentativa {img.tentativa + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setAmpliada(img.url)}
+                              className="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-semibold text-gray-600 hover:bg-gray-50"
+                            >
+                              Ampliar
+                            </button>
+                            <a
+                              href={img.url}
+                              download={`slide-${slide.numero}.jpg`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-md border border-gray-200 bg-white px-2 py-0.5 font-semibold text-gray-600 hover:bg-gray-50"
+                            >
+                              Baixar imagem
+                            </a>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )
@@ -297,6 +337,44 @@ export default function ResultPanel({
           </ol>
 
           {/* ── Gerar todas — com o custo dito ANTES do clique ── */}
+          {comImagens && (onModoImagem || onPresetImagem) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {onModoImagem && (
+                <div className="flex items-center gap-1.5" role="group" aria-label="Qualidade da imagem">
+                  {IMAGE_MODES.map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={gerandoImagens}
+                      onClick={() => onModoImagem(m)}
+                      aria-pressed={modoImagem === m}
+                      title={MODO_LABELS[m].hint}
+                      className={`rounded-lg px-2.5 py-1.5 text-[12px] font-bold transition-colors disabled:opacity-50 ${
+                        modoImagem === m ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {MODO_LABELS[m].nome}
+                    </button>
+                  ))}
+                  <span className="text-[11px] text-gray-400">{MODO_LABELS[modoImagem].hint}</span>
+                </div>
+              )}
+              {onPresetImagem && (
+                <select
+                  value={presetImagem}
+                  disabled={gerandoImagens}
+                  onChange={e => onPresetImagem(e.target.value as ImagePreset)}
+                  aria-label="Estilo visual"
+                  className="ml-auto rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-gray-700 disabled:opacity-50"
+                >
+                  {IMAGE_PRESETS.map(pr => (
+                    <option key={pr} value={pr}>{IMAGE_PRESET_LABELS[pr]}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
           {comImagens && onGerarTodas && (
             <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5">
               {confirmaTodas && !gerandoImagens ? (
@@ -466,6 +544,24 @@ export default function ResultPanel({
       <p className="mt-3 border-t border-gray-100 pt-3 text-[11px] text-gray-400">
         Conteúdo lido de <code>cs_steps</code>. Aprovar e editar chegam na próxima etapa.
       </p>
+
+      {/* Ampliação da arte final */}
+      {ampliada && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setAmpliada(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Arte ampliada"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={ampliada}
+            alt="Arte final ampliada"
+            className="max-h-[92vh] max-w-[92vw] rounded-2xl object-contain"
+          />
+        </div>
+      )}
     </section>
   )
 }

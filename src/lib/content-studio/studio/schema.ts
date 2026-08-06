@@ -382,11 +382,11 @@ export function makeVisualParser(brief: ValidStudioBrief) {
         return {
           number: i + 1,
           style: str(item.style, `visual.slides[${i}].style`, 200),
-          composition: str(item.composition, `visual.slides[${i}].composition`, 280),
+          composition: str(item.composition, `visual.slides[${i}].composition`, 480),
           elements: lista(item.elements, `visual.slides[${i}].elements`, 6, 80),
           colors: str(item.colors, `visual.slides[${i}].colors`, 160),
           layout: str(item.layout, `visual.slides[${i}].layout`, 200),
-          imagePrompt: str(item.imagePrompt, `visual.slides[${i}].imagePrompt`, 600),
+          imagePrompt: str(item.imagePrompt, `visual.slides[${i}].imagePrompt`, 1000),
         }
       }),
     }

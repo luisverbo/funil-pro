@@ -260,7 +260,7 @@ test('3) tenant só da sessão; pipeline studio obrigatório; prompt nunca do cl
   }
   // O prompt nasce da direção PERSISTIDA do Designer, no servidor.
   const run = semComentarios(ler('src/lib/content-studio/images/run.ts'))
-  assert.ok(run.includes('buildImagePrompt(resultado.visual.geral, visualSlide)'))
+  assert.ok(run.includes('buildImagePromptV2(resultado.visual.geral, visualSlide'), 'o prompt não nasce do output do Designer')
 })
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -506,38 +506,32 @@ test('13) base64/bytes NUNCA entram no banco — só metadados seguros', async (
   assert.equal(data.quality, 'medium')
   assert.equal(data.slide, 1)
   assert.equal(step.output!.usage!.imagesGenerated, 1)
-  assert.equal(step.output!.usage!.promptVersion, 'studio_image_v1')
+  assert.equal(step.output!.usage!.promptVersion, 'studio_image_v2')
 })
 
 // ════════════════════════════════════════════════════════════════════════════
 // 5. Composição FunilPro
 // ════════════════════════════════════════════════════════════════════════════
 
-test('14) o TEXTO nasce no overlay do FunilPro, nunca na imagem da OpenAI', () => {
+test('14) o TEXTO nasce no overlay do FunilPro — como CAMINHOS, nunca <text>', () => {
   const svg = buildSlideOverlaySvg({
     headline: 'O lead respondeu. E agora?', body: 'Todo contato com dono e etapa.',
     cta: 'Organize seus leads', marca: 'FunilPro', slideNumber: 6, totalSlides: 6,
   })
-  // A headline pode ter sido quebrada em linhas — cada palavra está no SVG.
-  for (const palavra of ['lead', 'respondeu.', 'agora?']) {
-    assert.ok(svg.includes(palavra), `"${palavra}" da headline fora do overlay`)
-  }
-  assert.ok(svg.includes('Todo contato com dono e etapa.'), 'body fora do overlay')
-  assert.ok(svg.includes('Organize seus leads'), 'CTA fora do overlay')
-  assert.ok(svg.includes('FunilPro'), 'marca fora do overlay')
-  assert.ok(svg.includes('6/6'), 'numeração ausente')
-  // Hierarquia: headline maior e mais pesada que o body.
-  assert.ok(svg.includes('font-size="72"') && svg.includes('font-weight="800"'))
-  assert.ok(svg.includes('font-size="36"'))
-  // Contraste: véu em gradiente sob o texto.
+  // Glifos vetoriais: o SVG contém <path> de texto e NENHUM elemento <text> —
+  // é o que torna a rasterização independente de fontes do sistema (a causa
+  // do overlay invisível na Vercel).
+  assert.ok(!/<text[\s>]/.test(svg), 'ainda existe <text> dependente de fontconfig')
+  assert.ok((svg.match(/<path /g) ?? []).length >= 4, 'headline/body/numeração/marca sem paths')
+  // Contraste: véu em gradiente sob o texto; CTA tem o retângulo do botão.
   assert.ok(svg.includes('linearGradient'))
+  assert.ok(svg.includes('<rect') && svg.includes('rx="16"'), 'botão do CTA ausente')
 
-  // E o conteúdo é escapado — copy não injeta SVG.
+  // Copy maliciosa NUNCA vira markup: glifos são paths — nenhuma tag sobra.
   const malicioso = buildSlideOverlaySvg({
     headline: '<script>alert(1)</script>', body: 'a & b', slideNumber: 1, totalSlides: 5,
   })
-  assert.ok(!malicioso.includes('<script>'), 'copy injetou markup no SVG')
-  assert.ok(malicioso.includes('&lt;script&gt;'))
+  assert.ok(!malicioso.includes('<script'), 'copy injetou markup no SVG')
   assert.equal(escapeSvgText('<&>'), '&lt;&amp;&gt;')
 })
 
@@ -642,7 +636,7 @@ test('19) UI: botões, custo dito antes, progresso "N de M"', () => {
   assert.ok(gerarTodas.includes('for (let i = 0; i < 10'), 'laço sem teto fechado')
   assert.ok(gerarTodas.includes('imagesDone === anterior'), 'sem parada por estagnação')
   // Retry só nasce dos botões explícitos: a action individual recebe o flag.
-  assert.ok(preview.includes('retry ? { retry: true } : undefined'))
+  assert.ok(preview.includes('...(retry ? { retry: true } : {})'))
 })
 
 test('20) produções antigas intactas; R1 intacto; nenhuma migration', () => {

@@ -60,9 +60,10 @@ import {
 import { STUDIO_AGENT_LABELS, STUDIO_AGENT_ORDER } from '@/lib/content-studio/studio/schema'
 import { preflightStudioImages } from '@/lib/content-studio/images/provider'
 import {
-  imageStepIndex, runStudioSlideImage, STUDIO_IMAGE_AGENT_KEY,
-  type StudioImageStorage,
+  imageStepIndex, isValidImageMode, runStudioSlideImage, STUDIO_IMAGE_AGENT_KEY,
+  type ImageMode, type StudioImageStorage,
 } from '@/lib/content-studio/images/run'
+import { isValidImagePreset, type ImagePreset } from '@/lib/content-studio/images/prompt'
 import {
   STUDIO_COMPARE_FIELDS, validateStudioInput,
   type StudioInput, type ValidStudioBrief,
@@ -682,7 +683,7 @@ async function loadStudioProductionForImages(
 export async function generateStudioSlideImage(
   productionId: string,
   slideNumber: number,
-  opts?: { retry?: boolean },
+  opts?: { retry?: boolean; mode?: string; preset?: string },
 ): Promise<ActionResult<ProductionState>> {
   const tenantId = await currentTenantId()
   if (!tenantId) return fail('unauthenticated')
@@ -697,9 +698,12 @@ export async function generateStudioSlideImage(
     preflightStudioImages()
 
     const store = createSupabaseContentStore(admin, { tenantId, productionId })
+    // Enums em LISTA BRANCA: fora dela, caem nos padrões do servidor.
+    const mode: ImageMode | undefined = isValidImageMode(opts?.mode) ? opts.mode : undefined
+    const preset: ImagePreset | undefined = isValidImagePreset(opts?.preset) ? opts.preset : undefined
     await runStudioSlideImage(
       store, studioImageStorage(admin), carga.production, Number(slideNumber),
-      { retry: opts?.retry === true },
+      { retry: opts?.retry === true, mode, preset },
     )
     // O estado volta INTEIRO: o status por slide vem dos steps persistidos.
     return readState(admin, tenantId, productionId)
@@ -721,6 +725,7 @@ export async function generateStudioSlideImage(
  */
 export async function generateAllStudioSlideImages(
   productionId: string,
+  opts?: { mode?: string; preset?: string },
 ): Promise<ActionResult<ProductionState & { imagesDone: number; imagesTotal: number }>> {
   const tenantId = await currentTenantId()
   if (!tenantId) return fail('unauthenticated')
@@ -746,7 +751,9 @@ export async function generateAllStudioSlideImages(
       .find(n => !steps.some(st => st.agent_key === STUDIO_IMAGE_AGENT_KEY && st.step_index === imageStepIndex(n)))
 
     if (proximo !== undefined) {
-      await runStudioSlideImage(store, studioImageStorage(admin), carga.production, proximo)
+      const mode: ImageMode | undefined = isValidImageMode(opts?.mode) ? opts.mode : undefined
+      const preset: ImagePreset | undefined = isValidImagePreset(opts?.preset) ? opts.preset : undefined
+      await runStudioSlideImage(store, studioImageStorage(admin), carga.production, proximo, { mode, preset })
     }
 
     const estado = await readState(admin, tenantId, productionId)

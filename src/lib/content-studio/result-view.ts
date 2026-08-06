@@ -61,6 +61,10 @@ export interface ResultSlideImage {
   numero: number
   status: 'nao_gerado' | 'gerando' | 'pronto' | 'falhou'
   url: string | null
+  /** Metadados discretos da geração — exibidos no preview. */
+  modelo: string | null
+  modo: 'quick' | 'premium' | null
+  tentativa: number
 }
 
 export interface ProductionResult {
@@ -263,7 +267,7 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
     const stepImagem = steps.find(
       st => st.agent_key === 'cst_image_designer' && st.step_index === 100 + s.numero,
     )
-    const dados = (stepImagem?.output?.data ?? null) as { url?: string } | null
+    const dados = (stepImagem?.output?.data ?? null) as { url?: string; model?: string; mode?: string } | null
     return {
       numero: s.numero,
       status: !stepImagem ? 'nao_gerado'
@@ -271,6 +275,9 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
         : stepImagem.status === 'failed' ? 'falhou'
         : 'gerando',
       url: stepImagem?.status === 'completed' && typeof dados?.url === 'string' ? dados.url : null,
+      modelo: typeof dados?.model === 'string' ? dados.model : null,
+      modo: dados?.mode === 'quick' || dados?.mode === 'premium' ? dados.mode : null,
+      tentativa: stepImagem?.attempt ?? 0,
     }
   })
 

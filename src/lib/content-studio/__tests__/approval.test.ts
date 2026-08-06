@@ -120,7 +120,7 @@ test('5) o botão "Tentar novamente" continua reservado à falha, com retry expl
   assert.ok(painel.includes('Tentar novamente'))
   assert.ok(painel.includes("img.status === 'falhou'"), 'retry fora do estado falhou')
   const gerar = previewCode.slice(previewCode.indexOf('const gerarImagem'), previewCode.indexOf('const gerarTodas'))
-  assert.ok(gerar.includes('retry ? { retry: true } : undefined'), 'retry implícito')
+  assert.ok(gerar.includes('...(retry ? { retry: true } : {})'), 'retry implícito')
 })
 
 // ════════════════════════════════════════════════════════════════════════════

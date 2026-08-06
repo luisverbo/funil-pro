@@ -25,9 +25,12 @@
 
 import { agentErrorEventPayload } from '../types'
 import type { ContentStore, ProductionRow, StepRow } from '../types'
-import { buildImagePrompt, STUDIO_IMAGE_PROMPT_VERSION } from './prompt'
-import { composeSlideImage } from './compose'
-import { resolveStudioImageProvider } from './provider'
+import {
+  buildImagePromptV2, IMAGE_PRESET_DEFAULT, isValidImagePreset,
+  STUDIO_IMAGE_PROMPT_VERSION_V2, type ImagePreset,
+} from './prompt'
+import { composeSlideImage, pickLayoutTemplate } from './compose'
+import { resolveStudioImageProvider, type StudioImageQuality } from './provider'
 import { buildProductionResult } from '../result-view'
 import {
   STUDIO_COPYWRITER_KEY, STUDIO_DESIGNER_KEY,
@@ -59,12 +62,25 @@ export interface ImageRunResult {
   url?: string
 }
 
+export {
+  IMAGE_MODE_DEFAULT, IMAGE_MODES, isValidImageMode, type ImageMode,
+} from './modes'
+import { IMAGE_MODE_DEFAULT, isValidImageMode, type ImageMode } from './modes'
+const QUALITY_BY_MODE: Record<ImageMode, StudioImageQuality> = {
+  quick: 'medium',
+  premium: 'high',
+}
+
 interface RunImageOptions {
   /**
    * Regeneração EXPLÍCITA: permite disputar o CAS de um step failed (Tentar
    * novamente) ou completed (Regenerar). Só a UI define — nunca automática.
    */
   retry?: boolean
+  /** Modo validado (quick|premium). Padrão: premium. */
+  mode?: ImageMode
+  /** Preset visual validado (lista branca). Padrão: editorial_premium. */
+  preset?: ImagePreset
 }
 
 /**
@@ -161,15 +177,23 @@ export async function runStudioSlideImage(
   })
 
   try {
-    const prompt = buildImagePrompt(resultado.visual.geral, visualSlide)
+    // Enum -> valores REAIS decididos aqui: quality, preset e prompt v2.
+    const mode: ImageMode = isValidImageMode(options.mode) ? options.mode : IMAGE_MODE_DEFAULT
+    const preset: ImagePreset = isValidImagePreset(options.preset) ? options.preset : IMAGE_PRESET_DEFAULT
+    const prompt = buildImagePromptV2(resultado.visual.geral, visualSlide, {
+      preset, slideNumber, totalSlides: total,
+    })
     const provider = resolveStudioImageProvider()
     const gerada = await provider.generate({
       prompt,
+      quality: QUALITY_BY_MODE[mode],
       executionId: `${production.id}:${STUDIO_IMAGE_AGENT_KEY}:s${slideNumber}:a${attempt}`,
     })
 
     // COMPOSIÇÃO FunilPro: o texto NUNCA vem na imagem da OpenAI.
     const brief = (production.brief ?? {}) as { marca_negocio?: string; cta?: string }
+    // Template determinístico pela direção do Designer — consistente na série.
+    const template = pickLayoutTemplate(visualSlide.layout, resultado.visual.geral.estilo ?? '')
     const arte = await composeSlideImage(gerada.bytes, {
       headline: copySlide.headline,
       body: copySlide.texto,
@@ -177,6 +201,7 @@ export async function runStudioSlideImage(
       marca: typeof brief.marca_negocio === 'string' ? brief.marca_negocio : undefined,
       slideNumber,
       totalSlides: total,
+      template,
     })
 
     // Path com tenant e produção — nunca escolhido pelo cliente.
@@ -194,6 +219,10 @@ export async function runStudioSlideImage(
           model: gerada.model,
           size: gerada.size,
           quality: gerada.quality,
+          mode,
+          preset,
+          template,
+          attempt,
           width: arte.width,
           height: arte.height,
         },
@@ -206,7 +235,7 @@ export async function runStudioSlideImage(
           imagesGenerated: 1,
           durationMs: gerada.durationMs,
           aiCalls: 1,
-          promptVersion: STUDIO_IMAGE_PROMPT_VERSION,
+          promptVersion: STUDIO_IMAGE_PROMPT_VERSION_V2,
         },
       },
       completed_at: new Date().toISOString(),
