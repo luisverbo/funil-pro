@@ -106,6 +106,43 @@ for (const [k, p] of Object.entries(STUDIO_PROFILES)) {
   }
 }
 
+// ─── Step running abandonado ────────────────────────────────────────────────
+
+/**
+ * Idade mínima para considerar um step `running` ABANDONADO. Precisa ser
+ * maior que tudo o que uma execução legítima pode durar: o maior timeout de
+ * agente (35s) + margem de persistência (5s) + margem de despacho (2s) e o
+ * próprio maxDuration da rota (60s). 120s é o dobro do teto da plataforma —
+ * um step running mais velho que isso não tem execução viva por trás: a
+ * Server Action morreu (deploy, queda de conexão, kill) depois do claim e
+ * antes de persistir completed/failed.
+ */
+export const STUDIO_STALE_RUNNING_MS = 120_000
+
+{
+  const maiorTimeout = Math.max(...Object.values(STUDIO_PROFILES).map(p => p.timeoutMs))
+  const teto = Math.max(maiorTimeout + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS, 60_000)
+  if (STUDIO_STALE_RUNNING_MS <= teto) {
+    throw new Error('studio: limite de stale menor que uma execução legítima')
+  }
+}
+
+/**
+ * Um step running está ABANDONADO? Decisão do RELÓGIO DO SERVIDOR, nunca do
+ * cliente. started_at ausente/ilegível é estado inconsistente: recuperável
+ * pelo clique explícito, mas jamais dispara provider sozinho.
+ */
+export function isStaleRunningStep(
+  step: Pick<StepRow, 'status' | 'started_at'>,
+  nowMs: number,
+): boolean {
+  if (step.status !== 'running') return false
+  if (!step.started_at) return true  // inconsistente: sem início registrado
+  const inicio = Date.parse(step.started_at)
+  if (Number.isNaN(inicio)) return true
+  return nowMs - inicio >= STUDIO_STALE_RUNNING_MS
+}
+
 /** Estados a partir dos quais a finalização pode transicionar. */
 const FINALIZABLE: readonly ProductionStatus[] = ['draft', 'queued', 'running']
 
@@ -349,6 +386,157 @@ export async function runStudioCarousel(
   return { ok: true, state: 'reused', pending: [] }
 }
 
+export interface StaleRetryResult {
+  ok: boolean
+  /**
+   * created      -> recuperou o step E (se era o último) finalizou a produção
+   * partial      -> recuperou o step; ainda falta agente depois dele
+   * in_progress  -> outra execução venceu a posse AGORA (nenhuma chamada)
+   * not_stale    -> o step running ainda é recente — nada foi feito
+   * invalid      -> não há step recuperável neste estado
+   * failed       -> a nova tentativa chamou a IA e falhou (persistido)
+   */
+  state: 'created' | 'partial' | 'in_progress' | 'not_stale' | 'invalid' | 'failed'
+  errorCode?: string
+}
+
+/**
+ * RECUPERAÇÃO EXPLÍCITA de um step `running` abandonado.
+ *
+ * A causa do órfão: a Server Action morre depois do claim (step nasce
+ * `running`) e antes de persistir completed/failed — sem fila, ninguém volta
+ * para fechá-lo, e `runStudioCarousel` devolve `in_progress` para sempre.
+ *
+ * Esta função NUNCA roda sozinha: é o backend do botão "Tentar novamente o
+ * {agente}" — a chamada anterior pode ter consumido tokens mesmo sem ter sido
+ * persistida, então repetir exige um clique consciente.
+ *
+ * POSSE ATÔMICA: CAS running→running com predicado do started_at ANTIGO na
+ * própria UPDATE (transitionStepStatus + expectedStartedAt). Dois cliques
+ * leem o mesmo started_at; o vencedor o substitui; o perdedor não casa o
+ * predicado e recebe `in_progress`. Nada é deletado nem reinserido; steps
+ * concluídos (Estrategista, Copywriter) jamais são tocados.
+ */
+export async function retryStaleStudioStep(
+  store: ContentStore,
+  production: ProductionRow,
+  brief: ValidStudioBrief,
+  options: { now?: () => number } = {},
+): Promise<StaleRetryResult> {
+  const agora = options.now ?? (() => Date.now())
+
+  const steps = await store.listSteps(production.id)
+  const porAgente = new Map(steps.map(st => [st.agent_key, st]))
+
+  // O step recuperável é o PRIMEIRO da ordem que está `running` — e todos os
+  // anteriores precisam estar completed (senão o estado é outro problema).
+  let alvoIndice = -1
+  for (let i = 0; i < STUDIO_AGENT_ORDER.length; i++) {
+    const st = porAgente.get(STUDIO_AGENT_ORDER[i])
+    if (st?.status === 'completed') continue
+    if (st?.status === 'running') { alvoIndice = i; break }
+    return { ok: false, state: 'invalid', errorCode: 'no_running_step' }
+  }
+  if (alvoIndice < 0) return { ok: false, state: 'invalid', errorCode: 'no_running_step' }
+
+  const agentKey = STUDIO_AGENT_ORDER[alvoIndice]
+  const alvo = porAgente.get(agentKey)!
+
+  // Stale é decisão do RELÓGIO DO SERVIDOR. Recente: nada de provider.
+  if (!isStaleRunningStep(alvo, agora())) {
+    return { ok: true, state: 'not_stale' }
+  }
+
+  // ── Posse atômica: só quem trocar o started_at ANTIGO pelo novo executa. ──
+  const novoAttempt = alvo.attempt + 1
+  const novoInicio = new Date(agora()).toISOString()
+  const venceu = await store.transitionStepStatus(
+    alvo.id,
+    ['running'],
+    { status: 'running', attempt: novoAttempt, started_at: novoInicio, error: null, completed_at: null },
+    alvo.started_at ?? null,
+  )
+  if (!venceu) return { ok: true, state: 'in_progress' }
+
+  // Auditoria da retomada — attempt e motivo, nada de erro bruto/prompt.
+  await store.emitEvent({
+    productionId: production.id,
+    type: 'agent_retrying',
+    stepId: alvo.id,
+    agentKey,
+    payload: { attempt: novoAttempt, reason_code: 'stale_running_recovery' },
+  })
+  await store.emitEvent({
+    productionId: production.id,
+    type: 'agent_started',
+    stepId: alvo.id,
+    agentKey,
+    payload: { attempt: novoAttempt },
+  })
+
+  // A bagagem vem SÓ dos steps concluídos persistidos — nada é refeito.
+  const bagagem: Bagagem = {}
+  for (const k of STUDIO_AGENT_ORDER.slice(0, alvoIndice)) {
+    absorver(bagagem, k, readData(porAgente.get(k)))
+  }
+
+  try {
+    const perfil = STUDIO_PROFILES[agentKey]
+    const saida = await chamarAgente(agentKey, brief, bagagem, production.id, perfil, novoAttempt)
+
+    await store.updateStep(alvo.id, {
+      status: 'completed',
+      output: { data: saida.data, artifacts: [], usage: saida.usage },
+      completed_at: new Date(agora()).toISOString(),
+    })
+    await store.emitEvent({
+      productionId: production.id,
+      type: 'agent_completed',
+      stepId: alvo.id,
+      agentKey,
+      payload: { usage: saida.usage, attempt: novoAttempt },
+    })
+
+    // Era o último? FINALIZA pelo MESMO CAS idempotente do runner normal —
+    // um único content_waiting_approval, nenhum production_created novo.
+    if (alvoIndice === STUDIO_AGENT_ORDER.length - 1) {
+      const transicionou = await store.transitionProductionStatus(
+        production.id, FINALIZABLE, 'awaiting_approval',
+      )
+      if (transicionou) {
+        await store.emitEvent({
+          productionId: production.id,
+          type: 'content_waiting_approval',
+          payload: { steps: STUDIO_AGENT_ORDER.length, final_status: 'awaiting_approval' },
+        })
+      }
+      return { ok: true, state: 'created' }
+    }
+    return { ok: true, state: 'partial' }
+  } catch (err) {
+    const extras = agentErrorEventPayload(err)
+    const message = err instanceof Error ? err.message : String(err)
+    const payloadErro = 'error_code' in extras ? extras : { error: message.slice(0, 300), ...extras }
+
+    await store.updateStep(alvo.id, {
+      status: 'failed',
+      error: message.slice(0, 300),
+      completed_at: new Date(agora()).toISOString(),
+    })
+    await store.emitEvent({
+      productionId: production.id,
+      type: 'agent_failed',
+      stepId: alvo.id,
+      agentKey,
+      payload: { attempt: novoAttempt, ...payloadErro },
+    })
+    await store.updateProductionStatus(production.id, 'failed')
+
+    const code = (err as { code?: string }).code
+    return { ok: false, state: 'failed', errorCode: typeof code === 'string' ? code : 'unknown' }
+  }
+}
+
 function faltantes(aPartirDe: number): string[] {
   return STUDIO_AGENT_ORDER.slice(aPartirDe)
 }
@@ -377,9 +565,10 @@ async function chamarAgente(
   bagagem: Bagagem,
   productionId: string,
   perfil: { maxOutputTokens: number; timeoutMs: number },
+  attempt = 0,
 ): Promise<SaidaAgente> {
   const provider = resolveContentAIProvider()
-  const executionId = `${productionId}:${agentKey}:a0`
+  const executionId = `${productionId}:${agentKey}:a${attempt}`
 
   let system: string
   let userContent: string

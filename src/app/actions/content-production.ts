@@ -53,7 +53,11 @@ import {
 import { buildProductionResult, type ProductionResult } from '@/lib/content-studio/result-view'
 import { runQuickCarousel } from '@/lib/content-studio/quick/run'
 import { QUICK_COMPARE_FIELDS, validateQuickInput, type QuickInput, type ValidQuickBrief } from '@/lib/content-studio/quick/schema'
-import { runStudioCarousel, STUDIO_REQUEST_BUDGET_MS } from '@/lib/content-studio/studio/run'
+import {
+  isStaleRunningStep, retryStaleStudioStep, runStudioCarousel,
+  STUDIO_REQUEST_BUDGET_MS,
+} from '@/lib/content-studio/studio/run'
+import { STUDIO_AGENT_LABELS, STUDIO_AGENT_ORDER } from '@/lib/content-studio/studio/schema'
 import { preflightStudioImages } from '@/lib/content-studio/images/provider'
 import {
   imageStepIndex, runStudioSlideImage, STUDIO_IMAGE_AGENT_KEY,
@@ -84,6 +88,14 @@ export interface ProductionState {
   pending: boolean
   /** Montado no SERVIDOR, a partir de cs_steps.output. */
   result: ProductionResult
+  /**
+   * Situação de um step de TEXTO em `running` (geração Studio), decidida pelo
+   * RELÓGIO DO SERVIDOR — nada de timestamp cru para o navegador julgar:
+   *   running=true              -> execução recente, só aguardar
+   *   available=true            -> abandonado; o botão de retomada aparece
+   *   agentLabel                -> rótulo amigável do papel travado
+   */
+  recovery: { available: boolean; running: boolean; agentLabel?: string }
 }
 
 export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -310,6 +322,52 @@ export async function continueStudioProduction(productionId: string): Promise<Ac
     await runStudioCarousel(store, production, brief, {
       deadlineAt: Date.now() + STUDIO_REQUEST_BUDGET_MS,
     })
+    return readState(admin, tenantId, productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+// ─── Recuperação explícita de step running abandonado ───────────────────────
+
+/**
+ * Backend do botão "Tentar novamente o {agente}": retoma o ÚNICO step de
+ * texto `running` de uma produção Studio, e SOMENTE se ele estiver abandonado
+ * pelo relógio do servidor. Uma nova chamada de IA será feita — por isso o
+ * caminho é uma action separada, nunca o "Continuar produção".
+ */
+export async function retryStaleStudioProduction(productionId: string): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+  if (!idValido(productionId)) return fail('not_found')
+
+  const admin = createAdminClient()
+
+  const { data: row } = await admin
+    .from('cs_productions')
+    .select('*')
+    .eq('tenant_id', tenantId)          // <- tenant da SESSÃO
+    .eq('id', productionId)
+    .maybeSingle()
+
+  const production = (row ?? null) as ProductionRow | null
+  if (!production) return fail('not_found')
+  if (production.pipeline_key !== STUDIO_PIPELINE.key) return fail('wrong_pipeline')
+  if (PRODUCTION_TERMINAL.includes(production.status)) return fail('not_advanceable')
+
+  const brief = production.brief as ValidStudioBrief | null
+  if (!brief || typeof brief.tema !== 'string') return fail('invalid_brief')
+
+  try {
+    // A retomada é uma chamada PAGA: o preflight barra antes de qualquer
+    // escrita se a IA estiver desligada/mal configurada.
+    preflightContentAI()
+
+    const store = createSupabaseContentStore(admin, { tenantId, productionId })
+    await retryStaleStudioStep(store, production, brief)
     return readState(admin, tenantId, productionId)
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('content_ai:')) {
@@ -1090,6 +1148,21 @@ function studioPending(status: ProductionRow['status'], steps: StepRow[]): boole
   return concluidos < STUDIO_PIPELINE.steps.length
 }
 
+/**
+ * Um step de TEXTO em `running` está recente (aguarde) ou abandonado
+ * (ofereça o retry)? A idade é medida AQUI, com o relógio do servidor.
+ */
+function studioRecovery(steps: StepRow[]): { available: boolean; running: boolean; agentLabel?: string } {
+  const texto = new Set<string>(STUDIO_AGENT_ORDER)
+  const emExecucao = steps.find(s => texto.has(s.agent_key) && s.status === 'running')
+  if (!emExecucao) return { available: false, running: false }
+  const agentLabel = STUDIO_AGENT_LABELS[emExecucao.agent_key] ?? emExecucao.agent_key
+  if (isStaleRunningStep(emExecucao, Date.now())) {
+    return { available: true, running: false, agentLabel }
+  }
+  return { available: false, running: true, agentLabel }
+}
+
 async function readState(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
@@ -1131,6 +1204,9 @@ async function readState(
       pending: row.pipeline_key === STUDIO_PIPELINE.key
         ? studioPending(row.status, (steps.data ?? []) as StepRow[])
         : (jobs.count ?? 0) > 0,
+      recovery: row.pipeline_key === STUDIO_PIPELINE.key && !PRODUCTION_TERMINAL.includes(row.status)
+        ? studioRecovery((steps.data ?? []) as StepRow[])
+        : { available: false, running: false },
       // Montado aqui, no servidor, a partir do que os agentes gravaram.
       result: buildProductionResult((steps.data ?? []) as StepRow[]),
     },

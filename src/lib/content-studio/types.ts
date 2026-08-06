@@ -326,10 +326,19 @@ export interface ContentStore {
    * "Tentar novamente" disputam a transição failed→running e exatamente um
    * vence — sem lock em memória, o predicado vive na própria UPDATE.
    */
+  /**
+   * `expectedStartedAt` (opcional) acrescenta um predicado de POSSE: a
+   * transição só acontece se `started_at` ainda for exatamente o valor lido
+   * (`null` exige IS NULL; `undefined` não aplica o predicado). É o que torna
+   * atômica a RECUPERAÇÃO de um step running abandonado: dois cliques leem o
+   * mesmo started_at antigo, o vencedor o substitui na própria UPDATE e o
+   * perdedor não casa mais o predicado — running→running sem posse dupla.
+   */
   transitionStepStatus(
     stepId: string,
     expectedStatuses: readonly StepStatus[],
     patch: Partial<StepRow> & { status: StepStatus },
+    expectedStartedAt?: string | null,
   ): Promise<boolean>
 
   insertJob(job: Omit<JobRow, 'id'>): Promise<JobRow | null>
