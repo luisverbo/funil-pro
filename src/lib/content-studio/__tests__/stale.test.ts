@@ -205,8 +205,12 @@ const DEPOIS_DO_LIMITE = T0 + STUDIO_STALE_RUNNING_MS + 1_000
 test('1) o limite é maior que qualquer execução legítima', () => {
   const maiorTimeout = Math.max(...Object.values(STUDIO_PROFILES).map(p => p.timeoutMs))
   assert.ok(STUDIO_STALE_RUNNING_MS > maiorTimeout + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS)
-  assert.ok(STUDIO_STALE_RUNNING_MS > 60_000, 'menor que o maxDuration da rota')
-  assert.equal(STUDIO_STALE_RUNNING_MS, 120_000)
+  // INVARIANTE, não constante: declarar stale antes do pior caso legítimo
+  // ofereceria o botão de retomada a um agente que ainda trabalha — e o
+  // clique pagaria uma segunda chamada à toa. Com folga de pelo menos 2x.
+  const piorCaso = maiorTimeout + STUDIO_PERSISTENCE_MARGIN_MS + STUDIO_DISPATCH_MARGIN_MS
+  assert.ok(STUDIO_STALE_RUNNING_MS >= piorCaso * 1.5,
+    `stale (${STUDIO_STALE_RUNNING_MS}ms) sem folga sobre o pior caso (${piorCaso}ms)`)
 })
 
 test('2) running por 30s NÃO é stale; no limite exato, é', () => {

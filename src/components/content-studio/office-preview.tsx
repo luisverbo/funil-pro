@@ -71,9 +71,11 @@ const REVEAL_MS = 950         // ritmo base de revelação dos eventos gravados
 const TICK_MS = 400           // intervalo entre pedidos de avanço ao servidor
 const MAX_TICKS = 30          // teto de chamadas: o pipeline tem 3 passos
 const MAX_TOTAL_MS = 60_000   // teto de tempo total do laço
-// Geração Studio: 3 agentes. Se cada requisição avançar ao menos um, 3 bastam;
-// o teto é 4 para tolerar uma parada por orçamento sem travar a tela.
-const MAX_CONTINUACOES = 4
+// Geração Studio: 3 agentes. Se cada requisição avançar ao menos um, 3 bastam.
+// O teto é 6 para tolerar paradas por orçamento (o servidor devolve `partial`
+// sem executar quando o tempo restante não cabe o agente inteiro) sem que a
+// tela desista de uma produção que ainda tem trabalho pendente.
+const MAX_CONTINUACOES = 6
 const MAX_SEM_PROGRESSO = 3   // rodadas sem evento novo antes de desistir
 
 type Velocidade = 'normal' | 'rapido'
