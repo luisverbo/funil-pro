@@ -317,11 +317,11 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
   // Toda action começa pelo tenant da sessão e sai se não houver.
   const exportadas = [...actionsCode.matchAll(/export async function (\w+)\(/g)].map(m => m[1])
   assert.deepEqual(exportadas.sort(), [
-    'advanceProduction', 'continueStudioProduction', 'createProduction',
+    'advanceProduction', 'approveContentProduction', 'continueStudioProduction', 'createProduction',
     'createQuickProduction', 'createStudioProduction',
     'generateAllStudioSlideImages', 'generateStudioSlideImage',
     'getLatestProduction', 'getProductionState', 'listProductions',
-    'removeAllOpenContentProductions', 'removeContentProduction',
+    'rejectContentProduction', 'removeAllOpenContentProductions', 'removeContentProduction',
   ])
 
   for (const nome of exportadas) {
@@ -883,7 +883,12 @@ test('24) o resultado vem da PERSISTÊNCIA, não do navegador', async () => {
   // O painel só apresenta: não recombina briefing nem chama agente.
   assert.ok(!/buildProductionResult|reviewCopy|upstream|brief/.test(painel),
     'o painel remonta o resultado no navegador')
-  assert.ok(!/useState|useEffect/.test(painel), 'o painel guarda estado próprio do resultado')
+  // O painel pode guardar estado de CONFIRMAÇÃO de clique (booleans locais),
+  // mas nunca estado do RESULTADO: nenhum efeito, e todo useState é um
+  // boolean de confirmação — jamais alimentado por `result`.
+  assert.ok(!/useEffect/.test(painel), 'o painel guarda efeitos próprios')
+  const estados = [...painel.matchAll(/useState(?:<[^>]*>)?\(([^)]*)\)/g)].map(m => m[1].trim())
+  assert.ok(estados.every(v => v === 'false'), `useState fora de confirmação: ${estados.join(', ')}`)
 
   // E o servidor é quem monta.
   assert.ok(actionsCode.includes('buildProductionResult((steps.data ?? []) as StepRow[])'))
