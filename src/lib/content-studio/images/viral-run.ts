@@ -16,6 +16,7 @@ import { agentErrorEventPayload } from '../types'
 import type { ContentStore, ProductionRow } from '../types'
 import { imageStepIndex, STUDIO_IMAGE_AGENT_KEY, type StudioImageStorage } from './run'
 import { resolveStudioImageProvider } from './provider'
+import type { ImageMode } from './modes'
 import {
   buildViralCoverPrompt, coerceDesignerCover, deriveViralCoverDirection,
   isValidViralIntensity, VIRAL_COVER_PROMPT_VERSION, VIRAL_INTENSITY_DEFAULT,
@@ -37,6 +38,14 @@ export interface ViralRunResult {
 interface ViralRunOptions {
   retry?: boolean
   intensity?: ViralIntensity
+  /**
+   * Qualidade da foto. `premium` (padrão) = `high`; `quick` = `medium`.
+   *
+   * Existe porque `high` em 1024×1536 às vezes passa do tempo da requisição e
+   * a capa nunca sai. NÃO é fallback silencioso: o servidor jamais troca
+   * sozinho — quem escolhe é a pessoa, no botão, depois de ler o motivo.
+   */
+  mode?: ImageMode
 }
 
 /**
@@ -138,9 +147,11 @@ export async function runViralCover(
 
     const prompt = buildViralCoverPrompt(direction, intensity)
     const provider = resolveStudioImageProvider()
+    // Enum de lista branca -> qualidade REAL, decidida aqui no servidor.
+    const quality = options.mode === 'quick' ? 'medium' : 'high'
     const foto = await provider.generate({
       prompt,
-      quality: 'high',            // capa viral é SEMPRE premium
+      quality,
       size: '1024x1536',          // vertical; composta para 1080x1350
       executionId: `${production.id}:${STUDIO_IMAGE_AGENT_KEY}:cover:a${attempt}`,
     })
@@ -182,6 +193,7 @@ export async function runViralCover(
           model: foto.model,
           size: foto.size,
           quality: foto.quality,
+          mode: options.mode === 'quick' ? 'quick' : 'premium',
           intensity,
           accentHex,
           attempt,

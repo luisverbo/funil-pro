@@ -327,11 +327,12 @@ Responda SOMENTE com um objeto JSON, sem texto antes ou depois:
 }
 
 Regras:
-- EXATAMENTE ${brief.slides} entradas em "slides" (o slide 1 é a capa).
+- EXATAMENTE ${brief.slides} slides no array "slides" (o slide 1 é a capa).
 - Em "slides", composition e imagePrompt são SEMPRE "-" — não invente cena
   por slide: nenhuma imagem interna será gerada.
 - "layout" de cada slide: uma frase sobre ênfase/hierarquia do texto.
-- A capa carrega TODA a direção: seja específico nela, econômico no resto.`
+- A capa carrega TODA a direção: seja específico nela, econômico no resto.
+- ${ANTI_INJECTION}`
 }
 
 export function designerUserContent(brief: ValidStudioBrief, copy: StudioCopy): string {

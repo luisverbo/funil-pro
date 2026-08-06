@@ -581,7 +581,9 @@ export default function OfficePreview() {
       aplicarEstado(r.data)
       const img = r.data.result.imagens.find(i => i.numero === slide)
       if (img?.status === 'falhou') {
-        setErroImagem('A imagem deste slide falhou. Use "Tentar novamente" quando quiser.')
+        // O MOTIVO gravado pelo servidor, não uma frase genérica: era isto que
+        // faltava para o clique deixar de parecer "não fez nada".
+        setErroImagem(img.erro ?? 'A imagem deste slide falhou. Use "Tentar novamente" quando quiser.')
       }
     } catch {
       setErroImagem('Não foi possível gerar a imagem. Tente novamente.')
@@ -640,17 +642,22 @@ export default function OfficePreview() {
     setGerandoCapa(true)
     try {
       const r = await generateViralCoverImage(productionId, {
-        ...(retry ? { retry: true } : {}), intensity: intensidadeCapa,
+        ...(retry ? { retry: true } : {}), intensity: intensidadeCapa, mode: modoImagem,
       })
       if (cancelled.current) return
       if (!r.ok) { setErroImagem(r.error); return }
       aplicarEstado(r.data)
+      // Falha da capa: o MOTIVO persistido sobe para o banner na hora — sem
+      // isto o clique parecia não fazer nada.
+      if (r.data.result.viral?.cover.status === 'falhou') {
+        setErroImagem(r.data.result.viral.cover.erro ?? 'A capa não foi gerada. Use "Tentar novamente".')
+      }
     } catch {
       setErroImagem('Não foi possível gerar a capa. Tente novamente.')
     } finally {
       if (!cancelled.current) setGerandoCapa(false)
     }
-  }, [aplicarEstado, criando, gerandoCapa, intensidadeCapa, productionId, running])
+  }, [aplicarEstado, criando, gerandoCapa, intensidadeCapa, modoImagem, productionId, running])
 
   /** Volta a tela ao estado inicial (nenhuma produção selecionada). */
   const limparTela = useCallback(() => {

@@ -590,7 +590,7 @@ export async function removeAllOpenContentProductions(): Promise<ActionResult<Re
  */
 export async function generateViralCoverImage(
   productionId: string,
-  opts?: { retry?: boolean; intensity?: string },
+  opts?: { retry?: boolean; intensity?: string; mode?: string },
 ): Promise<ActionResult<ProductionState>> {
   const tenantId = await currentTenantId()
   if (!tenantId) return fail('unauthenticated')
@@ -609,6 +609,8 @@ export async function generateViralCoverImage(
     await runViralCover(store, studioImageStorage(admin), carga.production, {
       retry: opts?.retry === true,
       intensity: isValidViralIntensity(opts?.intensity) ? opts.intensity : undefined,
+      // Enum de lista branca; fora dela, o padrão do servidor (premium).
+      mode: isValidImageMode(opts?.mode) ? opts.mode : undefined,
     })
     return readState(admin, tenantId, productionId)
   } catch (err) {
