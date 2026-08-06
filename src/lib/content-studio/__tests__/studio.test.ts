@@ -806,7 +806,10 @@ test('37) INVARIANTE DE TEMPO: timeout + margens <= orçamento < maxDuration', (
   const m = /export const maxDuration = (\d+)/.exec(page)
   assert.ok(m, 'sem maxDuration a Server Action morre no meio de uma chamada paga')
   const limiteMs = Number(m![1]) * 1000
-  assert.ok(limiteMs <= 60_000, 'acima de 60s não vale em todos os planos da Vercel')
+  // 300s é o teto do Fluid Compute — válido inclusive no plano Hobby. Acima
+  // disso o deploy é recusado por plano.
+  assert.ok(limiteMs <= 300_000, 'acima de 300s o deploy é recusado')
+  assert.ok(limiteMs >= 60_000, 'abaixo de 60s uma chamada paga morre no meio')
 
   // O orçamento cabe DENTRO do limite da rota com folga externa real.
   assert.ok(STUDIO_REQUEST_BUDGET_MS < limiteMs, 'orçamento >= limite da rota')

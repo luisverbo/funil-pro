@@ -7,10 +7,15 @@ export const dynamic = 'force-dynamic'
 
 // As Server Actions desta página chamam a IA de forma SÍNCRONA. No default da
 // Vercel (10-15s) uma única chamada de carrossel já não cabe — o pedido morreria
-// no meio de uma chamada paga. 60s é o teto válido em qualquer plano; o runner
-// da geração Studio trabalha com orçamento MENOR que isso (STUDIO_REQUEST_
-// BUDGET_MS) e devolve `partial` em vez de ser interrompido.
-export const maxDuration = 60
+// no meio de uma chamada paga.
+//
+// 60s cobria o pipeline de TEXTO (orçamento menor, STUDIO_REQUEST_BUDGET_MS,
+// que devolve `partial` em vez de ser interrompido), mas NÃO a geração de
+// IMAGEM: gpt-image-1 em qualidade alta e formato vertical passa dos 45s de
+// timeout que cabiam aqui, e toda capa Premium falhava com "tempo limite".
+// 300s é o teto do Fluid Compute; o orçamento de imagem (STUDIO_IMAGE_
+// TIMEOUT_MS) fica abaixo disso com folga para compor e salvar.
+export const maxDuration = 300
 
 export const metadata = {
   title: 'Content Studio',
