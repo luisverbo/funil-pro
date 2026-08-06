@@ -1,0 +1,48 @@
+# ============================================================================
+# Deploy MANUAL sob demanda — rede de segurança do deploy automático.
+# ----------------------------------------------------------------------------
+# Por que existe: o workflow automático (deploy.yml) dispara só em push na
+# main, e quando a infraestrutura do GitHub Actions falha ao provisionar o
+# runner ("Set up job failure" / "Failed to resolve action download info"), a
+# única forma de tentar de novo era inventar um commit. Aqui o deploy pode ser
+# disparado a qualquer momento pela aba Actions, sem alterar o repositório.
+#
+# NÃO substitui o deploy.yml: roda apenas quando alguém aciona.
+# ============================================================================
+name: Deploy manual (sob demanda)
+
+on:
+  workflow_dispatch:
+    inputs:
+      motivo:
+        description: 'Por que este deploy manual (fica no histórico)'
+        required: false
+        default: 'nova tentativa após falha de infraestrutura'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel (com nova tentativa)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: bkiDeo1Zjj1wLD1AFfT9D7Iz
+          VERCEL_PROJECT_ID: prj_eRXulORN1u2x2WvvUTEtJhdv743H
+        run: |
+          mkdir -p .vercel
+          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
+          npm i -g vercel@latest --quiet
+          # Três tentativas com espera crescente: falha de rede na publicação
+          # não deveria exigir intervenção humana.
+          for tentativa in 1 2 3; do
+            if vercel deploy --prod --token "$VERCEL_TOKEN" --yes; then
+              echo "deploy concluído na tentativa $tentativa"
+              exit 0
+            fi
+            echo "tentativa $tentativa falhou; aguardando..."
+            sleep $((tentativa * 15))
+          done
+          echo "as três tentativas falharam"
+          exit 1
