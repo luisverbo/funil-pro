@@ -614,6 +614,10 @@ aceitava "34/48 testes passaram" como verde. Bateria atual: **487/487**.
   - `ANTHROPIC_API_KEY` necessária no env. Bloco de funil "Agente IA" no builder React Flow ainda não implementado (apenas estrutura/restrição de plano prontas)
 
 **Próximos passos:**
+- **Content Studio**: foto de perfil da marca no lugar do círculo de iniciais
+  (upload no app + composição circular na capa e nos slides internos)
+- **Content Studio**: rodar `npm run test:cs` antes de qualquer merge — o
+  runner é a única conferência confiável da bateria (487/487 hoje)
 - **PENDENTE URGENTE**: Aplicar migrations no Supabase Studio (projeto hcadyqktfowfkxsbogmj): `20260618000000_interactive_quiz.sql`, `20260619000000_quiz_leads.sql`, `20260619000001_quiz_webhook_logs.sql`, `20260619000002_ai_agents.sql`, `20260702000000_agent_fixes_quiz_v2.sql`
 - Testar agente standalone com mensagem real após deploy + migration
 - Etapa 6: Integração e-mail (Resend + sequências)
