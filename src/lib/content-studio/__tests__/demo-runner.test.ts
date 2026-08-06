@@ -104,6 +104,13 @@ function storeFor(db: FakeDb, tenantId: string, productionId: string): ContentSt
       if (s) Object.assign(s, patch)
     },
 
+    async transitionStepStatus(id, expected, patch) {
+      const st = db.steps.find(x => x.id === id)
+      if (!st || !expected.includes(st.status)) return false
+      Object.assign(st, patch)
+      return true
+    },
+
     async insertJob(job) {
       await cede()
       if (db.jobs.some(j => j.dedupe_key === job.dedupe_key)) return null

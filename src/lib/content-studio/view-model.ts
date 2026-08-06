@@ -120,6 +120,7 @@ export const AGENT_LABELS: Record<string, string> = {
   ...CAROUSEL_AI_LABELS,
   cc_quick_carousel: 'Copywriter',
   ...STUDIO_AGENT_LABELS,
+  cst_image_designer: 'Designer',
 }
 
 /**
@@ -157,6 +158,9 @@ const DESK_BY_AGENT: Record<string, string> = {
   cst_strategist: 'strategist',
   cst_copywriter: 'copywriter',
   cst_designer: 'researcher',
+  // Geração de IMAGEM: o MESMO personagem Designer, na mesma mesa — identidade
+  // de step separada (cst_image_designer) para claims e auditoria por slide.
+  cst_image_designer: 'researcher',
 }
 
 /** Mesa do agente, ou null para quem não tem lugar na cena. */

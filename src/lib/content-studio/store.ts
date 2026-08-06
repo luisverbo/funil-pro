@@ -130,6 +130,21 @@ export function createSupabaseContentStore(
       if (error) throw new Error(`updateStep: ${error.message}`)
     },
 
+    async transitionStepStatus(stepId, expectedStatuses, patch) {
+      // CAS igual ao da produção: o predicado de status vai NA PRÓPRIA UPDATE
+      // e as linhas afetadas dizem quem venceu — nunca read-then-write.
+      const { data, error } = await db
+        .from('cs_steps')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', stepId)
+        .eq('tenant_id', tenantId)
+        .eq('production_id', productionId)
+        .in('status', [...expectedStatuses])
+        .select('id')
+      if (error) throw new Error(`transitionStepStatus: ${error.message}`)
+      return (data ?? []).length > 0
+    },
+
     async insertJob(job) {
       const row = { ...job, tenant_id: tenantId, production_id: productionId }
       const { data, error } = await db.from('cs_jobs').insert(row).select('*').single()

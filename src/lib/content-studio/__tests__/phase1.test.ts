@@ -134,6 +134,13 @@ class MemoryStore implements ContentStore {
     const s = this.steps.find(x => x.id === stepId)
     if (s) Object.assign(s, patch)
   }
+  async transitionStepStatus(id: string, expected: readonly StepRow['status'][], patch: Partial<StepRow> & { status: StepRow['status'] }) {
+    // CAS síncrono: espelha o predicado-na-UPDATE do Postgres.
+    const st = this.steps.find(x => x.id === id)
+    if (!st || !expected.includes(st.status)) return false
+    Object.assign(st, patch)
+    return true
+  }
 
   async insertJob(job: Omit<JobRow, 'id'>) {
     // Espelha uq_cs_jobs_dedupe e uq_cs_jobs_active: colisão = no-op idempotente.

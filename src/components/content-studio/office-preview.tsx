@@ -24,6 +24,8 @@ import {
   createStudioProduction,
   getLatestProduction,
   getProductionState,
+  generateAllStudioSlideImages,
+  generateStudioSlideImage,
   listProductions,
   type ProductionState,
   type ProductionSummary,
@@ -117,6 +119,8 @@ export default function OfficePreview() {
   // e exige um clique consciente.
   const [studioPendente, setStudioPendente] = useState(false)
   const [avisoContinuacao, setAvisoContinuacao] = useState<string | null>(null)
+  const [gerandoImagens, setGerandoImagens] = useState(false)
+  const [progressoImagens, setProgressoImagens] = useState<{ done: number; total: number } | null>(null)
 
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const compact = useMediaQuery('(max-width: 639px)')
@@ -506,6 +510,57 @@ export default function OfficePreview() {
     }
   }, [avancarAteParar, criando, running])
 
+  /**
+   * ARTE de um slide: uma Server Action, uma chamada de imagem. `retry` só
+   * vem dos botões explícitos (Tentar novamente / Regenerar) — nunca é
+   * decidido sozinho.
+   */
+  const gerarImagem = useCallback(async (slide: number, retry: boolean) => {
+    if (criando || running || gerandoImagens || !productionId) return
+    setError(null)
+    setGerandoImagens(true)
+    try {
+      const r = await generateStudioSlideImage(productionId, slide, retry ? { retry: true } : undefined)
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      aplicarEstado(r.data)
+    } catch {
+      setError('Não foi possível gerar a imagem. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setGerandoImagens(false)
+    }
+  }, [aplicarEstado, criando, gerandoImagens, productionId, running])
+
+  /**
+   * "Gerar todas": laço FECHADO — cada requisição gera A PRÓXIMA imagem que
+   * falta e devolve o progresso real (N de M). Para quando completa, quando o
+   * servidor deixa de progredir (ex.: só restam falhas, que exigem o botão
+   * explícito) ou no teto. Sem setInterval, sem polling.
+   */
+  const gerarTodas = useCallback(async () => {
+    if (criando || running || gerandoImagens || !productionId) return
+    setError(null)
+    setGerandoImagens(true)
+    setProgressoImagens(null)
+    try {
+      let anterior = -1
+      for (let i = 0; i < 10; i++) {
+        const r = await generateAllStudioSlideImages(productionId)
+        if (cancelled.current) return
+        if (!r.ok) { setError(r.error); break }
+        aplicarEstado(r.data)
+        setProgressoImagens({ done: r.data.imagesDone, total: r.data.imagesTotal })
+        if (r.data.imagesDone >= r.data.imagesTotal) break
+        if (r.data.imagesDone === anterior) break  // sem progresso: parar
+        anterior = r.data.imagesDone
+      }
+    } catch {
+      setError('Não foi possível gerar as imagens. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setGerandoImagens(false)
+    }
+  }, [aplicarEstado, criando, gerandoImagens, productionId, running])
+
   /** Troca a produção exibida. Só lê — nunca dispara execução. */
   const abrirProducao = useCallback(async (id: string) => {
     if (running) return
@@ -789,7 +844,14 @@ export default function OfficePreview() {
 
       {/* Resultado — conteúdo vindo pronto do servidor, lido de cs_steps */}
       {modo === 'producao' && (
-        <ResultPanel result={result} aguardandoAprovacao={status === 'awaiting_approval'} />
+        <ResultPanel
+          result={result}
+          aguardandoAprovacao={status === 'awaiting_approval'}
+          onGerarImagem={gerarImagem}
+          onGerarTodas={gerarTodas}
+          gerandoImagens={gerandoImagens}
+          progressoImagens={progressoImagens}
+        />
       )}
 
       {/* Linha do tempo — cabeçalho, botão de ocultar e rolagem vivem no painel */}
