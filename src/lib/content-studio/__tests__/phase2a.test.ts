@@ -321,6 +321,7 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
     'createQuickProduction', 'createStudioProduction',
     'generateAllStudioSlideImages', 'generateStudioSlideImage',
     'getLatestProduction', 'getProductionState', 'listProductions',
+    'removeAllOpenContentProductions', 'removeContentProduction',
   ])
 
   for (const nome of exportadas) {

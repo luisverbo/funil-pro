@@ -35,6 +35,7 @@ import { firstBriefMessage, validateBrief, type BriefInput, type ValidBrief } fr
 import { CAROUSEL_AI_PIPELINE, QUICK_PIPELINE, STUDIO_PIPELINE } from '@/lib/content-studio/pipeline'
 import {
   admitProduction,
+  isOpenProduction,
   isRealProduction,
   pipelineRequiresAI,
   PRODUCTION_MAX_JOBS_PER_CALL,
@@ -315,6 +316,147 @@ export async function continueStudioProduction(productionId: string): Promise<Ac
       return fail('ai_disabled', err)
     }
     return fail('create_failed', err)
+  }
+}
+
+// ─── Gerenciamento: remoção segura de produções (soft delete) ───────────────
+
+/**
+ * Estados a partir dos quais uma produção pode ser removida. É "tudo menos
+ * canceled" DE PROPÓSITO: remover é sempre possível, e repetir é idempotente.
+ */
+const REMOVABLE_STATUSES: readonly ProductionRow['status'][] = [
+  'draft', 'queued', 'running', 'waiting_input', 'review',
+  'awaiting_approval', 'approved', 'scheduled', 'publishing', 'published', 'failed',
+]
+
+export interface RemoveResult {
+  /** Quantas produções ESTA chamada cancelou (0 num replay idempotente). */
+  removed: number
+  /** A lista atualizada — o seletor rerrenderiza sem refresh. */
+  productions: ProductionSummary[]
+  /** Quantas ainda contam para o limite de abertas. */
+  openCount: number
+}
+
+async function listAfterRemoval(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+): Promise<{ productions: ProductionSummary[]; openCount: number }> {
+  const { data } = await admin
+    .from('cs_productions')
+    .select('id, title, status, created_at, pipeline_key, brief')
+    .eq('tenant_id', tenantId)
+    .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
+    .neq('status', 'canceled')
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  const rows = (data ?? []) as unknown as (ProductionAdmissionRow & { title: string | null; created_at: string })[]
+  const reais = rows.filter(isRealProduction)
+  return {
+    productions: reais.map(r => ({
+      id: r.id, title: r.title, status: r.status, createdAt: r.created_at,
+      pipelineKey: r.pipeline_key,
+    })),
+    openCount: reais.filter(r => isOpenProduction(r)).length,
+  }
+}
+
+/**
+ * SOFT DELETE de UMA produção: transição atômica para `canceled` (o predicado
+ * de status vai na própria UPDATE). Nada é apagado — cs_productions, cs_steps,
+ * cs_events, cs_jobs e o Storage ficam intactos para auditoria; a produção só
+ * some da lista, deixa de contar para o limite e nunca mais processa:
+ *   • jobs pending morrem no próximo claim (runNextJob falha job de produção
+ *     canceled SEM executar agente — nenhuma chamada de IA);
+ *   • continueStudioProduction recusa (canceled não é avançável);
+ *   • geração/regeneração de imagem recusa (loadStudioProductionForImages).
+ *
+ * Idempotente: remover de novo devolve sucesso com removed=0.
+ */
+export async function removeContentProduction(productionId: string): Promise<ActionResult<RemoveResult>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+  if (typeof productionId !== 'string' || !productionId) return fail('not_found')
+
+  const admin = createAdminClient()
+
+  try {
+    const { data: row } = await admin
+      .from('cs_productions')
+      .select(SELECT_LITE)
+      .eq('tenant_id', tenantId)          // <- tenant da SESSÃO, sempre
+      .eq('id', productionId)
+      .maybeSingle()
+
+    const candidata = (row ?? null) as ProductionAdmissionRow | null
+    if (!candidata) return fail('not_found')
+    if (!PRODUCTION_PIPELINE_KEYS.includes(candidata.pipeline_key)) {
+      return fail('wrong_pipeline')
+    }
+
+    let removed = 0
+    if (candidata.status !== 'canceled') {
+      const store = createSupabaseContentStore(admin, { tenantId, productionId })
+      const transicionou = await store.transitionProductionStatus(
+        productionId, REMOVABLE_STATUSES, 'canceled',
+      )
+      removed = transicionou ? 1 : 0
+    }
+    // Já cancelada (agora ou antes): sucesso seguro, nenhuma chamada externa.
+
+    const lista = await listAfterRemoval(admin, tenantId)
+    return { ok: true, data: { removed, ...lista } }
+  } catch (err) {
+    return fail('remove_failed', err)
+  }
+}
+
+/**
+ * "Limpar todas em andamento": cancela SOMENTE as produções ABERTAS do tenant
+ * da sessão — a MESMA semântica de isOpenProduction (terminais como
+ * awaiting_approval, approved e published ficam de fora). O cliente não envia
+ * ID nenhum; a UPDATE carrega o predicado de status e de tenant.
+ */
+export async function removeAllOpenContentProductions(): Promise<ActionResult<RemoveResult>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+
+  const admin = createAdminClient()
+
+  try {
+    // Seleção NO SERVIDOR, com a semântica de "aberta" já provada.
+    const { data } = await admin
+      .from('cs_productions')
+      .select(SELECT_LITE)
+      .eq('tenant_id', tenantId)
+      .in('pipeline_key', [...PRODUCTION_PIPELINE_KEYS])
+      .not('status', 'in', `(${PRODUCTION_TERMINAL.join(',')})`)
+      .limit(50)
+
+    const abertas = ((data ?? []) as unknown as ProductionAdmissionRow[]).filter(isOpenProduction)
+
+    let removed = 0
+    if (abertas.length > 0) {
+      // Predicado repetido NA UPDATE: mesmo que algo mude entre a leitura e a
+      // escrita, só produções ainda abertas transicionam — e `select` devolve
+      // quantas realmente foram.
+      const { data: alteradas, error } = await admin
+        .from('cs_productions')
+        .update({ status: 'canceled', updated_at: new Date().toISOString() })
+        .eq('tenant_id', tenantId)
+        .in('id', abertas.map(a => a.id))
+        .not('status', 'in', `(${PRODUCTION_TERMINAL.join(',')})`)
+        .select('id')
+      if (error) throw new Error(error.message)
+      removed = (alteradas ?? []).length
+    }
+
+    const lista = await listAfterRemoval(admin, tenantId)
+    return { ok: true, data: { removed, ...lista } }
+  } catch (err) {
+    return fail('remove_failed', err)
   }
 }
 
