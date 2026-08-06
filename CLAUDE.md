@@ -483,7 +483,46 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-07-19 — Instagram estilo ManyChat (automações, sequências, editor canvas)
+**Última atualização:** 2026-08-06 — Content Studio: modo viral (capa com foto) + auditoria completa do fluxo
+
+**O que foi feito (2026-08-06, sessão Content Studio viral):**
+- **Modo viral `viral_cover_text_v1`** (padrão para novas produções): capa
+  fotográfica 1080×1350 (foto 65% em cima, painel preto embaixo) gerada pela
+  OpenAI + slides internos 100% tipográficos montados pelo FunilPro com sharp.
+  **Custo: 1 geração de imagem por carrossel**, qualquer que seja o nº de slides
+- Prompt `viral_cover_photo_v1` (EN) com 6 mecanismos de curiosidade (máx. 2),
+  proibições obrigatórias nunca cortadas e salvaguardas para menores
+- Cor de destaque (whitelist + hex validado no servidor) com contraste
+  automático; marca-texto por correspondência exata sugerido pelo Copywriter
+- Escritório em SVG com visual de jogo: hora dourada, luz volumétrica das
+  janelas, piso com profundidade/reflexo, vinheta
+
+**Correções de causa raiz nesta sessão (todas com teste travando a regressão):**
+1. **Orçamento de tempo do provider Anthropic**: o timeout inteiro era dado a
+   CADA tentativa (35s + retry 35s > maxDuration 60s) → a função morria no meio
+   e o step ficava `running` órfão. Agora `timeoutMs` é orçamento TOTAL
+2. **Step `failed` era terminal**: nova action `retryFailedStudioProduction`
+   (CAS failed→running, 5 cliques = 1 chamada) + motivo da falha na tela
+3. **Texto longo derrubava a chamada paga**: `str()` do studio/schema apara em
+   fronteira de palavra em vez de lançar; prompt do Copywriter v3 declara limites
+4. **Falha de imagem era muda**: `images/failure.ts` traduz o erro persistido
+   (403 verificação da org, 429 saldo, 400 política, timeout) para a tela
+5. **Banners contraditórios**: falha de arte não marca mais a produção inteira
+6. **Timeout da imagem**: rota passou a `maxDuration = 300` (Fluid Compute) e o
+   provider de imagem de 45s → 230s com invariante conferido no import
+7. **Letra sumindo na arte** (grave): `toPathData` do opentype.js emite `NaN`
+   em certas posições x e o rasterizador descarta a linha ("ninguém" virou
+   "ning"). Agora cada glifo é um `<path>` com serialização própria
+8. **Área de segurança de 96px** na base da capa (interface do Instagram)
+
+**Verificação:** `npm run test:cs` (`scripts/test-content-studio.sh`) roda as 24
+suítes e SÓ aprova quando aprovados == total — a conferência manual anterior
+aceitava "34/48 testes passaram" como verde. Bateria atual: **487/487**.
+
+**Pendente do Content Studio:** foto de perfil da marca no lugar das iniciais
+(upload + composição circular na arte).
+
+**Atualização anterior:** 2026-07-19 — Instagram estilo ManyChat (automações, sequências, editor canvas)
 **O que foi feito (2026-07-19, sessão Instagram):**
 - **Integração Instagram** (API com login do Instagram, app publicado): webhook `/api/webhooks/instagram` (GET handshake IG_VERIFY_TOKEN + POST assinado IG_APP_SECRET), lib `src/lib/instagram` (DM, reply comentário, private reply, quick replies, button template, listar posts, getConnectedAccount); env: IG_ACCESS_TOKEN/IG_APP_SECRET/IG_VERIFY_TOKEN
 - **Automações estilo ManyChat** (`ig_automations` + página /instagram na sidebar): post específico (seletor com thumbnails) ou todos, palavras-chave, respostas públicas rotativas, sequência de DMs (`dm_steps`: espera min/h + texto + botões 🔗 link / 💬 resposta rápida que renova janela 24h), captura de lead (tag + matrícula em funil), IA assume em resposta livre; quick reply adianta próximo passo, resposta livre cancela sequência; `ig_sequence_jobs` processado no cron
