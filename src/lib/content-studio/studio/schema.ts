@@ -178,8 +178,23 @@ function str(v: unknown, campo: string, max: number, min = 1): string {
   if (typeof v !== 'string') throw new Error(`${campo}: esperado texto`)
   const limpo = v.replace(/\s+/g, ' ').trim()
   if (limpo.length < min) throw new Error(`${campo}: vazio`)
-  if (limpo.length > max) throw new Error(`${campo}: excede ${max} caracteres`)
+  // Texto LONGO demais é defeito de ESTILO, não de estrutura: derrubar a
+  // resposta paga inteira por alguns caracteres a mais custou uma produção
+  // real ("slides[0].headline: excede 90 caracteres" — e o retry repetia o
+  // estilo). Apara em fronteira de palavra com reticências; falha dura fica
+  // reservada para o que é estrutural (campo ausente, tipo errado, contagem
+  // de slides).
+  if (limpo.length > max) return cortar(limpo, max)
   return limpo
+}
+
+/** Corta em fronteira de palavra (quando possível) e fecha com reticências. */
+function cortar(texto: string, max: number): string {
+  const bruto = texto.slice(0, max - 1)
+  const ultimoEspaco = bruto.lastIndexOf(' ')
+  // Só recua até o espaço se ele não sacrificar mais que ~1/4 do limite.
+  const base = ultimoEspaco > (max * 3) / 4 ? bruto.slice(0, ultimoEspaco) : bruto
+  return `${base.replace(/[.,;:!?…\s]+$/, '')}…`
 }
 
 function lista(v: unknown, campo: string, maxItens: number, maxCada: number): string[] {

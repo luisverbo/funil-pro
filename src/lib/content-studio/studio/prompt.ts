@@ -23,7 +23,7 @@ import type { QuickObjetivo } from '../quick/schema'
 import type { StudioCopy, StudioStrategy, ValidStudioBrief } from './schema'
 
 export const STUDIO_STRATEGIST_PROMPT_VERSION = 'studio_strategist_v1'
-export const STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v2'
+export const STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v3'
 export const STUDIO_DESIGNER_PROMPT_VERSION = 'studio_designer_v2'
 
 function sanitizar(valor: string): string {
@@ -197,6 +197,9 @@ Regras de qualidade:
 - Nada de linguagem de robô ou de IA; nada de "enquanto modelo de linguagem".
 - "highlights": 0 a 2 trechos por slide, copiados LITERALMENTE do próprio
   texto (surpresa, promessa ou contraste) — nunca a frase inteira.
+- LIMITES DE TAMANHO (respeite com folga; texto além do limite é APARADO):
+  headline até 90 caracteres (ideal: até 60), body até 320, title até 120,
+  caption até 900, cta até 160. Headline de capa boa cabe em UMA respirada.
 - Sem promessas exageradas. Português natural do Brasil.
 - ${ANTI_INJECTION}`
 }
