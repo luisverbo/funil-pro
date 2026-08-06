@@ -168,33 +168,63 @@ export default function OfficeScene({
       style={{ width: '100%', height: 'auto', display: 'block' }}
     >
       <defs>
+        {/* Parede: crepúsculo quente de jogo — do âmbar alto ao lilás do
+            horizonte. É a "hora dourada" que dá clima de cena de videogame. */}
         <linearGradient id="cs-wallgrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#f4f7fb" />
-          <stop offset="100%" stopColor="#dde5ef" />
+          <stop offset="0%" stopColor="#ffeed8" />
+          <stop offset="55%" stopColor="#fbe0cd" />
+          <stop offset="100%" stopColor="#e8d4e4" />
         </linearGradient>
-        <linearGradient id="cs-floorgrad" x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0%" stopColor="#eaf0f7" />
-          <stop offset="100%" stopColor="#d3dde9" />
+        {/* Piso: mais escuro perto da "câmera" — profundidade de palco. */}
+        <linearGradient id="cs-floorgrad" x1="0" y1="0" x2="0.15" y2="1">
+          <stop offset="0%" stopColor="#e8e2f0" />
+          <stop offset="55%" stopColor="#c9c2dd" />
+          <stop offset="100%" stopColor="#a79fc4" />
+        </linearGradient>
+        {/* Brilho especular do piso encerado — a faixa de reflexo. */}
+        <linearGradient id="cs-floorshine" x1="0" y1="0" x2="1" y2="0.3">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
+          <stop offset="45%" stopColor="#fff7ea" stopOpacity="0.34" />
+          <stop offset="60%" stopColor="#ffffff" stopOpacity="0" />
         </linearGradient>
         <linearGradient id="cs-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#a8d8f5" />
-          <stop offset="100%" stopColor="#e3f2fd" />
+          <stop offset="0%" stopColor="#ffb36b" />
+          <stop offset="45%" stopColor="#ff8fa5" />
+          <stop offset="100%" stopColor="#b78ae0" />
         </linearGradient>
         <linearGradient id="cs-glass" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#ffffff" stopOpacity="0.42" />
           <stop offset="60%" stopColor="#ffffff" stopOpacity="0" />
         </linearGradient>
         <linearGradient id="cs-light" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fde68a" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#fde68a" stopOpacity="0" />
+          <stop offset="0%" stopColor="#ffd97a" stopOpacity="0.65" />
+          <stop offset="100%" stopColor="#ffd97a" stopOpacity="0" />
+        </linearGradient>
+        {/* Feixe de sol entrando pela janela — luz volumétrica de jogo. */}
+        <linearGradient id="cs-sunshaft" x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0%" stopColor="#ffca7a" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#ffca7a" stopOpacity="0" />
+        </linearGradient>
+        {/* Madeira dos móveis: gradiente quente com veio. */}
+        <linearGradient id="cs-wood" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e8bd8a" />
+          <stop offset="55%" stopColor="#d8a76c" />
+          <stop offset="100%" stopColor="#c08b52" />
         </linearGradient>
         <radialGradient id="cs-rug" cx="0.5" cy="0.5" r="0.5">
           <stop offset="0%" stopColor="#ffffff" stopOpacity="0.5" />
           <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
         </radialGradient>
-        {/* Textura sutil do piso: ladrilhos isométricos */}
+        {/* Vinheta: cantos escurecidos fecham a cena como um frame de jogo. */}
+        <radialGradient id="cs-vignette" cx="0.5" cy="0.42" r="0.75">
+          <stop offset="0%" stopColor="#1b1035" stopOpacity="0" />
+          <stop offset="72%" stopColor="#1b1035" stopOpacity="0" />
+          <stop offset="100%" stopColor="#1b1035" stopOpacity="0.34" />
+        </radialGradient>
+        {/* Textura do piso: ladrilhos isométricos com contraste de jogo */}
         <pattern id="cs-tiles" width="56" height="28" patternUnits="userSpaceOnUse">
-          <path d="M 28 0 L 56 14 L 28 28 L 0 14 Z" fill="none" stroke="#c3d0de" strokeWidth="1" opacity="0.5" />
+          <path d="M 28 0 L 56 14 L 28 28 L 0 14 Z" fill="none" stroke="#8f86b3" strokeWidth="1.1" opacity="0.55" />
+          <path d="M 28 1.6 L 54 14" stroke="#ffffff" strokeWidth="0.8" opacity="0.25" fill="none" />
         </pattern>
       </defs>
 
@@ -375,24 +405,44 @@ export default function OfficeScene({
 
       {/* ─── Paredes ────────────────────────────────────────────────── */}
       <rect x="0" y="0" width="100%" height="100%" fill="url(#cs-wallgrad)" />
+      {/* Painéis da parede: relevo horizontal sutil, como cenário de jogo */}
+      <g opacity="0.35">
+        <rect x="0" y={wide ? 46 : 34} width="100%" height="2" fill="#ffffff" />
+        <rect x="0" y={wide ? 48 : 36} width="100%" height="2" fill="#d9b8a6" />
+        <rect x="0" y={wide ? 110 : 86} width="100%" height="2" fill="#ffffff" />
+        <rect x="0" y={wide ? 112 : 88} width="100%" height="2" fill="#d9b8a6" />
+      </g>
 
       {/* ─── Piso com textura ───────────────────────────────────────── */}
       <g>
         <rect x="0" y={wide ? 168 : 128} width="100%" height="100%" fill="url(#cs-floorgrad)" />
         <rect x="0" y={wide ? 168 : 128} width="100%" height="100%" fill="url(#cs-tiles)" />
-        {/* Rodapé: a linha que separa parede de chão */}
-        <rect x="0" y={wide ? 162 : 122} width="100%" height="7" fill="#c2cedd" />
-        <rect x="0" y={wide ? 162 : 122} width="100%" height="2.5" fill="#dbe4ee" />
+        {/* Piso encerado: a faixa de reflexo que "vende" o brilho */}
+        <rect x="0" y={wide ? 168 : 128} width="100%" height="100%" fill="url(#cs-floorshine)" opacity="0.8" />
+        {/* Rodapé com espessura: a quina 3D entre parede e chão */}
+        <rect x="0" y={wide ? 158 : 118} width="100%" height="6" fill="#f7e3cd" />
+        <rect x="0" y={wide ? 164 : 124} width="100%" height="7" fill="#b3a68f" />
+        <rect x="0" y={wide ? 171 : 131} width="100%" height="3" fill="#6d628a" opacity="0.5" />
       </g>
+
+      {/* ─── Feixes de sol das janelas — luz volumétrica ─────────────── */}
+      {wide ? (
+        <g opacity="0.75">
+          <path d="M 116 128 L 220 128 L 300 380 L 120 380 Z" fill="url(#cs-sunshaft)" />
+          <path d="M 740 128 L 844 128 L 924 380 L 744 380 Z" fill="url(#cs-sunshaft)" />
+        </g>
+      ) : (
+        <path d="M 68 100 L 172 100 L 240 400 L 60 400 Z" fill="url(#cs-sunshaft)" opacity="0.75" />
+      )}
 
       {/* ─── Divisórias entre as salas ──────────────────────────────── */}
       {wide ? (
         <g>
           {[324, 636].map(x => (
             <g key={x}>
-              <rect x={x - 5} y="120" width="10" height="150" rx="3" fill="#cbd6e3" />
-              <rect x={x - 5} y="120" width="4" height="150" rx="2" fill="#e3ebf4" />
-              <rect x={x - 9} y="112" width="18" height="10" rx="4" fill="#b8c5d5" />
+              <rect x={x - 5} y="120" width="10" height="150" rx="3" fill="#b9a58f" />
+              <rect x={x - 5} y="120" width="4" height="150" rx="2" fill="#e9d9c3" />
+              <rect x={x - 9} y="112" width="18" height="10" rx="4" fill="#8f7a63" />
             </g>
           ))}
         </g>
@@ -400,8 +450,8 @@ export default function OfficeScene({
         <g>
           {[276, 434].map(y => (
             <g key={y}>
-              <rect x="18" y={y - 4} width="434" height="8" rx="3" fill="#cbd6e3" opacity="0.75" />
-              <rect x="18" y={y - 4} width="434" height="3" rx="1.5" fill="#e3ebf4" opacity="0.9" />
+              <rect x="18" y={y - 4} width="434" height="8" rx="3" fill="#b9a58f" opacity="0.75" />
+              <rect x="18" y={y - 4} width="434" height="3" rx="1.5" fill="#e9d9c3" opacity="0.9" />
             </g>
           ))}
         </g>
@@ -460,12 +510,12 @@ export default function OfficeScene({
       <g>
         <path
           d={wide ? 'M 96 384 L 864 384' : 'M 200 200 L 258 386 L 200 560'}
-          stroke="#b9c7d8" strokeWidth={wide ? 30 : 26} strokeLinecap="round" fill="none" opacity="0.5"
+          stroke="#8d82b0" strokeWidth={wide ? 30 : 26} strokeLinecap="round" fill="none" opacity="0.5"
         />
         <path
           className={view.agents.some(a => a.state === 'walking') ? 'cs-path cs-path--active' : 'cs-path'}
           d={wide ? 'M 96 384 L 864 384' : 'M 200 200 L 258 386 L 200 560'}
-          stroke="#94a3b8" strokeWidth="2.6" strokeDasharray="10 18" fill="none" opacity="0.8"
+          stroke="#f5eede" strokeWidth="2.6" strokeDasharray="10 18" fill="none" opacity="0.8"
         />
       </g>
 
@@ -579,6 +629,9 @@ export default function OfficeScene({
           </g>
         )
       })}
+
+      {/* ─── Vinheta: fecha a cena como um frame de jogo ────────────── */}
+      <rect x="0" y="0" width="100%" height="100%" fill="url(#cs-vignette)" pointerEvents="none" />
     </svg>
   )
 }
