@@ -23,7 +23,7 @@ import type { QuickObjetivo } from '../quick/schema'
 import type { StudioCopy, StudioStrategy, ValidStudioBrief } from './schema'
 
 export const STUDIO_STRATEGIST_PROMPT_VERSION = 'studio_strategist_v1'
-export const STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v1'
+export const STUDIO_COPYWRITER_PROMPT_VERSION = 'studio_copywriter_v2'
 export const STUDIO_DESIGNER_PROMPT_VERSION = 'studio_designer_v2'
 
 function sanitizar(valor: string): string {
@@ -173,7 +173,8 @@ Responda SOMENTE com um objeto JSON, sem texto antes ou depois:
 {
   "title": "título interno da peça",
   "slides": [
-    { "number": 1, "headline": "frase de impacto", "body": "1-3 frases curtas e concretas" }
+    { "number": 1, "headline": "frase de impacto", "body": "1-3 frases curtas e concretas",
+      "highlights": ["até 2 trechos CURTOS e EXATOS do headline/body que merecem marca-texto"] }
   ],
   "caption": "legenda que COMPLEMENTA o carrossel (não resume os slides)",
   "cta": "chamada para ação natural e coerente com o objetivo",
@@ -194,6 +195,8 @@ Regras de qualidade:
 - Nada de metalinguagem: "neste slide", "mostrar como", "explicar o problema",
   "apresentar a solução", "levar à ação" são defeitos terminais.
 - Nada de linguagem de robô ou de IA; nada de "enquanto modelo de linguagem".
+- "highlights": 0 a 2 trechos por slide, copiados LITERALMENTE do próprio
+  texto (surpresa, promessa ou contraste) — nunca a frase inteira.
 - Sem promessas exageradas. Português natural do Brasil.
 - ${ANTI_INJECTION}`
 }

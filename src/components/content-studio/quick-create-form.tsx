@@ -24,6 +24,7 @@ import {
   STUDIO_SLIDES_DEFAULT,
   type StudioSlideCount,
 } from '@/lib/content-studio/studio/schema'
+import { ACCENT_COLORS, type AccentName } from '@/lib/content-studio/images/accent'
 
 /** Preferência LOCAL do navegador (MVP). Nada disso vai para cs_settings. */
 export const BRAND_PROFILE_KEY = 'content-studio:brand-profile'
@@ -34,9 +35,11 @@ export interface BrandProfile {
   negocio: string
   ctaPadrao: string
   descricao: string
+  /** Cor de destaque: nome da lista branca ou #RRGGBB. Padrão: roxo. */
+  accentColor: string
 }
 
-const PERFIL_VAZIO: BrandProfile = { publico: '', tom: '', negocio: '', ctaPadrao: '', descricao: '' }
+const PERFIL_VAZIO: BrandProfile = { publico: '', tom: '', negocio: '', ctaPadrao: '', descricao: '', accentColor: 'roxo' }
 
 // Store externo (mesmo padrão da preferência da timeline): snapshot do
 // servidor é o perfil vazio — primeira pintura idêntica à hidratação.
@@ -54,6 +57,7 @@ function lerPerfil(): BrandProfile {
       negocio: typeof p.negocio === 'string' ? p.negocio : '',
       ctaPadrao: typeof p.ctaPadrao === 'string' ? p.ctaPadrao : '',
       descricao: typeof p.descricao === 'string' ? p.descricao : '',
+      accentColor: typeof p.accentColor === 'string' ? p.accentColor : 'roxo',
     }
   } catch {
     return { ...PERFIL_VAZIO }
@@ -181,6 +185,39 @@ export default function QuickCreateForm({ onSubmit, enviando, erro, onBriefingAv
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Cor de destaque do marca-texto (modo viral). Padrão: roxo. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-semibold text-gray-500">Cor de destaque:</span>
+          {(Object.keys(ACCENT_COLORS) as AccentName[]).map(nome => (
+            <button
+              key={nome}
+              type="button"
+              onClick={() => salvarPerfil({ ...perfil, accentColor: nome })}
+              aria-pressed={perfil.accentColor === nome}
+              aria-label={`Cor ${nome}`}
+              title={nome}
+              className={`h-7 w-7 rounded-full border-2 transition-transform ${
+                perfil.accentColor === nome ? 'scale-110 border-gray-900' : 'border-transparent'
+              }`}
+              style={{ backgroundColor: ACCENT_COLORS[nome] }}
+            />
+          ))}
+          <input
+            type="text"
+            value={perfil.accentColor.startsWith('#') ? perfil.accentColor : ''}
+            onChange={e => {
+              const v = e.target.value.trim()
+              // Só hexadecimal completo entra; o servidor revalida de novo.
+              if (/^#[0-9a-fA-F]{6}$/.test(v)) salvarPerfil({ ...perfil, accentColor: v })
+              else if (v === '' ) salvarPerfil({ ...perfil, accentColor: 'roxo' })
+            }}
+            placeholder="#7C3AED"
+            maxLength={7}
+            aria-label="Cor personalizada (hexadecimal)"
+            className="w-24 rounded-lg border border-gray-200 px-2 py-1 text-[12px] text-gray-700"
+          />
         </div>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">

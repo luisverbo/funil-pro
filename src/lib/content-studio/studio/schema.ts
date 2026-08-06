@@ -20,6 +20,7 @@ import {
   HASHTAG_MAX,
 } from '../ai/schemas'
 import { QUICK_OBJETIVOS, type QuickObjetivo } from '../quick/schema'
+import { parseAccentColor } from '../images/accent'
 
 export const STUDIO_PIPELINE_KEY = 'content_carousel_studio_v1'
 
@@ -66,6 +67,10 @@ export interface StudioInput {
   slides?: unknown
   marca?: unknown
   idempotencyKey?: unknown
+  /** Cor de destaque: nome da lista branca ou hex #RRGGBB. */
+  accentColor?: unknown
+  /** Modo visual: viral_cover_text_v1 (padrão) ou per_slide_v1. */
+  visualMode?: unknown
 }
 
 export interface ValidStudioBrief extends Record<string, unknown> {
@@ -82,6 +87,10 @@ export interface ValidStudioBrief extends Record<string, unknown> {
   marca_descricao: string
   idempotency_key: string
   modo: 'studio_v1'
+  /** Hex VALIDADO da cor de destaque (persistido; padrão roxo). */
+  accent_color: string
+  /** Modo visual persistido — nunca reinterpretado depois. */
+  visual_mode: 'viral_cover_text_v1' | 'per_slide_v1'
 }
 
 /**
@@ -92,6 +101,7 @@ export interface ValidStudioBrief extends Record<string, unknown> {
 export const STUDIO_COMPARE_FIELDS = [
   'tema', 'objetivo', 'oferta', 'cta', 'slides',
   'marca_publico', 'marca_tom', 'marca_negocio', 'marca_cta', 'marca_descricao',
+  'accent_color', 'visual_mode',
 ] as const
 
 const LIMITES: Record<string, number> = {
@@ -154,6 +164,10 @@ export function validateStudioInput(input: StudioInput): StudioValidation {
       marca_descricao: texto(marca.descricao, LIMITES.marca_descricao),
       idempotency_key: chave,
       modo: 'studio_v1',
+      // Validados por lista branca — CSS livre e modos desconhecidos morrem
+      // aqui; o hex é revalidado de novo na hora de desenhar.
+      accent_color: parseAccentColor(input?.accentColor ?? (marca as { accentColor?: unknown }).accentColor),
+      visual_mode: input?.visualMode === 'per_slide_v1' ? 'per_slide_v1' : 'viral_cover_text_v1',
     },
   }
 }
@@ -234,6 +248,8 @@ export interface StudioSlide extends Record<string, unknown> {
   number: number
   headline: string
   body: string
+  /** Trechos EXATOS para marca-texto (modo viral). Opcional, máx. 2. */
+  highlights?: string[]
 }
 
 export interface StudioCopy extends Record<string, unknown> {
@@ -293,6 +309,8 @@ export function makeCopyParser(brief: ValidStudioBrief) {
           number: i + 1,
           headline: str(item.headline, `slides[${i}].headline`, 90),
           body: str(item.body, `slides[${i}].body`, 320),
+          // Marca-texto: opcional, máx. 2 trechos curtos — ausente é válido.
+          highlights: lista(item.highlights ?? [], `slides[${i}].highlights`, 2, 60),
         }
       }),
       caption: str(o.caption, 'caption', 900),

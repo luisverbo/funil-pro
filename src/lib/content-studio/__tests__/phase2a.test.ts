@@ -319,7 +319,7 @@ test('1) a criação exige sessão e resolve o tenant no SERVIDOR', () => {
   assert.deepEqual(exportadas.sort(), [
     'advanceProduction', 'approveContentProduction', 'continueStudioProduction', 'createProduction',
     'createQuickProduction', 'createStudioProduction',
-    'generateAllStudioSlideImages', 'generateStudioSlideImage',
+    'generateAllStudioSlideImages', 'generateStudioSlideImage', 'generateViralCoverImage',
     'getLatestProduction', 'getProductionState', 'listProductions',
     'rejectContentProduction', 'removeAllOpenContentProductions', 'removeContentProduction',
     'retryStaleStudioProduction',
