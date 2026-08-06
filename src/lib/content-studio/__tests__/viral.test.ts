@@ -16,8 +16,8 @@ import sharp from 'sharp'
 import {
   ACCENT_COLORS, buildViralCoverPanelSvg, buildViralTextSlideSvg, composeViralCover,
   initialsOf, isValidAccentInput, layoutHighlighted, parseAccentColor,
-  renderViralTextSlide, textColorFor, VIRAL_H, VIRAL_PANEL_H, VIRAL_PHOTO_H,
-  VIRAL_VISUAL_MODE, VIRAL_W,
+  renderViralTextSlide, textColorFor, VIRAL_COVER_SAFE_BOTTOM, VIRAL_H,
+  VIRAL_PANEL_H, VIRAL_PHOTO_H, VIRAL_VISUAL_MODE, VIRAL_W,
 } from '../images/viral'
 import {
   buildViralCoverPrompt, coerceDesignerCover, CURIOSITY_MECHANISMS,
@@ -593,6 +593,92 @@ test('19) produções antigas NÃO são reinterpretadas; per-slide bloqueado no 
   const actions = semComentarios(ler('src/app/actions/content-production.ts'))
   assert.ok((actions.match(/visual_mode [!=]== VIRAL_VISUAL_MODE/g) ?? []).length >= 3,
     'per-slide não bloqueia viral')
+})
+
+test('21) BUG REAL: nenhuma letra some — glifo problemático não apaga a frase', async () => {
+  // Em produção "…e ninguém quer fazer" foi publicado como "…e ning". Causa:
+  // o toPathData do opentype.js emitiu NaN para certas posições x e o
+  // rasterizador descartou o caminho inteiro. Agora cada glifo é um <path>
+  // com serialização própria.
+  const frase = 'Passo 1: ache a tarefa que se repete e ninguém quer fazer'
+  const svg = buildViralTextSlideSvg({
+    slideNumber: 3, totalSlides: 5, headline: frase,
+    body: 'Corpo com acentuação: coração, ninguém, você, ação.', highlights: [],
+    marca: 'LC Marketing Digital', iniciais: 'LM', accentHex: '#DC2626',
+  })
+  assert.ok(!/NaN|Infinity/.test(svg), 'o SVG voltou a conter coordenada inválida')
+
+  // Contagem de glifos desenhados: um <path> por letra visível (sem espaços).
+  const paths = (svg.match(/<path /g) ?? []).length
+  const letrasHeadline = frase.replace(/\s/g, '').length
+  assert.ok(paths >= letrasHeadline, `apenas ${paths} paths para ${letrasHeadline}+ letras`)
+
+  // PROVA POR PIXELS: a mancha de texto da linha do meio precisa chegar até
+  // onde "ninguém quer" termina — se a letra sumisse, a linha encurtaria.
+  const bytes = (await renderViralTextSlide({
+    slideNumber: 3, totalSlides: 5, headline: frase,
+    body: 'x', highlights: [], marca: 'M', iniciais: 'M', accentHex: '#DC2626',
+  })).bytes
+  const linha = await sharp(Buffer.from(bytes))
+    .extract({ left: 72, top: 400, width: 900, height: 70 })
+    .greyscale().raw().toBuffer()
+  // Divide a faixa em 3 partes: TODAS precisam ter tinta (texto contínuo).
+  const terco = Math.floor(linha.length / 3)
+  for (let t = 0; t < 3; t++) {
+    let claros = 0
+    for (let i = t * terco; i < (t + 1) * terco; i++) if (linha[i] > 200) claros++
+    assert.ok(claros > 50, `trecho ${t + 1} da linha ficou sem texto (${claros} px claros)`)
+  }
+})
+
+test('22) capa: o texto sobe e sobra respiro na base (interface do Instagram)', async () => {
+  const viral = ler('src/lib/content-studio/images/viral.ts')
+  assert.ok(viral.includes('VIRAL_COVER_SAFE_BOTTOM'), 'sem área de segurança inferior')
+  assert.ok(VIRAL_COVER_SAFE_BOTTOM >= 80, 'respiro inferior insuficiente')
+
+  const foto = await sharp({
+    create: { width: 1024, height: 1024, channels: 3, background: { r: 200, g: 200, b: 200 } },
+  }).png().toBuffer()
+  const capa = await composeViralCover(new Uint8Array(foto), {
+    headline: 'Um idoso faturou R$150 mil com Claude Code. Ele não sabia programar.',
+    highlights: ['Ele não sabia programar'], marca: 'LC Marketing Digital',
+    iniciais: 'LM', totalSlides: 5, accentHex: '#DC2626',
+  })
+
+  // A faixa reservada na BASE não pode ter tinta de texto.
+  const base = await sharp(Buffer.from(capa.bytes))
+    .extract({ left: 0, top: VIRAL_H - VIRAL_COVER_SAFE_BOTTOM + 8, width: VIRAL_W, height: VIRAL_COVER_SAFE_BOTTOM - 16 })
+    .greyscale().raw().toBuffer()
+  let claros = 0
+  for (let i = 0; i < base.length; i++) if (base[i] > 180) claros++
+  const fracao = claros / base.length
+  assert.ok(fracao < 0.01, `a base reservada tem ${(fracao * 100).toFixed(1)}% de tinta clara`)
+
+  // E o texto continua DENTRO do painel preto (não subiu para cima da foto).
+  const sobreFoto = await sharp(Buffer.from(capa.bytes))
+    .extract({ left: 0, top: VIRAL_PHOTO_H - 120, width: VIRAL_W, height: 110 })
+    .greyscale().raw().toBuffer()
+  let escuros = 0
+  for (let i = 0; i < sobreFoto.length; i++) if (sobreFoto[i] < 60) escuros++
+  assert.ok(escuros / sobreFoto.length < 0.02, 'texto/painel invadiu a área da foto')
+})
+
+test('23) custo REAL exposto: capa paga, slides internos gratuitos', () => {
+  const view = ler('src/lib/content-studio/result-view.ts')
+  assert.ok(view.includes('geracoesOpenAI: (stepCapa.attempt ?? 0) + 1'),
+    'a contagem de gerações não considera as tentativas')
+  assert.ok(view.includes('slidesGratuitos: Math.max(slides.length - 1, 0)'),
+    'sem contagem dos slides montados localmente')
+
+  const ui = ler('src/components/content-studio/result-panel.tsx')
+  assert.ok(ui.includes('imagens geradas') && ui.includes('sem custo de IA'),
+    'o painel não mostra o custo real')
+
+  // O motor continua com UMA chamada por capa e ZERO nos slides de texto.
+  const run = semComentarios(ler('src/lib/content-studio/images/viral-run.ts'))
+  assert.equal((run.match(/provider\.generate\(/g) ?? []).length, 1,
+    'mais de uma chamada de imagem no modo viral')
+  assert.ok(run.includes('renderViralTextSlide('), 'slides internos não são montados localmente')
 })
 
 test('20) R1 intacto; nenhuma migration; nenhuma variável nova', () => {

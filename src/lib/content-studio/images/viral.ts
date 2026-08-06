@@ -32,11 +32,21 @@ import { textColorFor } from './accent'
 
 export const VIRAL_W = 1080
 export const VIRAL_H = 1350
-/** Altura da fotografia na capa (~66% — dentro da faixa 65–68% aprovada). */
-export const VIRAL_PHOTO_H = 891
+/** Altura da fotografia na capa (65% — piso da faixa 65–68% aprovada). */
+export const VIRAL_PHOTO_H = 878
 /** Painel preto da capa: o restante. */
 export const VIRAL_PANEL_H = VIRAL_H - VIRAL_PHOTO_H
 export const VIRAL_MARGIN = 72
+
+/** Faixa do cabeçalho (avatar + marca + contador) dentro do painel da capa. */
+export const VIRAL_COVER_HEADER_H = 104
+
+/**
+ * Respiro reservado na BASE da capa. O Instagram desenha a própria interface
+ * sobre o rodapé da imagem no feed; sem esta reserva a última linha da
+ * headline nasce escondida atrás dela.
+ */
+export const VIRAL_COVER_SAFE_BOTTOM = 96
 
 // ─── Fontes ─────────────────────────────────────────────────────────────────
 
@@ -58,8 +68,123 @@ function getFontes() {
 type FontKind = 'impact' | 'bold' | 'regular'
 function fonte(kind: FontKind): opentype.Font { return getFontes()[kind] }
 
+/**
+ * Largura do texto — somada GLIFO A GLIFO, exatamente como o desenho abaixo
+ * posiciona. Medir por um caminho e desenhar por outro seria convite a
+ * desalinhamento.
+ */
 export function viralMeasure(texto: string, size: number, kind: FontKind = 'impact'): number {
-  return fonte(kind).getAdvanceWidth(texto, size)
+  const f = fonte(kind)
+  const escala = size / f.unitsPerEm
+  let largura = 0
+  const glifos = f.stringToGlyphs(texto)
+  for (let i = 0; i < glifos.length; i++) {
+    const avanco = glifos[i].advanceWidth
+    largura += (Number.isFinite(avanco) ? avanco! : 0) * escala
+    largura += kernSeguro(f, glifos[i], glifos[i + 1]) * escala
+  }
+  return largura
+}
+
+/**
+ * Serializa o caminho do glifo NÓS MESMOS, comando a comando.
+ *
+ * `path.toPathData(2)` do opentype.js 2.0.0 emitiu `NaN` no meio do caminho
+ * para certas posições x (resíduo de ponto flutuante como 585.3000000000001):
+ * o rasterizador descarta o caminho e a letra some — foi assim que "ninguém"
+ * virou "ning" numa arte publicada. Os COMANDOS estão corretos; só a
+ * formatação da biblioteca quebra. Aqui cada número passa por toFixed(2), e
+ * qualquer valor não-finito descarta o glifo inteiro em vez de corromper a
+ * frase.
+ */
+function pathData(path: opentype.Path): string | null {
+  const n = (v: number | undefined): string | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v.toFixed(2) : null
+
+  const partes: string[] = []
+  for (const c of path.commands) {
+    if (c.type === 'M' || c.type === 'L') {
+      const x = n(c.x), y = n(c.y)
+      if (x === null || y === null) return null
+      partes.push(`${c.type}${x} ${y}`)
+    } else if (c.type === 'Q') {
+      const x1 = n(c.x1), y1 = n(c.y1), x = n(c.x), y = n(c.y)
+      if (x1 === null || y1 === null || x === null || y === null) return null
+      partes.push(`Q${x1} ${y1} ${x} ${y}`)
+    } else if (c.type === 'C') {
+      const x1 = n(c.x1), y1 = n(c.y1), x2 = n(c.x2), y2 = n(c.y2), x = n(c.x), y = n(c.y)
+      if (x1 === null || y1 === null || x2 === null || y2 === null || x === null || y === null) return null
+      partes.push(`C${x1} ${y1} ${x2} ${y2} ${x} ${y}`)
+    } else if (c.type === 'Z') {
+      partes.push('Z')
+    }
+  }
+  return partes.length > 0 ? partes.join(' ') : null
+}
+
+/** Kerning que NUNCA devolve algo não-finito (a origem do NaN em produção). */
+function kernSeguro(f: opentype.Font, a?: opentype.Glyph, b?: opentype.Glyph): number {
+  if (!a || !b) return 0
+  try {
+    const k = f.getKerningValue(a, b)
+    return Number.isFinite(k) ? k : 0
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Desenha texto como PATH, GLIFO A GLIFO.
+ *
+ * Por que não `font.getPath(textoInteiro, …)`: em produção uma linha inteira
+ * sumiu no meio da palavra ("…e ninguém quer fazer" virou "…e ning"). A causa,
+ * reproduzida localmente: o opentype.js 2.0.0 emitiu uma coordenada `NaN` no
+ * meio do caminho, e o rasterizador descarta tudo dali em diante. Desenhando
+ * glifo a glifo, com avanço próprio e kerning saneado, um glifo problemático
+ * jamais apaga o resto da frase — e, se ainda assim vier `NaN`, aquele glifo
+ * é descartado sozinho.
+ */
+function glifosComoPaths(
+  texto: string, x: number, baseline: number, size: number, kind: FontKind,
+): string[] {
+  const f = fonte(kind)
+  const escala = size / f.unitsPerEm
+  const glifos = f.stringToGlyphs(texto)
+  const partes: string[] = []
+  let cursor = x
+
+  for (let i = 0; i < glifos.length; i++) {
+    const g = glifos[i]
+    let d: string | null = null
+    try {
+      d = pathData(g.getPath(cursor, baseline, size))
+    } catch {
+      d = null
+    }
+    // Glifo inválido não derruba a frase: ele simplesmente não é desenhado.
+    if (d) partes.push(d)
+
+    const avanco = g.advanceWidth
+    cursor += (Number.isFinite(avanco) ? avanco! : 0) * escala
+    cursor += kernSeguro(f, g, glifos[i + 1]) * escala
+  }
+  return partes
+}
+
+/**
+ * Texto pronto para o SVG: UM `<path>` por glifo.
+ *
+ * Concatenar todos os glifos num único `d` faz as regras de preenchimento
+ * (nonzero) de contornos vizinhos interferirem entre si — em produção isso
+ * apagou a letra "u" de "ninguém": o caminho estava no SVG e o rasterizador
+ * simplesmente não a desenhava. Um elemento por glifo isola cada contorno.
+ */
+function textoSvg(
+  texto: string, x: number, baseline: number, size: number, kind: FontKind, fill: string,
+): string {
+  return glifosComoPaths(texto, x, baseline, size, kind)
+    .map(d => `<path d="${d}" fill="${fill}"/>`)
+    .join('')
 }
 
 // ─── Quebra + destaque (marca-texto) ────────────────────────────────────────
@@ -155,8 +280,8 @@ function linhasComDestaque(
         // O retângulo cobre SÓ este trecho desta linha — nunca outras linhas.
         partes.push(`<rect x="${(cursor - padX).toFixed(1)}" y="${(baseline - opts.size * 0.82 - padY).toFixed(1)}" rx="10" width="${(w + padX * 2).toFixed(1)}" height="${(opts.size * 1.04 + padY * 2).toFixed(1)}" fill="${opts.accentHex}"/>`)
       }
-      const d = fonte(opts.kind).getPath(seg.texto, cursor, baseline, opts.size).toPathData(2)
-      if (d) partes.push(`<path d="${d}" fill="${seg.destacado ? corSobreAccent : opts.corTexto}"/>`)
+      partes.push(textoSvg(seg.texto, cursor, baseline, opts.size, opts.kind,
+        seg.destacado ? corSobreAccent : opts.corTexto))
       cursor += w
     }
   })
@@ -171,18 +296,15 @@ function cabecalho(opts: { marca: string; iniciais: string; n: number; total: nu
   partes.push(`<circle cx="${VIRAL_MARGIN + 26}" cy="${cy}" r="26" fill="#ffffff" fill-opacity="0.14"/>`)
   const ini = opts.iniciais.slice(0, 2).toUpperCase()
   const iniW = viralMeasure(ini, 24, 'bold')
-  const dIni = fonte('bold').getPath(ini, VIRAL_MARGIN + 26 - iniW / 2, cy + 9, 24).toPathData(2)
-  if (dIni) partes.push(`<path d="${dIni}" fill="#ffffff"/>`)
+  partes.push(textoSvg(ini, VIRAL_MARGIN + 26 - iniW / 2, cy + 9, 24, 'bold', '#ffffff'))
   // Nome da marca.
   if (opts.marca) {
-    const dM = fonte('bold').getPath(opts.marca.slice(0, 28), VIRAL_MARGIN + 66, cy + 9, 26).toPathData(2)
-    if (dM) partes.push(`<path d="${dM}" fill="#ffffff" fill-opacity="0.92"/>`)
+    partes.push(`<g fill-opacity="0.92">${textoSvg(opts.marca.slice(0, 28), VIRAL_MARGIN + 66, cy + 9, 26, 'bold', '#ffffff')}</g>`)
   }
   // Contador N/total.
   const contador = `${opts.n}/${opts.total}`
   const cw = viralMeasure(contador, 26, 'bold')
-  const dC = fonte('bold').getPath(contador, VIRAL_W - VIRAL_MARGIN - cw, cy + 9, 26).toPathData(2)
-  if (dC) partes.push(`<path d="${dC}" fill="#ffffff" fill-opacity="0.75"/>`)
+  partes.push(`<g fill-opacity="0.75">${textoSvg(contador, VIRAL_W - VIRAL_MARGIN - cw, cy + 9, 26, 'bold', '#ffffff')}</g>`)
   return partes.join('')
 }
 
@@ -216,7 +338,13 @@ export function buildViralCoverPanelSvg(input: ViralCoverInput): string {
   }
   const lineHeight = Math.round(size * 1.22)
   const blocoAltura = linhas.length * lineHeight
-  const topoTexto = VIRAL_PHOTO_H + 56 + Math.max(0, Math.round((VIRAL_PANEL_H - 120 - blocoAltura) / 2))
+
+  // ÁREA DE SEGURANÇA INFERIOR: no feed do Instagram a base da imagem fica sob
+  // a interface do app (pontinhos do carrossel, ícones). O texto é ancorado
+  // logo abaixo do cabeçalho e o respiro sobra EMBAIXO, nunca em cima dele.
+  const areaUtil = VIRAL_PANEL_H - VIRAL_COVER_HEADER_H - VIRAL_COVER_SAFE_BOTTOM
+  const topoTexto = VIRAL_PHOTO_H + VIRAL_COVER_HEADER_H
+    + Math.max(0, Math.round((areaUtil - blocoAltura) / 2))
 
   return `<svg width="${VIRAL_W}" height="${VIRAL_H}" viewBox="0 0 ${VIRAL_W} ${VIRAL_H}" xmlns="http://www.w3.org/2000/svg">
   <rect x="0" y="${VIRAL_PHOTO_H}" width="${VIRAL_W}" height="${VIRAL_PANEL_H}" fill="#0A0A0A"/>
@@ -306,8 +434,7 @@ export function buildViralTextSlideSvg(input: ViralTextSlideInput): string {
     const w = Math.min(viralMeasure(rotulo, ctaSize, 'bold') + 88, larguraUtil)
     const corTexto = textColorFor(input.accentHex)
     partes.push(`<rect x="${VIRAL_MARGIN}" y="${VIRAL_H - 210}" rx="20" width="${w}" height="86" fill="${input.accentHex}"/>`)
-    const d = fonte('bold').getPath(rotulo, VIRAL_MARGIN + 44, VIRAL_H - 210 + 56, ctaSize).toPathData(2)
-    if (d) partes.push(`<path d="${d}" fill="${corTexto}"/>`)
+    partes.push(textoSvg(rotulo, VIRAL_MARGIN + 44, VIRAL_H - 210 + 56, ctaSize, 'bold', corTexto))
   } else if (!isLast) {
     // Seta discreta de continuação (chevron) no canto inferior direito.
     partes.push(`<path d="M ${VIRAL_W - VIRAL_MARGIN - 34} ${VIRAL_H - 118} l 26 22 l -26 22" stroke="#ffffff" stroke-opacity="0.55" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`)
