@@ -32,6 +32,7 @@ import {
   rejectContentProduction,
   removeAllOpenContentProductions,
   removeContentProduction,
+  retryFailedStudioProduction,
   retryStaleStudioProduction,
   type RemoveResult,
   type ProductionState,
@@ -133,7 +134,7 @@ export default function OfficePreview() {
   // Situação do step running (decidida pelo SERVIDOR): recente = aguardar;
   // abandonado = botão explícito de retomada. Nunca decidido pelo relógio
   // do navegador.
-  const [recuperacao, setRecuperacao] = useState<{ available: boolean; running: boolean; agentLabel?: string }>({ available: false, running: false })
+  const [recuperacao, setRecuperacao] = useState<ProductionState['recovery']>({ available: false, running: false })
   const [recuperando, setRecuperando] = useState(false)
   const [gerandoImagens, setGerandoImagens] = useState(false)
   const [progressoImagens, setProgressoImagens] = useState<{ done: number; total: number } | null>(null)
@@ -739,6 +740,42 @@ export default function OfficePreview() {
     }
   }, [aplicarEstado, criando, productionId, recuperando, running])
 
+  /**
+   * Produção FALHOU (step de texto `failed`): repete só o agente que falhou.
+   * Chamada paga e consciente — o servidor faz o CAS failed→running; se ainda
+   * faltar agente depois dele, o laço de continuação segue normalmente.
+   */
+  const tentarNovamenteFalha = useCallback(async () => {
+    if (criando || running || recuperando || !productionId) return
+    setError(null)
+    setRecuperando(true)
+    try {
+      let r = await retryFailedStudioProduction(productionId)
+      if (cancelled.current) return
+      if (!r.ok) { setError(r.error); return }
+      aplicarEstado(r.data)
+      // O seletor lateral reflete o status novo (failed -> running/…).
+      const statusRetomado = r.data.production.status
+      setProducoes(atual => atual.map(p =>
+        p.id === productionId ? { ...p, status: statusRetomado } : p))
+
+      // Se ainda falta agente DEPOIS do recuperado, segue o laço normal de
+      // continuação — mesmo padrão (e mesmos freios) do "Continuar produção".
+      for (let i = 0; i < MAX_CONTINUACOES && r.ok && r.data.pending; i++) {
+        if (r.data.recovery.running || r.data.recovery.available) break
+        const proximo = await continueStudioProduction(productionId)
+        if (cancelled.current) return
+        if (!proximo.ok) { setError(proximo.error); break }
+        r = proximo
+        aplicarEstado(r.data)
+      }
+    } catch {
+      setError('Não foi possível retomar a produção. Tente novamente.')
+    } finally {
+      if (!cancelled.current) setRecuperando(false)
+    }
+  }, [aplicarEstado, criando, productionId, recuperando, running])
+
   /** APROVA a produção no portão humano — CAS awaiting_approval -> approved. */
   const aprovarProducao = useCallback(async () => {
     if (aprovando || removendo || !productionId) return
@@ -1140,11 +1177,38 @@ export default function OfficePreview() {
           ✓ Produção concluída — aguardando aprovação.
         </p>
       )}
-      {view.failed && (
+      {view.failed && recuperacao.failedStep && recuperacao.available ? (
+        // ── FALHA COM RETOMADA: o motivo persistido + o botão que repete SÓ o
+        //    agente que falhou. Nada roda sozinho — a chamada é paga.
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-rose-900">
+              A produção falhou no {recuperacao.agentLabel ?? 'agente'}.
+            </p>
+            {recuperacao.reason && (
+              <p className="text-[12px] text-rose-700 mt-0.5 break-words">
+                Motivo: {recuperacao.reason}
+              </p>
+            )}
+            <p className="text-[12px] text-rose-700 mt-0.5">
+              Tentar novamente repete apenas o {recuperacao.agentLabel ?? 'agente'} — uma nova
+              chamada de IA será feita; o que já foi concluído não se repete.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={recuperando}
+            onClick={tentarNovamenteFalha}
+            className="shrink-0 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-rose-600 disabled:opacity-50"
+          >
+            {recuperando ? '⏳ Retomando…' : `Tentar novamente o ${recuperacao.agentLabel ?? 'agente'}`}
+          </button>
+        </div>
+      ) : view.failed ? (
         <p className="mb-4 rounded-2xl bg-rose-50 border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-800">
           A produção falhou. A linha do tempo mostra em qual agente parou.
         </p>
-      )}
+      ) : null}
 
       {/* Resultado — conteúdo vindo pronto do servidor, lido de cs_steps */}
       {modo === 'producao' && (

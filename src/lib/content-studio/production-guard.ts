@@ -156,6 +156,7 @@ export const PRODUCTION_MESSAGES = {
   wrong_pipeline: 'Esta ação não se aplica a esta produção.',
   is_demo: 'Esta é a demonstração. Use os controles da demonstração.',
   not_advanceable: 'Esta produção já foi concluída.',
+  not_failed: 'Esta produção não está em estado de falha — nada a retomar.',
   invalid_brief: 'Revise o briefing e tente novamente.',
   too_many_open: 'Você já tem 3 produções em andamento. Remova ou conclua uma para criar outra.',
   remove_failed: 'Não foi possível remover a produção. Tente novamente.',

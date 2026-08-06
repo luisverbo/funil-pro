@@ -537,6 +537,135 @@ export async function retryStaleStudioStep(
   }
 }
 
+/**
+ * RETOMADA EXPLÍCITA de um step `failed` — o backend do botão "Tentar
+ * novamente o {agente}" quando a produção inteira está `failed`.
+ *
+ * Diferente do caso stale, aqui a falha FOI persistida (timeout do provider,
+ * erro HTTP, resposta que não parseou). Repetir é uma nova chamada PAGA e por
+ * isso nunca acontece sozinha: `runStudioCarousel` devolve `already_failed` de
+ * propósito — quem decide pagar de novo é a pessoa, com um clique.
+ *
+ * POSSE ATÔMICA: CAS failed→running na própria UPDATE. Dois cliques
+ * simultâneos leem o mesmo step `failed`; só um casa o predicado e chama a IA
+ * — o outro recebe `in_progress`. Steps concluídos jamais são tocados, e a
+ * produção volta de `failed` para `running` pelo MESMO CAS de status.
+ */
+export async function retryFailedStudioStep(
+  store: ContentStore,
+  production: ProductionRow,
+  brief: ValidStudioBrief,
+  options: { now?: () => number } = {},
+): Promise<StaleRetryResult> {
+  const agora = options.now ?? (() => Date.now())
+
+  const steps = await store.listSteps(production.id)
+  const porAgente = new Map(steps.map(st => [st.agent_key, st]))
+
+  // O step retomável é o PRIMEIRO da ordem que está `failed` — e todos os
+  // anteriores precisam estar completed (o que já foi pago não se repete).
+  let alvoIndice = -1
+  for (let i = 0; i < STUDIO_AGENT_ORDER.length; i++) {
+    const st = porAgente.get(STUDIO_AGENT_ORDER[i])
+    if (st?.status === 'completed') continue
+    if (st?.status === 'failed') { alvoIndice = i; break }
+    return { ok: false, state: 'invalid', errorCode: 'no_failed_step' }
+  }
+  if (alvoIndice < 0) return { ok: false, state: 'invalid', errorCode: 'no_failed_step' }
+
+  const agentKey = STUDIO_AGENT_ORDER[alvoIndice]
+  const alvo = porAgente.get(agentKey)!
+
+  // ── Posse atômica: só quem transicionar failed→running executa. ───────────
+  const novoAttempt = alvo.attempt + 1
+  const novoInicio = new Date(agora()).toISOString()
+  const venceu = await store.transitionStepStatus(
+    alvo.id,
+    ['failed'],
+    { status: 'running', attempt: novoAttempt, started_at: novoInicio, error: null, completed_at: null },
+  )
+  if (!venceu) return { ok: true, state: 'in_progress' }
+
+  // A produção sai de `failed` pelo mesmo CAS idempotente — se outra execução
+  // já a moveu, tudo bem: o dono do step é quem manda daqui em diante.
+  await store.transitionProductionStatus(production.id, ['failed'], 'running')
+
+  await store.emitEvent({
+    productionId: production.id,
+    type: 'agent_retrying',
+    stepId: alvo.id,
+    agentKey,
+    payload: { attempt: novoAttempt, reason_code: 'failed_step_recovery' },
+  })
+  await store.emitEvent({
+    productionId: production.id,
+    type: 'agent_started',
+    stepId: alvo.id,
+    agentKey,
+    payload: { attempt: novoAttempt },
+  })
+
+  // A bagagem vem SÓ dos steps concluídos persistidos — nada é refeito.
+  const bagagem: Bagagem = {}
+  for (const k of STUDIO_AGENT_ORDER.slice(0, alvoIndice)) {
+    absorver(bagagem, k, readData(porAgente.get(k)))
+  }
+
+  try {
+    const perfil = STUDIO_PROFILES[agentKey]
+    const saida = await chamarAgente(agentKey, brief, bagagem, production.id, perfil, novoAttempt)
+
+    await store.updateStep(alvo.id, {
+      status: 'completed',
+      output: { data: saida.data, artifacts: [], usage: saida.usage },
+      completed_at: new Date(agora()).toISOString(),
+    })
+    await store.emitEvent({
+      productionId: production.id,
+      type: 'agent_completed',
+      stepId: alvo.id,
+      agentKey,
+      payload: { usage: saida.usage, attempt: novoAttempt },
+    })
+
+    if (alvoIndice === STUDIO_AGENT_ORDER.length - 1) {
+      const transicionou = await store.transitionProductionStatus(
+        production.id, FINALIZABLE, 'awaiting_approval',
+      )
+      if (transicionou) {
+        await store.emitEvent({
+          productionId: production.id,
+          type: 'content_waiting_approval',
+          payload: { steps: STUDIO_AGENT_ORDER.length, final_status: 'awaiting_approval' },
+        })
+      }
+      return { ok: true, state: 'created' }
+    }
+    return { ok: true, state: 'partial' }
+  } catch (err) {
+    const extras = agentErrorEventPayload(err)
+    const message = err instanceof Error ? err.message : String(err)
+    const payloadErro = 'error_code' in extras ? extras : { error: message.slice(0, 300), ...extras }
+
+    await store.updateStep(alvo.id, {
+      status: 'failed',
+      error: message.slice(0, 300),
+      completed_at: new Date(agora()).toISOString(),
+    })
+    await store.emitEvent({
+      productionId: production.id,
+      type: 'agent_failed',
+      stepId: alvo.id,
+      agentKey,
+      payload: { attempt: novoAttempt, ...payloadErro },
+    })
+    await store.updateProductionStatus(production.id, 'failed')
+
+    const code = (err as { code?: string }).code
+    return { ok: false, state: 'failed', errorCode: typeof code === 'string' ? code : 'unknown' }
+  }
+}
+
 function faltantes(aPartirDe: number): string[] {
   return STUDIO_AGENT_ORDER.slice(aPartirDe)
 }
