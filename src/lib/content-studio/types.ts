@@ -318,6 +318,19 @@ export interface ContentStore {
    */
   insertSteps(steps: Omit<StepRow, 'id'>[]): Promise<{ rows: StepRow[]; inserted: boolean }>
   updateStep(stepId: string, patch: Partial<StepRow>): Promise<void>
+  /**
+   * Compare-and-set de status de UM step: só aplica o patch se o status atual
+   * estiver em `expectedStatuses`, e devolve se ESTA chamada transicionou.
+   *
+   * É o claim da REGENERAÇÃO explícita de imagem: dois cliques simultâneos em
+   * "Tentar novamente" disputam a transição failed→running e exatamente um
+   * vence — sem lock em memória, o predicado vive na própria UPDATE.
+   */
+  transitionStepStatus(
+    stepId: string,
+    expectedStatuses: readonly StepStatus[],
+    patch: Partial<StepRow> & { status: StepStatus },
+  ): Promise<boolean>
 
   insertJob(job: Omit<JobRow, 'id'>): Promise<JobRow | null>
   /** Reivindica UM job vencido de forma atômica (nenhum outro worker o pega). */

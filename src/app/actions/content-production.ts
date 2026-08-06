@@ -53,6 +53,11 @@ import { buildProductionResult, type ProductionResult } from '@/lib/content-stud
 import { runQuickCarousel } from '@/lib/content-studio/quick/run'
 import { QUICK_COMPARE_FIELDS, validateQuickInput, type QuickInput, type ValidQuickBrief } from '@/lib/content-studio/quick/schema'
 import { runStudioCarousel, STUDIO_REQUEST_BUDGET_MS } from '@/lib/content-studio/studio/run'
+import { preflightStudioImages } from '@/lib/content-studio/images/provider'
+import {
+  imageStepIndex, runStudioSlideImage, STUDIO_IMAGE_AGENT_KEY,
+  type StudioImageStorage,
+} from '@/lib/content-studio/images/run'
 import {
   STUDIO_COMPARE_FIELDS, validateStudioInput,
   type StudioInput, type ValidStudioBrief,
@@ -307,6 +312,138 @@ export async function continueStudioProduction(productionId: string): Promise<Ac
     return readState(admin, tenantId, productionId)
   } catch (err) {
     if (err instanceof Error && err.message.startsWith('content_ai:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+// ─── Imagens da geração Studio (sob demanda, nunca automáticas) ─────────────
+
+/** Storage real: bucket `quiz-assets` (o MESMO de uploadQuizImage), bytes only. */
+function studioImageStorage(admin: ReturnType<typeof createAdminClient>): StudioImageStorage {
+  return {
+    async upload(path, bytes, contentType) {
+      // upsert: a regeneração explícita usa path com attempt, mas mesmo em
+      // colisão a sobrescrita é do MESMO slide do MESMO tenant/produção.
+      const { error } = await admin.storage
+        .from('quiz-assets')
+        .upload(path, Buffer.from(bytes), { contentType, upsert: true })
+      if (error) throw new Error(`upload falhou: ${error.message}`)
+      const { data: pub } = admin.storage.from('quiz-assets').getPublicUrl(path)
+      return { path, url: pub.publicUrl }
+    },
+  }
+}
+
+/** Carrega e valida a produção Studio do TENANT DA SESSÃO para gerar imagem. */
+async function loadStudioProductionForImages(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  productionId: string,
+): Promise<{ ok: true; production: ProductionRow } | { ok: false; key: ProductionMessageKey }> {
+  if (typeof productionId !== 'string' || !productionId) return { ok: false, key: 'not_found' }
+
+  const { data: row } = await admin
+    .from('cs_productions')
+    .select('*')
+    .eq('tenant_id', tenantId)          // <- tenant da SESSÃO, sempre
+    .eq('id', productionId)
+    .maybeSingle()
+
+  if (!row) return { ok: false, key: 'not_found' }
+  const production = row as ProductionRow
+  // SÓ a geração Studio tem Designer e direção visual — as demais recusam.
+  if (production.pipeline_key !== STUDIO_PIPELINE.key) return { ok: false, key: 'wrong_pipeline' }
+  // Produção legível mesmo em awaiting_approval: gerar arte NÃO altera o
+  // status principal — cancelada/failed é que não recebem arte nova.
+  if (production.status === 'canceled' || production.status === 'failed') {
+    return { ok: false, key: 'not_advanceable' }
+  }
+  return { ok: true, production }
+}
+
+/**
+ * Gera a ARTE FINAL de um slide: fundo pela OpenAI + composição FunilPro
+ * (headline/body/CTA via sharp) + upload no bucket `quiz-assets`.
+ *
+ * O cliente envia SÓ productionId, slideNumber e (na regeneração explícita)
+ * retry=true. Prompt, modelo, path e tudo o mais são do servidor.
+ */
+export async function generateStudioSlideImage(
+  productionId: string,
+  slideNumber: number,
+  opts?: { retry?: boolean },
+): Promise<ActionResult<ProductionState>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+
+  const admin = createAdminClient()
+  const carga = await loadStudioProductionForImages(admin, tenantId, productionId)
+  if (!carga.ok) return fail(carga.key)
+
+  try {
+    // Preflight SEM rede antes de qualquer escrita: sem OPENAI_API_KEY não
+    // existe claim, step ou evento.
+    preflightStudioImages()
+
+    const store = createSupabaseContentStore(admin, { tenantId, productionId })
+    await runStudioSlideImage(
+      store, studioImageStorage(admin), carga.production, Number(slideNumber),
+      { retry: opts?.retry === true },
+    )
+    // O estado volta INTEIRO: o status por slide vem dos steps persistidos.
+    return readState(admin, tenantId, productionId)
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('studio_images:')) {
+      return fail('ai_disabled', err)
+    }
+    return fail('create_failed', err)
+  }
+}
+
+/**
+ * "Gerar todas": gera A PRÓXIMA imagem que falta e devolve o estado — o
+ * cliente repete em laço FECHADO mostrando "N de M". Uma chamada paga por
+ * requisição, pelo mesmo motivo do pipeline de texto: três (ou oito) gerações
+ * de imagem não cabem com segurança numa única Server Action.
+ */
+export async function generateAllStudioSlideImages(
+  productionId: string,
+): Promise<ActionResult<ProductionState & { imagesDone: number; imagesTotal: number }>> {
+  const tenantId = await currentTenantId()
+  if (!tenantId) return fail('unauthenticated')
+
+  const admin = createAdminClient()
+  const carga = await loadStudioProductionForImages(admin, tenantId, productionId)
+  if (!carga.ok) return fail(carga.key)
+
+  try {
+    preflightStudioImages()
+    const store = createSupabaseContentStore(admin, { tenantId, productionId })
+
+    // O total vem do resultado persistido; o próximo faltante é o primeiro
+    // slide sem step de imagem. Steps failed NÃO entram: falha paga só é
+    // repetida pelo botão explícito, nunca pelo "Gerar todas".
+    const steps = await store.listSteps(productionId)
+    const resultado = buildProductionResult(steps)
+    const total = resultado.slides.length
+    if (total === 0) return fail('not_advanceable')
+
+    const proximo = resultado.slides
+      .map(s => s.numero)
+      .find(n => !steps.some(st => st.agent_key === STUDIO_IMAGE_AGENT_KEY && st.step_index === imageStepIndex(n)))
+
+    if (proximo !== undefined) {
+      await runStudioSlideImage(store, studioImageStorage(admin), carga.production, proximo)
+    }
+
+    const estado = await readState(admin, tenantId, productionId)
+    if (!estado.ok) return estado
+    const prontas = estado.data.result.imagens.filter(i => i.status === 'pronto').length
+    return { ok: true, data: { ...estado.data, imagesDone: prontas, imagesTotal: total } }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('studio_images:')) {
       return fail('ai_disabled', err)
     }
     return fail('create_failed', err)
@@ -690,7 +827,11 @@ export async function listProductions(): Promise<ActionResult<ProductionSummary[
  */
 function studioPending(status: ProductionRow['status'], steps: StepRow[]): boolean {
   if (PRODUCTION_TERMINAL.includes(status)) return false
-  const concluidos = steps.filter(s => s.status === 'completed').length
+  // Conta SÓ os agentes de texto do pipeline: steps de imagem
+  // (cst_image_designer, índice 100+) são artefatos sob demanda e não podem
+  // fazer a contagem "fechar" antes da copy existir.
+  const agentesTexto = new Set(STUDIO_PIPELINE.steps.map(s => s.agentKey))
+  const concluidos = steps.filter(s => agentesTexto.has(s.agent_key) && s.status === 'completed').length
   return concluidos < STUDIO_PIPELINE.steps.length
 }
 

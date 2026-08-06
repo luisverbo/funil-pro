@@ -56,6 +56,13 @@ export interface ResultVisual {
   slides: ResultVisualSlide[]
 }
 
+/** Estado da ARTE final de um slide (geração Studio, sob demanda). */
+export interface ResultSlideImage {
+  numero: number
+  status: 'nao_gerado' | 'gerando' | 'pronto' | 'falhou'
+  url: string | null
+}
+
 export interface ProductionResult {
   titulo: string | null
   estrategia: {
@@ -81,6 +88,8 @@ export interface ProductionResult {
   visual: ResultVisual
   /** Quantidade de slides que o usuário PEDIU (geração Studio). */
   slidesPedidos: number | null
+  /** Arte final por slide — um item por slide da copy (geração Studio). */
+  imagens: ResultSlideImage[]
   /** true quando há material suficiente para mostrar o painel. */
   disponivel: boolean
   /** Metadados de IA agregados — para o selo "IA real" e contagem de chamadas. */
@@ -119,6 +128,7 @@ const RESULTADO_VAZIO: ProductionResult = {
   revisionCycle: 0,
   visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
   slidesPedidos: null,
+  imagens: [],
   disponivel: false,
   ai: { ...AI_META_VAZIO },
 }
@@ -195,6 +205,7 @@ function buildQuickResult(data: Record<string, unknown>, steps: StepRow[]): Prod
     revisionCycle: 0,
     visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
     slidesPedidos: null,
+    imagens: [],
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }
@@ -246,6 +257,23 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
       promptImagem: texto(s.imagePrompt) ?? '',
     }))
 
+  // ── Arte final por slide: steps cst_image_designer (step_index 100+N). O
+  // status vem do STEP persistido — a tela nunca inventa "pronto".
+  const imagens: ResultSlideImage[] = slides.map(s => {
+    const stepImagem = steps.find(
+      st => st.agent_key === 'cst_image_designer' && st.step_index === 100 + s.numero,
+    )
+    const dados = (stepImagem?.output?.data ?? null) as { url?: string } | null
+    return {
+      numero: s.numero,
+      status: !stepImagem ? 'nao_gerado'
+        : stepImagem.status === 'completed' ? 'pronto'
+        : stepImagem.status === 'failed' ? 'falhou'
+        : 'gerando',
+      url: stepImagem?.status === 'completed' && typeof dados?.url === 'string' ? dados.url : null,
+    }
+  })
+
   return {
     titulo: texto(copy?.title),
     estrategia: {
@@ -277,6 +305,7 @@ function buildStudioResult(steps: StepRow[]): ProductionResult {
       slides: visualSlides,
     },
     slidesPedidos: slides.length > 0 ? slides.length : null,
+    imagens,
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }
@@ -352,6 +381,7 @@ export function buildProductionResult(steps: StepRow[]): ProductionResult {
     // painel simplesmente não mostra o bloco — nada é inventado para elas.
     visual: { ...VISUAL_VAZIO, geral: { ...VISUAL_VAZIO.geral }, slides: [] },
     slidesPedidos: null,
+    imagens: [],
     disponivel: slides.length > 0,
     ai: aggregateAI(steps),
   }

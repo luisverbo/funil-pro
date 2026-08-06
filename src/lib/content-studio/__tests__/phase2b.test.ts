@@ -694,6 +694,13 @@ class MemStore implements ContentStore {
     return { rows: criados.map(s => ({ ...s })), inserted: true }
   }
   async updateStep(id: string, patch: Partial<StepRow>) { const st = this.steps.find(x => x.id === id); if (st) Object.assign(st, patch) }
+  async transitionStepStatus(id: string, expected: readonly StepRow['status'][], patch: Partial<StepRow> & { status: StepRow['status'] }) {
+    // CAS síncrono: espelha o predicado-na-UPDATE do Postgres.
+    const st = this.steps.find(x => x.id === id)
+    if (!st || !expected.includes(st.status)) return false
+    Object.assign(st, patch)
+    return true
+  }
   async insertJob(job: Omit<JobRow, 'id'>) {
     if (this.jobs.some(j => j.dedupe_key === job.dedupe_key)) return null
     if (this.jobs.some(j => j.step_id === job.step_id && (j.status === 'pending' || j.status === 'running'))) return null

@@ -40,10 +40,33 @@ export interface ResultPanelProps {
   result: ProductionResult
   /** Estado da produção — só para o selo do topo. */
   aguardandoAprovacao: boolean
+  /** Gera/regenera a ARTE de um slide (geração Studio). retry = explícito. */
+  onGerarImagem?: (slide: number, retry: boolean) => void
+  /** Gera as artes que faltam, uma a uma, com progresso. */
+  onGerarTodas?: () => void
+  /** true enquanto alguma geração de imagem está em voo. */
+  gerandoImagens?: boolean
+  /** Progresso do "Gerar todas" — ex.: 2 de 6. */
+  progressoImagens?: { done: number; total: number } | null
 }
 
-export default function ResultPanel({ result, aguardandoAprovacao }: ResultPanelProps) {
+const IMAGEM_STATUS_LABEL: Record<string, { txt: string; cor: string }> = {
+  nao_gerado: { txt: 'não gerado', cor: 'bg-gray-100 text-gray-500' },
+  gerando: { txt: 'gerando…', cor: 'bg-indigo-50 text-indigo-600' },
+  pronto: { txt: 'pronto', cor: 'bg-emerald-50 text-emerald-700' },
+  falhou: { txt: 'falhou', cor: 'bg-rose-50 text-rose-700' },
+}
+
+export default function ResultPanel({
+  result, aguardandoAprovacao,
+  onGerarImagem, onGerarTodas, gerandoImagens = false, progressoImagens = null,
+}: ResultPanelProps) {
   if (!result.disponivel) return null
+
+  // Imagens só existem na geração Studio (Designer concluído) e quando a tela
+  // forneceu os handlers — produções antigas não ganham botões fantasmas.
+  const comImagens = result.visual.disponivel && result.imagens.length > 0 && !!onGerarImagem
+  const imagemDe = (numero: number) => result.imagens.find(i => i.numero === numero)
 
   const { revisao } = result
   const reprovado = revisao.verdict === 'needs_revision'
@@ -125,9 +148,90 @@ export default function ResultPanel({ result, aguardandoAprovacao }: ResultPanel
                 </div>
                 <p className="mt-1 text-sm font-semibold text-gray-900">{slide.headline}</p>
                 <p className="mt-0.5 text-sm text-gray-600">{slide.texto}</p>
+
+                {/* ── Arte final do slide (geração Studio, sob demanda) ── */}
+                {comImagens && (() => {
+                  const img = imagemDe(slide.numero)
+                  if (!img) return null
+                  const selo = IMAGEM_STATUS_LABEL[img.status]
+                  return (
+                    <div className="mt-2 border-t border-gray-100 pt-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${selo.cor}`}>
+                          🖼 {selo.txt}
+                        </span>
+                        {img.status === 'nao_gerado' && (
+                          <button
+                            type="button"
+                            disabled={gerandoImagens}
+                            onClick={() => onGerarImagem!(slide.numero, false)}
+                            className="rounded-lg bg-indigo-500 px-2.5 py-1 text-[11px] font-bold text-white transition-colors hover:bg-indigo-600 disabled:opacity-50"
+                          >
+                            Gerar imagem
+                          </button>
+                        )}
+                        {img.status === 'pronto' && (
+                          <button
+                            type="button"
+                            disabled={gerandoImagens}
+                            onClick={() => onGerarImagem!(slide.numero, true)}
+                            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Regenerar
+                          </button>
+                        )}
+                        {img.status === 'falhou' && (
+                          <button
+                            type="button"
+                            disabled={gerandoImagens}
+                            onClick={() => onGerarImagem!(slide.numero, true)}
+                            className="rounded-lg bg-rose-500 px-2.5 py-1 text-[11px] font-bold text-white transition-colors hover:bg-rose-600 disabled:opacity-50"
+                          >
+                            Tentar novamente
+                          </button>
+                        )}
+                      </div>
+                      {img.status === 'pronto' && img.url && (
+                        // Preview em proporção de carrossel (quadrado), lazy.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={img.url}
+                          alt={`Arte do slide ${slide.numero}`}
+                          loading="lazy"
+                          decoding="async"
+                          width={1080}
+                          height={1080}
+                          className="mt-2 aspect-square w-full max-w-[280px] rounded-xl border border-gray-200 object-cover"
+                        />
+                      )}
+                    </div>
+                  )
+                })()}
               </li>
             ))}
           </ol>
+
+          {/* ── Gerar todas — com o custo dito ANTES do clique ── */}
+          {comImagens && onGerarTodas && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5">
+              <button
+                type="button"
+                disabled={gerandoImagens}
+                onClick={onGerarTodas}
+                className="rounded-xl bg-gradient-to-b from-indigo-500 to-violet-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition-all hover:brightness-110 disabled:opacity-50"
+              >
+                {gerandoImagens ? 'Gerando…' : 'Gerar imagens do carrossel'}
+              </button>
+              <p className="text-[12px] text-indigo-700">
+                Custo: uma geração de imagem por slide ({result.imagens.length} no total).
+              </p>
+              {progressoImagens && (
+                <span className="ml-auto rounded-lg bg-white px-2.5 py-1 text-[12px] font-bold text-indigo-700 tabular-nums">
+                  {progressoImagens.done} de {progressoImagens.total} imagens
+                </span>
+              )}
+            </div>
+          )}
         </Bloco>
       )}
 
