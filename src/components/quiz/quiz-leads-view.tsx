@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   getQuizLeads, getQuizStats, resetQuizLeads, exportLeadsCSV, getAnswerBreakdown,
   type QuizLead, type QuizLeadWithEvents,
@@ -28,6 +28,55 @@ function statusBadge(status: QuizLead['status']) {
       {labels[status]}
     </span>
   )
+}
+
+
+/**
+ * O que o lead respondeu NAQUELA página — nome do campo + valor.
+ *
+ * O defeito que isto conserta: a coluna de cada página mostrava o CONTATO do
+ * lead (nome/telefone/e-mail) sempre que a página tivesse qualquer campo de
+ * formulário. Com duas páginas de formulário, a página 3 repetia os dados da
+ * página 2 e escondia o que realmente foi respondido ali — não havia como
+ * saber a resposta.
+ *
+ * Agora a fonte é o EVENTO, que carrega `block_id`: cada valor volta ligado ao
+ * bloco em que foi digitado, e só aparece na página a que aquele bloco
+ * pertence.
+ */
+function pageAnswers(lead: QuizLeadWithEvents, page: QuizPage): { rotulo: string; valor: string; tipo: string }[] {
+  const blocos = new Map((page.blocks ?? []).map(b => [b.id, b]))
+  const porBloco = new Map<string, { rotulo: string; valor: string; tipo: string }>()
+
+  for (const e of lead.events) {
+    if (e.page_id !== page.id || !e.block_id) continue
+    if (!['choice_selected', 'text_entered'].includes(e.event_type)) continue
+    const bloco = blocos.get(e.block_id)
+    if (!bloco) continue
+
+    const bruto = (e.value as { selected?: unknown; text?: unknown } | null)
+    const cru = bruto?.selected ?? bruto?.text
+    const valor = Array.isArray(cru) ? cru.join(', ') : String(cru ?? '').trim()
+    if (!valor) continue
+
+    // O evento mais RECENTE do bloco vence: o lead pode corrigir o que digitou.
+    porBloco.set(e.block_id, {
+      rotulo: bloco.config.label ?? bloco.config.question ?? '',
+      valor,
+      tipo: bloco.type,
+    })
+  }
+  // Ordem dos blocos na página, não a ordem dos eventos.
+  return (page.blocks ?? []).map(b => porBloco.get(b.id)).filter((x): x is { rotulo: string; valor: string; tipo: string } => !!x)
+}
+
+/** Ícone por tipo de campo — ajuda a ler a coluna de relance. */
+function iconeCampo(tipo: string): string {
+  if (tipo === 'field_email') return '✉'
+  if (tipo === 'field_phone') return '📱'
+  if (tipo === 'field_text' || tipo === 'field_textarea') return '👤'
+  if (tipo === 'field_number' || tipo === 'field_date') return '🔢'
+  return '•'
 }
 
 // Derive what happened on a given page for a lead
@@ -333,14 +382,6 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
 
   const totalPages = Math.ceil(total / pageSize)
 
-  // Páginas que pedem contato (captura final ou campos de nome/email/telefone)
-  const capturePages = useMemo(() => {
-    const s = new Set<string>()
-    for (const p of pages) {
-      if ((p.blocks ?? []).some(b => ['final_capture', 'field_text', 'field_email', 'field_phone'].includes(b.type))) s.add(p.id)
-    }
-    return s
-  }, [pages])
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-gray-50">
@@ -467,9 +508,42 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                       {pages.map(p => {
                         const cell = pageCellValue(lead, p.id)
                         const reached = cell.state !== 'none'
-                        // Página de captura + lead chegou nela → mostra o CONTATO
-                        // aqui (nome/telefone/email), no lugar em que foram pedidos.
-                        if (capturePages.has(p.id) && reached && (lead.name || lead.email || lead.phone)) {
+                        // O que foi respondido NESTA página — nunca o contato do
+                        // lead repetido em toda página que tenha formulário.
+                        const respostas = pageAnswers(lead, p)
+                        if (reached && respostas.length > 0) {
+                          return (
+                            <td key={p.id} className="px-3 py-3 align-top">
+                              <div className="flex flex-col gap-0.5 rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-1.5">
+                                {respostas.map((r, i) => {
+                                  const ehTelefone = r.tipo === 'field_phone'
+                                  return (
+                                    <span key={i} className="flex items-start gap-1 text-emerald-800">
+                                      <span className="shrink-0">{iconeCampo(r.tipo)}</span>
+                                      {ehTelefone ? (
+                                        <a
+                                          href={`https://wa.me/${r.valor.replace(/\D/g, '')}`}
+                                          target="_blank" rel="noopener noreferrer"
+                                          onClick={e => e.stopPropagation()}
+                                          className="text-emerald-700 hover:underline truncate max-w-[150px]"
+                                        >{r.valor}</a>
+                                      ) : (
+                                        <span
+                                          className="truncate max-w-[150px]"
+                                          title={r.rotulo ? `${r.rotulo}: ${r.valor}` : r.valor}
+                                        >{r.valor}</span>
+                                      )}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            </td>
+                          )
+                        }
+                        // Captura final (bloco único que junta os campos): aí sim
+                        // o contato do lead É a resposta daquela página.
+                        const ehCapturaFinal = (p.blocks ?? []).some(b => b.type === 'final_capture')
+                        if (ehCapturaFinal && reached && (lead.name || lead.email || lead.phone)) {
                           return (
                             <td key={p.id} className="px-3 py-3 align-top">
                               <div className="flex flex-col gap-0.5 rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-1.5">
