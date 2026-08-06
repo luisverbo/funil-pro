@@ -44,6 +44,7 @@ import {
   copywriterUserContent, designerUserContent, envelopeStudio,
   studioCopywriterSystem, studioDesignerSystem, studioStrategistSystem,
   STUDIO_COPYWRITER_PROMPT_VERSION, STUDIO_DESIGNER_PROMPT_VERSION,
+  STUDIO_DESIGNER_VIRAL_PROMPT_VERSION,
   STUDIO_STRATEGIST_PROMPT_VERSION,
 } from './prompt'
 import {
@@ -720,16 +721,26 @@ async function chamarAgente(
     system = studioDesignerSystem(brief)
     userContent = designerUserContent(brief, bagagem.copy)
     parse = makeVisualParser(brief) as (raw: unknown) => Record<string, unknown>
-    promptVersion = STUDIO_DESIGNER_PROMPT_VERSION
+    promptVersion = brief.visual_mode === 'viral_cover_text_v1'
+      ? STUDIO_DESIGNER_VIRAL_PROMPT_VERSION
+      : STUDIO_DESIGNER_PROMPT_VERSION
   } else {
     throw new Error(`studio: agente desconhecido ${agentKey}`)
   }
+
+  // No modo viral o Designer entrega SÓ a direção da capa + notas de layout:
+  // saída ~3x menor. Teto reduzido = resposta mais rápida (o Designer era o
+  // agente que mais estourava o tempo) e mais barata — decisão do SERVIDOR.
+  const maxOutputTokens =
+    agentKey === STUDIO_DESIGNER_KEY && brief.visual_mode === 'viral_cover_text_v1'
+      ? Math.min(perfil.maxOutputTokens, 1_600)
+      : perfil.maxOutputTokens
 
   const r = await provider.call({
     system,
     userContent,
     parse,
-    maxOutputTokens: perfil.maxOutputTokens,
+    maxOutputTokens,
     timeoutMs: perfil.timeoutMs,
     executionId,
   })

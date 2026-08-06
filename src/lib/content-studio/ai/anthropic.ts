@@ -20,7 +20,7 @@
 //   • stop_reason tratado explicitamente: só `end_turn` segue adiante
 // ============================================================================
 
-import { AI_MAX_TECH_RETRIES, resolveContentAIModel } from './config'
+import { AI_MAX_TECH_RETRIES, AI_MIN_ATTEMPT_MS, resolveContentAIModel } from './config'
 import {
   ContentAIError,
   type AICallRequest,
@@ -197,10 +197,20 @@ export function createAnthropicProvider(deps: AnthropicProviderDeps = {}): Conte
       let ultimoErro: ContentAIError = new ContentAIError('provider_error')
 
       // 1 tentativa + AI_MAX_TECH_RETRIES retries. NENHUM caminho excede isso.
+      //
+      // req.timeoutMs é o ORÇAMENTO TOTAL da call() — retries INCLUSOS. A
+      // versão anterior dava o timeout inteiro a CADA tentativa: timeout na
+      // primeira (35s) + retry inteiro (35s) passava do maxDuration da função
+      // (60s), a plataforma matava o processo no meio e o step ficava
+      // `running` órfão — exatamente o travamento repetido do Designer visto
+      // em produção. Agora cada tentativa recebe só o tempo que RESTA, e sem
+      // tempo útil o erro anterior é lançado na hora.
       for (let tentativa = 0; tentativa <= AI_MAX_TECH_RETRIES; tentativa++) {
+        const restanteMs = req.timeoutMs - (Date.now() - inicio)
+        if (restanteMs < AI_MIN_ATTEMPT_MS) break
         chamadas++
         const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), req.timeoutMs)
+        const timer = setTimeout(() => controller.abort(), restanteMs)
 
         try {
           let res: Response
@@ -277,7 +287,10 @@ export function createAnthropicProvider(deps: AnthropicProviderDeps = {}): Conte
             // Só espera se AINDA HAVERÁ outra tentativa: esperar depois da
             // última chamada falhar seria segurar a Server Action à toa.
             if (tentativa < AI_MAX_TECH_RETRIES) {
-              await wait(retryDelayMs(res.headers?.get?.('retry-after') ?? null))
+              // A espera também respeita o orçamento: nunca dorme além do que
+              // deixaria tempo útil para a próxima tentativa.
+              const sobra = req.timeoutMs - (Date.now() - inicio) - AI_MIN_ATTEMPT_MS
+              await wait(Math.max(Math.min(retryDelayMs(res.headers?.get?.('retry-after') ?? null), sobra), 0))
             }
             continue
           }
