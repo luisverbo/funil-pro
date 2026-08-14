@@ -84,8 +84,10 @@ test('4) seleção vazia não gera arquivo mudo', () => {
   assert.ok(corpo.includes("if (colunas.length === 0) return { error:"),
     'exportaria um arquivo sem nenhuma coluna')
   const v = ler(VIEW)
-  assert.ok(v.includes("setErroExport('Nenhuma resposta para exportar.')"),
-    'não avisa quando não há linhas')
+  // A mensagem depende do filtro escolhido, mas o aviso de "nada a exportar"
+  // precisa existir nos dois casos.
+  assert.ok(v.includes("'Nenhuma resposta para exportar.'"), 'não avisa quando não há linhas')
+  assert.ok(v.includes('if (t.linhas.length === 0)'), 'baixaria um arquivo sem nenhuma linha')
 })
 
 test('5) CSV: escape correto e BOM para o Excel em português', () => {
@@ -179,6 +181,48 @@ test('10) ocultar coluna é reversível, visível e não apaga dado', () => {
   // A tabela respeita a preferência no cabeçalho E nas linhas.
   assert.ok((v.match(/pages\.filter\(p => !ocultas\.has\(p\.id\)\)/g) ?? []).length >= 2,
     'cabeçalho e linhas precisam esconder a mesma coluna')
+})
+
+test('11) filtro de QUEM entra: quem só visitou pode ficar de fora', () => {
+  const a = ler(ACTION)
+  assert.ok(a.includes("export type ExportPublico = 'todos' | 'com_resposta' | 'completos' | 'concluidos'"),
+    'sem os quatro públicos de exportação')
+  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+
+  // O padrão continua 'todos': quem já usava não vê o comportamento mudar.
+  assert.ok(corpo.includes("const publico: ExportPublico = opts?.publico ?? 'todos'"),
+    'o padrão deixou de ser todos')
+  assert.ok(corpo.includes("if (publico === 'todos') return true"), 'sem caminho para exportar tudo')
+
+  // "Respondeu" é medido nas PERGUNTAS, nunca nas colunas de lead — senão
+  // quem só abriu o formulário contaria como respondente (tem nome e data).
+  assert.ok(corpo.includes("filter(c => !c.startsWith('lead:'))"),
+    'colunas de lead entrariam na conta de quem respondeu')
+  assert.ok(corpo.includes("const respondidas = chavesPergunta.filter(c => (respostas[c] ?? '').trim().length > 0).length"),
+    'resposta em branco contaria como preenchida')
+
+  // Cada público tem regra própria e verificável.
+  assert.ok(corpo.includes("if (publico === 'concluidos') return lead.status === 'completed'"),
+    'concluidos não usa o status do lead')
+  assert.ok(corpo.includes("if (publico === 'com_resposta') return respondidas > 0"),
+    'com_resposta sem regra')
+  assert.ok(corpo.includes('return chavesPergunta.length > 0 && respondidas === chavesPergunta.length'),
+    'completos aceitaria lead sem responder tudo')
+
+  // O filtro roda ANTES de montar as linhas — nada de gerar e descartar.
+  assert.ok(corpo.includes('(leads ?? []).filter(entra).map(lead =>'), 'o filtro não é aplicado às linhas')
+})
+
+test('12) a tela oferece as quatro opções e explica cada uma', () => {
+  const v = ler(VIEW)
+  assert.ok(v.includes('Quem entra'), 'sem seção de público')
+  for (const rotulo of ['Todos os leads', 'Só quem respondeu algo', 'Só quem preencheu tudo', 'Só quem concluiu o quiz']) {
+    assert.ok(v.includes(rotulo), `faltou a opção "${rotulo}"`)
+  }
+  assert.ok(v.includes('inclusive quem só visitou'), 'a opção padrão não explica o que inclui')
+  assert.ok(v.includes('publico: publicoExport'), 'a escolha não é enviada ao servidor')
+  // Filtro que zera o resultado avisa o motivo, em vez de baixar arquivo vazio.
+  assert.ok(v.includes('Nenhum lead se encaixa nesse filtro'), 'sem aviso de filtro restritivo demais')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
