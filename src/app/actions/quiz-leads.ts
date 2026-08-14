@@ -412,6 +412,17 @@ export interface ExportColumn {
   respostas: number
 }
 export interface ExportPageInfo { id: string; titulo: string; colunas: ExportColumn[] }
+/**
+ * QUEM entra no arquivo. O padrão continua `todos` — quem já usava a
+ * exportação não vê comportamento mudar sem pedir.
+ *
+ *   todos         -> tudo o que existe, inclusive quem só visitou
+ *   com_resposta  -> respondeu ao menos UMA das colunas escolhidas
+ *   completos     -> respondeu TODAS as colunas escolhidas
+ *   concluidos    -> chegou ao fim do quiz (status do lead)
+ */
+export type ExportPublico = 'todos' | 'com_resposta' | 'completos' | 'concluidos'
+
 export interface ExportTable {
   titulo: string
   colunas: ExportColumn[]
@@ -516,7 +527,12 @@ const COLUNAS_LEAD: ExportColumn[] = [
  */
 export async function exportLeadsTable(
   quizId: string,
-  opts?: { pageIds?: string[]; columnKeys?: string[]; incluirLead?: boolean },
+  opts?: {
+    pageIds?: string[]
+    columnKeys?: string[]
+    incluirLead?: boolean
+    publico?: ExportPublico
+  },
 ): Promise<ExportTable | { error: string }> {
   try {
     const tenantId = await getTenantId()
@@ -579,7 +595,23 @@ export async function exportLeadsTable(
       porLead[lid][blockId] = valor
     }
 
-    const linhas = (leads ?? []).map(lead => {
+    // Colunas de PERGUNTA escolhidas — são elas que definem "respondeu".
+    // As colunas de lead (nome, data, origem) não contam: elas existem mesmo
+    // para quem só abriu o formulário e foi embora.
+    const chavesPergunta = colunas.map(c => c.chave).filter(c => !c.startsWith('lead:'))
+    const publico: ExportPublico = opts?.publico ?? 'todos'
+
+    const entra = (lead: { id: string; status?: string | null }): boolean => {
+      if (publico === 'todos') return true
+      if (publico === 'concluidos') return lead.status === 'completed'
+      const respostas = porLead[lead.id] ?? {}
+      const respondidas = chavesPergunta.filter(c => (respostas[c] ?? '').trim().length > 0).length
+      if (publico === 'com_resposta') return respondidas > 0
+      // completos: respondeu TODAS as perguntas escolhidas.
+      return chavesPergunta.length > 0 && respondidas === chavesPergunta.length
+    }
+
+    const linhas = (leads ?? []).filter(entra).map(lead => {
       const respostas = porLead[lead.id] ?? {}
       return colunas.map(c => {
         switch (c.chave) {

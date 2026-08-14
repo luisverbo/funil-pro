@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import {
   getQuizLeads, getQuizStats, resetQuizLeads, getAnswerBreakdown,
-  getExportStructure, exportLeadsTable, type ExportPageInfo, type ExportTable,
+  getExportStructure, exportLeadsTable,
+  type ExportPageInfo, type ExportTable, type ExportPublico,
   type QuizLead, type QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
 import type { QuizPage } from '@/app/actions/quiz-v2'
@@ -379,6 +380,8 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   const [paginasExport, setPaginasExport] = useState<ExportPageInfo[]>([])
   const [colunasSel, setColunasSel] = useState<Set<string>>(new Set())
   const [incluirLeadExport, setIncluirLeadExport] = useState(true)
+  // QUEM entra no arquivo. Padrão 'todos' — não muda o que já existia.
+  const [publicoExport, setPublicoExport] = useState<ExportPublico>('todos')
   const [erroExport, setErroExport] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
 
@@ -472,9 +475,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       const t = await exportLeadsTable(quizId, {
         columnKeys: [...colunasSel],
         incluirLead: incluirLeadExport,
+        publico: publicoExport,
       })
       if ('error' in t) { setErroExport(t.error); return }
-      if (t.linhas.length === 0) { setErroExport('Nenhuma resposta para exportar.'); return }
+      if (t.linhas.length === 0) {
+        setErroExport(publicoExport === 'todos'
+          ? 'Nenhuma resposta para exportar.'
+          : 'Nenhum lead se encaixa nesse filtro. Tente uma opção mais aberta em "Quem entra".')
+        return
+      }
 
       if (formato === 'csv') {
         // BOM: o Excel em pt-BR precisa dele para não quebrar acentuação.
@@ -779,6 +788,33 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
               </div>
 
               <div className="px-5 py-4 max-h-[50vh] overflow-y-auto space-y-3">
+                <div>
+                  <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Quem entra
+                  </span>
+                  <div className="space-y-1">
+                    {([
+                      ['todos', 'Todos os leads', 'inclusive quem só visitou'],
+                      ['com_resposta', 'Só quem respondeu algo', 'pelo menos uma das colunas escolhidas'],
+                      ['completos', 'Só quem preencheu tudo', 'todas as colunas escolhidas'],
+                      ['concluidos', 'Só quem concluiu o quiz', 'chegou até o fim'],
+                    ] as const).map(([valor, titulo, ajuda]) => (
+                      <label key={valor}
+                        className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 cursor-pointer transition ${
+                          publicoExport === valor ? 'border-indigo-300 bg-indigo-50/60' : 'border-gray-200 hover:border-indigo-200'
+                        }`}>
+                        <input type="radio" name="publico-export" checked={publicoExport === valor}
+                          onChange={() => setPublicoExport(valor)}
+                          className="w-4 h-4 mt-0.5 accent-indigo-600" />
+                        <span className="min-w-0">
+                          <span className="block text-sm text-gray-800">{titulo}</span>
+                          <span className="block text-[11px] text-gray-500">{ajuda}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input type="checkbox" checked={incluirLeadExport}
                     onChange={e => setIncluirLeadExport(e.target.checked)}
