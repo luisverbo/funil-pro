@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from '
 import {
   getQuizLeads, getQuizStats, resetQuizLeads, getAnswerBreakdown,
   getExportStructure, exportLeadsTable,
-  type ExportPageInfo, type ExportTable, type ExportPublico,
+  type ExportPageInfo, type ExportTable, type ExportPublico, type ExportLeadResumo,
   type QuizLead, type QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
 import type { QuizPage } from '@/app/actions/quiz-v2'
@@ -383,6 +383,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   // QUEM entra no arquivo. Padrão 'todos' — não muda o que já existia.
   const [publicoExport, setPublicoExport] = useState<ExportPublico>('todos')
   const [erroExport, setErroExport] = useState<string | null>(null)
+  const [leadsExport, setLeadsExport] = useState<ExportLeadResumo[]>([])
   const [searchInput, setSearchInput] = useState('')
 
   const load = useCallback(async () => {
@@ -413,12 +414,30 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       const r = await getExportStructure(quizId)
       if ('error' in r) { setErroExport(r.error); return }
       setPaginasExport(r.paginas)
+      setLeadsExport(r.leads)
       // Começa marcando o que TEM resposta: coluna que ninguém preencheu só
       // atrapalha a planilha, mas continua visível para ser marcada à mão.
       const comResposta = r.paginas.flatMap(p => p.colunas.filter(c => c.respostas > 0).map(c => c.chave))
       const todas = r.paginas.flatMap(p => p.colunas.map(c => c.chave))
       setColunasSel(new Set([...COLUNAS_LEAD_CHAVES, ...(comResposta.length > 0 ? comResposta : todas)]))
     }
+  }
+
+  /**
+   * Quantos leads cada filtro pega COM A SELEÇÃO ATUAL de colunas.
+   *
+   * Calculado aqui, a partir do resumo que o servidor mandou: a contagem muda
+   * junto com as caixas marcadas, sem uma ida ao servidor por clique.
+   */
+  function contarPublico(alvo: ExportPublico): number {
+    const perguntas = [...colunasSel].filter(c => !c.startsWith('lead:'))
+    if (alvo === 'todos') return leadsExport.length
+    if (alvo === 'concluidos') return leadsExport.filter(l => l.concluido).length
+    if (alvo === 'com_resposta') {
+      return leadsExport.filter(l => l.chaves.some(k => perguntas.includes(k))).length
+    }
+    if (perguntas.length === 0) return 0
+    return leadsExport.filter(l => perguntas.every(k => l.chaves.includes(k))).length
   }
 
   /** CSV com escape correto (vírgula, aspas e quebra de linha no valor). */
@@ -806,9 +825,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                         <input type="radio" name="publico-export" checked={publicoExport === valor}
                           onChange={() => setPublicoExport(valor)}
                           className="w-4 h-4 mt-0.5 accent-indigo-600" />
-                        <span className="min-w-0">
+                        <span className="min-w-0 flex-1">
                           <span className="block text-sm text-gray-800">{titulo}</span>
                           <span className="block text-[11px] text-gray-500">{ajuda}</span>
+                        </span>
+                        {/* A contagem some a dúvida: dá para ver o zero ANTES de clicar. */}
+                        <span className={`shrink-0 text-[11px] font-semibold ${
+                          contarPublico(valor) === 0 ? 'text-amber-600' : 'text-gray-500'
+                        }`}>
+                          {contarPublico(valor)} {contarPublico(valor) === 1 ? 'lead' : 'leads'}
                         </span>
                       </label>
                     ))}

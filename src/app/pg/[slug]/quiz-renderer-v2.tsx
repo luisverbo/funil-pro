@@ -637,7 +637,19 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       if (rb) { setResultBlock(rb); submitResult(rb, newScore, newLeadData) }
       return
     }
-    if (next === 'end') { setPhase('done'); return }
+    if (next === 'end') {
+      // FIM SEM PÁGINA DE RESULTADO.
+      //
+      // A conclusão só era registrada em `submitResult`, que existe apenas
+      // quando o quiz tem bloco de Resultado. Num formulário (vaga, cadastro,
+      // captação) o lead respondia tudo, chegava ao fim por aqui — e ficava
+      // "em andamento" para sempre: a taxa de conclusão vivia em 0% e o
+      // filtro "quem concluiu" nunca achava ninguém.
+      tracker.track('quiz_completed', currentPage?.id ?? '', null, { score: newScore })
+      tracker.trackComplete(newScore, null)
+      setPhase('done')
+      return
+    }
     setTransitionKey(k => k + 1)
     setPageIdx(next as number)
   }
@@ -1282,7 +1294,19 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
       if (rb) { setResultBlock(rb); submitResult(rb, newScore, newLeadData) }
       return
     }
-    if (next === 'end') { setPhase('done'); return }
+    if (next === 'end') {
+      // FIM SEM PÁGINA DE RESULTADO.
+      //
+      // A conclusão só era registrada em `submitResult`, que existe apenas
+      // quando o quiz tem bloco de Resultado. Num formulário (vaga, cadastro,
+      // captação) o lead respondia tudo, chegava ao fim por aqui — e ficava
+      // "em andamento" para sempre: a taxa de conclusão vivia em 0% e o
+      // filtro "quem concluiu" nunca achava ninguém.
+      tracker.track('quiz_completed', currentPage?.id ?? '', null, { score: newScore })
+      tracker.trackComplete(newScore, null)
+      setPhase('done')
+      return
+    }
     setTransitionKey(k => k + 1)
     setPageIdx(next as number)
   }

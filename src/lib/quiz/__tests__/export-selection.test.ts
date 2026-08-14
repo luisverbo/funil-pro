@@ -225,6 +225,41 @@ test('12) a tela oferece as quatro opções e explica cada uma', () => {
   assert.ok(v.includes('Nenhum lead se encaixa nesse filtro'), 'sem aviso de filtro restritivo demais')
 })
 
+test('13) CAUSA RAIZ: quiz sem página de Resultado também registra conclusão', () => {
+  const r = ler('src/app/pg/[slug]/quiz-renderer-v2.tsx')
+  // Antes, `trackComplete` só existia em submitResult — que roda apenas quando
+  // há bloco de Resultado. Num formulário, ninguém era marcado como concluído.
+  const fins = (r.match(/if \(next === 'end'\) \{/g) ?? []).length
+  assert.ok(fins >= 1, 'caminho de fim não encontrado')
+  const marcacoes = (r.match(/tracker\.trackComplete\(/g) ?? []).length
+  assert.ok(marcacoes >= 3,
+    `só ${marcacoes} pontos marcam conclusão — os caminhos de fim sem Resultado ficaram de fora`)
+  // O caminho de fim marca ANTES de mudar a fase.
+  const trecho = r.slice(r.indexOf("if (next === 'end') {"))
+  assert.ok(trecho.indexOf('trackComplete') < trecho.indexOf("setPhase('done')"),
+    'a fase muda antes de registrar a conclusão')
+})
+
+test('14) a tela mostra QUANTOS leads cada filtro pega, antes de baixar', () => {
+  const a = ler(ACTION)
+  assert.ok(a.includes('export interface ExportLeadResumo'), 'servidor não devolve resumo por lead')
+  const estrutura = corpoDe(a, 'export async function getExportStructure')
+  assert.ok(estrutura.includes('const leads: ExportLeadResumo[]'), 'sem resumo de leads')
+  assert.ok(estrutura.includes("concluido: l.status === 'completed'"), 'resumo sem a marca de concluído')
+  // Só id e status saem do banco para esta contagem — nada de dado pessoal.
+  assert.ok(estrutura.includes(".select('id, status')"), 'o resumo carrega mais dado do que precisa')
+
+  const v = ler(VIEW)
+  const fn = corpoDe(v, 'function contarPublico')
+  assert.ok(fn.includes("if (alvo === 'todos') return leadsExport.length"), 'sem contagem de todos')
+  assert.ok(fn.includes('l.chaves.some(k => perguntas.includes(k))'), 'com_resposta sem contagem')
+  assert.ok(fn.includes('perguntas.every(k => l.chaves.includes(k))'), 'completos sem contagem')
+  // A conta usa só as PERGUNTAS marcadas — coluna de lead não vale como resposta.
+  assert.ok(fn.includes("filter(c => !c.startsWith('lead:'))"), 'colunas de lead entrariam na conta')
+  // E a contagem aparece em cada opção, com destaque quando é zero.
+  assert.ok(v.includes("contarPublico(valor) === 0 ? 'text-amber-600'"), 'zero não é destacado')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 async function main() {
