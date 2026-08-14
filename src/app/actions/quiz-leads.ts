@@ -434,9 +434,16 @@ export interface ExportTable {
  * gera. Serve para a tela montar a seleção SEM adivinhar nada — os rótulos são
  * os mesmos que o construtor mostra.
  */
+export interface ExportLeadResumo {
+  /** Chaves (block ids) que este lead respondeu. */
+  chaves: string[]
+  /** Chegou ao fim do quiz. */
+  concluido: boolean
+}
+
 export async function getExportStructure(
   quizId: string,
-): Promise<{ paginas: ExportPageInfo[] } | { error: string }> {
+): Promise<{ paginas: ExportPageInfo[]; leads: ExportLeadResumo[] } | { error: string }> {
   try {
     const tenantId = await getTenantId()
     if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
@@ -469,7 +476,24 @@ export async function getExportStructure(
         coluna.respostas = respondentes[coluna.chave]?.size ?? 0
       }
     }
-    return { paginas }
+
+    // Resumo por lead — permite à tela contar, NA HORA, quantos leads cada
+    // filtro pega para a seleção de colunas atual. Sem isto a pessoa só
+    // descobria que o filtro zerou depois de clicar em baixar.
+    const porLead: Record<string, Set<string>> = {}
+    for (const [chave, conjunto] of Object.entries(respondentes)) {
+      for (const leadId of conjunto) (porLead[leadId] = porLead[leadId] ?? new Set()).add(chave)
+    }
+    const { data: leadsRows } = await admin
+      .from('quiz_leads').select('id, status')
+      .eq('quiz_id', quizId).eq('tenant_id', tenantId)
+
+    const leads: ExportLeadResumo[] = (leadsRows ?? []).map(l => ({
+      chaves: [...(porLead[l.id as string] ?? [])],
+      concluido: l.status === 'completed',
+    }))
+
+    return { paginas, leads }
   } catch (err) {
     return { error: String(err) }
   }
