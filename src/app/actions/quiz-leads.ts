@@ -27,6 +27,31 @@ async function getTenantId(): Promise<string> {
   return data.tenant_id
 }
 
+
+/**
+ * Busca TODOS os eventos, em páginas.
+ *
+ * O PostgREST corta a resposta em 1000 linhas por padrão. As consultas de
+ * evento não paginavam: com dezenas de leads, os eventos passavam do teto e a
+ * maior parte dos leads chegava SEM respostas — a exportação trazia 8 pessoas
+ * quando havia muito mais, e as contagens por coluna vinham menores que a
+ * realidade. Aqui a leitura continua até a última página.
+ */
+async function buscarEventos<T>(
+  montarConsulta: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const TAMANHO = 1000
+  const todos: T[] = []
+  for (let pagina = 0; pagina < 200; pagina++) {   // teto de segurança: 200k eventos
+    const de = pagina * TAMANHO
+    const { data, error } = await montarConsulta(de, de + TAMANHO - 1)
+    if (error || !data) break
+    todos.push(...data)
+    if (data.length < TAMANHO) break
+  }
+  return todos
+}
+
 export interface QuizLead {
   id: string
   quiz_id: string
@@ -155,6 +180,7 @@ export async function getQuizLeads(
       .in('lead_id', leadIds)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true })
+      .range(0, 9999)
 
     const eventsByLead = new Map<string, QuizLeadEvent[]>()
     for (const ev of events ?? []) {
@@ -199,6 +225,7 @@ export async function getLeadDetail(
       .eq('lead_id', leadId)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true })
+      .range(0, 9999)
 
     return {
       lead: {
@@ -235,13 +262,17 @@ export async function exportLeadsCSV(
     const qpages = ((pageRow?.quiz_data as { pages?: { id: string; title: string }[] } | null)?.pages) ?? []
 
     // Respostas de cada lead por página (escolha/texto)
-    const { data: events } = await admin
-      .from('quiz_lead_events')
-      .select('lead_id, page_id, event_type, value')
-      .eq('quiz_id', quizId)
-      .in('event_type', ['choice_selected', 'text_entered', 'button_clicked'])
+    const events = await buscarEventos<{ lead_id: string; page_id: string; event_type: string; value: unknown }>(
+      (de, ate) => admin
+        .from('quiz_lead_events')
+        .select('lead_id, page_id, event_type, value')
+        .eq('quiz_id', quizId)
+        .in('event_type', ['choice_selected', 'text_entered', 'button_clicked'])
+        .order('created_at', { ascending: true })
+        .range(de, ate),
+    )
     const answerMap: Record<string, Record<string, string>> = {}
-    for (const ev of events ?? []) {
+    for (const ev of events) {
       const v = ev.value as { selected?: unknown; text?: unknown } | null
       const ans = ev.event_type === 'choice_selected'
         ? (Array.isArray(v?.selected) ? (v!.selected as unknown[]).join(' | ') : String(v?.selected ?? ''))
@@ -292,14 +323,18 @@ export async function getAnswerBreakdown(quizId: string): Promise<{ breakdown: R
     const owns = await verifyTenantOwnsQuiz(quizId, tenantId)
     if (!owns) return { breakdown: {} }
     const admin = createAdminClient()
-    const { data: events } = await admin
-      .from('quiz_lead_events')
-      .select('page_id, event_type, value')
-      .eq('quiz_id', quizId)
-      .in('event_type', ['choice_selected', 'button_clicked'])
+    const events = await buscarEventos<{ page_id: string; event_type: string; value: unknown }>(
+      (de, ate) => admin
+        .from('quiz_lead_events')
+        .select('page_id, event_type, value')
+        .eq('quiz_id', quizId)
+        .in('event_type', ['choice_selected', 'button_clicked'])
+        .order('created_at', { ascending: true })
+        .range(de, ate),
+    )
     // page_id → valor → contagem (escolhas E cliques de botão, pra ver o que converte)
     const counts: Record<string, Record<string, number>> = {}
-    for (const ev of events ?? []) {
+    for (const ev of events) {
       const v = ev.value as { selected?: unknown; text?: unknown } | null
       const pid = ev.page_id as string
       let vals: string[] = []
@@ -427,6 +462,9 @@ export interface ExportTable {
   titulo: string
   colunas: ExportColumn[]
   linhas: string[][]
+  /** IDs dos leads, NA MESMA ORDEM das linhas — é o que permite marcar quem
+   *  já foi exportado e não repetir na próxima vez. */
+  ids: string[]
 }
 
 /**
@@ -435,6 +473,8 @@ export interface ExportTable {
  * os mesmos que o construtor mostra.
  */
 export interface ExportLeadResumo {
+  /** Id do lead — permite pular quem já foi exportado. */
+  id: string
   /** Chaves (block ids) que este lead respondeu. */
   chaves: string[]
   /** Chegou ao fim do quiz. */
@@ -455,14 +495,18 @@ export async function getExportStructure(
 
     // Contagem REAL por coluna: é o que permite à tela dizer "sem respostas"
     // em vez de a pessoa descobrir só depois de abrir o arquivo.
-    const { data: eventos } = await admin
-      .from('quiz_lead_events')
-      .select('lead_id, block_id, event_type, value')
-      .eq('quiz_id', quizId)
-      .in('event_type', ['choice_selected', 'text_entered'])
+    const eventos = await buscarEventos<{ lead_id: string; block_id: string | null; event_type: string; value: unknown }>(
+      (de, ate) => admin
+        .from('quiz_lead_events')
+        .select('lead_id, block_id, event_type, value')
+        .eq('quiz_id', quizId)
+        .in('event_type', ['choice_selected', 'text_entered'])
+        .order('created_at', { ascending: true })
+        .range(de, ate),
+    )
 
     const respondentes: Record<string, Set<string>> = {}
-    for (const ev of eventos ?? []) {
+    for (const ev of eventos) {
       const blockId = ev.block_id as string | null
       if (!blockId) continue
       const v = ev.value as { selected?: unknown; text?: unknown } | null
@@ -489,6 +533,7 @@ export async function getExportStructure(
       .eq('quiz_id', quizId).eq('tenant_id', tenantId)
 
     const leads: ExportLeadResumo[] = (leadsRows ?? []).map(l => ({
+      id: String(l.id),
       chaves: [...(porLead[l.id as string] ?? [])],
       concluido: l.status === 'completed',
     }))
@@ -556,6 +601,8 @@ export async function exportLeadsTable(
     columnKeys?: string[]
     incluirLead?: boolean
     publico?: ExportPublico
+    /** Leads a PULAR — normalmente os já exportados numa rodada anterior. */
+    excluirIds?: string[]
   },
 ): Promise<ExportTable | { error: string }> {
   try {
@@ -599,15 +646,18 @@ export async function exportLeadsTable(
 
     // Respostas por BLOCO (não por página): é o que permite uma coluna por
     // pergunta. O evento mais recente do bloco vence — o lead pode corrigir.
-    const { data: eventos } = await admin
-      .from('quiz_lead_events')
-      .select('lead_id, block_id, event_type, value, created_at')
-      .eq('quiz_id', quizId)
-      .in('event_type', ['choice_selected', 'text_entered'])
-      .order('created_at', { ascending: true })
+    const eventos = await buscarEventos<{ lead_id: string; block_id: string | null; event_type: string; value: unknown }>(
+      (de, ate) => admin
+        .from('quiz_lead_events')
+        .select('lead_id, block_id, event_type, value, created_at')
+        .eq('quiz_id', quizId)
+        .in('event_type', ['choice_selected', 'text_entered'])
+        .order('created_at', { ascending: true })
+        .range(de, ate),
+    )
 
     const porLead: Record<string, Record<string, string>> = {}
-    for (const ev of eventos ?? []) {
+    for (const ev of eventos) {
       const blockId = ev.block_id as string | null
       if (!blockId) continue
       const v = ev.value as { selected?: unknown; text?: unknown } | null
@@ -625,7 +675,10 @@ export async function exportLeadsTable(
     const chavesPergunta = colunas.map(c => c.chave).filter(c => !c.startsWith('lead:'))
     const publico: ExportPublico = opts?.publico ?? 'todos'
 
+    const jaExportados = new Set(Array.isArray(opts?.excluirIds) ? opts!.excluirIds! : [])
+
     const entra = (lead: { id: string; status?: string | null }): boolean => {
+      if (jaExportados.has(lead.id)) return false
       if (publico === 'todos') return true
       if (publico === 'concluidos') return lead.status === 'completed'
       const respostas = porLead[lead.id] ?? {}
@@ -635,7 +688,8 @@ export async function exportLeadsTable(
       return chavesPergunta.length > 0 && respondidas === chavesPergunta.length
     }
 
-    const linhas = (leads ?? []).filter(entra).map(lead => {
+    const selecionados = (leads ?? []).filter(entra)
+    const linhas = selecionados.map(lead => {
       const respostas = porLead[lead.id] ?? {}
       return colunas.map(c => {
         switch (c.chave) {
@@ -654,7 +708,12 @@ export async function exportLeadsTable(
       })
     })
 
-    return { titulo: String(pageRow?.title ?? 'Quiz'), colunas, linhas }
+    return {
+      titulo: String(pageRow?.title ?? 'Quiz'),
+      colunas,
+      linhas,
+      ids: selecionados.map(l => String(l.id)),
+    }
   } catch (err) {
     return { error: String(err) }
   }

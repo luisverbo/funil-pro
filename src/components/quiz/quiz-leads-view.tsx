@@ -81,6 +81,56 @@ function iconeCampo(tipo: string): string {
   return '•'
 }
 
+
+/**
+ * Leads JÁ EXPORTADOS, por quiz.
+ *
+ * Guardado no navegador, como as colunas ocultas: é preferência de trabalho,
+ * não dado do lead — e não exige mudança no banco. Marcar acontece só depois
+ * de um download bem-sucedido; limpar é um clique.
+ */
+function useJaExportados(quizId: string) {
+  const chave = `quiz-leads-exportados:${quizId}`
+  const cache = useRef<{ bruto: string | null; valor: Set<string> }>({ bruto: null, valor: new Set() })
+
+  const subscribe = useCallback((notificar: () => void) => {
+    const onChange = () => notificar()
+    window.addEventListener('storage', onChange)
+    window.addEventListener('quiz-leads-exportados', onChange)
+    return () => {
+      window.removeEventListener('storage', onChange)
+      window.removeEventListener('quiz-leads-exportados', onChange)
+    }
+  }, [])
+
+  const getSnapshot = useCallback(() => {
+    let bruto: string | null = null
+    try { bruto = localStorage.getItem(chave) } catch { bruto = null }
+    if (bruto !== cache.current.bruto) {
+      let lista: string[] = []
+      try { lista = bruto ? (JSON.parse(bruto) as string[]) : [] } catch { lista = [] }
+      cache.current = { bruto, valor: new Set(lista) }
+    }
+    return cache.current.valor
+  }, [chave])
+
+  const VAZIO = useRef(new Set<string>())
+  const exportados = useSyncExternalStore(subscribe, getSnapshot, () => VAZIO.current)
+
+  const registrar = useCallback((ids: string[]) => {
+    const novo = new Set([...getSnapshot(), ...ids])
+    try { localStorage.setItem(chave, JSON.stringify([...novo])) } catch { /* sem persistência */ }
+    window.dispatchEvent(new Event('quiz-leads-exportados'))
+  }, [chave, getSnapshot])
+
+  const limpar = useCallback(() => {
+    try { localStorage.removeItem(chave) } catch { /* nada a limpar */ }
+    window.dispatchEvent(new Event('quiz-leads-exportados'))
+  }, [chave])
+
+  return { exportados, registrar, limpar }
+}
+
 /** Chaves das colunas de lead — o servidor usa as mesmas na exportação. */
 const COLUNAS_LEAD_CHAVES = [
   'lead:id', 'lead:data', 'lead:status', 'lead:nome', 'lead:email',
@@ -405,6 +455,9 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   }, [searchInput])
 
   const { ocultas, alternar: alternarOculta, mostrarTodas } = useColunasOcultas(quizId)
+  const { exportados, registrar: registrarExportados, limpar: limparExportados } = useJaExportados(quizId)
+  // Pular quem já foi exportado antes — desligado por padrão.
+  const [pularExportados, setPularExportados] = useState(false)
 
   /** Abre o seletor de exportação já sabendo quais páginas existem. */
   async function abrirExport() {
@@ -431,13 +484,18 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
    */
   function contarPublico(alvo: ExportPublico): number {
     const perguntas = [...colunasSel].filter(c => !c.startsWith('lead:'))
-    if (alvo === 'todos') return leadsExport.length
-    if (alvo === 'concluidos') return leadsExport.filter(l => l.concluido).length
+    // A contagem mostra o número REAL do arquivo: se "pular exportados" está
+    // ligado, quem já saiu antes não conta aqui também.
+    const base = pularExportados
+      ? leadsExport.filter(l => !exportados.has(l.id))
+      : leadsExport
+    if (alvo === 'todos') return base.length
+    if (alvo === 'concluidos') return base.filter(l => l.concluido).length
     if (alvo === 'com_resposta') {
-      return leadsExport.filter(l => l.chaves.some(k => perguntas.includes(k))).length
+      return base.filter(l => l.chaves.some(k => perguntas.includes(k))).length
     }
     if (perguntas.length === 0) return 0
-    return leadsExport.filter(l => perguntas.every(k => l.chaves.includes(k))).length
+    return base.filter(l => perguntas.every(k => l.chaves.includes(k))).length
   }
 
   /** CSV com escape correto (vírgula, aspas e quebra de linha no valor). */
@@ -495,12 +553,16 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
         columnKeys: [...colunasSel],
         incluirLead: incluirLeadExport,
         publico: publicoExport,
+        ...(pularExportados ? { excluirIds: [...exportados] } : {}),
       })
       if ('error' in t) { setErroExport(t.error); return }
       if (t.linhas.length === 0) {
-        setErroExport(publicoExport === 'todos'
-          ? 'Nenhuma resposta para exportar.'
-          : 'Nenhum lead se encaixa nesse filtro. Tente uma opção mais aberta em "Quem entra".')
+        setErroExport(
+          pularExportados
+            ? 'Todos os leads desse filtro já foram exportados antes. Desmarque "Pular quem já exportei antes" ou limpe o histórico.'
+            : publicoExport === 'todos'
+              ? 'Nenhuma resposta para exportar.'
+              : 'Nenhum lead se encaixa nesse filtro. Tente uma opção mais aberta em "Quem entra".')
         return
       }
 
@@ -514,6 +576,9 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       } else {
         abrirPdf(t)
       }
+      // Só depois de gerar o arquivo: quem entrou nele passa a contar como
+      // exportado, e pode ser pulado na próxima rodada.
+      registrarExportados(t.ids)
       setExportOpen(false)
     } finally {
       setExporting(false)
@@ -838,6 +903,30 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                       </label>
                     ))}
                   </div>
+                </div>
+
+                {/* Não repetir quem já saiu numa exportação anterior. */}
+                <div className="rounded-lg border border-gray-200 px-2.5 py-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={pularExportados}
+                      onChange={e => setPularExportados(e.target.checked)}
+                      className="w-4 h-4 accent-indigo-600" />
+                    <span>Pular quem já exportei antes</span>
+                    <span className="ml-auto text-[11px] text-gray-400">
+                      {exportados.size} {exportados.size === 1 ? 'marcado' : 'marcados'}
+                    </span>
+                  </label>
+                  {exportados.size > 0 && (
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-gray-500">
+                        A marca fica neste navegador, por quiz.
+                      </span>
+                      <button onClick={limparExportados}
+                        className="text-[11px] font-semibold text-gray-500 hover:text-rose-600 hover:underline">
+                        Limpar histórico
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <label className="flex items-center gap-2 text-sm text-gray-700">
