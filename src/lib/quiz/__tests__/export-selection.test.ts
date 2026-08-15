@@ -210,7 +210,10 @@ test('11) filtro de QUEM entra: quem só visitou pode ficar de fora', () => {
     'completos aceitaria lead sem responder tudo')
 
   // O filtro roda ANTES de montar as linhas — nada de gerar e descartar.
-  assert.ok(corpo.includes('(leads ?? []).filter(entra).map(lead =>'), 'o filtro não é aplicado às linhas')
+  assert.ok(corpo.includes('const selecionados = (leads ?? []).filter(entra)'),
+    'o filtro não é aplicado antes de montar as linhas')
+  assert.ok(corpo.includes('ids: selecionados.map(l => String(l.id))'),
+    'os ids exportados precisam sair na mesma seleção das linhas')
 })
 
 test('12) a tela oferece as quatro opções e explica cada uma', () => {
@@ -251,13 +254,63 @@ test('14) a tela mostra QUANTOS leads cada filtro pega, antes de baixar', () => 
 
   const v = ler(VIEW)
   const fn = corpoDe(v, 'function contarPublico')
-  assert.ok(fn.includes("if (alvo === 'todos') return leadsExport.length"), 'sem contagem de todos')
-  assert.ok(fn.includes('l.chaves.some(k => perguntas.includes(k))'), 'com_resposta sem contagem')
-  assert.ok(fn.includes('perguntas.every(k => l.chaves.includes(k))'), 'completos sem contagem')
+  assert.ok(fn.includes("if (alvo === 'todos') return base.length"), 'sem contagem de todos')
+  // A base da contagem respeita o "pular exportados" — o número mostrado é o
+  // número real do arquivo.
+  assert.ok(fn.includes('pularExportados'), 'a contagem ignora quem já foi exportado')
+  assert.ok(fn.includes('base.filter(l => l.chaves.some(k => perguntas.includes(k)))'), 'com_resposta sem contagem')
+  assert.ok(fn.includes('base.filter(l => perguntas.every(k => l.chaves.includes(k)))'), 'completos sem contagem')
   // A conta usa só as PERGUNTAS marcadas — coluna de lead não vale como resposta.
   assert.ok(fn.includes("filter(c => !c.startsWith('lead:'))"), 'colunas de lead entrariam na conta')
   // E a contagem aparece em cada opção, com destaque quando é zero.
   assert.ok(v.includes("contarPublico(valor) === 0 ? 'text-amber-600'"), 'zero não é destacado')
+})
+
+test('15) CAUSA RAIZ: eventos são lidos em PÁGINAS (o corte de 1000 sumia com leads)', () => {
+  const a = ler(ACTION)
+  assert.ok(a.includes('async function buscarEventos'), 'sem leitura paginada de eventos')
+  const fn = corpoDe(a, 'async function buscarEventos')
+  assert.ok(fn.includes('const TAMANHO = 1000'), 'a página não bate com o teto do PostgREST')
+  assert.ok(fn.includes('if (data.length < TAMANHO) break'), 'não para na última página')
+  assert.ok(/pagina < 200/.test(fn), 'sem teto de segurança para o laço')
+
+  // Nenhuma consulta de evento pode mais buscar sem paginar/limitar: era isso
+  // que fazia a exportação trazer 8 leads quando havia dezenas.
+  const consultas = a.split("from('quiz_lead_events')").slice(1)
+  assert.ok(consultas.length >= 4, 'consultas de evento não encontradas')
+  for (const trecho of consultas) {
+    const cabeca = trecho.slice(0, 400)
+    assert.ok(/\.range\(/.test(cabeca),
+      `consulta de eventos sem paginação: ${cabeca.split('\n')[1]?.trim()}`)
+  }
+})
+
+test('16) não repetir quem já foi exportado', () => {
+  const a = ler(ACTION)
+  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  assert.ok(corpo.includes('const jaExportados = new Set'), 'sem lista de exclusão')
+  assert.ok(corpo.includes('if (jaExportados.has(lead.id)) return false'),
+    'lead já exportado continuaria entrando')
+  // A exclusão vem ANTES de qualquer regra de público.
+  assert.ok(corpo.indexOf('jaExportados.has(lead.id)') < corpo.indexOf("if (publico === 'todos')"),
+    'a exclusão precisa valer inclusive para "todos"')
+  // A tabela devolve os ids para a tela poder marcar quem saiu.
+  assert.ok(a.includes('/** IDs dos leads, NA MESMA ORDEM das linhas'), 'ExportTable sem ids')
+
+  const v = ler(VIEW)
+  assert.ok(v.includes('function useJaExportados'), 'sem histórico de exportados')
+  const hook = corpoDe(v, 'function useJaExportados')
+  assert.ok(hook.includes('`quiz-leads-exportados:${quizId}`'), 'histórico não é por quiz')
+  assert.ok(!/supabase|createAdminClient/i.test(hook), 'o histórico não deve tocar o banco')
+  // Marca só DEPOIS do arquivo sair, e dá para limpar.
+  assert.ok(v.includes('registrarExportados(t.ids)'), 'não registra quem foi exportado')
+  const handler = corpoDe(v, "async function handleExport(formato: 'csv' | 'pdf')")
+  assert.ok(handler.indexOf('abrirPdf(t)') < handler.indexOf('registrarExportados(t.ids)'),
+    'marcaria como exportado antes de gerar o arquivo')
+  assert.ok(v.includes('Pular quem já exportei antes') && v.includes('Limpar histórico'),
+    'a tela não oferece pular nem limpar')
+  // Filtro que zera POR CAUSA do histórico explica isso.
+  assert.ok(v.includes('já foram exportados antes'), 'sem aviso específico do histórico')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
