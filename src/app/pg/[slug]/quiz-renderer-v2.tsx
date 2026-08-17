@@ -22,6 +22,11 @@ const NON_INPUT_BLOCKS = new Set([
   'metrics','chart','spacer','divider','html_embed',
 ])
 const LANDING_BLOCKS = new Set([
+  // 'button' É bloco de landing: uma página de conteúdo com um botão próprio
+  // (ex.: "Acessar o site") já tem a ação que quem montou escolheu. Sem ele
+  // nesta lista, a página não era reconhecida como "só conteúdo" e o renderer
+  // acrescentava um "Próximo →" que ninguém pediu — foi o defeito relatado.
+  'button',
   'hero','testimonials','features','faq','countdown','heading','text_block','image','video','audio',
   'pricing','alert','notification','loading','level','checklist','before_after','carousel',
   'metrics','chart','spacer','divider','html_embed',
