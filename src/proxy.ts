@@ -6,6 +6,8 @@ const PUBLIC_PREFIXES = [
   '/api/webhooks',
   '/api/funnels',
   '/api/queue/process',
+  // Cron do Gestor de Tráfego: chamado sem sessão, protegido por CRON_SECRET.
+  '/api/trafego/sync',
   '/api/agents/meetings/remind',
   '/privacidade',
   '/api/track',
