@@ -32,6 +32,8 @@ export interface LinhaInsightRoas {
   impressions?: number | null
   clicks?: number | null
   link_clicks?: number | null
+  ctr?: number | null
+  frequency?: number | null
 }
 
 export interface LinhaVendaRoas {
@@ -55,6 +57,9 @@ export interface LinhaRoas {
   roas: number | null
   /** Custo por venda; null sem venda. */
   cpaCents: number | null
+  /** Média ponderada por impressão — média simples de dias distorce. */
+  ctrMedio: number | null
+  frequenciaMedia: number | null
 }
 
 export interface ResumoRoas {
@@ -103,6 +108,9 @@ export function agregarRoas(
   nomes: Map<string, string> = new Map(),
 ): ResumoRoas {
   const linhas = new Map<string, LinhaRoas>()
+  // Somatórios ponderados por impressão: CTR e frequência são taxas, e média
+  // simples entre dias faz um dia de 10 impressões pesar como um de 100 mil.
+  const pesos = new Map<string, { ctr: number; freq: number; imp: number }>()
 
   const pegar = (id: string): LinhaRoas => {
     let l = linhas.get(id)
@@ -111,6 +119,7 @@ export function agregarRoas(
         externalId: id, nome: nomes.get(id) ?? null,
         gastoCents: 0, receitaCents: 0, estornadoCents: 0,
         vendas: 0, impressoes: 0, cliques: 0, roas: null, cpaCents: null,
+        ctrMedio: null, frequenciaMedia: null,
       }
       linhas.set(id, l)
     }
@@ -123,8 +132,16 @@ export function agregarRoas(
     if (!id) continue
     const l = pegar(id)
     l.gastoCents += i.spend_cents ?? 0
-    l.impressoes += Number(i.impressions ?? 0)
+    const imp = Number(i.impressions ?? 0)
+    l.impressoes += imp
     l.cliques += Number(i.link_clicks ?? i.clicks ?? 0)
+    if (imp > 0) {
+      const p = pesos.get(id) ?? { ctr: 0, freq: 0, imp: 0 }
+      p.ctr += (i.ctr ?? 0) * imp
+      p.freq += (i.frequency ?? 0) * imp
+      p.imp += imp
+      pesos.set(id, p)
+    }
   }
 
   const semAtribuicao = { vendas: 0, receitaCents: 0 }
@@ -149,6 +166,9 @@ export function agregarRoas(
   for (const l of lista) {
     l.roas = divide(l.receitaCents, l.gastoCents)
     l.cpaCents = l.vendas > 0 ? Math.round(l.gastoCents / l.vendas) : null
+    const p = pesos.get(l.externalId)
+    l.ctrMedio = p && p.imp > 0 ? Math.round((p.ctr / p.imp) * 100) / 100 : null
+    l.frequenciaMedia = p && p.imp > 0 ? Math.round((p.freq / p.imp) * 100) / 100 : null
   }
   // Maior gasto primeiro: é onde o dinheiro está sendo decidido.
   lista.sort((a, b) => b.gastoCents - a.gastoCents)
@@ -204,7 +224,7 @@ export async function calcularRoasReal(
 ): Promise<{ resumo: ResumoRoas | null; indisponivel: boolean }> {
   const respInsights = await admin
     .from('ad_insights')
-    .select('level, external_id, spend_cents, impressions, clicks, link_clicks')
+    .select('level, external_id, spend_cents, impressions, clicks, link_clicks, ctr, frequency')
     .eq('tenant_id', tenantId)
     .eq('level', nivel)
     .gte('date', periodo.desde)
@@ -217,7 +237,7 @@ export async function calcularRoasReal(
 
   const insights = await lerTudo<LinhaInsightRoas>((de, ate) => admin
     .from('ad_insights')
-    .select('level, external_id, spend_cents, impressions, clicks, link_clicks')
+    .select('level, external_id, spend_cents, impressions, clicks, link_clicks, ctr, frequency')
     .eq('tenant_id', tenantId)
     .eq('level', nivel)
     .gte('date', periodo.desde)

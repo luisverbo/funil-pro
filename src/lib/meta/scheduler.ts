@@ -105,7 +105,7 @@ export interface ResultadoRodada {
   insights: number
   /** true quando o orçamento acabou antes de as contas vencidas terminarem. */
   incompleto: boolean
-  detalhes: { contaId: string; ok: boolean; erro?: string; tipoErro?: string }[]
+  detalhes: { contaId: string; tenantId: string; ok: boolean; erro?: string; tipoErro?: string }[]
 }
 
 /**
@@ -155,6 +155,7 @@ export async function sincronizarPendentes(
     else r.falhas++
     r.detalhes.push({
       contaId: conta.id ?? conta.externalId,
+      tenantId: conta.tenantId,
       ok: res.ok,
       ...(res.erro ? { erro: res.erro } : {}),
       ...(res.tipoErro ? { tipoErro: res.tipoErro } : {}),
