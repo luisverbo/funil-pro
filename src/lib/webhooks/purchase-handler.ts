@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { extrairIdExterno, registrarVenda, statusDoEvento } from '@/lib/sales/record-sale'
 
 interface AbandonedCartData {
   tenantId: string
@@ -43,6 +44,7 @@ export async function handleAbandonedCart(data: AbandonedCartData): Promise<{ le
     const funnelId = matchingBlock?.funnel_id ?? null
 
     if (!funnelId) {
+      // Carrinho abandonado sem funil correspondente: só registro, sem venda.
       await admin.from('orphan_purchases').insert({
         tenant_id: data.tenantId,
         platform: data.platform,
@@ -176,6 +178,24 @@ export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handl
       return { handled: true }
     }
 
+    // Órfã: sem lead, mas a venda EXISTE e precisa contar no faturamento.
+    // Fica sem atribuição — é o retrato honesto do que aconteceu.
+    await registrarVenda(admin, {
+      tenantId: data.tenantId,
+      leadId: null,
+      platform: data.platform,
+      externalId: extrairIdExterno(data.platform, data.rawPayload, {
+        email: data.buyerEmail,
+        revenueCents: data.revenueCents,
+        productName: data.productName,
+      }),
+      status: statusDoEvento(data.eventType),
+      revenueCents: data.revenueCents,
+      productName: data.productName,
+      buyerEmail: data.buyerEmail,
+      buyerPhone: data.buyerPhone,
+    })
+
     await admin.from('orphan_purchases').insert({
       tenant_id: data.tenantId,
       platform: data.platform,
@@ -188,6 +208,25 @@ export async function handlePurchaseWebhook(data: PurchaseData): Promise<{ handl
     })
     return { handled: false }
   }
+
+  // A venda também vira ENTIDADE (`sales`), com a atribuição congelada no
+  // instante da compra e dedupe pela transação da plataforma. O lead_event
+  // continua sendo gravado: é dele que o motor do funil depende.
+  await registrarVenda(admin, {
+    tenantId: data.tenantId,
+    leadId: lead.id,
+    platform: data.platform,
+    externalId: extrairIdExterno(data.platform, data.rawPayload, {
+      email: data.buyerEmail,
+      revenueCents: data.revenueCents,
+      productName: data.productName,
+    }),
+    status: statusDoEvento(data.eventType),
+    revenueCents: data.revenueCents,
+    productName: data.productName,
+    buyerEmail: data.buyerEmail,
+    buyerPhone: data.buyerPhone,
+  })
 
   await admin.from('lead_events').insert({
     tenant_id: data.tenantId,
