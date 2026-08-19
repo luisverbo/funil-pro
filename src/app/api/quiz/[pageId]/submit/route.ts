@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { lerParametros } from '@/lib/tracking/params'
+import { ipDaRequisicao, salvarOrigemDoLead } from '@/lib/tracking/save-source'
 import { processJob } from '@/lib/queue/processor'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ pageId: string }> }) {
@@ -7,11 +9,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const body = await request.json()
-    const { answers, leadData, result_profile, funnel_id } = body as {
+    const { answers, leadData, result_profile, funnel_id, tracking } = body as {
       answers: Record<string, unknown>
       leadData: { name?: string; email?: string; phone?: string }
       result_profile: string | null
       funnel_id: string | null
+      // Origem capturada no navegador (UTMs, fbclid, referrer). Só é usada
+      // para RASTREAMENTO — nada aqui decide tenant, página ou funil.
+      tracking?: Record<string, string>
     }
 
     const admin = createAdminClient()
@@ -74,6 +79,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           metadata: answers,
         }).select('id').single()
         leadId = newLead?.id ?? null
+
+        // Quem entrava por quiz nascia SEM origem: `lead_sources` nunca era
+        // gravado neste caminho. Sem isso, nenhuma venda vinda de quiz podia
+        // ser atribuída a um anúncio.
+        if (leadId) {
+          await salvarOrigemDoLead(admin, {
+            leadId,
+            params: lerParametros(tracking ?? {}),
+            ip: ipDaRequisicao(request.headers),
+            userAgent: request.headers.get('user-agent'),
+          })
+        }
       }
     }
 

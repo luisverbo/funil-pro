@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ipDaRequisicao, salvarOrigemDoLead } from '@/lib/tracking/save-source'
 import { enrollInFunnel } from '@/lib/agents/chat'
 
 // Captura de lead das páginas do editor (Craft). Tenant SEMPRE derivado da página
@@ -59,18 +60,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pag
       }).select('id').single()
       if (error) return NextResponse.json({ error: 'erro ao salvar' }, { status: 500 })
       leadId = created.id
-      // origem imutável — só na criação
-      await admin.from('lead_sources').insert({
-        lead_id: leadId,
-        utm_source: utm.utm_source ?? null,
-        utm_campaign: utm.utm_campaign ?? null,
-        utm_campaign_id: utm.utm_campaign_id ?? null,
-        utm_adset_id: utm.utm_adset_id ?? null,
-        utm_ad_id: utm.utm_ad_id ?? null,
-        utm_content: utm.utm_content ?? null,
-        referrer_url: String(body.referrer ?? '').slice(0, 500) || null,
-        landing_url: String(body.landing_url ?? '').slice(0, 500) || null,
-      }).then(() => {}, () => {})
+      // Origem imutável — só na criação. Gravador único (src/lib/tracking):
+      // guarda também utm_medium, utm_term, fbclid, IP e user agent.
+      await salvarOrigemDoLead(admin, {
+        leadId: leadId as string,
+        params: {
+          ...utm,
+          referrer_url: String(body.referrer ?? '').slice(0, 500) || undefined,
+          landing_url: String(body.landing_url ?? '').slice(0, 500) || undefined,
+        },
+        ip: ipDaRequisicao(req.headers),
+        userAgent: req.headers.get('user-agent'),
+      })
     }
 
     await admin.from('lead_events').insert({

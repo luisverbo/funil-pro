@@ -15,9 +15,24 @@ export default function LinksDrawer({ funnelId, onClose, entryType = 'link_utm' 
   const [copied, setCopied] = useState<string | null>(null)
 
   const captureUrl = `${APP_URL}/p/${funnelId}`
-  const metaUrl = `${APP_URL}/p/${funnelId}?utm_source=meta&utm_campaign={{campaign.id}}&utm_content={{ad.id}}`
+  // As macros do Meta precisam cair nos campos que a ATRIBUIÇÃO lê. Antes,
+  // `{{ad.id}}` ia para `utm_content` e `utm_ad_id` ficava vazio — enquanto a
+  // sincronização de métricas consulta exatamente `utm_ad_id`. Resultado: o
+  // link gerado pelo próprio sistema nunca fechava a conta de nenhum anúncio.
+  const macrosMeta = [
+    'utm_source=meta',
+    'utm_medium=paid_social',
+    'utm_campaign={{campaign.name}}',
+    'utm_campaign_id={{campaign.id}}',
+    'utm_adset_id={{adset.id}}',
+    'utm_ad_id={{ad.id}}',
+    'utm_content={{ad.name}}',
+    'utm_term={{placement}}',
+  ].join('&')
+
+  const metaUrl = `${APP_URL}/p/${funnelId}?${macrosMeta}`
   const apiUrl = `${APP_URL}/api/funnels/${funnelId}/activate`
-  const utmUrl = `${APP_URL}/f/${funnelId}?utm_source=meta&utm_campaign={{campaign.id}}&utm_content={{ad.id}}`
+  const utmUrl = `${APP_URL}/f/${funnelId}?${macrosMeta}`
 
   const links = entryType === 'form'
     ? [

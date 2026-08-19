@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { QuizData, QuizBlock, BlockOption, BlockConfig, CarouselItem, ChartDatum } from '@/app/actions/quiz-v2'
 import { resolveTheme } from '@/lib/quiz/theme'
+import { capturarOrigem } from '@/lib/tracking/params'
 
 interface Props {
   data: QuizData
@@ -681,6 +682,9 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           result_profile: rb.config.title ?? null,
           funnel_id: rb.config.funnel_id ?? null,
           tenantId,
+          // Origem do PRIMEIRO toque (UTMs, fbclid). Sobrevive à navegação
+          // entre páginas do quiz — antes se perdia na primeira troca.
+          tracking: capturarOrigem(),
         }),
       })
     } catch { /* continue */ }

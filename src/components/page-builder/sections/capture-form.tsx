@@ -1,5 +1,7 @@
 'use client'
 
+import { capturarOrigem } from '@/lib/tracking/params'
+
 import { useNode, useEditor } from '@craftjs/core'
 import React, { useState } from 'react'
 import { usePageTracking } from '@/app/pg/[slug]/craft-viewer'
@@ -18,6 +20,11 @@ interface CaptureFormProps {
   redirectUrl?: string
   successTitle?: string
   successMessage?: string
+}
+
+/** Registro antigo de UTM, mantido só para quem já estava navegando. */
+function legadoUtm(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem('funil_utm') ?? '{}') as Record<string, string> } catch { return {} }
 }
 
 export const CaptureForm = ({
@@ -58,13 +65,11 @@ export const CaptureForm = ({
     }
     setSubmitting(true)
     try {
-      // UTM da URL atual (ou capturada na entrada da página)
-      let utm: Record<string, string> = {}
-      try { utm = JSON.parse(localStorage.getItem('funil_utm') ?? '{}') } catch {}
-      const sp = new URLSearchParams(window.location.search)
-      for (const k of ['utm_source', 'utm_campaign', 'utm_campaign_id', 'utm_adset_id', 'utm_ad_id', 'utm_content']) {
-        const v = sp.get(k); if (v) utm[k] = v
-      }
+      // Origem do PRIMEIRO toque: sobrevive à navegação entre páginas e inclui
+      // fbclid, utm_medium e utm_term — que a lista antiga não carregava.
+      // O registro legado (`funil_utm`) ainda é lido para não perder quem já
+      // estava navegando quando esta versão subiu.
+      const utm: Record<string, string> = { ...legadoUtm(), ...capturarOrigem() } as Record<string, string>
       const res = await fetch(`/api/pages/${pageId}/capture`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
