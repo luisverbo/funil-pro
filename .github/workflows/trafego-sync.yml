@@ -1,0 +1,51 @@
+# ============================================================================
+# Cron do Gestor de Tráfego — leitura recorrente das contas de anúncio
+# ----------------------------------------------------------------------------
+# Por que aqui e não no Vercel: o plano Hobby só permite UM cron por dia, e uma
+# leitura por dia deixa o painel mostrando ontem. O GitHub Actions roda de hora
+# em hora sem custo.
+#
+# Nenhum `uses:` — mesma decisão do deploy redundante: sem action externa para
+# baixar, não há o que falhar no provisionamento do job.
+#
+# Nenhum segredo novo: CRON_SECRET já existe no repositório (usado pelo
+# deploy.yml). Se estiver vazio, a chamada ainda passa enquanto
+# CRON_AUTH_ENFORCE não for "true" — que é o modo atual, de compatibilidade.
+# ============================================================================
+name: Sincronizacao de trafego (Meta)
+
+on:
+  schedule:
+    # De hora em hora, no minuto 17 — fora do minuto cheio, onde todo mundo
+    # agenda e a fila do GitHub atrasa.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+# Uma rodada por vez: duas execuções simultâneas leriam as mesmas contas e
+# queimariam cota da Meta à toa.
+concurrency:
+  group: trafego-sync
+  cancel-in-progress: false
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar o endpoint de sincronizacao
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SYNC_URL: https://funil-pro.vercel.app/api/trafego/sync
+        run: |
+          set -uo pipefail
+          codigo=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
+            --max-time 300 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${SYNC_URL}")
+          echo "HTTP ${codigo}"
+          # O corpo nunca contém token: a rota devolve só contagens.
+          cat /tmp/resp.json || true
+          echo
+          if [ "${codigo}" != "200" ]; then
+            echo "::error::a sincronizacao respondeu ${codigo}"
+            exit 1
+          fi
