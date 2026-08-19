@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CRON_UNAUTHORIZED_BODY, evaluateCronAuth, logCronAuth } from '@/lib/security/cron-auth'
 import { sincronizarPendentes } from '@/lib/meta/scheduler'
+import { diagnosticarTenants } from '@/lib/trafego/diagnose-run'
 
 // Fluid Compute: o mesmo teto usado pela geração de imagem do Content Studio.
 export const maxDuration = 300
@@ -34,12 +35,20 @@ async function executar(request: Request) {
 
   try {
     const r = await sincronizarPendentes(admin)
+
+    // Diagnóstico depois da leitura, e SÓ para quem acabou de sincronizar:
+    // analisar conta que não atualizou produziria alerta sobre dado velho.
+    const diagnosticos = await diagnosticarTenants(
+      admin,
+      [...new Set(r.detalhes.filter(d => d.ok).map(d => d.tenantId))],
+    )
+
     if (r.falhas > 0) {
       // Falha some se não for registrada: o painel mostraria dado velho como
       // se fosse atual. O motivo já fica gravado em `ad_accounts.last_error`.
       console.warn(`[trafego/sync] ${r.falhas} conta(s) falharam:`, JSON.stringify(r.detalhes))
     }
-    return NextResponse.json({ success: true, ...r })
+    return NextResponse.json({ success: true, ...r, diagnosticos })
   } catch (err) {
     console.error('[trafego/sync] erro na rodada:', String(err))
     return NextResponse.json(
