@@ -225,6 +225,23 @@ test('12) a rota é autenticada e o cron chama de hora em hora', () => {
   assert.ok(wf.includes('concurrency:'), 'duas rodadas simultâneas queimariam cota da Meta')
 })
 
+test('13) o painel nunca mostra zero como resposta', () => {
+  const p = ler('src/app/(dashboard)/trafego/page.tsx')
+  // Cada estado que produziria uma tela zerada precisa ter texto próprio.
+  assert.ok(p.includes('migrationPendente'), 'banco sem as tabelas viraria painel zerado')
+  assert.ok(p.includes('nuncaSincronizou'), 'antes da 1ª leitura, zero pareceria "não vendeu"')
+  assert.ok(p.includes('contas.length === 0'), 'sem conta conectada não é o mesmo que sem venda')
+  assert.ok(/token_expired/.test(p), 'token caído congelaria o painel em silêncio')
+  assert.ok(p.includes('semAtr'), 'venda sem origem sumiria e inflaria o ROAS do resto')
+  // ROAS sem gasto não pode virar 0.00x nem Infinity na tela.
+  assert.ok(p.includes("=== null ? '—'"), 'ROAS indefinido apareceria como número')
+})
+
+test('14) o painel entra na navegação', () => {
+  const s = ler('src/components/layout/sidebar.tsx')
+  assert.ok(s.includes("href: '/trafego'"), 'a tela existiria sem caminho até ela')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 async function main() {
