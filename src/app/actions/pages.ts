@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { camposHerdados, remapearPerguntasV1, type PerguntaV1 } from '@/lib/pages/duplicate'
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -173,6 +174,13 @@ export async function deletePage(id: string) {
   revalidatePath('/pages')
 }
 
+/**
+ * Duplica a página com TUDO o que ela tem.
+ *
+ * O que copiar e como reapontar os vínculos do quiz vive em
+ * `@/lib/pages/duplicate` — regra pura, com teste próprio. Aqui fica só o
+ * acesso ao banco.
+ */
 export async function duplicatePage(id: string) {
   const supabase = await getSupabase()
   const tenant_id = await getTenantId(supabase)
@@ -183,20 +191,39 @@ export async function duplicatePage(id: string) {
     .eq('tenant_id', tenant_id)
     .single()
   if (!original) throw new Error('Page not found')
+
   const { data: copy, error } = await supabase
     .from('pages')
     .insert({
+      ...camposHerdados(original),
       tenant_id,
       title: `Cópia de ${original.title}`,
-      page_type: original.page_type,
-      funnel_id: original.funnel_id,
       slug: generateSlug(`copia-${original.title}`),
-      craft_json: original.craft_json,
       published: false,
     })
     .select()
     .single()
   if (error) throw new Error(error.message)
+
+  // Quiz no formato antigo guarda as perguntas noutra tabela. Falhar aqui não
+  // pode desfazer a duplicação que já deu certo — por isso não lança.
+  try {
+    const { data: perguntas } = await supabase
+      .from('interactive_questions')
+      .select('*')
+      .eq('page_id', id)
+      .order('order_index')
+
+    if (perguntas && perguntas.length > 0) {
+      const linhas = remapearPerguntasV1(
+        perguntas as PerguntaV1[], copy.id, tenant_id, () => crypto.randomUUID(),
+      )
+      await supabase.from('interactive_questions').insert(linhas)
+    }
+  } catch (err) {
+    console.error('[duplicatePage] perguntas v1 não copiadas:', String(err))
+  }
+
   revalidatePath('/pages')
   return copy
 }
