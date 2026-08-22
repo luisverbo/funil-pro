@@ -12,6 +12,9 @@ const PUBLIC_PREFIXES = [
   '/privacidade',
   '/api/track',
   '/api/quiz',
+  // Painel compartilhado de leads: público, protegido por token + senha.
+  '/api/quiz-share',
+  '/ql/',
   '/api/pages/',
   '/api/agents/public/',
   '/p/',

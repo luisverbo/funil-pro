@@ -3,6 +3,17 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  estruturaComContagens, metricasDoQuiz, montarTabelaLeads,
+  type ExportLeadResumo, type ExportPageInfo, type ExportPublico, type ExportTable,
+  type OpcoesTabela, type QuizMetricas,
+} from '@/lib/quiz/leads-core'
+import {
+  gerarTokenShare, hashSenhaShare, validarSenhaShare,
+} from '@/lib/quiz/share'
+
+// Tipos re-exportados para os componentes que já importam daqui.
+export type { ExportLeadResumo, ExportPageInfo, ExportPublico, ExportTable, QuizMetricas }
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -439,47 +450,8 @@ export async function getQuizStats(quizId: string): Promise<
 }
 
 // ─── Exportação com SELEÇÃO de páginas ──────────────────────────────────────
-
-export interface ExportColumn {
-  chave: string
-  rotulo: string
-  /** Quantos leads responderam esta coluna — 0 = coluna vazia. */
-  respostas: number
-}
-export interface ExportPageInfo { id: string; titulo: string; colunas: ExportColumn[] }
-/**
- * QUEM entra no arquivo. O padrão continua `todos` — quem já usava a
- * exportação não vê comportamento mudar sem pedir.
- *
- *   todos         -> tudo o que existe, inclusive quem só visitou
- *   com_resposta  -> respondeu ao menos UMA das colunas escolhidas
- *   completos     -> respondeu TODAS as colunas escolhidas
- *   concluidos    -> chegou ao fim do quiz (status do lead)
- */
-export type ExportPublico = 'todos' | 'com_resposta' | 'completos' | 'concluidos'
-
-export interface ExportTable {
-  titulo: string
-  colunas: ExportColumn[]
-  linhas: string[][]
-  /** IDs dos leads, NA MESMA ORDEM das linhas — é o que permite marcar quem
-   *  já foi exportado e não repetir na próxima vez. */
-  ids: string[]
-}
-
-/**
- * Estrutura exportável do quiz: quais páginas existem e quais colunas cada uma
- * gera. Serve para a tela montar a seleção SEM adivinhar nada — os rótulos são
- * os mesmos que o construtor mostra.
- */
-export interface ExportLeadResumo {
-  /** Id do lead — permite pular quem já foi exportado. */
-  id: string
-  /** Chaves (block ids) que este lead respondeu. */
-  chaves: string[]
-  /** Chegou ao fim do quiz. */
-  concluido: boolean
-}
+// O miolo mora em src/lib/quiz/leads-core.ts, compartilhado com o painel
+// público (/ql/[token]). Aqui só se decide QUEM pode chamar.
 
 export async function getExportStructure(
   quizId: string,
@@ -489,231 +461,148 @@ export async function getExportStructure(
     if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
       return { error: 'Quiz não encontrado ou sem permissão' }
     }
-    const admin = createAdminClient()
-    const { data: pageRow } = await admin.from('pages').select('quiz_data').eq('id', quizId).single()
-    const paginas = estruturaDePaginas(pageRow?.quiz_data)
-
-    // Contagem REAL por coluna: é o que permite à tela dizer "sem respostas"
-    // em vez de a pessoa descobrir só depois de abrir o arquivo.
-    const eventos = await buscarEventos<{ lead_id: string; block_id: string | null; event_type: string; value: unknown }>(
-      (de, ate) => admin
-        .from('quiz_lead_events')
-        .select('lead_id, block_id, event_type, value')
-        .eq('quiz_id', quizId)
-        .in('event_type', ['choice_selected', 'text_entered'])
-        .order('created_at', { ascending: true })
-        .range(de, ate),
-    )
-
-    const respondentes: Record<string, Set<string>> = {}
-    for (const ev of eventos) {
-      const blockId = ev.block_id as string | null
-      if (!blockId) continue
-      const v = ev.value as { selected?: unknown; text?: unknown } | null
-      const cru = v?.selected ?? v?.text
-      const valor = Array.isArray(cru) ? (cru as unknown[]).join('') : String(cru ?? '').trim()
-      if (!valor) continue
-      ;(respondentes[blockId] = respondentes[blockId] ?? new Set()).add(ev.lead_id as string)
-    }
-    for (const pagina of paginas) {
-      for (const coluna of pagina.colunas) {
-        coluna.respostas = respondentes[coluna.chave]?.size ?? 0
-      }
-    }
-
-    // Resumo por lead — permite à tela contar, NA HORA, quantos leads cada
-    // filtro pega para a seleção de colunas atual. Sem isto a pessoa só
-    // descobria que o filtro zerou depois de clicar em baixar.
-    const porLead: Record<string, Set<string>> = {}
-    for (const [chave, conjunto] of Object.entries(respondentes)) {
-      for (const leadId of conjunto) (porLead[leadId] = porLead[leadId] ?? new Set()).add(chave)
-    }
-    const { data: leadsRows } = await admin
-      .from('quiz_leads').select('id, status')
-      .eq('quiz_id', quizId).eq('tenant_id', tenantId)
-
-    const leads: ExportLeadResumo[] = (leadsRows ?? []).map(l => ({
-      id: String(l.id),
-      chaves: [...(porLead[l.id as string] ?? [])],
-      concluido: l.status === 'completed',
-    }))
-
-    return { paginas, leads }
+    return await estruturaComContagens(createAdminClient(), quizId, tenantId)
   } catch (err) {
     return { error: String(err) }
   }
 }
 
-/** Blocos que produzem RESPOSTA — os únicos que viram coluna. */
-const BLOCOS_DE_RESPOSTA = new Set([
-  'single_choice', 'multi_choice', 'yes_no', 'scale', 'video_answer',
-  'field_text', 'field_email', 'field_phone', 'field_number', 'field_textarea',
-  'field_date', 'field_height', 'field_weight',
-])
-
-type QuizDataBruto = {
-  pages?: { id: string; title?: string; blocks?: { id: string; type: string; config?: { label?: string; question?: string } }[] }[]
-} | null
-
-function estruturaDePaginas(quizData: unknown): ExportPageInfo[] {
-  const dados = (quizData ?? null) as QuizDataBruto
-  return (dados?.pages ?? []).map((p, i) => ({
-    id: p.id,
-    titulo: p.title || `Página ${i + 1}`,
-    colunas: (p.blocks ?? [])
-      .filter(b => BLOCOS_DE_RESPOSTA.has(b.type))
-      .map(b => ({
-        chave: b.id,
-        rotulo: (b.config?.label || b.config?.question || 'Pergunta').replace(/\s+/g, ' ').trim().slice(0, 60),
-        respostas: 0,   // preenchido por getExportStructure
-      })),
-  }))
-}
-
-/** Colunas de identificação/origem do lead — opcionais na exportação. */
-const COLUNAS_LEAD: ExportColumn[] = [
-  { chave: 'lead:id', rotulo: 'ID', respostas: 0 },
-  { chave: 'lead:data', rotulo: 'Data', respostas: 0 },
-  { chave: 'lead:status', rotulo: 'Status', respostas: 0 },
-  { chave: 'lead:nome', rotulo: 'Nome', respostas: 0 },
-  { chave: 'lead:email', rotulo: 'E-mail', respostas: 0 },
-  { chave: 'lead:telefone', rotulo: 'Telefone', respostas: 0 },
-  { chave: 'lead:score', rotulo: 'Score', respostas: 0 },
-  { chave: 'lead:resultado', rotulo: 'Resultado', respostas: 0 },
-  { chave: 'lead:utm_source', rotulo: 'Origem', respostas: 0 },
-  { chave: 'lead:utm_campaign', rotulo: 'Campanha', respostas: 0 },
-]
-
-/**
- * Tabela pronta para exportar, com as PÁGINAS ESCOLHIDAS.
- *
- * O que muda em relação ao CSV anterior: (1) a pessoa escolhe as páginas, em
- * vez de baixar tudo; (2) cada PERGUNTA vira uma coluna própria — antes a
- * página inteira virava uma coluna só e as respostas se sobrescreviam, então
- * uma página com nome, telefone e e-mail exportava um único valor.
- *
- * A montagem é toda no servidor: o cliente só formata em CSV ou PDF.
- */
 export async function exportLeadsTable(
   quizId: string,
-  opts?: {
-    pageIds?: string[]
-    columnKeys?: string[]
-    incluirLead?: boolean
-    publico?: ExportPublico
-    /** Leads a PULAR — normalmente os já exportados numa rodada anterior. */
-    excluirIds?: string[]
-  },
+  opts?: OpcoesTabela,
 ): Promise<ExportTable | { error: string }> {
   try {
     const tenantId = await getTenantId()
     if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
       return { error: 'Quiz não encontrado ou sem permissão' }
     }
+    return await montarTabelaLeads(createAdminClient(), quizId, tenantId, opts)
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Métricas completas do painel: cartões + funil página a página. */
+export async function getQuizMetricas(
+  quizId: string,
+): Promise<QuizMetricas | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    return await metricasDoQuiz(createAdminClient(), quizId, tenantId)
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// ─── Link compartilhado com senha ───────────────────────────────────────────
+// Para quem capta lead para clientes: gera /ql/<token> + senha, e o cliente
+// abre o painel DAQUELE quiz sem conta. A senha nunca é guardada em claro
+// (scrypt) e nunca volta para a tela — se for esquecida, gera-se outra.
+
+function shareTabelaAusente(erro: { code?: string; message?: string } | null): boolean {
+  if (!erro) return false
+  if (erro.code === '42P01' || erro.code === 'PGRST205') return true
+  return /relation .* does not exist|could not find the table/i.test(erro.message ?? '')
+}
+
+const SHARE_MIGRATION_MSG =
+  'Aplique a migration 20260822000000_quiz_share_links.sql no Supabase para ativar o compartilhamento'
+
+export interface QuizShareInfo {
+  ativo: boolean
+  token: string | null
+  acessos: number
+  ultimoAcesso: string | null
+}
+
+export async function getQuizShare(
+  quizId: string,
+): Promise<QuizShareInfo | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
     const admin = createAdminClient()
-
-    const { data: pageRow } = await admin
-      .from('pages').select('title, quiz_data').eq('id', quizId).single()
-    const todas = estruturaDePaginas(pageRow?.quiz_data)
-
-    // Lista branca em DOIS níveis: página e coluna. Chave que não pertence a
-    // este quiz simplesmente não vira coluna — o cliente não escolhe conteúdo,
-    // só filtra o que o servidor já conhece.
-    const escolhidas = Array.isArray(opts?.pageIds) && opts!.pageIds!.length > 0
-      ? todas.filter(p => opts!.pageIds!.includes(p.id))
-      : todas
-
-    const filtroColunas = Array.isArray(opts?.columnKeys) ? new Set(opts!.columnKeys!) : null
-    const querColuna = (chave: string) => !filtroColunas || filtroColunas.has(chave)
-
-    const incluirLead = opts?.incluirLead !== false
-    const paginasComColuna = escolhidas.filter(p => p.colunas.some(c => querColuna(c.chave)))
-    const colunas: ExportColumn[] = [
-      ...(incluirLead ? COLUNAS_LEAD.filter(c => querColuna(c.chave)) : []),
-      ...paginasComColuna.flatMap(p => p.colunas.filter(c => querColuna(c.chave)).map(c => ({
-        chave: c.chave,
-        rotulo: paginasComColuna.length > 1 ? `${p.titulo} — ${c.rotulo}` : c.rotulo,
-        respostas: c.respostas,
-      }))),
-    ]
-    if (colunas.length === 0) return { error: 'Selecione ao menos uma página com perguntas' }
-
-    const { data: leads, error } = await admin
-      .from('quiz_leads').select('*')
-      .eq('quiz_id', quizId).eq('tenant_id', tenantId)
-      .order('started_at', { ascending: false })
-    if (error) return { error: error.message }
-
-    // Respostas por BLOCO (não por página): é o que permite uma coluna por
-    // pergunta. O evento mais recente do bloco vence — o lead pode corrigir.
-    const eventos = await buscarEventos<{ lead_id: string; block_id: string | null; event_type: string; value: unknown }>(
-      (de, ate) => admin
-        .from('quiz_lead_events')
-        .select('lead_id, block_id, event_type, value, created_at')
-        .eq('quiz_id', quizId)
-        .in('event_type', ['choice_selected', 'text_entered'])
-        .order('created_at', { ascending: true })
-        .range(de, ate),
-    )
-
-    const porLead: Record<string, Record<string, string>> = {}
-    for (const ev of eventos) {
-      const blockId = ev.block_id as string | null
-      if (!blockId) continue
-      const v = ev.value as { selected?: unknown; text?: unknown } | null
-      const cru = v?.selected ?? v?.text
-      const valor = Array.isArray(cru) ? (cru as unknown[]).join(' | ') : String(cru ?? '').trim()
-      if (!valor) continue
-      const lid = ev.lead_id as string
-      porLead[lid] = porLead[lid] || {}
-      porLead[lid][blockId] = valor
+    const { data, error } = await admin
+      .from('quiz_share_links')
+      .select('token, enabled, access_count, last_access_at')
+      .eq('page_id', quizId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    if (error) {
+      return shareTabelaAusente(error) ? { error: SHARE_MIGRATION_MSG } : { error: error.message }
     }
-
-    // Colunas de PERGUNTA escolhidas — são elas que definem "respondeu".
-    // As colunas de lead (nome, data, origem) não contam: elas existem mesmo
-    // para quem só abriu o formulário e foi embora.
-    const chavesPergunta = colunas.map(c => c.chave).filter(c => !c.startsWith('lead:'))
-    const publico: ExportPublico = opts?.publico ?? 'todos'
-
-    const jaExportados = new Set(Array.isArray(opts?.excluirIds) ? opts!.excluirIds! : [])
-
-    const entra = (lead: { id: string; status?: string | null }): boolean => {
-      if (jaExportados.has(lead.id)) return false
-      if (publico === 'todos') return true
-      if (publico === 'concluidos') return lead.status === 'completed'
-      const respostas = porLead[lead.id] ?? {}
-      const respondidas = chavesPergunta.filter(c => (respostas[c] ?? '').trim().length > 0).length
-      if (publico === 'com_resposta') return respondidas > 0
-      // completos: respondeu TODAS as perguntas escolhidas.
-      return chavesPergunta.length > 0 && respondidas === chavesPergunta.length
-    }
-
-    const selecionados = (leads ?? []).filter(entra)
-    const linhas = selecionados.map(lead => {
-      const respostas = porLead[lead.id] ?? {}
-      return colunas.map(c => {
-        switch (c.chave) {
-          case 'lead:id': return String(lead.id).slice(0, 8)
-          case 'lead:data': return lead.started_at ? new Date(lead.started_at).toLocaleString('pt-BR') : ''
-          case 'lead:status': return String(lead.status ?? '')
-          case 'lead:nome': return String(lead.name ?? '')
-          case 'lead:email': return String(lead.email ?? '')
-          case 'lead:telefone': return String(lead.phone ?? '')
-          case 'lead:score': return String(lead.score ?? 0)
-          case 'lead:resultado': return String(lead.result_shown ?? '')
-          case 'lead:utm_source': return String(lead.utm_source ?? '')
-          case 'lead:utm_campaign': return String(lead.utm_campaign ?? '')
-          default: return respostas[c.chave] ?? ''
-        }
-      })
-    })
-
+    if (!data || !data.enabled) return { ativo: false, token: null, acessos: 0, ultimoAcesso: null }
     return {
-      titulo: String(pageRow?.title ?? 'Quiz'),
-      colunas,
-      linhas,
-      ids: selecionados.map(l => String(l.id)),
+      ativo: true,
+      token: String(data.token),
+      acessos: Number(data.access_count ?? 0),
+      ultimoAcesso: data.last_access_at ?? null,
     }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/**
+ * Ativa (ou renova) o compartilhamento com uma senha nova.
+ *
+ * Sempre gera token novo: trocar a senha invalida o link antigo junto — quem
+ * tinha o link velho não continua entrando com a senha velha.
+ */
+export async function ativarQuizShare(
+  quizId: string,
+  senha: string,
+): Promise<{ token: string } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const invalida = validarSenhaShare(senha)
+    if (invalida) return { error: invalida }
+
+    const admin = createAdminClient()
+    const token = gerarTokenShare()
+    const { error } = await admin
+      .from('quiz_share_links')
+      .upsert({
+        tenant_id: tenantId,
+        page_id: quizId,
+        token,
+        password_hash: hashSenhaShare(senha.trim()),
+        enabled: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'page_id' })
+    if (error) {
+      return shareTabelaAusente(error) ? { error: SHARE_MIGRATION_MSG } : { error: error.message }
+    }
+    return { token }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function desativarQuizShare(
+  quizId: string,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('quiz_share_links')
+      .update({ enabled: false, updated_at: new Date().toISOString() })
+      .eq('page_id', quizId)
+      .eq('tenant_id', tenantId)
+    if (error && !shareTabelaAusente(error)) return { error: error.message }
+    return { ok: true }
   } catch (err) {
     return { error: String(err) }
   }
