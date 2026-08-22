@@ -1,10 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
-  getQuizLeads, getQuizStats, resetQuizLeads, getAnswerBreakdown,
+  getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
+  getQuizShare, ativarQuizShare, desativarQuizShare,
+  type QuizMetricas, type QuizShareInfo,
   getExportStructure, exportLeadsTable,
-  type ExportPageInfo, type ExportTable, type ExportPublico, type ExportLeadResumo,
+  type ExportPageInfo, type ExportPublico, type ExportLeadResumo,
   type QuizLead, type QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
 import type { QuizPage } from '@/app/actions/quiz-v2'
@@ -379,35 +382,196 @@ function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; p
 }
 
 // ─── Stats Bar ────────────────────────────────────────────────────────────────
+// Renovado: além dos totais, mostra hoje/7 dias, leads com contato e o funil
+// página a página — onde as pessoas param. Os dados vêm de getQuizMetricas
+// (o MESMO cálculo do painel compartilhado, para os dois nunca divergirem).
 
-function StatsBar({ quizId, pages }: { quizId: string; pages: QuizPage[] }) {
-  const [stats, setStats] = useState<{
-    total: number; completed: number; inProgress: number; completionRate: number; topDropOffPageId: string | null
-  } | null>(null)
+function StatsBar({ quizId }: { quizId: string }) {
+  const [m, setM] = useState<QuizMetricas | null>(null)
 
   useEffect(() => {
-    getQuizStats(quizId).then(r => {
-      if ('total' in r) setStats(r)
+    getQuizMetricas(quizId).then(r => {
+      if ('total' in r) setM(r)
     })
   }, [quizId])
 
-  if (!stats) return <div className="h-20 bg-white rounded-xl border border-gray-200 animate-pulse mb-4" />
+  if (!m) return <div className="h-24 bg-white rounded-2xl border border-gray-200 animate-pulse mb-4" />
 
-  const dropOffPage = stats.topDropOffPageId ? pages.find(p => p.id === stats.topDropOffPageId) : null
+  const cards = [
+    { label: 'Leads', value: m.total, nota: `${m.hoje} hoje`, grad: 'from-slate-700 to-slate-900' },
+    { label: 'Concluíram', value: m.completed, nota: `${m.completionRate}% de conclusão`, grad: 'from-emerald-500 to-teal-600' },
+    { label: 'Com contato', value: m.comContato, nota: 'e-mail ou telefone', grad: 'from-indigo-500 to-violet-600' },
+    { label: 'Últimos 7 dias', value: m.ultimos7d, nota: 'novos leads', grad: 'from-amber-500 to-orange-600' },
+  ]
 
   return (
-    <div className="grid grid-cols-4 gap-3 mb-4">
-      {[
-        { label: 'Total iniciado', value: stats.total, color: 'text-gray-900' },
-        { label: 'Concluíram', value: stats.completed, color: 'text-emerald-600' },
-        { label: 'Taxa de conclusão', value: `${Math.round(stats.completionRate)}%`, color: 'text-indigo-600' },
-        { label: 'Maior abandono', value: dropOffPage ? dropOffPage.title : '—', color: 'text-amber-600' },
-      ].map(s => (
-        <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider mb-1">{s.label}</p>
-          <p className={`text-xl font-bold ${s.color} truncate`}>{s.value}</p>
+    <div className="mb-4 space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {cards.map(c => (
+          <div key={c.label} className={`rounded-2xl bg-gradient-to-br ${c.grad} px-4 py-3 text-white shadow-sm`}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider opacity-75">{c.label}</p>
+            <p className="text-2xl font-bold leading-tight">{c.value}</p>
+            <p className="text-[11px] opacity-75">{c.nota}</p>
+          </div>
+        ))}
+      </div>
+
+      {m.funil.length > 1 && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <p className="text-xs font-semibold text-gray-700 mb-2">Onde as pessoas param</p>
+          <div className="space-y-1.5">
+            {m.funil.map(e => (
+              <div key={e.pageId} className="flex items-center gap-2">
+                <span className="w-36 truncate text-[11px] text-gray-500" title={e.titulo}>{e.titulo}</span>
+                <div className="h-4 flex-1 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
+                    style={{ width: `${Math.max(e.pct, e.leads > 0 ? 3 : 0)}%` }}
+                  />
+                </div>
+                <span className="w-16 text-right text-[11px] tabular-nums text-gray-500">{e.leads} · {e.pct}%</span>
+              </div>
+            ))}
+          </div>
         </div>
-      ))}
+      )}
+    </div>
+  )
+}
+
+// ─── Compartilhar painel (link com senha) ────────────────────────────────────
+// Para quem capta lead para clientes: gera /ql/<token> + senha, e o cliente
+// abre este mesmo painel sem conta. A senha não volta do servidor — se for
+// esquecida, gera-se um link novo (o antigo morre junto).
+
+function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }) {
+  const [info, setInfo] = useState<QuizShareInfo | null>(null)
+  const [senha, setSenha] = useState('')
+  const [novoToken, setNovoToken] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+
+  useEffect(() => {
+    getQuizShare(quizId).then(r => {
+      if ('error' in r) setErro(r.error)
+      else setInfo(r)
+    })
+  }, [quizId])
+
+  const urlDe = (token: string) =>
+    `${window.location.origin}/ql/${token}`
+
+  async function gerar() {
+    setSalvando(true); setErro(null)
+    const r = await ativarQuizShare(quizId, senha)
+    setSalvando(false)
+    if ('error' in r) { setErro(r.error); return }
+    setNovoToken(r.token)
+    setInfo({ ativo: true, token: r.token, acessos: 0, ultimoAcesso: null })
+  }
+
+  async function desativar() {
+    setSalvando(true)
+    await desativarQuizShare(quizId)
+    setSalvando(false)
+    setInfo({ ativo: false, token: null, acessos: 0, ultimoAcesso: null })
+    setNovoToken(null)
+  }
+
+  function copiar(texto: string) {
+    void navigator.clipboard.writeText(texto).then(() => {
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 1500)
+    })
+  }
+
+  const tokenAtivo = novoToken ?? (info?.ativo ? info.token : null)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Compartilhar painel</h3>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Envie o link e a senha para seu cliente ver e baixar os leads deste quiz — sem conta.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        {erro && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+
+        {tokenAtivo ? (
+          <div className="mt-4 space-y-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Link ativo</p>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="flex-1 truncate rounded bg-white px-2 py-1.5 text-xs text-gray-700">{urlDe(tokenAtivo)}</code>
+                <button
+                  onClick={() => copiar(urlDe(tokenAtivo))}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  {copiado ? 'Copiado!' : 'Copiar'}
+                </button>
+              </div>
+              {info && info.acessos > 0 && (
+                <p className="mt-2 text-[11px] text-emerald-700">
+                  {info.acessos} acesso(s){info.ultimoAcesso ? ` · último ${new Date(info.ultimoAcesso).toLocaleString('pt-BR')}` : ''}
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              A senha não fica salva aqui — anote e envie junto com o link. Esqueceu? Gere um
+              link novo abaixo (o antigo para de funcionar na hora).
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={senha}
+                onChange={e => setSenha(e.target.value)}
+                placeholder="Nova senha (gera link novo)"
+                className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              />
+              <button
+                onClick={gerar}
+                disabled={salvando || senha.trim().length === 0}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                Renovar
+              </button>
+            </div>
+            <button
+              onClick={desativar}
+              disabled={salvando}
+              className="w-full rounded-xl border border-red-200 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              Desativar link
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <input
+              type="text"
+              value={senha}
+              onChange={e => setSenha(e.target.value)}
+              placeholder="Crie uma senha para o cliente"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none"
+            />
+            <button
+              onClick={gerar}
+              disabled={salvando || senha.trim().length === 0}
+              className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {salvando ? 'Gerando…' : 'Gerar link com senha'}
+            </button>
+            <p className="text-xs text-gray-500">
+              Quem tiver o link e a senha vê SOMENTE os leads deste quiz — nada além disso.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -435,6 +599,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   const [erroExport, setErroExport] = useState<string | null>(null)
   const [leadsExport, setLeadsExport] = useState<ExportLeadResumo[]>([])
   const [searchInput, setSearchInput] = useState('')
+  const [shareOpen, setShareOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -498,53 +663,6 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     return base.filter(l => perguntas.every(k => l.chaves.includes(k))).length
   }
 
-  /** CSV com escape correto (vírgula, aspas e quebra de linha no valor). */
-  function montarCsv(t: ExportTable): string {
-    const esc = (v: string) =>
-      /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
-    return [t.colunas.map(c => esc(c.rotulo)), ...t.linhas.map(l => l.map(esc))]
-      .map(l => l.join(','))
-      .join('\n')
-  }
-
-  /**
-   * PDF sem dependência nova: uma janela de impressão com a tabela pronta e o
-   * diálogo do navegador em "Salvar como PDF". Todo o conteúdo é escapado —
-   * resposta de lead nunca vira HTML.
-   */
-  function abrirPdf(t: ExportTable) {
-    const esc = (v: string) => v
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-    const cab = t.colunas.map(c => `<th>${esc(c.rotulo)}</th>`).join('')
-    const corpo = t.linhas
-      .map(l => `<tr>${l.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`)
-      .join('')
-    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>${esc(t.titulo)} — respostas</title>
-<style>
-  @page { size: A4 landscape; margin: 12mm; }
-  body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #111827; }
-  h1 { font-size: 16px; margin: 0 0 2px; }
-  p.sub { font-size: 11px; color: #6b7280; margin: 0 0 12px; }
-  table { border-collapse: collapse; width: 100%; font-size: 10px; }
-  th, td { border: 1px solid #d1d5db; padding: 4px 6px; text-align: left; vertical-align: top; }
-  th { background: #f3f4f6; font-weight: 700; }
-  tr { break-inside: avoid; }
-  thead { display: table-header-group; }
-</style></head><body>
-<h1>${esc(t.titulo)}</h1>
-<p class="sub">${t.linhas.length} ${t.linhas.length === 1 ? 'resposta' : 'respostas'} · gerado em ${esc(new Date().toLocaleString('pt-BR'))}</p>
-<table><thead><tr>${cab}</tr></thead><tbody>${corpo}</tbody></table>
-</body></html>`
-    const janela = window.open('', '_blank')
-    if (!janela) { setErroExport('O navegador bloqueou a janela. Libere pop-ups para gerar o PDF.'); return }
-    janela.document.write(html)
-    janela.document.close()
-    janela.focus()
-    setTimeout(() => janela.print(), 400)
-  }
-
   async function handleExport(formato: 'csv' | 'pdf') {
     setExporting(true)
     setErroExport(null)
@@ -567,14 +685,10 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       }
 
       if (formato === 'csv') {
-        // BOM: o Excel em pt-BR precisa dele para não quebrar acentuação.
-        const blob = new Blob(['\uFEFF' + montarCsv(t)], { type: 'text/csv;charset=utf-8;' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url; a.download = `quiz-${quizId.slice(0, 6)}.csv`; a.click()
-        URL.revokeObjectURL(url)
+        baixarCsv(t, `quiz-${quizId.slice(0, 6)}`)
       } else {
-        abrirPdf(t)
+        const bloqueado = abrirPdf(t)
+        if (bloqueado) { setErroExport(bloqueado); return }
       }
       // Só depois de gerar o arquivo: quem entrou nele passa a contar como
       // exportado, e pode ser pulado na próxima rodada.
@@ -673,6 +787,16 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
             </button>
           )}
 
+          {/* Compartilhar: link com senha para o cliente baixar os leads. */}
+          <button onClick={() => setShareOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
+            </svg>
+            Compartilhar
+          </button>
+
           {/* Export — abre a SELEÇÃO; nada é baixado antes da escolha. */}
           <button onClick={abrirExport} disabled={exporting}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
@@ -693,7 +817,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       {/* Body */}
       <div className="flex-1 overflow-auto p-6">
         {/* Stats */}
-        <StatsBar quizId={quizId} pages={pages} />
+        <StatsBar quizId={quizId} />
 
         {/* Resumo agregado de respostas */}
         <AnswerBreakdown quizId={quizId} pages={pages} refreshKey={total} />
@@ -1046,6 +1170,8 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       )}
 
       {/* Detail panel */}
+      {shareOpen && <ShareModal quizId={quizId} onClose={() => setShareOpen(false)} />}
+
       {selectedLead && (
         <>
           <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setSelectedLead(null)} />

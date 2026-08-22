@@ -23,8 +23,15 @@ import { join } from 'node:path'
 
 const RAIZ = process.cwd()
 const ler = (rel: string) => readFileSync(join(RAIZ, rel), 'utf8')
+// O miolo da exportação mudou de endereço quando o painel compartilhado
+// (/ql/[token]) nasceu: as regras foram para src/lib/quiz/leads-core.ts e a
+// geração de arquivo para export-files.ts, AMBOS usados pelos dois painéis.
+// As leituras abaixo concatenam action+core (e view+arquivos) para que cada
+// teste continue conferindo o comportamento onde quer que ele more.
 const ACTION = 'src/app/actions/quiz-leads.ts'
+const CORE = 'src/lib/quiz/leads-core.ts'
 const VIEW = 'src/components/quiz/quiz-leads-view.tsx'
+const ARQUIVOS = 'src/components/quiz/export-files.ts'
 
 const results: { name: string; ok: boolean; error?: string }[] = []
 const suite: { name: string; fn: () => void | Promise<void> }[] = []
@@ -41,9 +48,9 @@ function corpoDe(fonte: string, assinatura: string): string {
 // ════════════════════════════════════════════════════════════════════════════
 
 test('1) a exportação aceita a escolha de páginas — e valida por lista branca', () => {
-  const a = ler(ACTION)
+  const a = ler(ACTION) + '\n' + ler(CORE)
   assert.ok(a.includes('export async function exportLeadsTable'), 'sem action de exportação seletiva')
-  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  const corpo = corpoDe(a, 'export async function montarTabelaLeads')
   // Só páginas que EXISTEM no quiz entram, na ordem do quiz.
   assert.ok(corpo.includes("todas.filter(p => opts!.pageIds!.includes(p.id))"),
     'a seleção não é filtrada contra as páginas reais do quiz')
@@ -52,7 +59,7 @@ test('1) a exportação aceita a escolha de páginas — e valida por lista bran
 })
 
 test('2) cada PERGUNTA vira uma coluna (antes a página inteira virava uma só)', () => {
-  const a = ler(ACTION)
+  const a = ler(ACTION) + '\n' + ler(CORE)
   assert.ok(a.includes('const BLOCOS_DE_RESPOSTA'), 'sem lista de blocos que geram coluna')
   const estrutura = corpoDe(a, 'function estruturaDePaginas')
   assert.ok(estrutura.includes('BLOCOS_DE_RESPOSTA.has(b.type)'), 'blocos sem resposta virariam coluna')
@@ -60,16 +67,19 @@ test('2) cada PERGUNTA vira uma coluna (antes a página inteira virava uma só)'
     'a coluna não usa o rótulo que o construtor mostra')
 
   // As respostas são indexadas por BLOCO, não por página.
-  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  const corpo = corpoDe(a, 'export async function montarTabelaLeads')
   assert.ok(corpo.includes('porLead[lid][blockId] = valor'), 'resposta ainda indexada por página')
-  assert.ok(corpo.includes("select('lead_id, block_id, event_type, value, created_at')"),
+  // A consulta mora num helper ÚNICO (lerEventosDeResposta), usado pela
+  // estrutura e pela tabela — as duas leituras nunca divergem.
+  assert.ok(a.includes("select('lead_id, block_id, event_type, value, created_at')"),
     'a consulta não traz o bloco de origem')
-  assert.ok(corpo.includes("order('created_at', { ascending: true })"),
+  assert.ok(a.includes("order('created_at', { ascending: true })"),
     'sem ordem, a resposta que vence é imprevisível')
+  assert.ok(corpo.includes('lerEventosDeResposta('), 'a tabela não usa o helper único')
 })
 
 test('3) tenant conferido antes de qualquer leitura', () => {
-  const a = ler(ACTION)
+  const a = ler(ACTION) + '\n' + ler(CORE)
   for (const fn of ['export async function exportLeadsTable', 'export async function getExportStructure']) {
     const corpo = corpoDe(a, fn)
     assert.ok(corpo.includes('verifyTenantOwnsQuiz(quizId, tenantId)'), `${fn} sem checagem de dono`)
@@ -79,11 +89,11 @@ test('3) tenant conferido antes de qualquer leitura', () => {
 })
 
 test('4) seleção vazia não gera arquivo mudo', () => {
-  const a = ler(ACTION)
-  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  const a = ler(ACTION) + '\n' + ler(CORE)
+  const corpo = corpoDe(a, 'export async function montarTabelaLeads')
   assert.ok(corpo.includes("if (colunas.length === 0) return { error:"),
     'exportaria um arquivo sem nenhuma coluna')
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   // A mensagem depende do filtro escolhido, mas o aviso de "nada a exportar"
   // precisa existir nos dois casos.
   assert.ok(v.includes("'Nenhuma resposta para exportar.'"), 'não avisa quando não há linhas')
@@ -91,7 +101,7 @@ test('4) seleção vazia não gera arquivo mudo', () => {
 })
 
 test('5) CSV: escape correto e BOM para o Excel em português', () => {
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   const corpo = corpoDe(v, 'function montarCsv')
   assert.ok(/\[",\\n\]/.test(corpo), 'escape do CSV não cobre vírgula, aspas e quebra de linha')
   assert.ok(corpo.includes('v.replace(/"/g, \'""\')'), 'aspas internas não são duplicadas')
@@ -99,7 +109,7 @@ test('5) CSV: escape correto e BOM para o Excel em português', () => {
 })
 
 test('6) PDF: sem dependência nova e com TODO valor escapado', () => {
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   const corpo = corpoDe(v, 'function abrirPdf')
   // Resposta de lead é dado de terceiro: nunca pode virar HTML.
   assert.ok(corpo.includes("replace(/&/g, '&amp;')") && corpo.includes("replace(/</g, '&lt;')"),
@@ -118,7 +128,7 @@ test('6) PDF: sem dependência nova e com TODO valor escapado', () => {
 })
 
 test('7) a tela oferece os dois formatos e a escolha de páginas', () => {
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   assert.ok(v.includes("handleExport('csv')") && v.includes("handleExport('pdf')"),
     'faltou um dos formatos')
   assert.ok(v.includes('Baixar CSV') && v.includes('Gerar PDF'), 'rótulos dos botões ausentes')
@@ -130,8 +140,8 @@ test('7) a tela oferece os dois formatos e a escolha de páginas', () => {
 })
 
 test('8) seleção por COLUNA: cada pergunta pode entrar ou sair sozinha', () => {
-  const a = ler(ACTION)
-  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  const a = ler(ACTION) + '\n' + ler(CORE)
+  const corpo = corpoDe(a, 'export async function montarTabelaLeads')
   assert.ok(corpo.includes('const filtroColunas'), 'sem filtro por coluna')
   assert.ok(corpo.includes('const querColuna = (chave: string) => !filtroColunas || filtroColunas.has(chave)'),
     'o filtro de coluna não é lista branca')
@@ -141,19 +151,19 @@ test('8) seleção por COLUNA: cada pergunta pode entrar ou sair sozinha', () =>
   assert.ok(corpo.includes('const paginasComColuna = escolhidas.filter'),
     'página sem coluna escolhida ainda contaria para o rótulo')
 
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   assert.ok(v.includes('columnKeys: [...colunasSel]'), 'a tela não envia a seleção por coluna')
 })
 
 test('9) colunas VAZIAS são visíveis e desmarcáveis em um clique', () => {
-  const a = ler(ACTION)
-  const estrutura = corpoDe(a, 'export async function getExportStructure')
+  const a = ler(ACTION) + '\n' + ler(CORE)
+  const estrutura = corpoDe(a, 'export async function estruturaComContagens')
   assert.ok(estrutura.includes('respondentes[coluna.chave]?.size ?? 0'),
     'a contagem por coluna não é calculada')
   // Conta LEADS distintos, não eventos: quem corrigiu a resposta conta uma vez.
-  assert.ok(estrutura.includes('.add(ev.lead_id as string)'), 'contaria eventos em vez de leads')
+  assert.ok(estrutura.includes('.add(ev.lead_id)'), 'contaria eventos em vez de leads')
 
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   assert.ok(v.includes("{c.respostas === 0 ? 'sem respostas' : `${c.respostas} resp.`}"),
     'a tela não mostra quais colunas estão vazias')
   assert.ok(v.includes('Desmarcar vazias'), 'sem atalho para tirar as colunas vazias')
@@ -162,7 +172,7 @@ test('9) colunas VAZIAS são visíveis e desmarcáveis em um clique', () => {
 })
 
 test('10) ocultar coluna é reversível, visível e não apaga dado', () => {
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   assert.ok(v.includes('function useColunasOcultas'), 'sem controle de colunas ocultas')
   const hook = corpoDe(v, 'function useColunasOcultas')
   // Preferência de leitura: navegador, por quiz — nunca o banco.
@@ -184,10 +194,10 @@ test('10) ocultar coluna é reversível, visível e não apaga dado', () => {
 })
 
 test('11) filtro de QUEM entra: quem só visitou pode ficar de fora', () => {
-  const a = ler(ACTION)
+  const a = ler(ACTION) + '\n' + ler(CORE)
   assert.ok(a.includes("export type ExportPublico = 'todos' | 'com_resposta' | 'completos' | 'concluidos'"),
     'sem os quatro públicos de exportação')
-  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  const corpo = corpoDe(a, 'export async function montarTabelaLeads')
 
   // O padrão continua 'todos': quem já usava não vê o comportamento mudar.
   assert.ok(corpo.includes("const publico: ExportPublico = opts?.publico ?? 'todos'"),
@@ -217,7 +227,7 @@ test('11) filtro de QUEM entra: quem só visitou pode ficar de fora', () => {
 })
 
 test('12) a tela oferece as quatro opções e explica cada uma', () => {
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   assert.ok(v.includes('Quem entra'), 'sem seção de público')
   for (const rotulo of ['Todos os leads', 'Só quem respondeu algo', 'Só quem preencheu tudo', 'Só quem concluiu o quiz']) {
     assert.ok(v.includes(rotulo), `faltou a opção "${rotulo}"`)
@@ -244,15 +254,15 @@ test('13) CAUSA RAIZ: quiz sem página de Resultado também registra conclusão'
 })
 
 test('14) a tela mostra QUANTOS leads cada filtro pega, antes de baixar', () => {
-  const a = ler(ACTION)
+  const a = ler(ACTION) + '\n' + ler(CORE)
   assert.ok(a.includes('export interface ExportLeadResumo'), 'servidor não devolve resumo por lead')
-  const estrutura = corpoDe(a, 'export async function getExportStructure')
+  const estrutura = corpoDe(a, 'export async function estruturaComContagens')
   assert.ok(estrutura.includes('const leads: ExportLeadResumo[]'), 'sem resumo de leads')
   assert.ok(estrutura.includes("concluido: l.status === 'completed'"), 'resumo sem a marca de concluído')
   // Só id e status saem do banco para esta contagem — nada de dado pessoal.
   assert.ok(estrutura.includes(".select('id, status')"), 'o resumo carrega mais dado do que precisa')
 
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   const fn = corpoDe(v, 'function contarPublico')
   assert.ok(fn.includes("if (alvo === 'todos') return base.length"), 'sem contagem de todos')
   // A base da contagem respeita o "pular exportados" — o número mostrado é o
@@ -267,7 +277,7 @@ test('14) a tela mostra QUANTOS leads cada filtro pega, antes de baixar', () => 
 })
 
 test('15) CAUSA RAIZ: eventos são lidos em PÁGINAS (o corte de 1000 sumia com leads)', () => {
-  const a = ler(ACTION)
+  const a = ler(ACTION) + '\n' + ler(CORE)
   assert.ok(a.includes('async function buscarEventos'), 'sem leitura paginada de eventos')
   const fn = corpoDe(a, 'async function buscarEventos')
   assert.ok(fn.includes('const TAMANHO = 1000'), 'a página não bate com o teto do PostgREST')
@@ -286,8 +296,8 @@ test('15) CAUSA RAIZ: eventos são lidos em PÁGINAS (o corte de 1000 sumia com 
 })
 
 test('16) não repetir quem já foi exportado', () => {
-  const a = ler(ACTION)
-  const corpo = corpoDe(a, 'export async function exportLeadsTable')
+  const a = ler(ACTION) + '\n' + ler(CORE)
+  const corpo = corpoDe(a, 'export async function montarTabelaLeads')
   assert.ok(corpo.includes('const jaExportados = new Set'), 'sem lista de exclusão')
   assert.ok(corpo.includes('if (jaExportados.has(lead.id)) return false'),
     'lead já exportado continuaria entrando')
@@ -297,7 +307,7 @@ test('16) não repetir quem já foi exportado', () => {
   // A tabela devolve os ids para a tela poder marcar quem saiu.
   assert.ok(a.includes('/** IDs dos leads, NA MESMA ORDEM das linhas'), 'ExportTable sem ids')
 
-  const v = ler(VIEW)
+  const v = ler(VIEW) + '\n' + ler(ARQUIVOS)
   assert.ok(v.includes('function useJaExportados'), 'sem histórico de exportados')
   const hook = corpoDe(v, 'function useJaExportados')
   assert.ok(hook.includes('`quiz-leads-exportados:${quizId}`'), 'histórico não é por quiz')
