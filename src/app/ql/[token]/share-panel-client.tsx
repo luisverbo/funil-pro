@@ -54,6 +54,10 @@ export default function SharePanelClient({ token }: { token: string }) {
   const [erro, setErro] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [verificandoSessao, setVerificandoSessao] = useState(true)
+  // Filtro por dia: chips rápidos + data específica. Vale para a lista E para
+  // o arquivo baixado — baixar coisa diferente do que se vê é armadilha.
+  const [periodo, setPeriodo] = useState<'tudo' | 'hoje' | '7d' | '30d'>('tudo')
+  const [diaEspecifico, setDiaEspecifico] = useState('')
 
   const api = async (payload: Record<string, unknown>) => {
     const resp = await fetch(`/api/portal/${token}`, {
@@ -135,12 +139,45 @@ export default function SharePanelClient({ token }: { token: string }) {
   const leadsFiltrados = useMemo(() => {
     if (!dados) return []
     const q = busca.trim().toLowerCase()
-    if (!q) return dados.leads
-    return dados.leads.filter(l =>
-      (l.nome ?? '').toLowerCase().includes(q)
-      || (l.email ?? '').toLowerCase().includes(q)
-      || (l.telefone ?? '').includes(q))
-  }, [dados, busca])
+    const agora = new Date()
+    const inicioHoje = new Date(agora); inicioHoje.setHours(0, 0, 0, 0)
+
+    return dados.leads.filter(l => {
+      if (q && !((l.nome ?? '').toLowerCase().includes(q)
+        || (l.email ?? '').toLowerCase().includes(q)
+        || (l.telefone ?? '').includes(q))) return false
+
+      if (diaEspecifico) {
+        if (!l.data) return false
+        const d = new Date(l.data)
+        const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        return local === diaEspecifico
+      }
+      if (periodo === 'tudo') return true
+      if (!l.data) return false
+      const t = new Date(l.data).getTime()
+      if (periodo === 'hoje') return t >= inicioHoje.getTime()
+      const dias = periodo === '7d' ? 7 : 30
+      return t >= agora.getTime() - dias * 86_400_000
+    })
+  }, [dados, busca, periodo, diaEspecifico])
+
+  /** Respostas do lead nas páginas que o dono liberou — vem da MESMA tabela
+   *  do CSV, então tela e arquivo mostram o mesmo conteúdo. */
+  const respostasDoLead = useMemo(() => {
+    const mapa = new Map<string, { rotulo: string; valor: string }[]>()
+    const t = dados?.tabela
+    if (!t) return mapa
+    t.ids.forEach((id, i) => {
+      const linha = t.linhas[i] ?? []
+      const itens = t.colunas
+        .map((c, j) => ({ c, v: (linha[j] ?? '').trim() }))
+        .filter(({ c, v }) => !c.chave.startsWith('lead:') && v.length > 0)
+        .map(({ c, v }) => ({ rotulo: c.rotulo, valor: v }))
+      if (itens.length > 0) mapa.set(id, itens)
+    })
+    return mapa
+  }, [dados])
 
   /** CSV/PDF com a coluna "Situação" que o cliente marcou — os ids da tabela
    *  vêm NA MESMA ORDEM das linhas, então o merge é por posição. */
@@ -148,10 +185,14 @@ export default function SharePanelClient({ token }: { token: string }) {
     if (!dados?.tabela) return null
     const t = dados.tabela
     const statusDe = new Map(dados.leads.map(l => [l.id, STATUS_PORTAL_META[(l.statusCliente as StatusPortal)]?.rotulo ?? l.statusCliente]))
+    // O arquivo sai com o MESMO filtro da tela (busca + dia).
+    const visiveis = new Set(leadsFiltrados.map(l => l.id))
+    const indices = t.ids.map((id, i) => ({ id, i })).filter(x => visiveis.has(x.id))
     return {
       ...t,
       colunas: [...t.colunas, { chave: 'portal:status', rotulo: 'Situação', respostas: 0 }],
-      linhas: t.linhas.map((l, i) => [...l, statusDe.get(t.ids[i]) ?? 'Novo']),
+      linhas: indices.map(({ id, i }) => [...(t.linhas[i] ?? []), statusDe.get(id) ?? 'Novo']),
+      ids: indices.map(x => x.id),
     }
   }
 
@@ -305,9 +346,33 @@ export default function SharePanelClient({ token }: { token: string }) {
 
         {/* Barra: busca + downloads */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <input type="search" value={busca} onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar por nome, e-mail ou telefone…"
-            className="w-full max-w-xs rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none" />
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="search" value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar por nome, e-mail ou telefone…"
+              className="w-full max-w-xs rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none" />
+            <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {([['tudo', 'Tudo'], ['hoje', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias']] as const).map(([v, r]) => (
+                <button key={v}
+                  onClick={() => { setPeriodo(v); setDiaEspecifico('') }}
+                  className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                    periodo === v && !diaEspecifico ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+                  }`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input type="date" value={diaEspecifico}
+              onChange={e => setDiaEspecifico(e.target.value)}
+              title="Ver um dia específico"
+              className={`rounded-xl border bg-white px-3 py-2 text-xs shadow-sm focus:outline-none ${
+                diaEspecifico ? 'border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500'
+              }`} />
+            {diaEspecifico && (
+              <button onClick={() => setDiaEspecifico('')} className="text-xs text-slate-400 hover:text-slate-600">
+                limpar dia
+              </button>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => { const t = tabelaComStatus(); if (t) baixarCsv(t, `leads-${dados?.quiz.titulo.slice(0, 20) ?? 'funil'}`) }}
@@ -364,6 +429,22 @@ export default function SharePanelClient({ token }: { token: string }) {
                       {l.data ? ` · ${new Date(l.data).toLocaleDateString('pt-BR')}` : ''}
                     </p>
                     {l.resultado && <p className="mt-0.5 text-xs text-indigo-600">Resultado: {l.resultado}</p>}
+
+                    {(respostasDoLead.get(l.id) ?? []).length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600">
+                          Ver respostas ({respostasDoLead.get(l.id)!.length})
+                        </summary>
+                        <div className="mt-2 grid gap-1.5 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+                          {respostasDoLead.get(l.id)!.map((r, i) => (
+                            <div key={i} className="min-w-0">
+                              <p className="truncate text-[11px] uppercase tracking-wide text-slate-400" title={r.rotulo}>{r.rotulo}</p>
+                              <p className="break-words text-sm text-slate-800">{r.valor}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                   </div>
 
                   {wa && (
