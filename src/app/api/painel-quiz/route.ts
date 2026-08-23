@@ -18,7 +18,7 @@ import { NextResponse } from 'next/server'
 import {
   getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads,
   getExportStructure, exportLeadsTable, getLeadDetail,
-  getPortalDoQuiz, ativarPortal, desativarPortal, listarQuizzesDoTenant,
+  getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
   listarInvestimentos, salvarInvestimento, excluirInvestimento,
 } from '@/app/actions/quiz-leads'
 import { saveQuizV2, publishQuizV2 } from '@/app/actions/quiz-v2'
@@ -30,7 +30,7 @@ export const maxDuration = 60
 const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads,
   getExportStructure, exportLeadsTable, getLeadDetail,
-  getPortalDoQuiz, ativarPortal, desativarPortal, listarQuizzesDoTenant,
+  getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
   listarInvestimentos, salvarInvestimento, excluirInvestimento,
   saveQuizV2, publishQuizV2,
 }

@@ -194,6 +194,20 @@ test('13) CSV/PDF são UMA implementação para os dois painéis', () => {
   assert.ok(!view.includes('function montarCsv'), 'a duplicata antiga voltou ao componente')
 })
 
+test('13b) editar o acesso NÃO troca o link nem a senha', () => {
+  const a = ler('src/app/actions/quiz-leads.ts')
+  const trecho = a.slice(a.indexOf('export async function atualizarPortalConfig'),
+    a.indexOf('export async function desativarPortal'))
+  assert.ok(trecho.length > 100, 'sem como editar um acesso já criado')
+  assert.ok(!trecho.includes('gerarTokenShare'), 'editar mataria o link que o cliente já tem')
+  assert.ok(!trecho.includes('password_hash'), 'editar mexeria na senha')
+  assert.ok(trecho.includes('permitidos.has(q.pageId)'), 'quiz de outro tenant entraria na edição')
+  // A tela oferece salvar sem senha — era o que fazia a escolha se perder.
+  const v = ler('src/components/quiz/quiz-leads-view.tsx')
+  assert.ok(v.includes('Salvar alterações (mesmo link e senha)'), 'sem salvar sem trocar a senha')
+  assert.ok(v.includes('atualizarPortalConfig'), 'o botão não chama a edição')
+})
+
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {
   // A regressão que isto trava: server action embute um id de build na
   // página; aba aberta durante um deploy chama um id que já não existe e

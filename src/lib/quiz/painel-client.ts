@@ -52,6 +52,7 @@ export const exportLeadsTable = op('exportLeadsTable')
 // Portal do cliente
 export const getPortalDoQuiz = op('getPortalDoQuiz')
 export const ativarPortal = op('ativarPortal')
+export const atualizarPortalConfig = op('atualizarPortalConfig')
 export const desativarPortal = op('desativarPortal')
 export const listarQuizzesDoTenant = op('listarQuizzesDoTenant')
 

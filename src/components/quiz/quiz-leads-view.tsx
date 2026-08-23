@@ -5,7 +5,7 @@ import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 // Funções via HTTP (imune ao id de build das server actions); tipos da action.
 import {
   getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
-  getPortalDoQuiz, ativarPortal, desativarPortal, listarQuizzesDoTenant,
+  getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
   listarInvestimentos, salvarInvestimento, excluirInvestimento,
   getExportStructure, exportLeadsTable,
 } from '@/lib/quiz/painel-client'
@@ -474,6 +474,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [salvo, setSalvo] = useState(false)
 
   useEffect(() => {
     Promise.all([getPortalDoQuiz(quizId), listarQuizzesDoTenant()]).then(([r, q]) => {
@@ -502,6 +503,22 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
       else novo.set(id, 'concluidos')
       return novo
     })
+  }
+
+  /** Edita o acesso JÁ CRIADO — link e senha continuam os mesmos. */
+  async function salvarConfig() {
+    if (!info?.portalId) return
+    setSalvando(true); setErro(null)
+    const r = await atualizarPortalConfig({
+      portalId: info.portalId,
+      nome,
+      quizzes: [...selecao].map(([pageId, publico]) => ({ pageId, publico })),
+      mostrarMetricas, mostrarFunil, permitirStatus,
+    })
+    setSalvando(false)
+    if ('error' in r) { setErro(r.error); return }
+    setSalvo(true)
+    setTimeout(() => setSalvo(false), 1800)
   }
 
   async function gerar() {
@@ -596,13 +613,22 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
                         {q.id === quizId && <span className="text-[10px] text-indigo-500">(este)</span>}
                       </label>
                       {marcado && (
-                        <select
-                          value={selecao.get(q.id)}
-                          onChange={e => setSelecao(prev => new Map(prev).set(q.id, e.target.value as PublicoPortal))}
-                          className="mt-1 ml-6 rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700"
-                        >
-                          {PUBLICO_OPCOES.map(o => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
-                        </select>
+                        <div className="mt-1.5 ml-6 flex flex-wrap gap-1">
+                          {PUBLICO_OPCOES.map(o => (
+                            <button
+                              key={o.valor}
+                              type="button"
+                              onClick={() => setSelecao(prev => new Map(prev).set(q.id, o.valor))}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                (selecao.get(q.id) ?? 'concluidos') === o.valor
+                                  ? 'bg-indigo-600 text-white'
+                                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              {o.rotulo}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   )
@@ -625,6 +651,13 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
                 Mostrar as etapas do funil (desligado = cliente não vê o caminho)
               </label>
             </div>
+
+            {tokenAtivo && (
+              <button onClick={salvarConfig} disabled={salvando || selecao.size === 0}
+                className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                {salvando ? 'Salvando…' : salvo ? '✓ Salvo!' : 'Salvar alterações (mesmo link e senha)'}
+              </button>
+            )}
 
             <div className="flex gap-2">
               <input type="text" value={senha} onChange={e => setSenha(e.target.value)}

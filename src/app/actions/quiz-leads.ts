@@ -690,6 +690,59 @@ export async function ativarPortal(
   }
 }
 
+/**
+ * Salva as CONFIGURAÇÕES do portal sem tocar no link nem na senha.
+ *
+ * Existia só o "renovar", que exige senha nova e gera token novo — então
+ * ajustar "o que o cliente vê" descartava a escolha se a senha não fosse
+ * digitada. Configuração e credencial são coisas diferentes: esta action
+ * mexe só na primeira.
+ */
+export async function atualizarPortalConfig(
+  entrada: Omit<AtivarPortalInput, 'senha'> & { portalId: string },
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!Array.isArray(entrada.quizzes) || entrada.quizzes.length === 0) {
+      return { error: 'Escolha ao menos um funil para o portal' }
+    }
+    const admin = createAdminClient()
+
+    const { data: portal } = await admin
+      .from('client_portals').select('id')
+      .eq('id', entrada.portalId).eq('tenant_id', tenantId).maybeSingle()
+    if (!portal) return { error: 'Portal não encontrado' }
+
+    const { data: paginas } = await admin
+      .from('pages').select('id').eq('tenant_id', tenantId)
+      .in('id', entrada.quizzes.map(q => q.pageId).slice(0, 100))
+    const permitidos = new Set((paginas ?? []).map(p => String(p.id)))
+    const quizzes = entrada.quizzes
+      .filter(q => permitidos.has(q.pageId))
+      .map(q => ({ pageId: q.pageId, publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos' as PublicoPortal }))
+    if (quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
+
+    const { error } = await admin.from('client_portals').update({
+      nome: entrada.nome.trim().slice(0, 80) || 'Cliente',
+      mostrar_metricas: Boolean(entrada.mostrarMetricas),
+      mostrar_funil: Boolean(entrada.mostrarFunil),
+      permitir_status: Boolean(entrada.permitirStatus),
+      updated_at: new Date().toISOString(),
+    }).eq('id', entrada.portalId).eq('tenant_id', tenantId)
+    if (error) return { error: error.message }
+
+    await admin.from('client_portal_quizzes').delete()
+      .eq('portal_id', entrada.portalId).eq('tenant_id', tenantId)
+    const { error: erroVinculo } = await admin.from('client_portal_quizzes').insert(
+      quizzes.map(q => ({ tenant_id: tenantId, portal_id: entrada.portalId, page_id: q.pageId, publico: q.publico })),
+    )
+    if (erroVinculo) return { error: erroVinculo.message }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
 export async function desativarPortal(portalId: string): Promise<{ ok: true } | { error: string }> {
   try {
     const tenantId = await getTenantId()
