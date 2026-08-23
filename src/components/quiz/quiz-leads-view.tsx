@@ -453,7 +453,10 @@ function StatsBar({ quizId }: { quizId: string }) {
 // esquecer = gerar link novo (o antigo morre junto).
 
 const PUBLICO_OPCOES: { valor: PublicoPortal; rotulo: string }[] = [
-  { valor: 'concluidos', rotulo: '🔥 Só quem concluiu (lead quente)' },
+  // O primeiro é o que resolve o funil real: quem deixou telefone/e-mail, tenha
+  // clicado no botão final ou não.
+  { valor: 'com_contato', rotulo: '🔥 Deixou contato (telefone/e-mail)' },
+  { valor: 'concluidos', rotulo: 'Só quem chegou à última página' },
   { valor: 'com_resposta', rotulo: 'Quem respondeu algo' },
   { valor: 'todos', rotulo: 'Todos (inclui quem só abriu)' },
 ]
@@ -465,7 +468,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
 
   const [nome, setNome] = useState('')
   const [senha, setSenha] = useState('')
-  const [selecao, setSelecao] = useState<Map<string, PublicoPortal>>(new Map([[quizId, 'concluidos']]))
+  const [selecao, setSelecao] = useState<Map<string, PublicoPortal>>(new Map([[quizId, 'com_contato']]))
   const [permitirStatus, setPermitirStatus] = useState(true)
   const [mostrarMetricas, setMostrarMetricas] = useState(true)
   const [mostrarFunil, setMostrarFunil] = useState(false)
@@ -500,7 +503,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
     setSelecao(prev => {
       const novo = new Map(prev)
       if (novo.has(id)) novo.delete(id)
-      else novo.set(id, 'concluidos')
+      else novo.set(id, 'com_contato')
       return novo
     })
   }
@@ -620,7 +623,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
                               type="button"
                               onClick={() => setSelecao(prev => new Map(prev).set(q.id, o.valor))}
                               className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                                (selecao.get(q.id) ?? 'concluidos') === o.valor
+                                (selecao.get(q.id) ?? 'com_contato') === o.valor
                                   ? 'bg-indigo-600 text-white'
                                   : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
                               }`}

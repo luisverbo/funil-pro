@@ -16,7 +16,7 @@
 // nada dela vai para URL, armazenamento do navegador ou cookie.
 // ============================================================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExportTable, QuizMetricas, LeadPortal } from '@/lib/quiz/leads-core'
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
@@ -53,11 +53,15 @@ export default function SharePanelClient({ token }: { token: string }) {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
+  const [verificandoSessao, setVerificandoSessao] = useState(true)
 
   const api = async (payload: Record<string, unknown>) => {
     const resp = await fetch(`/api/portal/${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // `credentials: same-origin` é o padrão, mas explicitar deixa claro que
+      // é o COOKIE de sessão que sustenta o portal depois do login.
+      credentials: 'same-origin',
       body: JSON.stringify(payload),
     })
     const json = await resp.json()
@@ -80,8 +84,7 @@ export default function SharePanelClient({ token }: { token: string }) {
   }
 
   const abrirQuiz = async (quizId: string, senhaUsar?: string) => {
-    const s = senhaUsar ?? senhaOk
-    if (!s) return
+    const s = senhaUsar ?? senhaOk ?? ''
     setQuizAtivo(quizId)
     setCarregando(true); setErro(null)
     try {
@@ -95,7 +98,7 @@ export default function SharePanelClient({ token }: { token: string }) {
   }
 
   const marcarStatus = async (leadId: string, status: StatusPortal) => {
-    if (!senhaOk || !dados) return
+    if (!dados) return
     // Otimista: a tela muda na hora; se o servidor recusar, volta.
     const anterior = dados
     setDados({
@@ -103,12 +106,31 @@ export default function SharePanelClient({ token }: { token: string }) {
       leads: dados.leads.map(l => l.id === leadId ? { ...l, statusCliente: status } : l),
     })
     try {
-      await api({ senha: senhaOk, acao: 'status', leadId, status })
+      await api({ senha: senhaOk ?? '', acao: 'status', leadId, status })
     } catch (e) {
       setDados(anterior)
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar o status')
     }
   }
+
+  // F5 não pode deslogar: a sessão vive num cookie assinado, então a
+  // primeira tentativa é SEM senha. Só quando ela é recusada a tela de senha
+  // aparece — e aí sem piscar "erro" para quem apenas chegou pelo link.
+  const tentouSessao = useRef(false)
+  useEffect(() => {
+    if (tentouSessao.current) return
+    tentouSessao.current = true
+    void (async () => {
+      try {
+        const r = (await api({ acao: 'abrir' })) as Abertura
+        setPortal(r)
+        if (r.quizzes.length > 0) void abrirQuiz(r.quizzes[0].id, '')
+      } catch {
+        setVerificandoSessao(false)   // sem sessão: pede a senha
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const leadsFiltrados = useMemo(() => {
     if (!dados) return []
@@ -134,6 +156,15 @@ export default function SharePanelClient({ token }: { token: string }) {
   }
 
   const m = dados?.metricas
+
+  // ── Conferindo a sessão ───────────────────────────────────────────────────
+  if (!portal && verificandoSessao) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+      </div>
+    )
+  }
 
   // ── Tela de senha ─────────────────────────────────────────────────────────
   if (!portal) {
@@ -320,6 +351,11 @@ export default function SharePanelClient({ token }: { token: string }) {
                       {l.quente && (
                         <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-600">
                           🔥 Quente
+                        </span>
+                      )}
+                      {l.concluiu && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                          ✓ concluiu
                         </span>
                       )}
                     </div>

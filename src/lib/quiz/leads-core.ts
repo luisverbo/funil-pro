@@ -16,6 +16,7 @@
 // ============================================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { temContato } from './portal'
 
 export interface ExportColumn {
   chave: string
@@ -162,6 +163,12 @@ export interface OpcoesTabela {
   incluirLead?: boolean
   publico?: ExportPublico
   excluirIds?: string[]
+  /**
+   * Restringe a EXATAMENTE estes leads. O portal usa isto para garantir que o
+   * arquivo baixado tenha as mesmas pessoas da tela — filtrar duas vezes por
+   * regras parecidas é como as duas listas divergem sem ninguém perceber.
+   */
+  apenasIds?: string[]
 }
 
 /**
@@ -222,8 +229,10 @@ export async function montarTabelaLeads(
   const chavesPergunta = colunas.map(c => c.chave).filter(c => !c.startsWith('lead:'))
   const publico: ExportPublico = opts?.publico ?? 'todos'
   const jaExportados = new Set(Array.isArray(opts?.excluirIds) ? opts!.excluirIds! : [])
+  const restrito = Array.isArray(opts?.apenasIds) ? new Set(opts!.apenasIds!) : null
 
   const entra = (lead: { id: string; status?: string | null }): boolean => {
+    if (restrito && !restrito.has(lead.id)) return false
     if (jaExportados.has(lead.id)) return false
     if (publico === 'todos') return true
     if (publico === 'concluidos') return lead.status === 'completed'
@@ -349,8 +358,15 @@ export interface LeadPortal {
   email: string | null
   telefone: string | null
   data: string | null
-  /** Concluiu o quiz — o "lead quente" que o portal destaca. */
+  /**
+   * Lead que dá para ATENDER: deixou telefone ou e-mail. É este que o portal
+   * marca com 🔥 — não "concluiu o quiz". Em funil que pede contato antes da
+   * última página, quem deixou o telefone e não clicou no botão final é o
+   * melhor lead que existe, e estava sendo escondido.
+   */
   quente: boolean
+  /** Chegou à última página do quiz — informação à parte, não o destaque. */
+  concluiu: boolean
   resultado: string | null
   score: number
 }
@@ -366,7 +382,7 @@ export async function leadsParaPortal(
   admin: SupabaseClient,
   quizId: string,
   tenantId: string,
-  publico: 'concluidos' | 'com_resposta' | 'todos',
+  publico: 'com_contato' | 'concluidos' | 'com_resposta' | 'todos',
 ): Promise<LeadPortal[]> {
   const { data: rows } = await admin
     .from('quiz_leads')
@@ -377,7 +393,9 @@ export async function leadsParaPortal(
     .range(0, 9_999)
 
   let leads = rows ?? []
-  if (publico === 'concluidos') {
+  if (publico === 'com_contato') {
+    leads = leads.filter(l => temContato({ email: l.email, phone: l.phone }))
+  } else if (publico === 'concluidos') {
     leads = leads.filter(l => l.status === 'completed')
   } else if (publico === 'com_resposta') {
     const { leads: resumos } = await estruturaComContagens(admin, quizId, tenantId)
@@ -391,7 +409,8 @@ export async function leadsParaPortal(
     email: l.email ?? null,
     telefone: l.phone ?? null,
     data: l.started_at ?? null,
-    quente: l.status === 'completed',
+    quente: temContato({ email: l.email, phone: l.phone }),
+    concluiu: l.status === 'completed',
     resultado: l.result_shown ?? null,
     score: Number(l.score ?? 0),
   }))
