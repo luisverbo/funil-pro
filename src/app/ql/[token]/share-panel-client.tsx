@@ -230,6 +230,10 @@ export default function SharePanelClient({ token }: { token: string }) {
     : null
 
   const [visao, setVisao] = useState<'lista' | 'kanban'>('lista')
+  // Arrastar e soltar do kanban: o id viaja no dataTransfer; a coluna sob o
+  // mouse ganha destaque. O seletor continua nos cartões — celular não arrasta.
+  const [arrastando, setArrastando] = useState<string | null>(null)
+  const [colunaAlvo, setColunaAlvo] = useState<StatusPortal | null>(null)
 
   /** O cartão do lead — o MESMO na lista e no kanban (compacto). */
   const cartaoDoLead = (l: LeadComStatus, compacto: boolean) => {
@@ -238,9 +242,16 @@ export default function SharePanelClient({ token }: { token: string }) {
       ? (l.statusCliente as StatusPortal) : 'novo'
     return (
       <div key={l.id}
+        draggable={compacto}
+        onDragStart={compacto ? (e => {
+          e.dataTransfer.setData('text/plain', l.id)
+          e.dataTransfer.effectAllowed = 'move'
+          setArrastando(l.id)
+        }) : undefined}
+        onDragEnd={compacto ? (() => { setArrastando(null); setColunaAlvo(null) }) : undefined}
         className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${
-          compacto ? 'p-3' : 'flex flex-wrap items-center gap-3 p-4'
-        }`}>
+          compacto ? 'cursor-grab p-3 active:cursor-grabbing' : 'flex flex-wrap items-center gap-3 p-4'
+        } ${arrastando === l.id ? 'opacity-40' : ''}`}>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate font-semibold text-slate-900">{tituloDoLead(l)}</p>
@@ -531,15 +542,32 @@ export default function SharePanelClient({ token }: { token: string }) {
               </p>
             </div>
           ) : visao === 'kanban' ? (
-            /* Kanban: uma coluna por situação; o seletor do cartão move. */
-            <div className="-mx-4 overflow-x-auto px-4 pb-2">
-              <div className="flex min-w-max gap-3">
+            /* Kanban em LARGURA TOTAL da tela — dentro da coluna central as
+               últimas colunas ficavam cortadas. Arraste o cartão para mover;
+               o seletor continua valendo (celular não arrasta). */
+            <div className="relative left-1/2 w-screen -translate-x-1/2 overflow-x-auto px-4 pb-3">
+              <div className="mx-auto flex w-max gap-3 pr-8">
                 {STATUS_PORTAL.map(coluna => {
                   const doGrupo = leadsFiltrados.filter(l =>
                     ((l.statusCliente as StatusPortal) in STATUS_PORTAL_META
                       ? l.statusCliente : 'novo') === coluna)
                   return (
-                    <div key={coluna} className="w-72 shrink-0 rounded-2xl bg-slate-200/60 p-2">
+                    <div
+                      key={coluna}
+                      onDragOver={e => { e.preventDefault(); setColunaAlvo(coluna) }}
+                      onDragLeave={() => setColunaAlvo(alvo => (alvo === coluna ? null : alvo))}
+                      onDrop={e => {
+                        e.preventDefault()
+                        const id = e.dataTransfer.getData('text/plain') || arrastando
+                        setColunaAlvo(null); setArrastando(null)
+                        if (id) void marcarStatus(id, coluna)
+                      }}
+                      className={`w-72 shrink-0 rounded-2xl p-2 transition-colors ${
+                        colunaAlvo === coluna && arrastando
+                          ? 'bg-indigo-100 ring-2 ring-indigo-400'
+                          : 'bg-slate-200/60'
+                      }`}
+                    >
                       <div className="flex items-center justify-between px-2 py-1.5">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_PORTAL_META[coluna].cor}`}>
                           {STATUS_PORTAL_META[coluna].rotulo}
@@ -549,7 +577,11 @@ export default function SharePanelClient({ token }: { token: string }) {
                       <div className="mt-1 space-y-2">
                         {doGrupo.map(l => cartaoDoLead(l, true))}
                         {doGrupo.length === 0 && (
-                          <p className="px-2 py-6 text-center text-xs text-slate-400">vazio</p>
+                          <p className={`px-2 py-6 text-center text-xs ${
+                            colunaAlvo === coluna && arrastando ? 'text-indigo-500' : 'text-slate-400'
+                          }`}>
+                            {arrastando ? 'solte aqui' : 'vazio'}
+                          </p>
                         )}
                       </div>
                     </div>
