@@ -188,10 +188,25 @@ export default function SharePanelClient({ token }: { token: string }) {
     // O arquivo sai com o MESMO filtro da tela (busca + dia).
     const visiveis = new Set(leadsFiltrados.map(l => l.id))
     const indices = t.ids.map((id, i) => ({ id, i })).filter(x => visiveis.has(x.id))
+    // As colunas Nome/E-mail/Telefone saem com o dado ENRIQUECIDO (derivado
+    // das respostas) — o cadastro cru fica vazio em muitos funis.
+    const porId = new Map(dados.leads.map(l => [l.id, l]))
+    const preencher = (chave: string, id: string, atual: string): string => {
+      if (atual.trim()) return atual
+      const l = porId.get(id)
+      if (!l) return atual
+      if (chave === 'lead:nome') return l.nome ?? atual
+      if (chave === 'lead:email') return l.email ?? atual
+      if (chave === 'lead:telefone') return l.telefone ?? atual
+      return atual
+    }
     return {
       ...t,
       colunas: [...t.colunas, { chave: 'portal:status', rotulo: 'Situação', respostas: 0 }],
-      linhas: indices.map(({ id, i }) => [...(t.linhas[i] ?? []), statusDe.get(id) ?? 'Novo']),
+      linhas: indices.map(({ id, i }) => [
+        ...(t.linhas[i] ?? []).map((v, j) => preencher(t.colunas[j]?.chave ?? '', id, v)),
+        statusDe.get(id) ?? 'Novo',
+      ]),
       ids: indices.map(x => x.id),
     }
   }

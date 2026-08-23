@@ -163,6 +163,15 @@ export async function POST(
         portal.mostrar_metricas ? investimentoDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(0),
       ])
 
+      // Páginas escolhidas que já não existem (quiz editado) derrubariam a
+      // tabela — cai para a versão só-contato em vez de mostrar nada.
+      const tabelaFinal = 'error' in tabela
+        ? await montarTabelaLeads(admin, quiz.id, tenantId, {
+            apenasIds: leads.map(l => l.id),
+            columnKeys: COLUNAS_LEAD.map(c => c.chave),
+          })
+        : tabela
+
       const statusPorLead: Record<string, string> = {}
       for (const r of statusRows.data ?? []) statusPorLead[String(r.lead_id)] = String(r.status)
 
@@ -186,7 +195,7 @@ export async function POST(
         leads: leads.map(l => ({ ...l, statusCliente: statusPorLead[l.id] ?? 'novo' })),
         metricas: m,
         custos,
-        tabela: 'error' in tabela ? null : tabela,
+        tabela: 'error' in tabelaFinal ? null : tabelaFinal,
       })
     }
 

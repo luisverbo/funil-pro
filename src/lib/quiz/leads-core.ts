@@ -390,13 +390,19 @@ export function contatoDasRespostas(
   return { nome: nome ?? primeiroTexto, email, telefone }
 }
 
-/** Respostas por lead (bloco → valor), a MESMA leitura da exportação. */
+/** Respostas por lead (bloco → valor), a MESMA leitura da exportação.
+ *  `digitadas` traz só o que veio de texto livre (text_entered) — é a base do
+ *  reconhecimento por formato quando os ids dos blocos não batem mais. */
 export async function respostasPorLead(
   admin: SupabaseClient,
   quizId: string,
-): Promise<Record<string, Record<string, string>>> {
+): Promise<{
+  porLead: Record<string, Record<string, string>>
+  digitadas: Record<string, string[]>
+}> {
   const eventos = await lerEventosDeResposta(admin, quizId)
   const porLead: Record<string, Record<string, string>> = {}
+  const textoPorBloco: Record<string, Record<string, string>> = {}
   for (const ev of eventos) {
     const blockId = ev.block_id
     if (!blockId) continue
@@ -405,8 +411,43 @@ export async function respostasPorLead(
     const lid = ev.lead_id
     porLead[lid] = porLead[lid] || {}
     porLead[lid][blockId] = valor
+    if (ev.event_type === 'text_entered') {
+      // O renderer emite um evento por TECLA: o último do bloco é o texto
+      // completo — por isso a chave é o bloco, não uma lista de eventos.
+      textoPorBloco[lid] = textoPorBloco[lid] || {}
+      textoPorBloco[lid][blockId] = valor
+    }
   }
-  return porLead
+  const digitadas: Record<string, string[]> = {}
+  for (const [lid, blocos] of Object.entries(textoPorBloco)) {
+    digitadas[lid] = Object.values(blocos)
+  }
+  return { porLead, digitadas }
+}
+
+/**
+ * Contato reconhecido pelo FORMATO do que foi digitado — a rede de segurança
+ * para quando o quiz foi EDITADO depois de colher os leads: os ids dos blocos
+ * mudam, a estrutura atual não casa com os eventos antigos, e a derivação por
+ * estrutura volta vazia. Formato não depende de id nenhum:
+ *   contém @  -> e-mail;  10–13 dígitos -> telefone;  o resto -> nome.
+ */
+export function contatoPorFormato(
+  digitadas: string[],
+): { nome: string | null; email: string | null; telefone: string | null } {
+  let nome: string | null = null
+  let email: string | null = null
+  let telefone: string | null = null
+  for (const bruto of digitadas) {
+    const v = bruto.trim()
+    if (!v) continue
+    if (!email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { email = v; continue }
+    const digitos = v.replace(/\D/g, '')
+    if (!telefone && digitos.length >= 10 && digitos.length <= 13
+        && digitos.length >= v.replace(/[\s()+.-]/g, '').length) { telefone = v; continue }
+    if (!nome && /[a-zA-ZÀ-ÿ]{2,}/.test(v) && digitos.length < v.length / 2) nome = v
+  }
+  return { nome, email, telefone }
 }
 
 // ─── Portal do cliente ──────────────────────────────────────────────────────
@@ -443,7 +484,7 @@ export async function leadsParaPortal(
   tenantId: string,
   publico: 'com_contato' | 'concluidos' | 'com_resposta' | 'todos',
 ): Promise<LeadPortal[]> {
-  const [{ data: rows }, { data: pageRow }, respostas] = await Promise.all([
+  const [{ data: rows }, { data: pageRow }, { porLead: respostas, digitadas }] = await Promise.all([
     admin
       .from('quiz_leads')
       .select('id, name, email, phone, status, started_at, result_shown, score')
@@ -460,12 +501,16 @@ export async function leadsParaPortal(
   // funis — o que a pessoa digitou vive nas RESPOSTAS. O derivado completa o
   // que faltar; o cadastro, quando existe, vence.
   const enriquecidos = (rows ?? []).map(l => {
-    const derivado = contatoDasRespostas(paginas, respostas[String(l.id)] ?? {})
+    const lid = String(l.id)
+    const derivado = contatoDasRespostas(paginas, respostas[lid] ?? {})
+    // Rede de segurança: quiz editado troca os ids dos blocos e a derivação
+    // por estrutura volta vazia — o formato do que foi digitado não muda.
+    const porFormato = contatoPorFormato(digitadas[lid] ?? [])
     return {
       ...l,
-      nome: (l.name ?? '').trim() || derivado.nome,
-      email: (l.email ?? '').trim() || derivado.email,
-      telefone: (l.phone ?? '').trim() || derivado.telefone,
+      nome: (l.name ?? '').trim() || derivado.nome || porFormato.nome,
+      email: (l.email ?? '').trim() || derivado.email || porFormato.email,
+      telefone: (l.phone ?? '').trim() || derivado.telefone || porFormato.telefone,
     }
   })
 

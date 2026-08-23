@@ -651,6 +651,12 @@ async function inserirVinculos(
     quizzes.map(q => ({ tenant_id: tenantId, portal_id: portalId, page_id: q.pageId, publico: q.publico, paginas: q.paginas })),
   )
   if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+    // Coluna `paginas` ainda não existe no banco. Se o dono ESCOLHEU páginas,
+    // descartar a escolha em silêncio é mentira — o salvar falha dizendo qual
+    // migration falta. Sem escolha, salvar sem a coluna não perde nada.
+    if (quizzes.some(q => q.paginas.length > 0)) {
+      return { error: { message: 'Aplique a migration 20260826000000_portal_paginas.sql no Supabase para escolher as páginas que o cliente vê' } }
+    }
     const r2 = await admin.from('client_portal_quizzes').insert(
       quizzes.map(q => ({ tenant_id: tenantId, portal_id: portalId, page_id: q.pageId, publico: q.publico })),
     )
