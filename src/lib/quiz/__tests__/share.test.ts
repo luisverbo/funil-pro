@@ -21,7 +21,8 @@ import {
   validarSenhaShare, tokenShareValido,
 } from '../share'
 import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../leads-core'
-import { linkWhatsApp, nomeDoLead, statusPortalValido } from '../portal'
+import { linkWhatsApp, nomeDoLead, statusPortalValido, temContato, publicoPortalValido } from '../portal'
+import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
 
 const RAIZ = process.cwd()
 const ler = (rel: string) => readFileSync(join(RAIZ, rel), 'utf8')
@@ -206,6 +207,61 @@ test('13b) editar o acesso NÃO troca o link nem a senha', () => {
   const v = ler('src/components/quiz/quiz-leads-view.tsx')
   assert.ok(v.includes('Salvar alterações (mesmo link e senha)'), 'sem salvar sem trocar a senha')
   assert.ok(v.includes('atualizarPortalConfig'), 'o botão não chama a edição')
+})
+
+test('13c) público "deixou contato": o lead que dá para ATENDER', () => {
+  // O funil real: contato pedido na penúltima página, botão na última. Quem
+  // deixa telefone e não clica no botão "não concluiu" — mas é o melhor lead
+  // que existe. As três opções antigas escondiam justamente essa pessoa.
+  assert.equal(publicoPortalValido('com_contato'), true, 'a opção não existe')
+  assert.equal(temContato({ phone: '88999998888' }), true)
+  assert.equal(temContato({ email: 'a@b.com' }), true)
+  assert.equal(temContato({ phone: '   ', email: '' }), false, 'espaço em branco não é contato')
+  assert.equal(temContato({}), false)
+
+  const core = ler('src/lib/quiz/leads-core.ts')
+  assert.ok(core.includes("if (publico === 'com_contato')"), 'o filtro novo não é aplicado')
+  // 🔥 passa a significar "dá para atender", e "concluiu" vira informação à parte.
+  assert.ok(core.includes('quente: temContato('), '🔥 continuaria preso a "concluiu"')
+  assert.ok(core.includes("concluiu: l.status === 'completed'"), 'perdeu a informação de conclusão')
+
+  // O arquivo baixado tem EXATAMENTE os leads da tela — sem filtrar de novo.
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes('apenasIds: leads.map(l => l.id)'), 'CSV e tela podem divergir')
+  // Escrita de status respeita o público novo.
+  assert.ok(rota.includes("quiz.publico === 'com_contato' && !temContato("),
+    'lead sem contato aceitaria status num portal que só mostra quem tem contato')
+
+  const m = ler('supabase/migrations/20260825000000_portal_publico_contato.sql')
+  assert.ok(m.includes("'com_contato'"), 'o banco recusaria o público novo')
+  assert.ok(m.includes('to_regclass'), 'a migration quebraria antes da do portal')
+})
+
+test('13d) sessão do portal: F5 não desloga, e a senha não vai no cookie', () => {
+  const chave = 'salt:hash-do-portal'
+  const cookie = criarSessaoPortal('tok123', chave)
+  assert.equal(sessaoPortalValida(cookie, 'tok123', chave), true)
+
+  // Cookie de OUTRO portal não vale.
+  assert.equal(sessaoPortalValida(cookie, 'outro', chave), false)
+  // Trocar a senha invalida tudo na hora (a chave é o próprio hash).
+  assert.equal(sessaoPortalValida(cookie, 'tok123', 'salt:hash-NOVO'), false)
+  // Assinatura adulterada não passa.
+  assert.equal(sessaoPortalValida(`tok123.${Date.now() + 60_000}.forjado`, 'tok123', chave), false)
+  // Expirado não passa.
+  assert.equal(sessaoPortalValida(cookie, 'tok123', chave, Date.now() + PORTAL_SESSAO_MS + 1_000), false)
+  // Lixo não explode.
+  for (const v of ['', 'a.b', 'a.b.c.d', undefined, null]) {
+    assert.equal(sessaoPortalValida(v as string | undefined, 'tok123', chave), false)
+  }
+
+  // O cookie NÃO carrega a senha, e o JS da página não consegue lê-lo.
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes('httpOnly: true'), 'cookie legível por JS seria roubável')
+  assert.ok(rota.includes('secure: true'))
+  assert.ok(rota.includes('sameSite:'), 'sem SameSite o cookie viaja em requisição de terceiro')
+  // F5 não pode inflar o contador de acessos.
+  assert.ok(rota.includes('if (porSenha) {'), 'cada F5 contaria como acesso novo')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {

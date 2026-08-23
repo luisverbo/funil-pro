@@ -25,13 +25,25 @@ export const STATUS_PORTAL_META: Record<StatusPortal, { rotulo: string; cor: str
   perdido:    { rotulo: 'Perdido',    cor: 'bg-red-100 text-red-600' },
 }
 
+/** Tem como o cliente falar com essa pessoa? É o que decide o lead útil. */
+export function temContato(lead: { email?: string | null; phone?: string | null }): boolean {
+  return (lead.email ?? '').trim().length > 0 || (lead.phone ?? '').trim().length > 0
+}
+
 export function statusPortalValido(s: unknown): s is StatusPortal {
   return typeof s === 'string' && (STATUS_PORTAL as readonly string[]).includes(s)
 }
 
-/** O que o dono pode liberar por funil. 'concluidos' é o padrão: o cliente
- *  recebe o lead QUENTE, não a lista de curiosos. */
-export const PUBLICOS_PORTAL = ['concluidos', 'com_resposta', 'todos'] as const
+/**
+ * O que o dono pode liberar por funil.
+ *
+ * 'com_contato' é o padrão e o mais importante: em funil que pede telefone
+ * ANTES da última página, muita gente deixa o contato e nunca clica no botão
+ * final — pelo status do quiz essa pessoa "não concluiu", mas para quem vai
+ * ligar ela é o melhor lead que existe. Filtrar por conclusão escondia
+ * justamente quem podia ser atendido.
+ */
+export const PUBLICOS_PORTAL = ['com_contato', 'concluidos', 'com_resposta', 'todos'] as const
 export type PublicoPortal = typeof PUBLICOS_PORTAL[number]
 
 export function publicoPortalValido(p: unknown): p is PublicoPortal {

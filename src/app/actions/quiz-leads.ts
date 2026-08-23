@@ -516,6 +516,15 @@ function portalTabelaAusente(erro: { code?: string; message?: string } | null): 
 const PORTAL_MIGRATION_MSG =
   'Aplique a migration 20260823000000_client_portals.sql no Supabase para ativar o portal do cliente'
 
+/** CHECK antigo no banco recusa o público novo — a mensagem diz o que fazer. */
+function publicoNaoAceito(erro: { code?: string; message?: string } | null): boolean {
+  if (!erro) return false
+  return erro.code === '23514' || /publico_check/i.test(erro.message ?? '')
+}
+
+const PUBLICO_MIGRATION_MSG =
+  'Aplique a migration 20260825000000_portal_publico_contato.sql no Supabase para usar a opção "Deixou contato"'
+
 export interface PortalQuizConfig { pageId: string; titulo: string; publico: PublicoPortal }
 export interface PortalInfo {
   ativo: boolean
@@ -682,7 +691,9 @@ export async function ativarPortal(
     const { error: erroVinculo } = await admin.from('client_portal_quizzes').insert(
       quizzes.map(q => ({ tenant_id: tenantId, portal_id: portalId, page_id: q.pageId, publico: q.publico })),
     )
-    if (erroVinculo) return { error: erroVinculo.message }
+    if (erroVinculo) {
+      return { error: publicoNaoAceito(erroVinculo) ? PUBLICO_MIGRATION_MSG : erroVinculo.message }
+    }
 
     return { token, portalId }
   } catch (err) {
@@ -736,7 +747,9 @@ export async function atualizarPortalConfig(
     const { error: erroVinculo } = await admin.from('client_portal_quizzes').insert(
       quizzes.map(q => ({ tenant_id: tenantId, portal_id: entrada.portalId, page_id: q.pageId, publico: q.publico })),
     )
-    if (erroVinculo) return { error: erroVinculo.message }
+    if (erroVinculo) {
+      return { error: publicoNaoAceito(erroVinculo) ? PUBLICO_MIGRATION_MSG : erroVinculo.message }
+    }
     return { ok: true }
   } catch (err) {
     return { error: String(err) }

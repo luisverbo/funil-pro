@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS client_portal_quizzes (
   portal_id  uuid NOT NULL REFERENCES client_portals(id) ON DELETE CASCADE,
   page_id    uuid NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
   -- 'concluidos' = só o lead quente (padrão). O dono decide por funil.
-  publico    text NOT NULL DEFAULT 'concluidos'
-             CHECK (publico IN ('concluidos', 'com_resposta', 'todos')),
+  publico    text NOT NULL DEFAULT 'com_contato'
+             CHECK (publico IN ('com_contato', 'concluidos', 'com_resposta', 'todos')),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (portal_id, page_id)
 );
