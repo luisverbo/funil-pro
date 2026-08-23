@@ -396,3 +396,19 @@ export async function leadsParaPortal(
     score: Number(l.score ?? 0),
   }))
 }
+
+/** Total investido no quiz (lançamentos manuais). 0 quando a tabela não existe. */
+export async function investimentoDoQuiz(
+  admin: SupabaseClient,
+  quizId: string,
+  tenantId: string,
+): Promise<number> {
+  const { data, error } = await admin
+    .from('quiz_spend_entries')
+    .select('amount_cents')
+    .eq('page_id', quizId)
+    .eq('tenant_id', tenantId)
+    .range(0, 9_999)
+  if (error || !data) return 0
+  return data.reduce((soma, l) => soma + Number(l.amount_cents ?? 0), 0)
+}

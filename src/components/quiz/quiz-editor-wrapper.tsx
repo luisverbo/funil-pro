@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useState, useEffect } from 'react'
-import { loadQuizV2, type QuizData } from '@/app/actions/quiz-v2'
+import type { QuizData } from '@/app/actions/quiz-v2'
+import { migrateV1ToV2, type V1Question } from '@/lib/quiz/migrate-v1'
 
 const QuizEditorV2 = dynamic(
   () => import('@/components/quiz/quiz-editor-v2'),
@@ -32,30 +33,51 @@ export default function QuizEditorWrapper({ pageId }: { pageId: string }) {
   const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
-    // O .catch é OBRIGATÓRIO: sem ele, uma falha do servidor (500, rede,
-    // deploy no meio) deixava o esqueleto na tela PARA SEMPRE, sem mensagem
-    // nenhuma — foi exatamente o que aconteceu em produção. Erro agora vira
-    // tela de erro com o motivo e botão de tentar de novo.
+    // Rota HTTP simples no lugar da server action: a action embute um ID do
+    // build na página, e uma aba aberta durante um deploy passa a chamar um
+    // ID que não existe mais — a resposta vira o erro MASCARADO do Next
+    // ("Server Components render...") e não há o que depurar. GET não tem
+    // nada disso, e quando falha devolve o motivo real.
     let ativo = true
-    loadQuizV2(pageId).then(result => {
-      if (!ativo) return
-      if (result.error === 'page_not_found') {
-        setState({ status: 'not_found' })
-      } else if (result.error) {
-        setState({ status: 'error', message: result.error })
-      } else {
+    const carregar = async () => {
+      try {
+        const resp = await fetch(`/api/quiz-editor-load/${pageId}`, { cache: 'no-store' })
+        const corpo = await resp.json().catch(() => null) as {
+          error?: string
+          page?: { id: string; title: string; slug: string | null; published: boolean }
+          quizData?: QuizData | null
+          v1Questions?: V1Question[] | null
+          funnels?: { id: string; name: string }[]
+          tenantId?: string
+        } | null
+        if (!ativo) return
+
+        if (!resp.ok || !corpo || corpo.error) {
+          if (resp.status === 401) { window.location.href = '/login'; return }
+          if (resp.status === 404 || corpo?.error === 'page_not_found') { setState({ status: 'not_found' }); return }
+          setState({ status: 'error', message: corpo?.error ?? `HTTP ${resp.status}` })
+          return
+        }
+
+        // Migração v1 → v2 no navegador — a mesma função pura do servidor.
+        let data = corpo.quizData ?? undefined
+        if (!data && corpo.v1Questions && corpo.v1Questions.length > 0) {
+          data = migrateV1ToV2(corpo.v1Questions)
+        }
+
         setState({
           status: 'ready',
-          page: result.page!,
-          data: result.data,
-          funnels: result.funnels ?? [],
-          tenantId: result.tenantId!,
+          page: corpo.page!,
+          data,
+          funnels: corpo.funnels ?? [],
+          tenantId: corpo.tenantId!,
         })
+      } catch (err) {
+        if (!ativo) return
+        setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
       }
-    }).catch(err => {
-      if (!ativo) return
-      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
-    })
+    }
+    void carregar()
     return () => { ativo = false }
   }, [pageId, tentativa])
 

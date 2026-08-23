@@ -68,3 +68,12 @@ export function nomeDoLead(lead: { name?: string | null; email?: string | null; 
   if (fone) return fone
   return 'Lead sem nome'
 }
+
+/**
+ * Custo por lead, em centavos. `null` quando não há lead — o portal mostra
+ * "—" em vez de Infinity/zero mentiroso.
+ */
+export function custoPorLead(gastoCents: number, leads: number): number | null {
+  if (!Number.isFinite(gastoCents) || gastoCents <= 0 || leads <= 0) return null
+  return Math.round(gastoCents / leads)
+}
