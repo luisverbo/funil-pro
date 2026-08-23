@@ -11,6 +11,7 @@ import {
 import {
   gerarTokenShare, hashSenhaShare, validarSenhaShare,
 } from '@/lib/quiz/share'
+import { publicoPortalValido, type PublicoPortal } from '@/lib/quiz/portal'
 
 // Tipos re-exportados para os componentes que já importam daqui.
 export type { ExportLeadResumo, ExportPageInfo, ExportPublico, ExportTable, QuizMetricas }
@@ -497,111 +498,205 @@ export async function getQuizMetricas(
   }
 }
 
-// ─── Link compartilhado com senha ───────────────────────────────────────────
-// Para quem capta lead para clientes: gera /ql/<token> + senha, e o cliente
-// abre o painel DAQUELE quiz sem conta. A senha nunca é guardada em claro
-// (scrypt) e nunca volta para a tela — se for esquecida, gera-se outra.
+// ─── Portal do cliente ──────────────────────────────────────────────────────
+// UM acesso por cliente (link + senha), com VÁRIOS funis dentro. O dono
+// escolhe o que o cliente vê em cada funil — por padrão só quem concluiu, o
+// lead quente. A senha nunca é guardada em claro (scrypt) e nunca volta para
+// a tela; esquecer = gerar link novo (o antigo morre junto).
 
-function shareTabelaAusente(erro: { code?: string; message?: string } | null): boolean {
+function portalTabelaAusente(erro: { code?: string; message?: string } | null): boolean {
   if (!erro) return false
   if (erro.code === '42P01' || erro.code === 'PGRST205') return true
   return /relation .* does not exist|could not find the table/i.test(erro.message ?? '')
 }
 
-const SHARE_MIGRATION_MSG =
-  'Aplique a migration 20260822000000_quiz_share_links.sql no Supabase para ativar o compartilhamento'
+const PORTAL_MIGRATION_MSG =
+  'Aplique a migration 20260823000000_client_portals.sql no Supabase para ativar o portal do cliente'
 
-export interface QuizShareInfo {
+export interface PortalQuizConfig { pageId: string; titulo: string; publico: PublicoPortal }
+export interface PortalInfo {
   ativo: boolean
+  portalId: string | null
   token: string | null
+  nome: string
   acessos: number
   ultimoAcesso: string | null
+  quizzes: PortalQuizConfig[]
+  mostrarMetricas: boolean
+  mostrarFunil: boolean
+  permitirStatus: boolean
 }
 
-export async function getQuizShare(
-  quizId: string,
-): Promise<QuizShareInfo | { error: string }> {
+/** Quizzes do tenant — para o dono escolher quais entram no portal. */
+export async function listarQuizzesDoTenant(): Promise<{ id: string; titulo: string }[] | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from('pages')
+      .select('id, title, quiz_data, page_type')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .range(0, 499)
+    return (data ?? [])
+      .filter(p => p.quiz_data != null || p.page_type === 'interactive')
+      .map(p => ({ id: String(p.id), titulo: String(p.title ?? 'Quiz') }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** O portal que contém este quiz (se houver). O modal abre a partir do quiz. */
+export async function getPortalDoQuiz(quizId: string): Promise<PortalInfo | { error: string }> {
   try {
     const tenantId = await getTenantId()
     if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
       return { error: 'Quiz não encontrado ou sem permissão' }
     }
     const admin = createAdminClient()
-    const { data, error } = await admin
-      .from('quiz_share_links')
-      .select('token, enabled, access_count, last_access_at')
+
+    const { data: vinculo, error } = await admin
+      .from('client_portal_quizzes')
+      .select('portal_id')
       .eq('page_id', quizId)
       .eq('tenant_id', tenantId)
+      .limit(1)
       .maybeSingle()
     if (error) {
-      return shareTabelaAusente(error) ? { error: SHARE_MIGRATION_MSG } : { error: error.message }
+      return portalTabelaAusente(error) ? { error: PORTAL_MIGRATION_MSG } : { error: error.message }
     }
-    if (!data || !data.enabled) return { ativo: false, token: null, acessos: 0, ultimoAcesso: null }
+
+    const vazio: PortalInfo = {
+      ativo: false, portalId: null, token: null, nome: '', acessos: 0, ultimoAcesso: null,
+      quizzes: [], mostrarMetricas: true, mostrarFunil: false, permitirStatus: true,
+    }
+    if (!vinculo) return vazio
+
+    const { data: portal } = await admin
+      .from('client_portals')
+      .select('id, nome, token, enabled, access_count, last_access_at, mostrar_metricas, mostrar_funil, permitir_status')
+      .eq('id', vinculo.portal_id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    if (!portal) return vazio
+
+    const { data: quizzes } = await admin
+      .from('client_portal_quizzes')
+      .select('page_id, publico, pages(title)')
+      .eq('portal_id', portal.id)
+
     return {
-      ativo: true,
-      token: String(data.token),
-      acessos: Number(data.access_count ?? 0),
-      ultimoAcesso: data.last_access_at ?? null,
+      ativo: Boolean(portal.enabled),
+      portalId: String(portal.id),
+      token: portal.enabled ? String(portal.token) : null,
+      nome: String(portal.nome ?? ''),
+      acessos: Number(portal.access_count ?? 0),
+      ultimoAcesso: portal.last_access_at ?? null,
+      quizzes: (quizzes ?? []).map(q => ({
+        pageId: String(q.page_id),
+        titulo: String((q.pages as { title?: string } | null)?.title ?? 'Quiz'),
+        publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos',
+      })),
+      mostrarMetricas: Boolean(portal.mostrar_metricas),
+      mostrarFunil: Boolean(portal.mostrar_funil),
+      permitirStatus: Boolean(portal.permitir_status),
     }
   } catch (err) {
     return { error: String(err) }
   }
+}
+
+export interface AtivarPortalInput {
+  nome: string
+  senha: string
+  /** Quais quizzes entram, com o público de cada um. */
+  quizzes: { pageId: string; publico: PublicoPortal }[]
+  mostrarMetricas: boolean
+  mostrarFunil: boolean
+  permitirStatus: boolean
+  /** Portal existente a renovar; ausente = criar novo. */
+  portalId?: string
 }
 
 /**
- * Ativa (ou renova) o compartilhamento com uma senha nova.
- *
- * Sempre gera token novo: trocar a senha invalida o link antigo junto — quem
- * tinha o link velho não continua entrando com a senha velha.
+ * Cria ou renova o portal. SEMPRE gera token novo: trocar a senha mata o
+ * link antigo junto — quem tinha o link velho não continua entrando.
  */
-export async function ativarQuizShare(
-  quizId: string,
-  senha: string,
-): Promise<{ token: string } | { error: string }> {
+export async function ativarPortal(
+  entrada: AtivarPortalInput,
+): Promise<{ token: string; portalId: string } | { error: string }> {
   try {
     const tenantId = await getTenantId()
-    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
-      return { error: 'Quiz não encontrado ou sem permissão' }
-    }
-    const invalida = validarSenhaShare(senha)
+    const invalida = validarSenhaShare(entrada.senha)
     if (invalida) return { error: invalida }
+    if (!Array.isArray(entrada.quizzes) || entrada.quizzes.length === 0) {
+      return { error: 'Escolha ao menos um funil para o portal' }
+    }
 
     const admin = createAdminClient()
+
+    // Lista branca: só quizzes DESTE tenant entram — id de fora é descartado.
+    const { data: paginas } = await admin
+      .from('pages').select('id').eq('tenant_id', tenantId)
+      .in('id', entrada.quizzes.map(q => q.pageId).slice(0, 100))
+    const permitidos = new Set((paginas ?? []).map(p => String(p.id)))
+    const quizzes = entrada.quizzes
+      .filter(q => permitidos.has(q.pageId))
+      .map(q => ({ pageId: q.pageId, publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos' as PublicoPortal }))
+    if (quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
+
     const token = gerarTokenShare()
-    const { error } = await admin
-      .from('quiz_share_links')
-      .upsert({
-        tenant_id: tenantId,
-        page_id: quizId,
-        token,
-        password_hash: hashSenhaShare(senha.trim()),
-        enabled: true,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'page_id' })
-    if (error) {
-      return shareTabelaAusente(error) ? { error: SHARE_MIGRATION_MSG } : { error: error.message }
+    const linha = {
+      tenant_id: tenantId,
+      nome: entrada.nome.trim().slice(0, 80) || 'Cliente',
+      token,
+      password_hash: hashSenhaShare(entrada.senha.trim()),
+      enabled: true,
+      mostrar_metricas: Boolean(entrada.mostrarMetricas),
+      mostrar_funil: Boolean(entrada.mostrarFunil),
+      permitir_status: Boolean(entrada.permitirStatus),
+      updated_at: new Date().toISOString(),
     }
-    return { token }
+
+    let portalId = entrada.portalId ?? null
+    if (portalId) {
+      const { error } = await admin.from('client_portals')
+        .update(linha).eq('id', portalId).eq('tenant_id', tenantId)
+      if (error) {
+        return portalTabelaAusente(error) ? { error: PORTAL_MIGRATION_MSG } : { error: error.message }
+      }
+    } else {
+      const { data, error } = await admin.from('client_portals')
+        .insert(linha).select('id').single()
+      if (error || !data) {
+        return portalTabelaAusente(error) ? { error: PORTAL_MIGRATION_MSG } : { error: error?.message ?? 'erro' }
+      }
+      portalId = String(data.id)
+    }
+
+    // Vínculos recriados do zero: o que saiu da seleção sai do portal.
+    await admin.from('client_portal_quizzes').delete().eq('portal_id', portalId).eq('tenant_id', tenantId)
+    const { error: erroVinculo } = await admin.from('client_portal_quizzes').insert(
+      quizzes.map(q => ({ tenant_id: tenantId, portal_id: portalId, page_id: q.pageId, publico: q.publico })),
+    )
+    if (erroVinculo) return { error: erroVinculo.message }
+
+    return { token, portalId }
   } catch (err) {
     return { error: String(err) }
   }
 }
 
-export async function desativarQuizShare(
-  quizId: string,
-): Promise<{ ok: true } | { error: string }> {
+export async function desativarPortal(portalId: string): Promise<{ ok: true } | { error: string }> {
   try {
     const tenantId = await getTenantId()
-    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
-      return { error: 'Quiz não encontrado ou sem permissão' }
-    }
     const admin = createAdminClient()
     const { error } = await admin
-      .from('quiz_share_links')
+      .from('client_portals')
       .update({ enabled: false, updated_at: new Date().toISOString() })
-      .eq('page_id', quizId)
+      .eq('id', portalId)
       .eq('tenant_id', tenantId)
-    if (error && !shareTabelaAusente(error)) return { error: error.message }
+    if (error && !portalTabelaAusente(error)) return { error: error.message }
     return { ok: true }
   } catch (err) {
     return { error: String(err) }
