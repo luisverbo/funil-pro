@@ -702,3 +702,92 @@ export async function desativarPortal(portalId: string): Promise<{ ok: true } | 
     return { error: String(err) }
   }
 }
+
+// ─── Investimento manual por funil ──────────────────────────────────────────
+// Enquanto a Meta não conecta, o dono lança o gasto por dia. O portal usa
+// isso para calcular custo por lead e custo por lead quente. Uma linha por
+// dia: lançar de novo CORRIGE o valor do dia, não soma.
+
+export interface InvestimentoDia { id: string; date: string; amountCents: number; note: string | null }
+
+const SPEND_MIGRATION_MSG =
+  'Aplique a migration 20260824000000_quiz_spend.sql no Supabase para lançar investimento'
+
+export async function listarInvestimentos(
+  quizId: string,
+): Promise<{ dias: InvestimentoDia[]; totalCents: number } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from('quiz_spend_entries')
+      .select('id, date, amount_cents, note')
+      .eq('page_id', quizId)
+      .eq('tenant_id', tenantId)
+      .order('date', { ascending: false })
+      .range(0, 999)
+    if (error) {
+      return portalTabelaAusente(error) ? { error: SPEND_MIGRATION_MSG } : { error: error.message }
+    }
+    const dias = (data ?? []).map(l => ({
+      id: String(l.id), date: String(l.date),
+      amountCents: Number(l.amount_cents ?? 0), note: l.note ?? null,
+    }))
+    return { dias, totalCents: dias.reduce((s, d) => s + d.amountCents, 0) }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function salvarInvestimento(
+  quizId: string,
+  entrada: { date: string; amountCents: number; note?: string },
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const cents = Math.round(Number(entrada.amountCents))
+    if (!Number.isFinite(cents) || cents <= 0 || cents > 100_000_000) {
+      return { error: 'Informe um valor válido (maior que zero)' }
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entrada.date)) return { error: 'Data inválida' }
+
+    const admin = createAdminClient()
+    const { error } = await admin.from('quiz_spend_entries').upsert({
+      tenant_id: tenantId,
+      page_id: quizId,
+      date: entrada.date,
+      amount_cents: cents,
+      note: (entrada.note ?? '').trim().slice(0, 200) || null,
+    }, { onConflict: 'tenant_id,page_id,date' })
+    if (error) {
+      return portalTabelaAusente(error) ? { error: SPEND_MIGRATION_MSG } : { error: error.message }
+    }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function excluirInvestimento(
+  quizId: string,
+  entradaId: string,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const admin = createAdminClient()
+    await admin.from('quiz_spend_entries')
+      .delete().eq('id', entradaId).eq('tenant_id', tenantId).eq('page_id', quizId)
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}

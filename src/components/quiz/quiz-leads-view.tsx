@@ -5,6 +5,7 @@ import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
   getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
   getPortalDoQuiz, ativarPortal, desativarPortal, listarQuizzesDoTenant,
+  listarInvestimentos, salvarInvestimento, excluirInvestimento, type InvestimentoDia,
   type QuizMetricas, type PortalInfo, type PortalQuizConfig,
   getExportStructure, exportLeadsTable,
   type ExportPageInfo, type ExportPublico, type ExportLeadResumo,
@@ -647,6 +648,112 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
   )
 }
 
+// ─── Investimento manual ─────────────────────────────────────────────────────
+// O dono lança "gastei R$ X no dia Y" — o portal do cliente calcula custo por
+// lead e custo por lead quente sozinho. Lançar duas vezes no MESMO dia
+// corrige o valor, não soma. Só o dono vê esta tela.
+
+function fmtBrl(cents: number): string {
+  return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function hojeIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function SpendModal({ quizId, onClose }: { quizId: string; onClose: () => void }) {
+  const [dias, setDias] = useState<InvestimentoDia[]>([])
+  const [total, setTotal] = useState(0)
+  const [data, setData] = useState(hojeIso())
+  const [valor, setValor] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+
+  const carregar = useCallback(() => {
+    void listarInvestimentos(quizId).then(r => {
+      if ('error' in r) setErro(r.error)
+      else { setDias(r.dias); setTotal(r.totalCents); setErro(null) }
+    })
+  }, [quizId])
+
+  useEffect(() => { carregar() }, [carregar])
+
+  async function lancar() {
+    // Aceita "300", "300,50" e "R$ 300,50".
+    const limpo = valor.replace(/[^\d,\.]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.')
+    const reais = Number.parseFloat(limpo)
+    if (!Number.isFinite(reais) || reais <= 0) { setErro('Informe um valor válido, ex.: 300 ou 300,50'); return }
+    setSalvando(true); setErro(null)
+    const r = await salvarInvestimento(quizId, { date: data, amountCents: Math.round(reais * 100) })
+    setSalvando(false)
+    if ('error' in r) { setErro(r.error); return }
+    setValor('')
+    carregar()
+  }
+
+  async function excluir(id: string) {
+    await excluirInvestimento(quizId, id)
+    carregar()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">💰 Investimento em anúncios</h3>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Lance o gasto por dia. O portal do seu cliente calcula sozinho o custo
+              por lead e o custo por lead quente. Ele não vê esta tela.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        {erro && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+
+        <div className="mt-4 flex gap-2">
+          <input type="date" value={data} max={hojeIso()} onChange={e => setData(e.target.value)}
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+          <input type="text" inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)}
+            placeholder="R$ 300,00"
+            onKeyDown={e => { if (e.key === 'Enter') void lancar() }}
+            className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+          <button onClick={lancar} disabled={salvando}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+            Lançar
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-gray-400">
+          Lançar de novo no mesmo dia corrige o valor daquele dia (não soma).
+        </p>
+
+        <div className="mt-4 max-h-56 space-y-1 overflow-y-auto">
+          {dias.map(d => (
+            <div key={d.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
+              <span className="text-gray-600">{new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR')}</span>
+              <span className="font-semibold text-gray-900">{fmtBrl(d.amountCents)}</span>
+              <button onClick={() => void excluir(d.id)} title="Excluir"
+                className="text-gray-300 hover:text-red-500">✕</button>
+            </div>
+          ))}
+          {dias.length === 0 && !erro && (
+            <p className="py-4 text-center text-xs text-gray-400">Nenhum lançamento ainda</p>
+          )}
+        </div>
+
+        {total > 0 && (
+          <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm">
+            <span className="font-semibold text-gray-700">Total investido</span>
+            <span className="text-lg font-bold text-gray-900">{fmtBrl(total)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages: QuizPage[] }) {
@@ -671,6 +778,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   const [leadsExport, setLeadsExport] = useState<ExportLeadResumo[]>([])
   const [searchInput, setSearchInput] = useState('')
   const [shareOpen, setShareOpen] = useState(false)
+  const [spendOpen, setSpendOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -857,6 +965,12 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
               {ocultas.size} {ocultas.size === 1 ? 'coluna oculta' : 'colunas ocultas'} · mostrar todas
             </button>
           )}
+
+          {/* Investimento manual: alimenta o custo por lead do portal. */}
+          <button onClick={() => setSpendOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+            💰 Investimento
+          </button>
 
           {/* Compartilhar: link com senha para o cliente baixar os leads. */}
           <button onClick={() => setShareOpen(true)}
@@ -1242,6 +1356,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
 
       {/* Detail panel */}
       {shareOpen && <ShareModal quizId={quizId} onClose={() => setShareOpen(false)} />}
+      {spendOpen && <SpendModal quizId={quizId} onClose={() => setSpendOpen(false)} />}
 
       {selectedLead && (
         <>

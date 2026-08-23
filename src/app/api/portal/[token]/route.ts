@@ -20,8 +20,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { tokenShareValido, verificarSenhaShare } from '@/lib/quiz/share'
 import { publicoPortalValido, statusPortalValido, type PublicoPortal } from '@/lib/quiz/portal'
 import {
-  metricasDoQuiz, montarTabelaLeads, leadsParaPortal,
+  metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentoDoQuiz,
 } from '@/lib/quiz/leads-core'
+import { custoPorLead } from '@/lib/quiz/portal'
 
 export const maxDuration = 60
 
@@ -105,7 +106,7 @@ export async function POST(
       const quiz = quizzes.find(q => q.id === corpo.quizId)
       if (!quiz) return NextResponse.json({ error: 'Funil não está neste portal' }, { status: 404 })
 
-      const [leads, statusRows, metricas, tabela] = await Promise.all([
+      const [leads, statusRows, metricas, tabela, gastoCents] = await Promise.all([
         leadsParaPortal(admin, quiz.id, tenantId, quiz.publico),
         admin.from('portal_lead_status')
           .select('lead_id, status').eq('portal_id', portalId).range(0, 9_999),
@@ -113,6 +114,7 @@ export async function POST(
         montarTabelaLeads(admin, quiz.id, tenantId, {
           publico: quiz.publico === 'concluidos' ? 'concluidos' : quiz.publico,
         }),
+        portal.mostrar_metricas ? investimentoDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(0),
       ])
 
       const statusPorLead: Record<string, string> = {}
@@ -123,10 +125,19 @@ export async function POST(
         ...(portal.mostrar_funil ? {} : { funil: [] }),
       } : null
 
+      // Custo calculado sobre TODOS que entraram (métrica), não só sobre o
+      // público liberado — o gasto trouxe todo mundo, não só os quentes.
+      const custos = m && gastoCents > 0 ? {
+        investidoCents: gastoCents,
+        cplCents: custoPorLead(gastoCents, m.total),
+        cplQuenteCents: custoPorLead(gastoCents, m.completed),
+      } : null
+
       return NextResponse.json({
         quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico },
         leads: leads.map(l => ({ ...l, statusCliente: statusPorLead[l.id] ?? 'novo' })),
         metricas: m,
+        custos,
         tabela: 'error' in tabela ? null : tabela,
       })
     }

@@ -37,8 +37,12 @@ interface DadosQuiz {
   quiz: { id: string; titulo: string; publico: string }
   leads: LeadComStatus[]
   metricas: QuizMetricas | null
+  custos: { investidoCents: number; cplCents: number | null; cplQuenteCents: number | null } | null
   tabela: ExportTable | null
 }
+
+const brl = (cents: number) =>
+  `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export default function SharePanelClient({ token }: { token: string }) {
   const [senha, setSenha] = useState('')
@@ -206,6 +210,28 @@ export default function SharePanelClient({ token }: { token: string }) {
             <p className="mt-2 text-center text-xs text-slate-400">
               De cada 100 pessoas que entram no funil, {m.completionRate} chegam ao final.
             </p>
+
+            {/* Custo — só quando o dono lançou investimento. */}
+            {dados?.custos && (
+              <div className="mt-4 grid grid-cols-3 gap-3 border-t border-slate-100 pt-4 text-center">
+                <div>
+                  <p className="text-lg font-bold text-slate-900">{brl(dados.custos.investidoCents)}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">investido</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-slate-900">
+                    {dados.custos.cplCents === null ? '—' : brl(dados.custos.cplCents)}
+                  </p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">custo por lead</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-orange-600">
+                    {dados.custos.cplQuenteCents === null ? '—' : brl(dados.custos.cplQuenteCents)}
+                  </p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">custo por lead 🔥</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
