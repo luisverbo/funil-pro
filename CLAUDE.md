@@ -483,44 +483,53 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-08-06 — Content Studio: modo viral (capa com foto) + auditoria completa do fluxo
+**Última atualização:** 2026-08-23 — Portal do cliente + Gestor de Tráfego Fase 1 completa + causa raiz das server actions
 
-**O que foi feito (2026-08-06, sessão Content Studio viral):**
-- **Modo viral `viral_cover_text_v1`** (padrão para novas produções): capa
-  fotográfica 1080×1350 (foto 65% em cima, painel preto embaixo) gerada pela
-  OpenAI + slides internos 100% tipográficos montados pelo FunilPro com sharp.
-  **Custo: 1 geração de imagem por carrossel**, qualquer que seja o nº de slides
-- Prompt `viral_cover_photo_v1` (EN) com 6 mecanismos de curiosidade (máx. 2),
-  proibições obrigatórias nunca cortadas e salvaguardas para menores
-- Cor de destaque (whitelist + hex validado no servidor) com contraste
-  automático; marca-texto por correspondência exata sugerido pelo Copywriter
-- Escritório em SVG com visual de jogo: hora dourada, luz volumétrica das
-  janelas, piso com profundidade/reflexo, vinheta
+**O que foi feito (2026-08-19 a 23):**
+- **Gestor de Tráfego — Fase 1 COMPLETA** (PRs #48–#50): sincronização Meta
+  recorrente (workflow `trafego-sync.yml` de hora em hora, sem actions
+  externas; endpoint `/api/trafego/sync` com `evaluateCronAuth`, orçamento de
+  tempo por conta), ROAS real (`src/lib/trafego/roas.ts`: ad_insights ×
+  sales, estorno sai do faturado, venda sem origem em balde visível), painel
+  `/trafego` (zero nunca é resposta: cada estado tem texto próprio; aviso de
+  token vencendo) e agente analista DETERMINÍSTICO
+  (`src/lib/trafego/diagnose.ts`: 8 regras com limites explícitos, grava em
+  `traffic_diagnoses` no cron, sem IA — custo zero e auditável)
+- **Duplicar página corrigido** (PR #51): copiava lista fixa de 5 colunas e o
+  quiz (`quiz_data`) ficava de fora — cópia nascia vazia. Regra invertida em
+  `src/lib/pages/duplicate.ts` (lista do que NÃO copiar); perguntas v1
+  copiadas com vínculos reapontados
+- **Portal do cliente** (PRs #52–#56): UM acesso (link `/ql/<token>` + senha
+  scrypt) com VÁRIOS funis; dono decide público por funil (padrão só
+  concluídos = lead quente 🔥), botão WhatsApp (wa.me com DDI deduzido),
+  cliente marca desfecho (novo/contactado/agendado/fechado/perdido →
+  `portal_lead_status`), faixa de conversão "entraram X → chegaram Y = Z%",
+  investimento manual por dia (`quiz_spend_entries`) → CPL e CPL-quente no
+  portal. CSV/PDF com coluna Situação
+- **CAUSA RAIZ das server actions mudas** (PR #56): `export type { ... }` em
+  arquivo 'use server' NÃO é apagado pelo Turbopack → ReferenceError no init
+  do módulo → TODAS as actions do grafo falham mascaradas ("Server Components
+  render... digest"). Era o editor mudo, leads girando, modal em branco.
+  Teste varre src/app/actions e reprova o padrão. Defesa extra: painel do
+  quiz migrou para HTTP (`/api/painel-quiz` despachante com whitelist +
+  `src/lib/quiz/painel-client.ts` com mesmas assinaturas via typeof import;
+  carga do editor via `/api/quiz-editor-load/[id]`) — imune a id de build
+  embutido (dois deploys por merge = janela dupla de skew)
+- Bateria HONESTA: `npm run test:cs` → **600/600**
 
-**Correções de causa raiz nesta sessão (todas com teste travando a regressão):**
-1. **Orçamento de tempo do provider Anthropic**: o timeout inteiro era dado a
-   CADA tentativa (35s + retry 35s > maxDuration 60s) → a função morria no meio
-   e o step ficava `running` órfão. Agora `timeoutMs` é orçamento TOTAL
-2. **Step `failed` era terminal**: nova action `retryFailedStudioProduction`
-   (CAS failed→running, 5 cliques = 1 chamada) + motivo da falha na tela
-3. **Texto longo derrubava a chamada paga**: `str()` do studio/schema apara em
-   fronteira de palavra em vez de lançar; prompt do Copywriter v3 declara limites
-4. **Falha de imagem era muda**: `images/failure.ts` traduz o erro persistido
-   (403 verificação da org, 429 saldo, 400 política, timeout) para a tela
-5. **Banners contraditórios**: falha de arte não marca mais a produção inteira
-6. **Timeout da imagem**: rota passou a `maxDuration = 300` (Fluid Compute) e o
-   provider de imagem de 45s → 230s com invariante conferido no import
-7. **Letra sumindo na arte** (grave): `toPathData` do opentype.js emite `NaN`
-   em certas posições x e o rasterizador descarta a linha ("ninguém" virou
-   "ning"). Agora cada glifo é um `<path>` com serialização própria
-8. **Área de segurança de 96px** na base da capa (interface do Instagram)
+**Migrations pendentes de aplicar no Studio (hcadyqktfowfkxsbogmj):**
+- `20260818000000_trafego_fase1.sql` — APLICADA (confirmado 2026-08-19)
+- `20260822000000_quiz_share_links.sql` — APLICADA (confirmado 2026-08-23)
+- `20260823000000_client_portals.sql` — PENDENTE (portal do cliente)
+- `20260824000000_quiz_spend.sql` — PENDENTE (investimento manual)
 
-**Verificação:** `npm run test:cs` (`scripts/test-content-studio.sh`) roda as 24
-suítes e SÓ aprova quando aprovados == total — a conferência manual anterior
-aceitava "34/48 testes passaram" como verde. Bateria atual: **487/487**.
+**Pendências do usuário:** regerar links de anúncio com utm_ad_id (sem isso a
+atribuição de venda não fecha e o analista acusa rastreamento furado);
+disparar/aguardar 1ª sincronização Meta e conferir /trafego.
 
-**Pendente do Content Studio:** foto de perfil da marca no lugar das iniciais
-(upload + composição circular na arte).
+**Próximos do tráfego:** CPL automático da Meta no portal; tela de
+conectar/reconectar conta de anúncio (multi-conta); Fase 2 (copiloto) e
+Fase 3 (piloto automático — iniciar App Review `ads_management` em paralelo).
 
 **Atualização anterior:** 2026-07-19 — Instagram estilo ManyChat (automações, sequências, editor canvas)
 **O que foi feito (2026-07-19, sessão Instagram):**
