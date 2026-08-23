@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from '
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
   getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
-  getQuizShare, ativarQuizShare, desativarQuizShare,
-  type QuizMetricas, type QuizShareInfo,
+  getPortalDoQuiz, ativarPortal, desativarPortal, listarQuizzesDoTenant,
+  type QuizMetricas, type PortalInfo, type PortalQuizConfig,
   getExportStructure, exportLeadsTable,
   type ExportPageInfo, type ExportPublico, type ExportLeadResumo,
   type QuizLead, type QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
 import type { QuizPage } from '@/app/actions/quiz-v2'
+import { type PublicoPortal } from '@/lib/quiz/portal'
 
 type Period = '24h' | '7d' | '30d' | 'all'
 
@@ -439,44 +440,86 @@ function StatsBar({ quizId }: { quizId: string }) {
   )
 }
 
-// ─── Compartilhar painel (link com senha) ────────────────────────────────────
-// Para quem capta lead para clientes: gera /ql/<token> + senha, e o cliente
-// abre este mesmo painel sem conta. A senha não volta do servidor — se for
-// esquecida, gera-se um link novo (o antigo morre junto).
+// ─── Portal do cliente ───────────────────────────────────────────────────────
+// Um acesso por CLIENTE, com vários funis dentro. O dono escolhe o que o
+// cliente vê em cada funil (padrão: só quem concluiu — o lead quente) e se o
+// cliente pode marcar o desfecho dos leads. A senha não volta do servidor:
+// esquecer = gerar link novo (o antigo morre junto).
+
+const PUBLICO_OPCOES: { valor: PublicoPortal; rotulo: string }[] = [
+  { valor: 'concluidos', rotulo: '🔥 Só quem concluiu (lead quente)' },
+  { valor: 'com_resposta', rotulo: 'Quem respondeu algo' },
+  { valor: 'todos', rotulo: 'Todos (inclui quem só abriu)' },
+]
 
 function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }) {
-  const [info, setInfo] = useState<QuizShareInfo | null>(null)
+  const [info, setInfo] = useState<PortalInfo | null>(null)
+  const [disponiveis, setDisponiveis] = useState<{ id: string; titulo: string }[]>([])
+  const [carregado, setCarregado] = useState(false)
+
+  const [nome, setNome] = useState('')
   const [senha, setSenha] = useState('')
+  const [selecao, setSelecao] = useState<Map<string, PublicoPortal>>(new Map([[quizId, 'concluidos']]))
+  const [permitirStatus, setPermitirStatus] = useState(true)
+  const [mostrarMetricas, setMostrarMetricas] = useState(true)
+  const [mostrarFunil, setMostrarFunil] = useState(false)
+
   const [novoToken, setNovoToken] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [copiado, setCopiado] = useState(false)
 
   useEffect(() => {
-    getQuizShare(quizId).then(r => {
+    Promise.all([getPortalDoQuiz(quizId), listarQuizzesDoTenant()]).then(([r, q]) => {
       if ('error' in r) setErro(r.error)
-      else setInfo(r)
+      else {
+        setInfo(r)
+        if (r.quizzes.length > 0) {
+          setSelecao(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, x.publico])))
+          setNome(r.nome)
+          setPermitirStatus(r.permitirStatus)
+          setMostrarMetricas(r.mostrarMetricas)
+          setMostrarFunil(r.mostrarFunil)
+        }
+      }
+      if (Array.isArray(q)) setDisponiveis(q)
+      setCarregado(true)
     })
   }, [quizId])
 
-  const urlDe = (token: string) =>
-    `${window.location.origin}/ql/${token}`
+  const urlDe = (token: string) => `${window.location.origin}/ql/${token}`
+
+  function alternarQuiz(id: string) {
+    setSelecao(prev => {
+      const novo = new Map(prev)
+      if (novo.has(id)) novo.delete(id)
+      else novo.set(id, 'concluidos')
+      return novo
+    })
+  }
 
   async function gerar() {
     setSalvando(true); setErro(null)
-    const r = await ativarQuizShare(quizId, senha)
+    const r = await ativarPortal({
+      nome,
+      senha,
+      quizzes: [...selecao].map(([pageId, publico]) => ({ pageId, publico })),
+      mostrarMetricas, mostrarFunil, permitirStatus,
+      ...(info?.portalId ? { portalId: info.portalId } : {}),
+    })
     setSalvando(false)
     if ('error' in r) { setErro(r.error); return }
     setNovoToken(r.token)
-    setInfo({ ativo: true, token: r.token, acessos: 0, ultimoAcesso: null })
+    setInfo(prev => prev ? { ...prev, ativo: true, portalId: r.portalId, token: r.token } : prev)
   }
 
   async function desativar() {
+    if (!info?.portalId) return
     setSalvando(true)
-    await desativarQuizShare(quizId)
+    await desativarPortal(info.portalId)
     setSalvando(false)
-    setInfo({ ativo: false, token: null, acessos: 0, ultimoAcesso: null })
     setNovoToken(null)
+    setInfo(prev => prev ? { ...prev, ativo: false, token: null } : prev)
   }
 
   function copiar(texto: string) {
@@ -490,85 +533,113 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Compartilhar painel</h3>
+            <h3 className="text-lg font-bold text-gray-900">Portal do cliente</h3>
             <p className="mt-0.5 text-sm text-gray-500">
-              Envie o link e a senha para seu cliente ver e baixar os leads deste quiz — sem conta.
+              Um link com senha onde SEU cliente vê os leads chegando prontos —
+              com botão de WhatsApp e marcação de fechado/agendado.
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
 
         {erro && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+        {!carregado && <div className="mt-4 h-24 animate-pulse rounded-xl bg-gray-100" />}
 
-        {tokenAtivo ? (
-          <div className="mt-4 space-y-3">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Link ativo</p>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="flex-1 truncate rounded bg-white px-2 py-1.5 text-xs text-gray-700">{urlDe(tokenAtivo)}</code>
-                <button
-                  onClick={() => copiar(urlDe(tokenAtivo))}
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                >
-                  {copiado ? 'Copiado!' : 'Copiar'}
-                </button>
+        {carregado && (
+          <div className="mt-4 space-y-4">
+            {tokenAtivo && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Link ativo</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded bg-white px-2 py-1.5 text-xs text-gray-700">{urlDe(tokenAtivo)}</code>
+                  <button onClick={() => copiar(urlDe(tokenAtivo))}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
+                    {copiado ? 'Copiado!' : 'Copiar'}
+                  </button>
+                </div>
+                {info && info.acessos > 0 && (
+                  <p className="mt-2 text-[11px] text-emerald-700">
+                    {info.acessos} acesso(s){info.ultimoAcesso ? ` · último ${new Date(info.ultimoAcesso).toLocaleString('pt-BR')}` : ''}
+                  </p>
+                )}
               </div>
-              {info && info.acessos > 0 && (
-                <p className="mt-2 text-[11px] text-emerald-700">
-                  {info.acessos} acesso(s){info.ultimoAcesso ? ` · último ${new Date(info.ultimoAcesso).toLocaleString('pt-BR')}` : ''}
-                </p>
-              )}
+            )}
+
+            <div>
+              <label className="text-xs font-semibold text-gray-700">Nome do cliente (aparece no topo do portal)</label>
+              <input type="text" value={nome} onChange={e => setNome(e.target.value)}
+                placeholder="Ex.: Clínica Sorriso"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
             </div>
-            <p className="text-xs text-gray-500">
-              A senha não fica salva aqui — anote e envie junto com o link. Esqueceu? Gere um
-              link novo abaixo (o antigo para de funcionar na hora).
-            </p>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-1.5">
+                Funis deste portal — e o que o cliente vê em cada um
+              </p>
+              <div className="space-y-1.5 max-h-52 overflow-y-auto rounded-xl border border-gray-200 p-2">
+                {disponiveis.map(q => {
+                  const marcado = selecao.has(q.id)
+                  return (
+                    <div key={q.id} className={`rounded-lg p-2 ${marcado ? 'bg-indigo-50' : ''}`}>
+                      <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                        <input type="checkbox" checked={marcado} onChange={() => alternarQuiz(q.id)} />
+                        <span className="truncate">{q.titulo}</span>
+                        {q.id === quizId && <span className="text-[10px] text-indigo-500">(este)</span>}
+                      </label>
+                      {marcado && (
+                        <select
+                          value={selecao.get(q.id)}
+                          onChange={e => setSelecao(prev => new Map(prev).set(q.id, e.target.value as PublicoPortal))}
+                          className="mt-1 ml-6 rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700"
+                        >
+                          {PUBLICO_OPCOES.map(o => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )
+                })}
+                {disponiveis.length === 0 && <p className="p-2 text-xs text-gray-400">Nenhum quiz encontrado</p>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-1.5">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={permitirStatus} onChange={e => setPermitirStatus(e.target.checked)} />
+                Cliente pode marcar o lead (contactado, agendado, fechado…)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={mostrarMetricas} onChange={e => setMostrarMetricas(e.target.checked)} />
+                Mostrar métricas (total, conclusão, últimos 7 dias)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={mostrarFunil} onChange={e => setMostrarFunil(e.target.checked)} />
+                Mostrar as etapas do funil (desligado = cliente não vê o caminho)
+              </label>
+            </div>
+
             <div className="flex gap-2">
-              <input
-                type="text"
-                value={senha}
-                onChange={e => setSenha(e.target.value)}
-                placeholder="Nova senha (gera link novo)"
-                className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-              />
-              <button
-                onClick={gerar}
-                disabled={salvando || senha.trim().length === 0}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                Renovar
+              <input type="text" value={senha} onChange={e => setSenha(e.target.value)}
+                placeholder={tokenAtivo ? 'Nova senha (gera link novo)' : 'Crie uma senha para o cliente'}
+                className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+              <button onClick={gerar} disabled={salvando || senha.trim().length === 0 || selecao.size === 0}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                {salvando ? 'Salvando…' : tokenAtivo ? 'Renovar link' : 'Gerar link'}
               </button>
             </div>
-            <button
-              onClick={desativar}
-              disabled={salvando}
-              className="w-full rounded-xl border border-red-200 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-            >
-              Desativar link
-            </button>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            <input
-              type="text"
-              value={senha}
-              onChange={e => setSenha(e.target.value)}
-              placeholder="Crie uma senha para o cliente"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none"
-            />
-            <button
-              onClick={gerar}
-              disabled={salvando || senha.trim().length === 0}
-              className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {salvando ? 'Gerando…' : 'Gerar link com senha'}
-            </button>
             <p className="text-xs text-gray-500">
-              Quem tiver o link e a senha vê SOMENTE os leads deste quiz — nada além disso.
+              A senha não fica salva aqui — anote e envie junto com o link. Renovar
+              gera link novo e o antigo para de funcionar na hora.
             </p>
+
+            {tokenAtivo && (
+              <button onClick={desativar} disabled={salvando}
+                className="w-full rounded-xl border border-red-200 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                Desativar portal
+              </button>
+            )}
           </div>
         )}
       </div>

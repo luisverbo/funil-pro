@@ -29,9 +29,16 @@ type State =
 
 export default function QuizEditorWrapper({ pageId }: { pageId: string }) {
   const [state, setState] = useState<State>({ status: 'loading' })
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
+    // O .catch é OBRIGATÓRIO: sem ele, uma falha do servidor (500, rede,
+    // deploy no meio) deixava o esqueleto na tela PARA SEMPRE, sem mensagem
+    // nenhuma — foi exatamente o que aconteceu em produção. Erro agora vira
+    // tela de erro com o motivo e botão de tentar de novo.
+    let ativo = true
     loadQuizV2(pageId).then(result => {
+      if (!ativo) return
       if (result.error === 'page_not_found') {
         setState({ status: 'not_found' })
       } else if (result.error) {
@@ -45,8 +52,12 @@ export default function QuizEditorWrapper({ pageId }: { pageId: string }) {
           tenantId: result.tenantId!,
         })
       }
+    }).catch(err => {
+      if (!ativo) return
+      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
     })
-  }, [pageId])
+    return () => { ativo = false }
+  }, [pageId, tentativa])
 
   if (state.status === 'loading') {
     return (
@@ -79,6 +90,11 @@ export default function QuizEditorWrapper({ pageId }: { pageId: string }) {
         <div className="text-center max-w-md">
           <p className="text-lg font-semibold text-gray-700 mb-2">Erro ao carregar editor</p>
           <p className="text-sm text-gray-500 mb-4 font-mono">{state.message}</p>
+          <button
+            onClick={() => { setState({ status: 'loading' }); setTentativa(t => t + 1) }}
+            className="mr-4 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700">
+            Tentar novamente
+          </button>
           <a href="/pages" className="text-sm text-indigo-600 hover:underline">← Voltar para páginas</a>
         </div>
       </div>

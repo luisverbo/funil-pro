@@ -340,3 +340,59 @@ export async function metricasDoQuiz(
     funil: funilPorPagina(paginas, resumos),
   }
 }
+
+// ─── Portal do cliente ──────────────────────────────────────────────────────
+
+export interface LeadPortal {
+  id: string
+  nome: string | null
+  email: string | null
+  telefone: string | null
+  data: string | null
+  /** Concluiu o quiz — o "lead quente" que o portal destaca. */
+  quente: boolean
+  resultado: string | null
+  score: number
+}
+
+/**
+ * Leads que o PORTAL do cliente pode ver, já filtrados pelo público que o
+ * dono liberou para aquele funil.
+ *
+ * 'concluidos' (padrão) entrega só o lead quente; 'com_resposta' exige ao
+ * menos uma resposta — quem só abriu a página nunca chega ao cliente.
+ */
+export async function leadsParaPortal(
+  admin: SupabaseClient,
+  quizId: string,
+  tenantId: string,
+  publico: 'concluidos' | 'com_resposta' | 'todos',
+): Promise<LeadPortal[]> {
+  const { data: rows } = await admin
+    .from('quiz_leads')
+    .select('id, name, email, phone, status, started_at, result_shown, score')
+    .eq('quiz_id', quizId)
+    .eq('tenant_id', tenantId)
+    .order('started_at', { ascending: false })
+    .range(0, 9_999)
+
+  let leads = rows ?? []
+  if (publico === 'concluidos') {
+    leads = leads.filter(l => l.status === 'completed')
+  } else if (publico === 'com_resposta') {
+    const { leads: resumos } = await estruturaComContagens(admin, quizId, tenantId)
+    const responderam = new Set(resumos.filter(r => r.chaves.length > 0).map(r => r.id))
+    leads = leads.filter(l => responderam.has(String(l.id)))
+  }
+
+  return leads.map(l => ({
+    id: String(l.id),
+    nome: l.name ?? null,
+    email: l.email ?? null,
+    telefone: l.phone ?? null,
+    data: l.started_at ?? null,
+    quente: l.status === 'completed',
+    resultado: l.result_shown ?? null,
+    score: Number(l.score ?? 0),
+  }))
+}

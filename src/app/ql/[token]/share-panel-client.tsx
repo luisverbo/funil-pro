@@ -1,104 +1,153 @@
 'use client'
 
 // ============================================================================
-// Painel compartilhado de leads — a tela que o CLIENTE do dono do quiz vê
+// Portal do cliente — a tela que o CLIENTE do dono do tenant vê
 // ----------------------------------------------------------------------------
-// Quem abre isto não conhece o FunilPro: recebeu um link e uma senha. Por
-// isso a tela é autoexplicativa, sem jargão do sistema, e só mostra UM quiz.
+// Quem abre isto recebeu um link e uma senha, e não conhece o FunilPro. O
+// portal existe para UMA coisa: entregar o lead pronto. Por isso:
 //
-// A senha fica apenas na memória do componente e é reenviada a cada consulta;
-// nada dela vai para URL, localStorage ou cookie — fechar a aba desloga.
+//   • o lead quente (concluiu o funil) chega com 🔥 e botão de WhatsApp — um
+//     clique e o cliente está falando com ele;
+//   • o cliente marca o desfecho (contactado, agendado, fechado…) e isso fica
+//     gravado — vira prestação de contas do tráfego para o dono;
+//   • vários funis num acesso só, escolhidos um a um — nunca misturados.
+//
+// A senha vive apenas na memória do componente e é reenviada a cada ação;
+// nada dela vai para URL, armazenamento do navegador ou cookie.
 // ============================================================================
 
 import { useMemo, useState } from 'react'
-import type { ExportTable, QuizMetricas } from '@/lib/quiz/leads-core'
+import type { ExportTable, QuizMetricas, LeadPortal } from '@/lib/quiz/leads-core'
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
+import {
+  STATUS_PORTAL, STATUS_PORTAL_META, linkWhatsApp, nomeDoLead, type StatusPortal,
+} from '@/lib/quiz/portal'
 
-interface Painel {
-  titulo: string
-  metricas: QuizMetricas
-  paginas: { id: string; titulo: string }[]
+interface Abertura {
+  nome: string
+  permitirStatus: boolean
+  mostrarMetricas: boolean
+  mostrarFunil: boolean
+  quizzes: { id: string; titulo: string }[]
+}
+
+interface LeadComStatus extends LeadPortal { statusCliente: string }
+
+interface DadosQuiz {
+  quiz: { id: string; titulo: string; publico: string }
+  leads: LeadComStatus[]
+  metricas: QuizMetricas | null
   tabela: ExportTable | null
 }
 
-type Publico = 'todos' | 'concluidos' | 'com_resposta'
-
-const PUBLICOS: { valor: Publico; rotulo: string; dica: string }[] = [
-  { valor: 'todos', rotulo: 'Todos', dica: 'inclui quem só abriu' },
-  { valor: 'com_resposta', rotulo: 'Responderam algo', dica: 'ao menos uma resposta' },
-  { valor: 'concluidos', rotulo: 'Concluíram', dica: 'chegaram ao fim' },
-]
-
 export default function SharePanelClient({ token }: { token: string }) {
   const [senha, setSenha] = useState('')
-  const [senhaOk, setSenhaOk] = useState<string | null>(null)  // senha aceita, mantida em memória
-  const [painel, setPainel] = useState<Painel | null>(null)
+  const [senhaOk, setSenhaOk] = useState<string | null>(null)
+  const [portal, setPortal] = useState<Abertura | null>(null)
+  const [quizAtivo, setQuizAtivo] = useState<string | null>(null)
+  const [dados, setDados] = useState<DadosQuiz | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [publico, setPublico] = useState<Publico>('todos')
+  const [busca, setBusca] = useState('')
 
-  const consultar = async (senhaUsada: string, publicoUsado: Publico) => {
-    setCarregando(true)
-    setErro(null)
+  const api = async (payload: Record<string, unknown>) => {
+    const resp = await fetch(`/api/portal/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const json = await resp.json()
+    if (!resp.ok) throw Object.assign(new Error(json?.error ?? 'Falha'), { status: resp.status })
+    return json
+  }
+
+  const entrar = async () => {
+    setCarregando(true); setErro(null)
     try {
-      const resp = await fetch(`/api/quiz-share/${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ senha: senhaUsada, publico: publicoUsado }),
-      })
-      const dados = await resp.json()
-      if (!resp.ok) {
-        setErro(dados?.error ?? 'Não foi possível abrir o painel')
-        if (resp.status === 401) { setSenhaOk(null); setPainel(null) }
-        return
-      }
-      setSenhaOk(senhaUsada)
-      setPainel(dados as Painel)
-    } catch {
-      setErro('Falha de conexão. Tente de novo.')
+      const r = (await api({ senha, acao: 'abrir' })) as Abertura
+      setSenhaOk(senha)
+      setPortal(r)
+      if (r.quizzes.length > 0) void abrirQuiz(r.quizzes[0].id, senha)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível abrir')
     } finally {
       setCarregando(false)
     }
   }
 
-  const trocarPublico = (p: Publico) => {
-    setPublico(p)
-    if (senhaOk) void consultar(senhaOk, p)
+  const abrirQuiz = async (quizId: string, senhaUsar?: string) => {
+    const s = senhaUsar ?? senhaOk
+    if (!s) return
+    setQuizAtivo(quizId)
+    setCarregando(true); setErro(null)
+    try {
+      setDados((await api({ senha: s, acao: 'quiz', quizId })) as DadosQuiz)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Não foi possível carregar o funil')
+      setDados(null)
+    } finally {
+      setCarregando(false)
+    }
   }
 
-  const m = painel?.metricas
-  const t = painel?.tabela
+  const marcarStatus = async (leadId: string, status: StatusPortal) => {
+    if (!senhaOk || !dados) return
+    // Otimista: a tela muda na hora; se o servidor recusar, volta.
+    const anterior = dados
+    setDados({
+      ...dados,
+      leads: dados.leads.map(l => l.id === leadId ? { ...l, statusCliente: status } : l),
+    })
+    try {
+      await api({ senha: senhaOk, acao: 'status', leadId, status })
+    } catch (e) {
+      setDados(anterior)
+      setErro(e instanceof Error ? e.message : 'Não foi possível salvar o status')
+    }
+  }
 
-  // Prévia limitada: a tabela completa vai no arquivo — na tela, rolagem
-  // infinita sem paginação só travaria o navegador do cliente.
-  const previa = useMemo(() => (t ? t.linhas.slice(0, 100) : []), [t])
+  const leadsFiltrados = useMemo(() => {
+    if (!dados) return []
+    const q = busca.trim().toLowerCase()
+    if (!q) return dados.leads
+    return dados.leads.filter(l =>
+      (l.nome ?? '').toLowerCase().includes(q)
+      || (l.email ?? '').toLowerCase().includes(q)
+      || (l.telefone ?? '').includes(q))
+  }, [dados, busca])
 
-  if (!painel) {
+  /** CSV/PDF com a coluna "Situação" que o cliente marcou — os ids da tabela
+   *  vêm NA MESMA ORDEM das linhas, então o merge é por posição. */
+  const tabelaComStatus = (): ExportTable | null => {
+    if (!dados?.tabela) return null
+    const t = dados.tabela
+    const statusDe = new Map(dados.leads.map(l => [l.id, STATUS_PORTAL_META[(l.statusCliente as StatusPortal)]?.rotulo ?? l.statusCliente]))
+    return {
+      ...t,
+      colunas: [...t.colunas, { chave: 'portal:status', rotulo: 'Situação', respostas: 0 }],
+      linhas: t.linhas.map((l, i) => [...l, statusDe.get(t.ids[i]) ?? 'Novo']),
+    }
+  }
+
+  const m = dados?.metricas
+
+  // ── Tela de senha ─────────────────────────────────────────────────────────
+  if (!portal) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-4">
-        <form
-          onSubmit={e => { e.preventDefault(); void consultar(senha, publico) }}
-          className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl"
-        >
-          <div className="mb-1 text-3xl">🔐</div>
-          <h1 className="text-xl font-bold text-gray-900">Painel de leads</h1>
+      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-4">
+        <form onSubmit={e => { e.preventDefault(); void entrar() }}
+          className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
+          <div className="mb-1 text-3xl">🎯</div>
+          <h1 className="text-xl font-bold text-gray-900">Portal de leads</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Digite a senha que você recebeu para ver e baixar os leads deste quiz.
+            Digite a senha que você recebeu para acessar seus leads.
           </p>
-          <input
-            type="password"
-            value={senha}
-            onChange={e => setSenha(e.target.value)}
-            placeholder="Senha"
-            autoFocus
-            className="mt-5 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-          />
+          <input type="password" value={senha} onChange={e => setSenha(e.target.value)}
+            placeholder="Senha" autoFocus
+            className="mt-5 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
           {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
-          <button
-            type="submit"
-            disabled={carregando || senha.trim().length === 0}
-            className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
-          >
+          <button type="submit" disabled={carregando || senha.trim().length === 0}
+            className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50">
             {carregando ? 'Abrindo…' : 'Entrar'}
           </button>
         </form>
@@ -106,127 +155,152 @@ export default function SharePanelClient({ token }: { token: string }) {
     )
   }
 
+  // ── Portal ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-dvh bg-slate-50">
-      {/* Cabeçalho */}
-      <header className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 px-4 py-8 text-white">
+    <div className="min-h-dvh bg-slate-100">
+      <header className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-4 pb-16 pt-8 text-white">
         <div className="mx-auto max-w-5xl">
-          <p className="text-xs font-medium uppercase tracking-widest text-indigo-100">Painel de leads</p>
-          <h1 className="mt-1 text-2xl font-bold">{painel.titulo}</h1>
+          <p className="text-xs font-medium uppercase tracking-widest text-indigo-300">Portal de leads</p>
+          <h1 className="mt-1 text-2xl font-bold">{portal.nome}</h1>
+          {portal.quizzes.length > 1 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {portal.quizzes.map(q => (
+                <button key={q.id} onClick={() => void abrirQuiz(q.id)}
+                  className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
+                    q.id === quizAtivo ? 'bg-white text-slate-900 font-semibold' : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}>
+                  {q.titulo}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6">
+      <main className="mx-auto -mt-8 max-w-5xl px-4 pb-10">
+        {erro && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+
         {/* Métricas */}
         {m && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
               { r: 'Leads', v: m.total, n: `${m.hoje} hoje` },
-              { r: 'Concluíram', v: m.completed, n: `${m.completionRate}% de conclusão` },
+              { r: '🔥 Quentes', v: m.completed, n: `${m.completionRate}% concluíram` },
               { r: 'Com contato', v: m.comContato, n: 'e-mail ou telefone' },
-              { r: 'Últimos 7 dias', v: m.ultimos7d, n: null },
-              { r: 'Em andamento', v: m.inProgress, n: null },
+              { r: 'Últimos 7 dias', v: m.ultimos7d, n: 'novos leads' },
             ].map(c => (
               <div key={c.r} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{c.r}</p>
                 <p className="mt-1 text-2xl font-bold text-slate-900">{c.v}</p>
-                {c.n && <p className="mt-0.5 text-xs text-slate-400">{c.n}</p>}
+                <p className="mt-0.5 text-xs text-slate-400">{c.n}</p>
               </div>
             ))}
           </div>
         )}
 
-        {/* Funil por página */}
+        {/* Funil (só se o dono liberou) */}
         {m && m.funil.length > 1 && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Onde as pessoas param</h2>
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Etapas do funil</h2>
             <div className="mt-3 space-y-2">
               {m.funil.map(e => (
                 <div key={e.pageId} className="flex items-center gap-3">
                   <span className="w-40 truncate text-xs text-slate-600" title={e.titulo}>{e.titulo}</span>
                   <div className="h-5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
-                      style={{ width: `${Math.max(e.pct, e.leads > 0 ? 4 : 0)}%` }}
-                    />
+                    <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
+                      style={{ width: `${Math.max(e.pct, e.leads > 0 ? 4 : 0)}%` }} />
                   </div>
-                  <span className="w-20 text-right text-xs tabular-nums text-slate-600">
-                    {e.leads} · {e.pct}%
-                  </span>
+                  <span className="w-20 text-right text-xs tabular-nums text-slate-600">{e.leads} · {e.pct}%</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Filtro + downloads */}
+        {/* Barra: busca + downloads */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-            {PUBLICOS.map(p => (
-              <button
-                key={p.valor}
-                onClick={() => trocarPublico(p.valor)}
-                title={p.dica}
-                className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                  publico === p.valor ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {p.rotulo}
-              </button>
-            ))}
-          </div>
+          <input type="search" value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por nome, e-mail ou telefone…"
+            className="w-full max-w-xs rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none" />
           <div className="flex gap-2">
             <button
-              onClick={() => { if (t) baixarCsv(t, `leads-${painel.titulo.slice(0, 20)}`) }}
-              disabled={!t || t.linhas.length === 0}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
+              onClick={() => { const t = tabelaComStatus(); if (t) baixarCsv(t, `leads-${dados?.quiz.titulo.slice(0, 20) ?? 'funil'}`) }}
+              disabled={!dados?.tabela || dados.tabela.linhas.length === 0}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
               ⬇ Baixar CSV
             </button>
             <button
-              onClick={() => { if (t) { const b = abrirPdf(t); if (b) setErro(b) } }}
-              disabled={!t || t.linhas.length === 0}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
+              onClick={() => { const t = tabelaComStatus(); if (t) { const b = abrirPdf(t); if (b) setErro(b) } }}
+              disabled={!dados?.tabela || dados.tabela.linhas.length === 0}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               📄 PDF
             </button>
           </div>
         </div>
 
-        {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
-
-        {/* Tabela */}
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Leads */}
+        <div className="mt-3 space-y-2">
           {carregando ? (
-            <div className="p-10 text-center text-sm text-slate-500">Carregando…</div>
-          ) : !t || t.linhas.length === 0 ? (
-            <div className="p-10 text-center text-sm text-slate-500">
-              Nenhum lead neste filtro ainda.
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
+              Carregando…
+            </div>
+          ) : leadsFiltrados.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+              <p className="text-3xl">📭</p>
+              <p className="mt-2 text-sm font-medium text-slate-700">Nenhum lead por aqui ainda</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Assim que um lead {dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.
+              </p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>{t.colunas.map(c => <th key={c.chave} className="whitespace-nowrap px-4 py-3">{c.rotulo}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {previa.map((l, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    {l.map((v, j) => <td key={j} className="max-w-[240px] truncate px-4 py-2.5 text-slate-700" title={v}>{v}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            leadsFiltrados.map(l => {
+              const wa = linkWhatsApp(l.telefone)
+              const st = (l.statusCliente as StatusPortal) in STATUS_PORTAL_META
+                ? (l.statusCliente as StatusPortal) : 'novo'
+              return (
+                <div key={l.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate font-semibold text-slate-900">{nomeDoLead(l)}</p>
+                      {l.quente && (
+                        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-600">
+                          🔥 Quente
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">
+                      {[l.telefone, l.email].filter(Boolean).join(' · ') || 'sem contato'}
+                      {l.data ? ` · ${new Date(l.data).toLocaleDateString('pt-BR')}` : ''}
+                    </p>
+                    {l.resultado && <p className="mt-0.5 text-xs text-indigo-600">Resultado: {l.resultado}</p>}
+                  </div>
+
+                  {wa && (
+                    <a href={wa} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600">
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                        <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07a8.2 8.2 0 0 1-2.4-1.49 9 9 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.11 3.22 5.1 4.51.71.31 1.27.5 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01a9.4 9.4 0 0 1-4.8-1.31l-.34-.2-3.56.93.95-3.47-.22-.36a9.42 9.42 0 1 1 7.98 4.41zM12.05 1.25C6.11 1.25 1.3 6.07 1.3 12c0 1.9.5 3.74 1.44 5.37L1.25 22.75l5.52-1.45a10.7 10.7 0 0 0 5.27 1.38h.01c5.93 0 10.75-4.82 10.75-10.75S17.98 1.25 12.05 1.25z"/>
+                      </svg>
+                      WhatsApp
+                    </a>
+                  )}
+
+                  {portal.permitirStatus && (
+                    <select value={st}
+                      onChange={e => void marcarStatus(l.id, e.target.value as StatusPortal)}
+                      className={`rounded-xl border-0 px-3 py-2 text-xs font-semibold ${STATUS_PORTAL_META[st].cor}`}>
+                      {STATUS_PORTAL.map(opt => (
+                        <option key={opt} value={opt}>{STATUS_PORTAL_META[opt].rotulo}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
-        {t && t.linhas.length > previa.length && (
-          <p className="mt-2 text-xs text-slate-400">
-            Mostrando {previa.length} de {t.linhas.length} — o arquivo baixado vem completo.
-          </p>
-        )}
 
-        <p className="mt-8 pb-6 text-center text-xs text-slate-400">
-          Painel gerado com FunilPro
-        </p>
+        <p className="mt-8 text-center text-xs text-slate-400">Portal gerado com FunilPro</p>
       </main>
     </div>
   )
