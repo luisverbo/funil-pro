@@ -387,6 +387,11 @@ test('13j) público "preencheu as páginas marcadas": só entra quem cumpriu', (
   const c = ler('src/app/ql/[token]/share-panel-client.tsx')
   assert.ok(c.includes("'kanban'"), 'sem visão kanban')
   assert.ok(c.includes('STATUS_PORTAL.map(coluna =>'), 'kanban sem uma coluna por situação')
+  // Largura total + arrastar e soltar (com o seletor mantido para o celular).
+  assert.ok(c.includes('w-screen'), 'o quadro voltaria a ficar cortado na coluna central')
+  assert.ok(c.includes('draggable={compacto}'), 'cartão do kanban não arrasta')
+  assert.ok(c.includes("e.dataTransfer.getData('text/plain')"), 'a coluna não recebe o solto')
+  assert.ok(c.includes('void marcarStatus(id, coluna)'), 'soltar não grava o status')
   assert.ok(c.includes("statusCliente === 'fechado'"), 'custo por venda sem contar os fechados')
   assert.ok(c.includes('custoPorVendaCents'), 'sem custo por venda')
 })

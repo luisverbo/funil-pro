@@ -814,13 +814,15 @@ function SpendModal({ quizId, onClose }: { quizId: string; onClose: () => void }
 
         {erro && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
-        <div className="mt-4 flex gap-2">
+        {/* min-w-0 + flex-wrap: sem eles o botão estourava a borda do modal —
+            input de data tem largura mínima nativa maior que o espaço. */}
+        <div className="mt-4 flex flex-wrap gap-2">
           <input type="date" value={data} max={hojeIso()} onChange={e => setData(e.target.value)}
-            className="rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+            className="min-w-0 shrink rounded-xl border border-gray-300 px-2 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
           <input type="text" inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)}
             placeholder="R$ 300,00"
             onKeyDown={e => { if (e.key === 'Enter') void lancar() }}
-            className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+            className="min-w-[7rem] flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
           <button onClick={lancar} disabled={salvando}
             className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
             Lançar
