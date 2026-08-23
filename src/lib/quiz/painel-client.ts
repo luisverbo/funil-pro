@@ -60,6 +60,7 @@ export const listarQuizzesDoTenant = op('listarQuizzesDoTenant')
 export const listarInvestimentos = op('listarInvestimentos')
 export const salvarInvestimento = op('salvarInvestimento')
 export const excluirInvestimento = op('excluirInvestimento')
+export const getCustosDoQuiz = op('getCustosDoQuiz')
 
 // Editor (salvar e publicar — mesmas falhas, mesma cura)
 export const saveQuizV2 = op('saveQuizV2')

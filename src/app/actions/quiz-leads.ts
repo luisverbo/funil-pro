@@ -3,8 +3,9 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { LancamentoDia, LeadCusto } from '@/lib/quiz/custos'
 import {
-  estruturaComContagens, metricasDoQuiz, montarTabelaLeads,
+  estruturaComContagens, investimentosDoQuiz, leadsParaPortal, metricasDoQuiz, montarTabelaLeads,
   type ExportLeadResumo, type ExportPageInfo, type ExportPublico, type ExportTable,
   type OpcoesTabela, type QuizMetricas,
 } from '@/lib/quiz/leads-core'
@@ -822,6 +823,46 @@ export async function desativarPortal(portalId: string): Promise<{ ok: true } | 
       .eq('tenant_id', tenantId)
     if (error && !portalTabelaAusente(error)) return { error: error.message }
     return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/**
+ * Insumos de custo do painel do DONO — os mesmos do portal do cliente.
+ *
+ * O dono não podia ver custo por lead sem abrir o portal que ele mesmo criou
+ * para o cliente; isto conserta. `fechado` vem do que o CLIENTE marcou em
+ * qualquer portal deste quiz — é a informação que fecha o ciclo.
+ */
+export async function getCustosDoQuiz(quizId: string): Promise<
+  { lancamentos: LancamentoDia[]; leads: LeadCusto[] } | { error: string }
+> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { error: 'Quiz não encontrado ou sem permissão' }
+    }
+    const admin = createAdminClient()
+
+    // 'todos': o custo por lead considera TODO mundo que entrou, não só o
+    // recorte que o cliente enxerga.
+    const [lancamentos, leads, fechadosRows] = await Promise.all([
+      investimentosDoQuiz(admin, quizId, tenantId),
+      leadsParaPortal(admin, quizId, tenantId, 'todos'),
+      admin.from('portal_lead_status')
+        .select('lead_id, status').eq('tenant_id', tenantId).eq('status', 'fechado').range(0, 9_999),
+    ])
+
+    const fechados = new Set((fechadosRows.data ?? []).map(r => String(r.lead_id)))
+    return {
+      lancamentos,
+      leads: leads.map(l => ({
+        data: l.data,
+        temContato: l.quente,
+        fechado: fechados.has(l.id),
+      })),
+    }
   } catch (err) {
     return { error: String(err) }
   }

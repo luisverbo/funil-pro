@@ -556,6 +556,22 @@ export async function leadsParaPortal(
   }))
 }
 
+/** Lançamentos POR DIA — o custo por período precisa deles, não só do total. */
+export async function investimentosDoQuiz(
+  admin: SupabaseClient,
+  quizId: string,
+  tenantId: string,
+): Promise<{ date: string; amountCents: number }[]> {
+  const { data, error } = await admin
+    .from('quiz_spend_entries')
+    .select('date, amount_cents')
+    .eq('page_id', quizId)
+    .eq('tenant_id', tenantId)
+    .range(0, 9_999)
+  if (error || !data) return []
+  return data.map(l => ({ date: String(l.date), amountCents: Number(l.amount_cents ?? 0) }))
+}
+
 /** Total investido no quiz (lançamentos manuais). 0 quando a tabela não existe. */
 export async function investimentoDoQuiz(
   admin: SupabaseClient,

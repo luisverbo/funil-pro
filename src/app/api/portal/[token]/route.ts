@@ -26,9 +26,8 @@ import {
   publicoPortalValido, statusPortalValido, temContato, type PublicoPortal,
 } from '@/lib/quiz/portal'
 import {
-  COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentoDoQuiz,
+  COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
 } from '@/lib/quiz/leads-core'
-import { custoPorLead } from '@/lib/quiz/portal'
 
 export const maxDuration = 60
 
@@ -150,7 +149,7 @@ export async function POST(
       // ids, para arquivo e tela nunca divergirem.
       const leads = await leadsParaPortal(admin, quiz.id, tenantId, quiz.publico, quiz.paginas)
 
-      const [statusRows, metricas, tabela, gastoCents] = await Promise.all([
+      const [statusRows, metricas, tabela, investimentos] = await Promise.all([
         admin.from('portal_lead_status')
           .select('lead_id, status').eq('portal_id', portalId).range(0, 9_999),
         portal.mostrar_metricas ? metricasDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(null),
@@ -160,7 +159,7 @@ export async function POST(
           apenasIds: leads.map(l => l.id),
           ...(quiz.paginas.length > 0 ? { pageIds: quiz.paginas } : { columnKeys: COLUNAS_LEAD.map(c => c.chave) }),
         }),
-        portal.mostrar_metricas ? investimentoDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(0),
+        portal.mostrar_metricas ? investimentosDoQuiz(admin, quiz.id, tenantId) : Promise.resolve([]),
       ])
 
       // Páginas escolhidas que já não existem (quiz editado) derrubariam a
@@ -180,21 +179,13 @@ export async function POST(
         ...(portal.mostrar_funil ? {} : { funil: [] }),
       } : null
 
-      // Custo calculado sobre TODOS que entraram (métrica), não só sobre o
-      // público liberado — o gasto trouxe todo mundo, não só os quentes.
-      const custos = m && gastoCents > 0 ? {
-        investidoCents: gastoCents,
-        cplCents: custoPorLead(gastoCents, m.total),
-        // "Quente" é quem dá para atender (deixou contato) — é esse o lead
-        // que o cliente compra, não quem clicou no botão final.
-        cplQuenteCents: custoPorLead(gastoCents, m.comContato),
-      } : null
-
       return comSessao({
         quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico },
         leads: leads.map(l => ({ ...l, statusCliente: statusPorLead[l.id] ?? 'novo' })),
         metricas: m,
-        custos,
+        // Os lançamentos POR DIA vão para a tela: o custo é recalculado junto
+        // com o filtro de período, em vez de ser um total fixo de todo o tempo.
+        investimentos: portal.mostrar_metricas ? investimentos : [],
         tabela: 'error' in tabelaFinal ? null : tabelaFinal,
       })
     }
