@@ -13,7 +13,7 @@
 // ============================================================================
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -192,6 +192,48 @@ test('13) CSV/PDF são UMA implementação para os dois painéis', () => {
   assert.ok(view.includes("from '@/components/quiz/export-files'"), 'o painel logado tem cópia própria')
   assert.ok(publico.includes("from '@/components/quiz/export-files'"), 'o painel público tem cópia própria')
   assert.ok(!view.includes('function montarCsv'), 'a duplicata antiga voltou ao componente')
+})
+
+test('14) o painel NÃO chama server action — transporte é HTTP', () => {
+  // A regressão que isto trava: server action embute um id de build na
+  // página; aba aberta durante um deploy chama um id que já não existe e
+  // recebe o erro mascarado do Next. Foi o editor mudo e o modal em branco.
+  const view = ler('src/components/quiz/quiz-leads-view.tsx')
+  assert.ok(view.includes("from '@/lib/quiz/painel-client'"), 'o painel voltou às actions')
+  const importaAcao = /import\s*\{[^}]*\}\s*from '@\/app\/actions\/quiz-leads'/.exec(view)
+  if (importaAcao) {
+    assert.ok(/import type/.test(importaAcao[0]), 'função de action importada direto no painel')
+  }
+
+  const editor = ler('src/components/quiz/quiz-editor-v2.tsx')
+  assert.ok(editor.includes("from '@/lib/quiz/painel-client'"), 'salvar/publicar voltaram às actions')
+
+  const rota = ler('src/app/api/painel-quiz/route.ts')
+  assert.ok(rota.includes('const OPERACOES'), 'sem lista fechada de operações')
+  assert.ok(!rota.includes("OPERACOES[corpo.op ?? '']?.call"), 'chamada dinâmica sem whitelist')
+  // O despachante não duplica lógica: importa as MESMAS funções das actions.
+  assert.ok(rota.includes("from '@/app/actions/quiz-leads'"), 'lógica duplicada no despachante')
+  // Sessão caída vira 401 explícito, não erro sem sentido.
+  assert.ok(rota.includes("digest.startsWith('NEXT_REDIRECT')"), 'redirect viraria 500 mascarado')
+
+  const wrapper = ler('src/components/quiz/quiz-editor-wrapper.tsx')
+  assert.ok(wrapper.includes('/api/quiz-editor-load/'), 'a carga do editor voltou à action')
+})
+
+test('15) CAUSA RAIZ: nenhum arquivo de actions re-exporta tipos', () => {
+  // `export type { X }` num arquivo 'use server' NÃO é apagado pelo Turbopack:
+  // vira re-exportação de runtime, o binding não existe, e o módulo INTEIRO
+  // morre com ReferenceError na inicialização — todas as actions do grafo
+  // passam a falhar com o erro mascarado do Next. Foi o editor mudo, o painel
+  // de leads girando para sempre e o modal do portal em branco.
+  for (const nome of readdirSync(join(RAIZ, 'src/app/actions'))) {
+    if (!nome.endsWith('.ts')) continue
+    const fonte = ler(`src/app/actions/${nome}`)
+    if (!fonte.trimStart().startsWith("'use server'")) continue
+    const semComentarios = fonte.split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+    assert.ok(!/^\s*export type \{/m.test(semComentarios),
+      `${nome}: re-exportação de tipo em arquivo 'use server' derruba todas as actions`)
+  }
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
