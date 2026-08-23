@@ -450,6 +450,21 @@ export function contatoPorFormato(
   return { nome, email, telefone }
 }
 
+/**
+ * O lead CUMPRIU as páginas exigidas? Regra do público 'paginas': entra quem
+ * respondeu ao menos uma pergunta em CADA página marcada. Página exigida sem
+ * pergunta nenhuma não conta como barreira — não há o que responder nela.
+ */
+export function preencheuPaginas(
+  paginasDoQuiz: ExportPageInfo[],
+  paginasExigidas: string[],
+  respostasDoLead: Record<string, string>,
+): boolean {
+  const exigidas = paginasDoQuiz.filter(p => paginasExigidas.includes(p.id) && p.colunas.length > 0)
+  if (exigidas.length === 0) return true
+  return exigidas.every(p => p.colunas.some(c => (respostasDoLead[c.chave] ?? '').trim().length > 0))
+}
+
 // ─── Portal do cliente ──────────────────────────────────────────────────────
 
 export interface LeadPortal {
@@ -482,7 +497,9 @@ export async function leadsParaPortal(
   admin: SupabaseClient,
   quizId: string,
   tenantId: string,
-  publico: 'com_contato' | 'concluidos' | 'com_resposta' | 'todos',
+  publico: 'com_contato' | 'paginas' | 'concluidos' | 'com_resposta' | 'todos',
+  /** Páginas exigidas quando publico === 'paginas'. */
+  paginasExigidas: string[] = [],
 ): Promise<LeadPortal[]> {
   const [{ data: rows }, { data: pageRow }, { porLead: respostas, digitadas }] = await Promise.all([
     admin
@@ -517,6 +534,9 @@ export async function leadsParaPortal(
   let leads = enriquecidos
   if (publico === 'com_contato') {
     leads = leads.filter(l => temContato({ email: l.email, phone: l.telefone }))
+  } else if (publico === 'paginas') {
+    // Só quem CUMPRIU: respondeu algo em cada página que o dono marcou.
+    leads = leads.filter(l => preencheuPaginas(paginas, paginasExigidas, respostas[String(l.id)] ?? {}))
   } else if (publico === 'concluidos') {
     leads = leads.filter(l => l.status === 'completed')
   } else if (publico === 'com_resposta') {

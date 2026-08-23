@@ -43,7 +43,7 @@ export function statusPortalValido(s: unknown): s is StatusPortal {
  * ligar ela é o melhor lead que existe. Filtrar por conclusão escondia
  * justamente quem podia ser atendido.
  */
-export const PUBLICOS_PORTAL = ['com_contato', 'concluidos', 'com_resposta', 'todos'] as const
+export const PUBLICOS_PORTAL = ['com_contato', 'paginas', 'concluidos', 'com_resposta', 'todos'] as const
 export type PublicoPortal = typeof PUBLICOS_PORTAL[number]
 
 export function publicoPortalValido(p: unknown): p is PublicoPortal {
