@@ -22,6 +22,7 @@ import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
   STATUS_PORTAL, STATUS_PORTAL_META, linkWhatsApp, nomeDoLead, type StatusPortal,
 } from '@/lib/quiz/portal'
+import { calcularCustos, type LancamentoDia } from '@/lib/quiz/custos'
 
 interface Abertura {
   nome: string
@@ -37,7 +38,8 @@ interface DadosQuiz {
   quiz: { id: string; titulo: string; publico: string }
   leads: LeadComStatus[]
   metricas: QuizMetricas | null
-  custos: { investidoCents: number; cplCents: number | null; cplQuenteCents: number | null } | null
+  /** Lançamentos por dia — a tela recalcula o custo junto com o filtro. */
+  investimentos: LancamentoDia[]
   tabela: ExportTable | null
 }
 
@@ -219,15 +221,22 @@ export default function SharePanelClient({ token }: { token: string }) {
 
   const m = dados?.metricas
 
-  /** Vendas = leads que o CLIENTE marcou como Fechado. Com investimento
-   *  lançado, o custo por venda sai na hora: investido ÷ fechados. */
-  const fechados = useMemo(
-    () => (dados?.leads ?? []).filter(l => l.statusCliente === 'fechado').length,
-    [dados],
-  )
-  const custoPorVendaCents = dados?.custos && fechados > 0
-    ? Math.round(dados.custos.investidoCents / fechados)
-    : null
+  /**
+   * Custos DO PERÍODO ESCOLHIDO: gasto e leads recortados pelo mesmo filtro.
+   * Antes o investido era o total de todos os tempos — misturava períodos.
+   */
+  const custos = useMemo(() => {
+    if (!dados || dados.investimentos.length === 0) return null
+    return calcularCustos(
+      dados.investimentos,
+      dados.leads.map(l => ({
+        data: l.data,
+        temContato: l.quente,
+        fechado: l.statusCliente === 'fechado',
+      })),
+      { modo: periodo, ...(diaEspecifico ? { dia: diaEspecifico } : {}) },
+    )
+  }, [dados, periodo, diaEspecifico])
 
   const [visao, setVisao] = useState<'lista' | 'kanban'>('lista')
   // Arrastar e soltar do kanban: o id viaja no dataTransfer; a coluna sob o
@@ -404,32 +413,44 @@ export default function SharePanelClient({ token }: { token: string }) {
             </p>
 
             {/* Custo — só quando o dono lançou investimento. */}
-            {dados?.custos && (
-              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 text-center sm:grid-cols-4">
-                <div>
-                  <p className="text-lg font-bold text-slate-900">{brl(dados.custos.investidoCents)}</p>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">investido</p>
+            {custos && (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <p className="mb-2 text-center text-[11px] uppercase tracking-wide text-slate-400">
+                  Custos {custos.rotulo} · {custos.leads} lead(s)
+                </p>
+                <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+                  <div>
+                    <p className="text-lg font-bold text-slate-900">{brl(custos.investidoCents)}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">investido</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-slate-900">
+                      {custos.cplCents === null ? '—' : brl(custos.cplCents)}
+                    </p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">custo por lead</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-orange-600">
+                      {custos.cplQuenteCents === null ? '—' : brl(custos.cplQuenteCents)}
+                    </p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      custo por lead 🔥{custos.comContato > 0 ? ` (${custos.comContato})` : ''}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-emerald-600">
+                      {custos.custoPorVendaCents === null ? '—' : brl(custos.custoPorVendaCents)}
+                    </p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      custo por venda{custos.fechados > 0 ? ` (${custos.fechados})` : ''}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-slate-900">
-                    {dados.custos.cplCents === null ? '—' : brl(dados.custos.cplCents)}
+                {custos.investidoCents === 0 && (
+                  <p className="mt-2 text-center text-[11px] text-slate-400">
+                    Nenhum investimento lançado neste período.
                   </p>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">custo por lead</p>
-                </div>
-                <div>
-                  <p className="text-lg font-bold text-orange-600">
-                    {dados.custos.cplQuenteCents === null ? '—' : brl(dados.custos.cplQuenteCents)}
-                  </p>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">custo por lead 🔥</p>
-                </div>
-                <div>
-                  <p className="text-lg font-bold text-emerald-600">
-                    {custoPorVendaCents === null ? '—' : brl(custoPorVendaCents)}
-                  </p>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
-                    custo por venda{fechados > 0 ? ` (${fechados})` : ''}
-                  </p>
-                </div>
+                )}
               </div>
             )}
           </div>

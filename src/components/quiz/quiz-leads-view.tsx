@@ -6,9 +6,12 @@ import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
   getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
   getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
-  listarInvestimentos, salvarInvestimento, excluirInvestimento,
+  listarInvestimentos, salvarInvestimento, excluirInvestimento, getCustosDoQuiz,
   getExportStructure, exportLeadsTable,
 } from '@/lib/quiz/painel-client'
+import {
+  calcularCustos, type LancamentoDia, type LeadCusto, type ModoPeriodo,
+} from '@/lib/quiz/custos'
 import type {
   InvestimentoDia, PortalInfo, PortalQuizConfig,
   QuizLead, QuizLeadWithEvents,
@@ -395,12 +398,24 @@ function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; p
 
 function StatsBar({ quizId }: { quizId: string }) {
   const [m, setM] = useState<QuizMetricas | null>(null)
+  // Custos no painel do DONO — antes só o cliente via, no portal.
+  const [custosBase, setCustosBase] = useState<{ lancamentos: LancamentoDia[]; leads: LeadCusto[] } | null>(null)
+  const [periodoCusto, setPeriodoCusto] = useState<ModoPeriodo>('tudo')
+  const [diaCusto, setDiaCusto] = useState('')
 
   useEffect(() => {
     getQuizMetricas(quizId).then(r => {
       if ('total' in r) setM(r)
     })
+    getCustosDoQuiz(quizId).then(r => {
+      if ('lancamentos' in r) setCustosBase(r)
+    })
   }, [quizId])
+
+  const custos = custosBase && custosBase.lancamentos.length > 0
+    ? calcularCustos(custosBase.lancamentos, custosBase.leads,
+        { modo: periodoCusto, ...(diaCusto ? { dia: diaCusto } : {}) })
+    : null
 
   if (!m) return <div className="h-24 bg-white rounded-2xl border border-gray-200 animate-pulse mb-4" />
 
@@ -422,6 +437,54 @@ function StatsBar({ quizId }: { quizId: string }) {
           </div>
         ))}
       </div>
+
+      {custos && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <p className="text-xs font-semibold text-gray-700">💰 Custos</p>
+            <div className="flex rounded-lg border border-gray-200 p-0.5">
+              {([['tudo', 'Tudo'], ['hoje', 'Hoje'], ['7d', '7 dias'], ['30d', '30 dias']] as const).map(([v, r]) => (
+                <button key={v} onClick={() => { setPeriodoCusto(v); setDiaCusto('') }}
+                  className={`rounded-md px-2 py-1 text-[11px] transition ${
+                    periodoCusto === v && !diaCusto ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                  }`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input type="date" value={diaCusto} onChange={e => setDiaCusto(e.target.value)}
+              className={`min-w-0 shrink rounded-lg border px-2 py-1 text-[11px] ${
+                diaCusto ? 'border-indigo-500 text-indigo-700' : 'border-gray-200 text-gray-500'
+              }`} />
+            {diaCusto && (
+              <button onClick={() => setDiaCusto('')} className="text-[11px] text-gray-400 hover:text-gray-600">
+                limpar dia
+              </button>
+            )}
+            <span className="text-[11px] text-gray-400">{custos.leads} lead(s) {custos.rotulo}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+            {[
+              { r: 'Investido', v: fmtBrl(custos.investidoCents), cor: 'text-gray-900' },
+              { r: 'Custo por lead', v: custos.cplCents === null ? '—' : fmtBrl(custos.cplCents), cor: 'text-gray-900' },
+              { r: `Custo por lead 🔥${custos.comContato > 0 ? ` (${custos.comContato})` : ''}`,
+                v: custos.cplQuenteCents === null ? '—' : fmtBrl(custos.cplQuenteCents), cor: 'text-orange-600' },
+              { r: `Custo por venda${custos.fechados > 0 ? ` (${custos.fechados})` : ''}`,
+                v: custos.custoPorVendaCents === null ? '—' : fmtBrl(custos.custoPorVendaCents), cor: 'text-emerald-600' },
+            ].map(c => (
+              <div key={c.r}>
+                <p className={`text-lg font-bold ${c.cor}`}>{c.v}</p>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">{c.r}</p>
+              </div>
+            ))}
+          </div>
+          {custos.investidoCents === 0 && (
+            <p className="mt-2 text-center text-[11px] text-gray-400">
+              Nenhum investimento lançado neste período — lance em 💰 Investimento.
+            </p>
+          )}
+        </div>
+      )}
 
       {m.funil.length > 1 && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4">
