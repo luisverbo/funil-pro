@@ -469,6 +469,9 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
   const [nome, setNome] = useState('')
   const [senha, setSenha] = useState('')
   const [selecao, setSelecao] = useState<Map<string, PublicoPortal>>(new Map([[quizId, 'com_contato']]))
+  // Páginas do quiz cujas RESPOSTAS o cliente vê em cada lead (por funil).
+  const [paginasSel, setPaginasSel] = useState<Map<string, Set<string>>>(new Map())
+  const [estruturas, setEstruturas] = useState<Map<string, ExportPageInfo[]>>(new Map())
   const [permitirStatus, setPermitirStatus] = useState(true)
   const [mostrarMetricas, setMostrarMetricas] = useState(true)
   const [mostrarFunil, setMostrarFunil] = useState(false)
@@ -479,13 +482,30 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
   const [copiado, setCopiado] = useState(false)
   const [salvo, setSalvo] = useState(false)
 
+  /** Estrutura (páginas com perguntas) de um quiz, carregada uma vez. */
+  // O pedido em andamento fica num ref: setState só acontece quando a
+  // resposta chega (assíncrono) — a regra de lint do projeto proíbe setState
+  // síncrono dentro de efeito, com razão.
+  const estruturasPedidas = useRef(new Set<string>())
+  const carregarEstrutura = useCallback((id: string) => {
+    if (estruturasPedidas.current.has(id)) return
+    estruturasPedidas.current.add(id)
+    void getExportStructure(id).then(r => {
+      if ('error' in r) return
+      setEstruturas(atual => new Map(atual).set(id, r.paginas))
+    })
+  }, [])
+
   useEffect(() => {
+    carregarEstrutura(quizId)
     Promise.all([getPortalDoQuiz(quizId), listarQuizzesDoTenant()]).then(([r, q]) => {
       if ('error' in r) setErro(r.error)
       else {
         setInfo(r)
         if (r.quizzes.length > 0) {
           setSelecao(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, x.publico])))
+          setPaginasSel(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, new Set(x.paginas ?? [])])))
+          for (const x of r.quizzes) carregarEstrutura(x.pageId)
           setNome(r.nome)
           setPermitirStatus(r.permitirStatus)
           setMostrarMetricas(r.mostrarMetricas)
@@ -499,11 +519,22 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
 
   const urlDe = (token: string) => `${window.location.origin}/ql/${token}`
 
+  function alternarPagina(quiz: string, pagina: string) {
+    setPaginasSel(prev => {
+      const novo = new Map(prev)
+      const conjunto = new Set(novo.get(quiz) ?? [])
+      if (conjunto.has(pagina)) conjunto.delete(pagina)
+      else conjunto.add(pagina)
+      novo.set(quiz, conjunto)
+      return novo
+    })
+  }
+
   function alternarQuiz(id: string) {
     setSelecao(prev => {
       const novo = new Map(prev)
       if (novo.has(id)) novo.delete(id)
-      else novo.set(id, 'com_contato')
+      else { novo.set(id, 'com_contato'); carregarEstrutura(id) }
       return novo
     })
   }
@@ -515,7 +546,9 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
     const r = await atualizarPortalConfig({
       portalId: info.portalId,
       nome,
-      quizzes: [...selecao].map(([pageId, publico]) => ({ pageId, publico })),
+      quizzes: [...selecao].map(([pageId, publico]) => ({
+        pageId, publico, paginas: [...(paginasSel.get(pageId) ?? [])],
+      })),
       mostrarMetricas, mostrarFunil, permitirStatus,
     })
     setSalvando(false)
@@ -529,7 +562,9 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
     const r = await ativarPortal({
       nome,
       senha,
-      quizzes: [...selecao].map(([pageId, publico]) => ({ pageId, publico })),
+      quizzes: [...selecao].map(([pageId, publico]) => ({
+        pageId, publico, paginas: [...(paginasSel.get(pageId) ?? [])],
+      })),
       mostrarMetricas, mostrarFunil, permitirStatus,
       ...(info?.portalId ? { portalId: info.portalId } : {}),
     })
@@ -631,6 +666,30 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
                               {o.rotulo}
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {marcado && (estruturas.get(q.id) ?? []).filter(p => p.colunas.length > 0).length > 0 && (
+                        <div className="mt-2 ml-6">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Respostas que o cliente vê (marque as páginas)
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {(estruturas.get(q.id) ?? []).filter(p => p.colunas.length > 0).map(p => {
+                              const ligada = paginasSel.get(q.id)?.has(p.id) ?? false
+                              return (
+                                <button key={p.id} type="button" onClick={() => alternarPagina(q.id, p.id)}
+                                  title={p.colunas.map(c => c.rotulo).join(' · ')}
+                                  className={`rounded-full px-2.5 py-1 text-[11px] transition-colors ${
+                                    ligada ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                                  }`}>
+                                  {ligada ? '✓ ' : ''}{p.titulo}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            Nenhuma marcada = o cliente vê só nome e contato do lead.
+                          </p>
                         </div>
                       )}
                     </div>

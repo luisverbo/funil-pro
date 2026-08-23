@@ -26,7 +26,7 @@ import {
   publicoPortalValido, statusPortalValido, temContato, type PublicoPortal,
 } from '@/lib/quiz/portal'
 import {
-  metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentoDoQuiz,
+  COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentoDoQuiz,
 } from '@/lib/quiz/leads-core'
 import { custoPorLead } from '@/lib/quiz/portal'
 
@@ -103,15 +103,26 @@ export async function POST(
 
   // Os funis DO PORTAL — tudo o que existe fora desta lista não existe para
   // o cliente, por mais que ele adivinhe ids.
-  const { data: vinculos } = await admin
+  const rv = await admin
     .from('client_portal_quizzes')
-    .select('page_id, publico, pages(title)')
+    .select('page_id, publico, paginas, pages(title)')
     .eq('portal_id', portalId)
+  let vinculos = rv.data
+  if (rv.error) {
+    const r2 = await admin
+      .from('client_portal_quizzes')
+      .select('page_id, publico, pages(title)')
+      .eq('portal_id', portalId)
+    vinculos = (r2.data ?? []).map(v => ({ ...v, paginas: [] as unknown[] }))
+  }
 
   const quizzes = (vinculos ?? []).map(v => ({
     id: String(v.page_id),
     titulo: String((v.pages as { title?: string } | null)?.title ?? 'Funil'),
     publico: (publicoPortalValido(v.publico) ? v.publico : 'concluidos') as PublicoPortal,
+    paginas: Array.isArray((v as { paginas?: unknown }).paginas)
+      ? ((v as { paginas: unknown[] }).paginas).filter((x): x is string => typeof x === 'string')
+      : [],
   }))
 
   const acao = corpo.acao ?? 'abrir'
@@ -143,7 +154,12 @@ export async function POST(
         admin.from('portal_lead_status')
           .select('lead_id, status').eq('portal_id', portalId).range(0, 9_999),
         portal.mostrar_metricas ? metricasDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(null),
-        montarTabelaLeads(admin, quiz.id, tenantId, { apenasIds: leads.map(l => l.id) }),
+        // Só as páginas que o dono liberou viram colunas de resposta; lista
+        // vazia = só os dados de contato do lead.
+        montarTabelaLeads(admin, quiz.id, tenantId, {
+          apenasIds: leads.map(l => l.id),
+          ...(quiz.paginas.length > 0 ? { pageIds: quiz.paginas } : { columnKeys: COLUNAS_LEAD.map(c => c.chave) }),
+        }),
         portal.mostrar_metricas ? investimentoDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(0),
       ])
 

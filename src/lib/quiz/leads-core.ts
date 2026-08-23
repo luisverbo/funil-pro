@@ -23,6 +23,8 @@ export interface ExportColumn {
   rotulo: string
   /** Quantos leads responderam esta coluna — 0 = coluna vazia. */
   respostas: number
+  /** Tipo do bloco de origem (field_phone, field_email…) — some nas colunas de lead. */
+  tipo?: string
 }
 export interface ExportPageInfo { id: string; titulo: string; colunas: ExportColumn[] }
 export interface ExportTable {
@@ -57,6 +59,7 @@ export function estruturaDePaginas(quizData: unknown): ExportPageInfo[] {
         chave: b.id,
         rotulo: (b.config?.label || b.config?.question || 'Pergunta').replace(/\s+/g, ' ').trim().slice(0, 60),
         respostas: 0,
+        tipo: b.type,
       })),
   }))
 }
@@ -350,6 +353,62 @@ export async function metricasDoQuiz(
   }
 }
 
+/**
+ * Nome, e-mail e telefone a partir das RESPOSTAS do quiz.
+ *
+ * O DEFEITO que isto conserta: o portal mostrava "Lead sem nome" para quem
+ * PREENCHEU o nome — porque o nome digitado vive nos eventos de resposta
+ * (bloco field_text), e a tela só olhava o cadastro do lead (quiz_leads.name),
+ * que muitos funis nunca preenchem.
+ *
+ * Regra: e-mail vem do primeiro bloco field_email respondido; telefone do
+ * field_phone; nome do field_text cujo RÓTULO fala "nome" — e, sem esse, do
+ * primeiro field_text. Função pura: os testes cobrem sem banco.
+ */
+export function contatoDasRespostas(
+  paginas: ExportPageInfo[],
+  respostas: Record<string, string>,
+): { nome: string | null; email: string | null; telefone: string | null } {
+  const colunas = paginas.flatMap(p => p.colunas)
+  const valor = (c: ExportColumn) => (respostas[c.chave] ?? '').trim() || null
+
+  let nome: string | null = null
+  let primeiroTexto: string | null = null
+  let email: string | null = null
+  let telefone: string | null = null
+
+  for (const c of colunas) {
+    const v = valor(c)
+    if (!v) continue
+    if (c.tipo === 'field_email' && !email) email = v
+    if (c.tipo === 'field_phone' && !telefone) telefone = v
+    if (c.tipo === 'field_text') {
+      if (!primeiroTexto) primeiroTexto = v
+      if (!nome && /nome/i.test(c.rotulo)) nome = v
+    }
+  }
+  return { nome: nome ?? primeiroTexto, email, telefone }
+}
+
+/** Respostas por lead (bloco → valor), a MESMA leitura da exportação. */
+export async function respostasPorLead(
+  admin: SupabaseClient,
+  quizId: string,
+): Promise<Record<string, Record<string, string>>> {
+  const eventos = await lerEventosDeResposta(admin, quizId)
+  const porLead: Record<string, Record<string, string>> = {}
+  for (const ev of eventos) {
+    const blockId = ev.block_id
+    if (!blockId) continue
+    const valor = valorDoEvento(ev)
+    if (!valor) continue
+    const lid = ev.lead_id
+    porLead[lid] = porLead[lid] || {}
+    porLead[lid][blockId] = valor
+  }
+  return porLead
+}
+
 // ─── Portal do cliente ──────────────────────────────────────────────────────
 
 export interface LeadPortal {
@@ -384,32 +443,48 @@ export async function leadsParaPortal(
   tenantId: string,
   publico: 'com_contato' | 'concluidos' | 'com_resposta' | 'todos',
 ): Promise<LeadPortal[]> {
-  const { data: rows } = await admin
-    .from('quiz_leads')
-    .select('id, name, email, phone, status, started_at, result_shown, score')
-    .eq('quiz_id', quizId)
-    .eq('tenant_id', tenantId)
-    .order('started_at', { ascending: false })
-    .range(0, 9_999)
+  const [{ data: rows }, { data: pageRow }, respostas] = await Promise.all([
+    admin
+      .from('quiz_leads')
+      .select('id, name, email, phone, status, started_at, result_shown, score')
+      .eq('quiz_id', quizId)
+      .eq('tenant_id', tenantId)
+      .order('started_at', { ascending: false })
+      .range(0, 9_999),
+    admin.from('pages').select('quiz_data').eq('id', quizId).single(),
+    respostasPorLead(admin, quizId),
+  ])
+  const paginas = estruturaDePaginas(pageRow?.quiz_data)
 
-  let leads = rows ?? []
+  // O cadastro do lead (quiz_leads.name/email/phone) fica vazio em muitos
+  // funis — o que a pessoa digitou vive nas RESPOSTAS. O derivado completa o
+  // que faltar; o cadastro, quando existe, vence.
+  const enriquecidos = (rows ?? []).map(l => {
+    const derivado = contatoDasRespostas(paginas, respostas[String(l.id)] ?? {})
+    return {
+      ...l,
+      nome: (l.name ?? '').trim() || derivado.nome,
+      email: (l.email ?? '').trim() || derivado.email,
+      telefone: (l.phone ?? '').trim() || derivado.telefone,
+    }
+  })
+
+  let leads = enriquecidos
   if (publico === 'com_contato') {
-    leads = leads.filter(l => temContato({ email: l.email, phone: l.phone }))
+    leads = leads.filter(l => temContato({ email: l.email, phone: l.telefone }))
   } else if (publico === 'concluidos') {
     leads = leads.filter(l => l.status === 'completed')
   } else if (publico === 'com_resposta') {
-    const { leads: resumos } = await estruturaComContagens(admin, quizId, tenantId)
-    const responderam = new Set(resumos.filter(r => r.chaves.length > 0).map(r => r.id))
-    leads = leads.filter(l => responderam.has(String(l.id)))
+    leads = leads.filter(l => Object.keys(respostas[String(l.id)] ?? {}).length > 0)
   }
 
   return leads.map(l => ({
     id: String(l.id),
-    nome: l.name ?? null,
+    nome: l.nome ?? null,
     email: l.email ?? null,
-    telefone: l.phone ?? null,
+    telefone: l.telefone ?? null,
     data: l.started_at ?? null,
-    quente: temContato({ email: l.email, phone: l.phone }),
+    quente: temContato({ email: l.email, phone: l.telefone }),
     concluiu: l.status === 'completed',
     resultado: l.result_shown ?? null,
     score: Number(l.score ?? 0),

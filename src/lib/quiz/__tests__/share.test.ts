@@ -22,6 +22,7 @@ import {
 } from '../share'
 import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../leads-core'
 import { linkWhatsApp, nomeDoLead, statusPortalValido, temContato, publicoPortalValido } from '../portal'
+import { contatoDasRespostas } from '../leads-core'
 import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
 
 const RAIZ = process.cwd()
@@ -262,6 +263,55 @@ test('13d) sessão do portal: F5 não desloga, e a senha não vai no cookie', ()
   assert.ok(rota.includes('sameSite:'), 'sem SameSite o cookie viaja em requisição de terceiro')
   // F5 não pode inflar o contador de acessos.
   assert.ok(rota.includes('if (porSenha) {'), 'cada F5 contaria como acesso novo')
+})
+
+test('13e) "Lead sem nome": o contato vem das RESPOSTAS quando o cadastro é vazio', () => {
+  const paginas: ExportPageInfo[] = [{
+    id: 'p2', titulo: 'Contato', colunas: [
+      { chave: 'b_obs', rotulo: 'Observação', respostas: 0, tipo: 'field_text' },
+      { chave: 'b_nome', rotulo: 'Qual seu nome?', respostas: 0, tipo: 'field_text' },
+      { chave: 'b_fone', rotulo: 'WhatsApp', respostas: 0, tipo: 'field_phone' },
+      { chave: 'b_mail', rotulo: 'E-mail', respostas: 0, tipo: 'field_email' },
+    ],
+  }]
+  const c = contatoDasRespostas(paginas, {
+    b_obs: 'quero emagrecer', b_nome: 'Maria Silva', b_fone: '88 99999-8888', b_mail: 'maria@x.com',
+  })
+  assert.equal(c.nome, 'Maria Silva', 'o campo com "nome" no rótulo é quem apresenta')
+  assert.equal(c.telefone, '88 99999-8888')
+  assert.equal(c.email, 'maria@x.com')
+
+  // Sem campo rotulado "nome": o primeiro texto respondido apresenta.
+  const c2 = contatoDasRespostas(paginas, { b_obs: 'Maria' })
+  assert.equal(c2.nome, 'Maria')
+  // Sem resposta nenhuma: nulos, nunca string vazia.
+  assert.deepEqual(contatoDasRespostas(paginas, {}), { nome: null, email: null, telefone: null })
+
+  const core = ler('src/lib/quiz/leads-core.ts')
+  assert.ok(core.includes('contatoDasRespostas(paginas, respostas['), 'o portal não usa o derivado')
+  assert.ok(core.includes("(l.name ?? '').trim() || derivado.nome"), 'o cadastro deve vencer quando existe')
+})
+
+test('13f) páginas de resposta escolhidas pelo dono chegam ao portal', () => {
+  const m = ler('supabase/migrations/20260826000000_portal_paginas.sql')
+  assert.ok(m.includes('ADD COLUMN IF NOT EXISTS paginas'), 'sem onde guardar a escolha')
+
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes('pageIds: quiz.paginas'), 'a escolha do dono não filtra as colunas')
+  // Lista vazia = só contato — nada de vazar o quiz inteiro por padrão.
+  assert.ok(rota.includes('COLUNAS_LEAD.map(c => c.chave)'), 'sem páginas marcadas vazaria tudo')
+
+  const v = ler('src/components/quiz/quiz-leads-view.tsx')
+  assert.ok(v.includes('Respostas que o cliente vê'), 'o modal não oferece a escolha')
+  assert.ok(v.includes('paginas: [...(paginasSel.get(pageId)'), 'a escolha não é enviada')
+
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes('Ver respostas ('), 'o cliente não vê as respostas organizadas')
+  assert.ok(c.includes('respostasDoLead'), 'as respostas não vêm da mesma tabela do CSV')
+  // Filtro por dia na página do cliente, valendo para o arquivo também.
+  assert.ok(c.includes("['7d', '7 dias']"), 'sem filtro rápido por período')
+  assert.ok(c.includes('diaEspecifico'), 'sem escolher um dia específico')
+  assert.ok(c.includes('visiveis.has(x.id)'), 'o CSV ignoraria o filtro da tela')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {
