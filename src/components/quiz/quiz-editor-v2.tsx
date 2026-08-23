@@ -13,8 +13,10 @@ import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+// Salvar/publicar via HTTP — a mesma cura da carga do editor (server action
+// embute id de build na página e falha mascarado após deploy).
+import { saveQuizV2, publishQuizV2 } from '@/lib/quiz/painel-client'
 import {
-  saveQuizV2, publishQuizV2,
   type QuizData, type QuizPage, type QuizBlock, type BlockType, type BlockConfig, type BlockOption,
   type QuizTheme, type TestimonialItem, type FeatureItem, type FaqItem,
 } from '@/app/actions/quiz-v2'

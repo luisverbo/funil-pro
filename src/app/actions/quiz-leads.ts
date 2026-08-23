@@ -13,8 +13,11 @@ import {
 } from '@/lib/quiz/share'
 import { publicoPortalValido, type PublicoPortal } from '@/lib/quiz/portal'
 
-// Tipos re-exportados para os componentes que já importam daqui.
-export type { ExportLeadResumo, ExportPageInfo, ExportPublico, ExportTable, QuizMetricas }
+// ATENÇÃO: NÃO re-exportar tipos daqui (`export type { ... }`). O Turbopack
+// compila este arquivo 'use server' mantendo a re-exportação em runtime, e o
+// módulo inteiro morre com ReferenceError na inicialização — foi a causa de
+// TODAS as server actions desta área falharem mascaradas em produção.
+// Tipos de leads-core são importados direto de '@/lib/quiz/leads-core'.
 
 async function getSupabase() {
   const cookieStore = await cookies()

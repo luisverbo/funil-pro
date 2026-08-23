@@ -2,15 +2,20 @@
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
+// Funções via HTTP (imune ao id de build das server actions); tipos da action.
 import {
   getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
   getPortalDoQuiz, ativarPortal, desativarPortal, listarQuizzesDoTenant,
-  listarInvestimentos, salvarInvestimento, excluirInvestimento, type InvestimentoDia,
-  type QuizMetricas, type PortalInfo, type PortalQuizConfig,
+  listarInvestimentos, salvarInvestimento, excluirInvestimento,
   getExportStructure, exportLeadsTable,
-  type ExportPageInfo, type ExportPublico, type ExportLeadResumo,
-  type QuizLead, type QuizLeadWithEvents,
+} from '@/lib/quiz/painel-client'
+import type {
+  InvestimentoDia, PortalInfo, PortalQuizConfig,
+  QuizLead, QuizLeadWithEvents,
 } from '@/app/actions/quiz-leads'
+import type {
+  QuizMetricas, ExportPageInfo, ExportPublico, ExportLeadResumo,
+} from '@/lib/quiz/leads-core'
 import type { QuizPage } from '@/app/actions/quiz-v2'
 import { type PublicoPortal } from '@/lib/quiz/portal'
 
