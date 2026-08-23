@@ -22,7 +22,7 @@ import {
 } from '../share'
 import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../leads-core'
 import { linkWhatsApp, nomeDoLead, statusPortalValido, temContato, publicoPortalValido } from '../portal'
-import { contatoDasRespostas } from '../leads-core'
+import { contatoDasRespostas, contatoPorFormato } from '../leads-core'
 import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
 
 const RAIZ = process.cwd()
@@ -312,6 +312,44 @@ test('13f) páginas de resposta escolhidas pelo dono chegam ao portal', () => {
   assert.ok(c.includes("['7d', '7 dias']"), 'sem filtro rápido por período')
   assert.ok(c.includes('diaEspecifico'), 'sem escolher um dia específico')
   assert.ok(c.includes('visiveis.has(x.id)'), 'o CSV ignoraria o filtro da tela')
+})
+
+test('13g) quiz EDITADO depois dos leads: o formato reconhece o contato', () => {
+  // Ids de bloco mudam quando o quiz é reeditado — a estrutura atual não casa
+  // com os eventos antigos e a derivação por estrutura volta vazia. O formato
+  // do que foi digitado não depende de id nenhum.
+  const c = contatoPorFormato(['Maria Silva', '(88) 99999-8888', 'maria@x.com'])
+  assert.equal(c.nome, 'Maria Silva')
+  assert.equal(c.telefone, '(88) 99999-8888')
+  assert.equal(c.email, 'maria@x.com')
+
+  // Ordem não importa; o primeiro de cada formato vence.
+  const c2 = contatoPorFormato(['88999998888', 'João'])
+  assert.equal(c2.telefone, '88999998888')
+  assert.equal(c2.nome, 'João')
+
+  // Texto de resposta comum não vira telefone nem some com o nome.
+  const c3 = contatoPorFormato(['Quero emagrecer 10kg'])
+  assert.equal(c3.telefone, null)
+  assert.equal(c3.nome, 'Quero emagrecer 10kg')
+  assert.deepEqual(contatoPorFormato([]), { nome: null, email: null, telefone: null })
+
+  const core = ler('src/lib/quiz/leads-core.ts')
+  assert.ok(core.includes('|| porFormato.nome'), 'a rede de segurança não é usada')
+  assert.ok(core.includes("ev.event_type === 'text_entered'"),
+    'opção de múltipla escolha viraria "nome"')
+})
+
+test('13h) escolha de páginas nunca é descartada em silêncio', () => {
+  const a = ler('src/app/actions/quiz-leads.ts')
+  assert.ok(a.includes("quizzes.some(q => q.paginas.length > 0)"),
+    'salvar sem a coluna descartaria a escolha sem avisar')
+  assert.ok(a.includes('20260826000000_portal_paginas.sql'),
+    'o erro não diz qual migration falta')
+  // Páginas escolhidas que já não existem não podem derrubar o portal.
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes("'error' in tabela\n        ? await montarTabelaLeads") ||
+    rota.includes("tabelaFinal"), 'tabela com páginas velhas viraria portal vazio')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {
