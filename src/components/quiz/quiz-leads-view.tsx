@@ -456,6 +456,7 @@ const PUBLICO_OPCOES: { valor: PublicoPortal; rotulo: string }[] = [
   // O primeiro é o que resolve o funil real: quem deixou telefone/e-mail, tenha
   // clicado no botão final ou não.
   { valor: 'com_contato', rotulo: '🔥 Deixou contato (telefone/e-mail)' },
+  { valor: 'paginas', rotulo: '✅ Preencheu as páginas marcadas abaixo' },
   { valor: 'concluidos', rotulo: 'Só quem chegou à última página' },
   { valor: 'com_resposta', rotulo: 'Quem respondeu algo' },
   { valor: 'todos', rotulo: 'Todos (inclui quem só abriu)' },

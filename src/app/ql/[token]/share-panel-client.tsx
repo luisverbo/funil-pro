@@ -41,6 +41,12 @@ interface DadosQuiz {
   tabela: ExportTable | null
 }
 
+/** nomeDoLead espera name/phone (formato do banco); o portal fala nome/telefone.
+ *  Foi ESTE descasamento que mostrava "Lead sem nome" com o nome logo abaixo,
+ *  dentro de "Ver respostas". */
+const tituloDoLead = (l: LeadComStatus) =>
+  nomeDoLead({ name: l.nome, email: l.email, phone: l.telefone })
+
 const brl = (cents: number) =>
   `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -213,6 +219,94 @@ export default function SharePanelClient({ token }: { token: string }) {
 
   const m = dados?.metricas
 
+  /** Vendas = leads que o CLIENTE marcou como Fechado. Com investimento
+   *  lançado, o custo por venda sai na hora: investido ÷ fechados. */
+  const fechados = useMemo(
+    () => (dados?.leads ?? []).filter(l => l.statusCliente === 'fechado').length,
+    [dados],
+  )
+  const custoPorVendaCents = dados?.custos && fechados > 0
+    ? Math.round(dados.custos.investidoCents / fechados)
+    : null
+
+  const [visao, setVisao] = useState<'lista' | 'kanban'>('lista')
+
+  /** O cartão do lead — o MESMO na lista e no kanban (compacto). */
+  const cartaoDoLead = (l: LeadComStatus, compacto: boolean) => {
+    const wa = linkWhatsApp(l.telefone)
+    const st = (l.statusCliente as StatusPortal) in STATUS_PORTAL_META
+      ? (l.statusCliente as StatusPortal) : 'novo'
+    return (
+      <div key={l.id}
+        className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${
+          compacto ? 'p-3' : 'flex flex-wrap items-center gap-3 p-4'
+        }`}>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-semibold text-slate-900">{tituloDoLead(l)}</p>
+            {l.quente && (
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-600">
+                🔥 Quente
+              </span>
+            )}
+            {l.concluiu && !compacto && (
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                ✓ concluiu
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-slate-500">
+            {[l.telefone, l.email].filter(Boolean).join(' · ') || 'sem contato'}
+            {l.data ? ` · ${new Date(l.data).toLocaleDateString('pt-BR')}` : ''}
+          </p>
+          {l.resultado && !compacto && <p className="mt-0.5 text-xs text-indigo-600">Resultado: {l.resultado}</p>}
+
+          {(respostasDoLead.get(l.id) ?? []).length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600">
+                Ver respostas ({respostasDoLead.get(l.id)!.length})
+              </summary>
+              <div className={`mt-2 grid gap-1.5 rounded-xl bg-slate-50 p-3 ${compacto ? '' : 'sm:grid-cols-2'}`}>
+                {respostasDoLead.get(l.id)!.map((r, i) => (
+                  <div key={i} className="min-w-0">
+                    <p className="truncate text-[11px] uppercase tracking-wide text-slate-400" title={r.rotulo}>{r.rotulo}</p>
+                    <p className="break-words text-sm text-slate-800">{r.valor}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+
+        <div className={compacto ? 'mt-2 flex items-center gap-2' : 'contents'}>
+          {wa && (
+            <a href={wa} target="_blank" rel="noopener noreferrer"
+              className={`flex items-center gap-1.5 rounded-xl bg-emerald-500 font-semibold text-white transition-colors hover:bg-emerald-600 ${
+                compacto ? 'px-2.5 py-1.5 text-xs' : 'px-3.5 py-2 text-sm'
+              }`}>
+              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07a8.2 8.2 0 0 1-2.4-1.49 9 9 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.11 3.22 5.1 4.51.71.31 1.27.5 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01a9.4 9.4 0 0 1-4.8-1.31l-.34-.2-3.56.93.95-3.47-.22-.36a9.42 9.42 0 1 1 7.98 4.41zM12.05 1.25C6.11 1.25 1.3 6.07 1.3 12c0 1.9.5 3.74 1.44 5.37L1.25 22.75l5.52-1.45a10.7 10.7 0 0 0 5.27 1.38h.01c5.93 0 10.75-4.82 10.75-10.75S17.98 1.25 12.05 1.25z"/>
+              </svg>
+              WhatsApp
+            </a>
+          )}
+
+          {portal?.permitirStatus && (
+            <select value={st}
+              onChange={e => void marcarStatus(l.id, e.target.value as StatusPortal)}
+              className={`rounded-xl border-0 font-semibold ${STATUS_PORTAL_META[st].cor} ${
+                compacto ? 'px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'
+              }`}>
+              {STATUS_PORTAL.map(opt => (
+                <option key={opt} value={opt}>{STATUS_PORTAL_META[opt].rotulo}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // ── Conferindo a sessão ───────────────────────────────────────────────────
   if (!portal && verificandoSessao) {
     return (
@@ -300,7 +394,7 @@ export default function SharePanelClient({ token }: { token: string }) {
 
             {/* Custo — só quando o dono lançou investimento. */}
             {dados?.custos && (
-              <div className="mt-4 grid grid-cols-3 gap-3 border-t border-slate-100 pt-4 text-center">
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 text-center sm:grid-cols-4">
                 <div>
                   <p className="text-lg font-bold text-slate-900">{brl(dados.custos.investidoCents)}</p>
                   <p className="text-xs uppercase tracking-wide text-slate-500">investido</p>
@@ -316,6 +410,14 @@ export default function SharePanelClient({ token }: { token: string }) {
                     {dados.custos.cplQuenteCents === null ? '—' : brl(dados.custos.cplQuenteCents)}
                   </p>
                   <p className="text-xs uppercase tracking-wide text-slate-500">custo por lead 🔥</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-emerald-600">
+                    {custoPorVendaCents === null ? '—' : brl(custoPorVendaCents)}
+                  </p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                    custo por venda{fechados > 0 ? ` (${fechados})` : ''}
+                  </p>
                 </div>
               </div>
             )}
@@ -389,6 +491,16 @@ export default function SharePanelClient({ token }: { token: string }) {
             )}
           </div>
           <div className="flex gap-2">
+            <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {([['lista', '☰ Lista'], ['kanban', '▦ Kanban']] as const).map(([v, r]) => (
+                <button key={v} onClick={() => setVisao(v)}
+                  className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                    visao === v ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'
+                  }`}>
+                  {r}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => { const t = tabelaComStatus(); if (t) baixarCsv(t, `leads-${dados?.quiz.titulo.slice(0, 20) ?? 'funil'}`) }}
               disabled={!dados?.tabela || dados.tabela.linhas.length === 0}
@@ -418,72 +530,35 @@ export default function SharePanelClient({ token }: { token: string }) {
                 Assim que um lead {dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.
               </p>
             </div>
-          ) : (
-            leadsFiltrados.map(l => {
-              const wa = linkWhatsApp(l.telefone)
-              const st = (l.statusCliente as StatusPortal) in STATUS_PORTAL_META
-                ? (l.statusCliente as StatusPortal) : 'novo'
-              return (
-                <div key={l.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-semibold text-slate-900">{nomeDoLead(l)}</p>
-                      {l.quente && (
-                        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-600">
-                          🔥 Quente
+          ) : visao === 'kanban' ? (
+            /* Kanban: uma coluna por situação; o seletor do cartão move. */
+            <div className="-mx-4 overflow-x-auto px-4 pb-2">
+              <div className="flex min-w-max gap-3">
+                {STATUS_PORTAL.map(coluna => {
+                  const doGrupo = leadsFiltrados.filter(l =>
+                    ((l.statusCliente as StatusPortal) in STATUS_PORTAL_META
+                      ? l.statusCliente : 'novo') === coluna)
+                  return (
+                    <div key={coluna} className="w-72 shrink-0 rounded-2xl bg-slate-200/60 p-2">
+                      <div className="flex items-center justify-between px-2 py-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_PORTAL_META[coluna].cor}`}>
+                          {STATUS_PORTAL_META[coluna].rotulo}
                         </span>
-                      )}
-                      {l.concluiu && (
-                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                          ✓ concluiu
-                        </span>
-                      )}
+                        <span className="text-xs font-semibold text-slate-500">{doGrupo.length}</span>
+                      </div>
+                      <div className="mt-1 space-y-2">
+                        {doGrupo.map(l => cartaoDoLead(l, true))}
+                        {doGrupo.length === 0 && (
+                          <p className="px-2 py-6 text-center text-xs text-slate-400">vazio</p>
+                        )}
+                      </div>
                     </div>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
-                      {[l.telefone, l.email].filter(Boolean).join(' · ') || 'sem contato'}
-                      {l.data ? ` · ${new Date(l.data).toLocaleDateString('pt-BR')}` : ''}
-                    </p>
-                    {l.resultado && <p className="mt-0.5 text-xs text-indigo-600">Resultado: {l.resultado}</p>}
-
-                    {(respostasDoLead.get(l.id) ?? []).length > 0 && (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600">
-                          Ver respostas ({respostasDoLead.get(l.id)!.length})
-                        </summary>
-                        <div className="mt-2 grid gap-1.5 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
-                          {respostasDoLead.get(l.id)!.map((r, i) => (
-                            <div key={i} className="min-w-0">
-                              <p className="truncate text-[11px] uppercase tracking-wide text-slate-400" title={r.rotulo}>{r.rotulo}</p>
-                              <p className="break-words text-sm text-slate-800">{r.valor}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-
-                  {wa && (
-                    <a href={wa} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-600">
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                        <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07a8.2 8.2 0 0 1-2.4-1.49 9 9 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.11 3.22 5.1 4.51.71.31 1.27.5 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01a9.4 9.4 0 0 1-4.8-1.31l-.34-.2-3.56.93.95-3.47-.22-.36a9.42 9.42 0 1 1 7.98 4.41zM12.05 1.25C6.11 1.25 1.3 6.07 1.3 12c0 1.9.5 3.74 1.44 5.37L1.25 22.75l5.52-1.45a10.7 10.7 0 0 0 5.27 1.38h.01c5.93 0 10.75-4.82 10.75-10.75S17.98 1.25 12.05 1.25z"/>
-                      </svg>
-                      WhatsApp
-                    </a>
-                  )}
-
-                  {portal.permitirStatus && (
-                    <select value={st}
-                      onChange={e => void marcarStatus(l.id, e.target.value as StatusPortal)}
-                      className={`rounded-xl border-0 px-3 py-2 text-xs font-semibold ${STATUS_PORTAL_META[st].cor}`}>
-                      {STATUS_PORTAL.map(opt => (
-                        <option key={opt} value={opt}>{STATUS_PORTAL_META[opt].rotulo}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )
-            })
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            leadsFiltrados.map(l => cartaoDoLead(l, false))
           )}
         </div>
 

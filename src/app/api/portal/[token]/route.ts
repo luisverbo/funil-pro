@@ -148,7 +148,7 @@ export async function POST(
 
       // Os leads primeiro: a tabela do CSV é montada com EXATAMENTE os mesmos
       // ids, para arquivo e tela nunca divergirem.
-      const leads = await leadsParaPortal(admin, quiz.id, tenantId, quiz.publico)
+      const leads = await leadsParaPortal(admin, quiz.id, tenantId, quiz.publico, quiz.paginas)
 
       const [statusRows, metricas, tabela, gastoCents] = await Promise.all([
         admin.from('portal_lead_status')
@@ -220,9 +220,14 @@ export async function POST(
         return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
       }
       // Lead fora do público liberado é invisível também para ESCRITA.
+      // Para 'paginas' a regra precisa das respostas — a lista visível decide.
+      const visiveis = quiz.publico === 'paginas'
+        ? new Set((await leadsParaPortal(admin, quiz.id, tenantId, 'paginas', quiz.paginas)).map(l => l.id))
+        : null
       const foraDoPublico =
         (quiz.publico === 'concluidos' && lead.status !== 'completed')
         || (quiz.publico === 'com_contato' && !temContato({ email: lead.email, phone: lead.phone }))
+        || (visiveis !== null && !visiveis.has(String(lead.id)))
       if (foraDoPublico) {
         return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
       }

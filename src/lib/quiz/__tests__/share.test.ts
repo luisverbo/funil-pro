@@ -22,7 +22,7 @@ import {
 } from '../share'
 import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../leads-core'
 import { linkWhatsApp, nomeDoLead, statusPortalValido, temContato, publicoPortalValido } from '../portal'
-import { contatoDasRespostas, contatoPorFormato } from '../leads-core'
+import { contatoDasRespostas, contatoPorFormato, preencheuPaginas } from '../leads-core'
 import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
 
 const RAIZ = process.cwd()
@@ -350,6 +350,45 @@ test('13h) escolha de páginas nunca é descartada em silêncio', () => {
   const rota = ler('src/app/api/portal/[token]/route.ts')
   assert.ok(rota.includes("'error' in tabela\n        ? await montarTabelaLeads") ||
     rota.includes("tabelaFinal"), 'tabela com páginas velhas viraria portal vazio')
+})
+
+test('13i) título do cartão usa o dado do PORTAL (nome/telefone, não name/phone)', () => {
+  // O defeito: nomeDoLead lia lead.name/lead.phone (formato do banco), mas o
+  // portal fala nome/telefone — o cartão dizia "Lead sem nome" com o nome
+  // logo abaixo, dentro de "Ver respostas".
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes('nomeDoLead({ name: l.nome, email: l.email, phone: l.telefone })'),
+    'o descasamento de campos voltou')
+  assert.ok(!/\{nomeDoLead\(l\)\}/.test(c), 'nomeDoLead(l) lê os campos errados')
+})
+
+test('13j) público "preencheu as páginas marcadas": só entra quem cumpriu', () => {
+  const paginas: ExportPageInfo[] = [
+    { id: 'p4', titulo: 'Página 4', colunas: [{ chave: 'b4', rotulo: 'Pergunta', respostas: 0, tipo: 'single_choice' }] },
+    { id: 'p6', titulo: 'Página 6', colunas: [{ chave: 'b6', rotulo: 'Nome', respostas: 0, tipo: 'field_text' }] },
+    { id: 'p7', titulo: 'Obrigado', colunas: [] },   // sem pergunta: não barra
+  ]
+  const exigidas = ['p4', 'p6', 'p7']
+  assert.equal(preencheuPaginas(paginas, exigidas, { b4: 'Serviços', b6: 'Ana' }), true)
+  assert.equal(preencheuPaginas(paginas, exigidas, { b4: 'Serviços' }), false,
+    'respondeu a 4 mas não a 6 — não cumpriu')
+  assert.equal(preencheuPaginas(paginas, exigidas, {}), false)
+  assert.equal(preencheuPaginas(paginas, [], { }), true, 'sem exigência, todo mundo passa')
+
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes('quiz.publico, quiz.paginas'), 'as páginas exigidas não chegam ao filtro')
+  // Escrita de status também respeita: lead fora do cumprimento é invisível.
+  assert.ok(rota.includes("quiz.publico === 'paginas'"), 'status aceitaria lead que não cumpriu')
+
+  const m = ler('supabase/migrations/20260827000000_portal_publico_paginas.sql')
+  assert.ok(m.includes("'paginas'"), 'o banco recusaria o público novo')
+
+  // Kanban + custo por venda no portal.
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes("'kanban'"), 'sem visão kanban')
+  assert.ok(c.includes('STATUS_PORTAL.map(coluna =>'), 'kanban sem uma coluna por situação')
+  assert.ok(c.includes("statusCliente === 'fechado'"), 'custo por venda sem contar os fechados')
+  assert.ok(c.includes('custoPorVendaCents'), 'sem custo por venda')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {
