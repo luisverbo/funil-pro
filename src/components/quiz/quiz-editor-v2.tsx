@@ -514,7 +514,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
     summary = <p className="text-sm text-gray-700 line-clamp-3">{text || <span className="italic text-gray-400">Texto vazio</span>}</p>
   } else if (block.type === 'image') {
     summary = config.image_url
-      ? <img src={config.image_url} alt="" className="w-full max-h-24 object-cover rounded" />
+      ? <img src={config.image_url} alt="" className="w-full max-h-24 object-contain rounded" />
       : <div className="w-full h-16 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">Sem imagem</div>
   } else if (block.type === 'video') {
     summary = (
@@ -564,7 +564,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
   } else if (block.type === 'hero') {
     summary = (
       <div className={config.hero_align === 'left' ? 'text-left' : 'text-center'}>
-        {config.hero_image_url && <img src={config.hero_image_url} alt="" className="w-full max-h-20 object-cover rounded mb-2" />}
+        {config.hero_image_url && <img src={config.hero_image_url} alt="" className="w-full max-h-20 object-contain rounded mb-2" />}
         <p className="text-sm font-extrabold text-gray-900 line-clamp-2">{config.hero_headline || 'Headline'}</p>
         {config.hero_subheadline && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{config.hero_subheadline}</p>}
         {config.hero_cta_text && (
