@@ -334,10 +334,13 @@ export async function metricasDoQuiz(
       .eq('tenant_id', tenantId)
       .range(0, 49_999),
   ])
+  // A mesma régua de conclusão do portal: chegou à última página = concluiu.
+  const ultimaPagina = paginas.length > 0 ? paginas[paginas.length - 1].id : null
+  const concluiram = await idsQueConcluiram(admin, quizId, ultimaPagina)
 
   const all = leadsRows ?? []
   const total = all.length
-  const completed = all.filter(l => l.status === 'completed').length
+  const completed = all.filter(l => l.status === 'completed' || concluiram.has(String(l.id))).length
   const inicioHoje = new Date(agora); inicioHoje.setHours(0, 0, 0, 0)
   const corte7d = agora.getTime() - 7 * 86_400_000
 
@@ -465,6 +468,38 @@ export function preencheuPaginas(
   return exigidas.every(p => p.colunas.some(c => (respostasDoLead[c.chave] ?? '').trim().length > 0))
 }
 
+/**
+ * Quem CHEGOU AO FINAL do quiz — pela régua que corresponde à realidade.
+ *
+ * O DEFEITO: `status === 'completed'` só acontece quando a pessoa clica em
+ * "Próximo" na última página. Funil que termina numa página de obrigado com
+ * botão externo nunca dispara isso: a pessoa chega, clica no botão (ou só lê)
+ * e vai embora — chegou ao final de verdade e ficava contada como 0.
+ *
+ * A régua nova: viu a ÚLTIMA página (evento page_viewed), ou concluiu pelo
+ * caminho antigo (status/evento). Cobre também os leads antigos.
+ */
+export async function idsQueConcluiram(
+  admin: SupabaseClient,
+  quizId: string,
+  ultimaPaginaId: string | null,
+): Promise<Set<string>> {
+  const eventos = await buscarEventosPaginado<{ lead_id: string; event_type: string; page_id: string | null }>(
+    (de, ate) => admin
+      .from('quiz_lead_events')
+      .select('lead_id, event_type, page_id')
+      .eq('quiz_id', quizId)
+      .in('event_type', ['quiz_completed', 'page_viewed'])
+      .range(de, ate),
+  )
+  const ids = new Set<string>()
+  for (const ev of eventos) {
+    if (ev.event_type === 'quiz_completed') ids.add(ev.lead_id)
+    else if (ultimaPaginaId && ev.page_id === ultimaPaginaId) ids.add(ev.lead_id)
+  }
+  return ids
+}
+
 // ─── Portal do cliente ──────────────────────────────────────────────────────
 
 export interface LeadPortal {
@@ -513,6 +548,8 @@ export async function leadsParaPortal(
     respostasPorLead(admin, quizId),
   ])
   const paginas = estruturaDePaginas(pageRow?.quiz_data)
+  const ultimaPagina = paginas.length > 0 ? paginas[paginas.length - 1].id : null
+  const concluiram = await idsQueConcluiram(admin, quizId, ultimaPagina)
 
   // O cadastro do lead (quiz_leads.name/email/phone) fica vazio em muitos
   // funis — o que a pessoa digitou vive nas RESPOSTAS. O derivado completa o
@@ -538,7 +575,7 @@ export async function leadsParaPortal(
     // Só quem CUMPRIU: respondeu algo em cada página que o dono marcou.
     leads = leads.filter(l => preencheuPaginas(paginas, paginasExigidas, respostas[String(l.id)] ?? {}))
   } else if (publico === 'concluidos') {
-    leads = leads.filter(l => l.status === 'completed')
+    leads = leads.filter(l => l.status === 'completed' || concluiram.has(String(l.id)))
   } else if (publico === 'com_resposta') {
     leads = leads.filter(l => Object.keys(respostas[String(l.id)] ?? {}).length > 0)
   }
@@ -550,7 +587,7 @@ export async function leadsParaPortal(
     telefone: l.telefone ?? null,
     data: l.started_at ?? null,
     quente: temContato({ email: l.email, phone: l.telefone }),
-    concluiu: l.status === 'completed',
+    concluiu: l.status === 'completed' || concluiram.has(String(l.id)),
     resultado: l.result_shown ?? null,
     score: Number(l.score ?? 0),
   }))

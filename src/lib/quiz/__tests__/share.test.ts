@@ -21,7 +21,10 @@ import {
   validarSenhaShare, tokenShareValido,
 } from '../share'
 import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../leads-core'
-import { linkWhatsApp, nomeDoLead, statusPortalValido, temContato, publicoPortalValido } from '../portal'
+import {
+  linkWhatsApp, linkWhatsAppComMensagem, nomeDoLead, statusPortalValido,
+  temContato, publicoPortalValido, distribuirRodizio, leadParado,
+} from '../portal'
 import { contatoDasRespostas, contatoPorFormato, preencheuPaginas } from '../leads-core'
 import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
 
@@ -394,6 +397,67 @@ test('13j) público "preencheu as páginas marcadas": só entra quem cumpriu', (
   assert.ok(c.includes('void marcarStatus(id, coluna)'), 'soltar não grava o status')
   assert.ok(c.includes("statusCliente === 'fechado'"), 'custo por venda sem contar os fechados')
   assert.ok(c.includes('custoPorVendaCents'), 'sem custo por venda')
+})
+
+test('13k) "chegou ao final" = viu a última página (não só clicou em Próximo)', () => {
+  // O defeito: status 'completed' só nasce do clique em "Próximo" na última
+  // página. Funil que termina em obrigado com botão externo contava 0
+  // conclusões com gente chegando lá todo dia.
+  const core = ler('src/lib/quiz/leads-core.ts')
+  assert.ok(core.includes('export async function idsQueConcluiram'), 'sem a régua nova')
+  assert.ok(core.includes("['quiz_completed', 'page_viewed']"),
+    'a régua não olha a visualização da última página')
+  assert.ok(core.includes("l.status === 'completed' || concluiram.has(String(l.id))"),
+    'o caminho antigo deixaria de contar')
+  // As DUAS contagens (portal e painel do dono) usam a mesma régua.
+  assert.ok((core.match(/idsQueConcluiram\(/g) ?? []).length >= 3,
+    'painel e portal contariam conclusão de jeitos diferentes')
+})
+
+test('13l) equipe: rodízio justo, WhatsApp com mensagem, lead parado', () => {
+  // Rodízio: quem tem MENOS leads recebe primeiro.
+  const r = distribuirRodizio(['l1', 'l2', 'l3'], ['a', 'b'], { a: 5, b: 0 })
+  assert.deepEqual(r.map(x => x.memberId), ['b', 'b', 'b'],
+    'b tem 0 contra 5 de a — os três vão para b até empatar')
+  const equilibrado = distribuirRodizio(['l1', 'l2', 'l3', 'l4'], ['a', 'b'], {})
+  assert.deepEqual(equilibrado.map(x => x.memberId), ['a', 'b', 'a', 'b'], 'um para cada, na ordem')
+  assert.deepEqual(distribuirRodizio(['l1'], [], {}), [], 'sem vendedor, ninguém recebe')
+
+  // Mensagem: {nome} vira o primeiro nome; sem template, link puro.
+  assert.equal(
+    linkWhatsAppComMensagem('88999998888', 'Oi {nome}!', 'Maria Silva'),
+    `https://wa.me/5588999998888?text=${encodeURIComponent('Oi Maria!')}`)
+  assert.equal(linkWhatsAppComMensagem('88999998888', '', 'Maria'), 'https://wa.me/5588999998888')
+  assert.equal(linkWhatsAppComMensagem(null, 'Oi', 'M'), null)
+
+  // ⏰: quente + sem atendimento + >24h.
+  const ontem = new Date(Date.now() - 25 * 3600_000).toISOString()
+  assert.equal(leadParado(ontem, 'novo', true), true)
+  assert.equal(leadParado(ontem, 'contactado', true), false, 'atendido não é parado')
+  assert.equal(leadParado(ontem, 'novo', false), false, 'sem contato não há quem atender')
+  assert.equal(leadParado(new Date().toISOString(), 'novo', true), false, 'recente não é parado')
+})
+
+test('13m) equipe: migração, ações gateadas e vendedor nunca apagado', () => {
+  const m = ler('supabase/migrations/20260828000000_portal_equipe.sql')
+  assert.ok(m.includes('portal_members'), 'sem tabela de vendedores')
+  assert.ok(m.includes('ON DELETE SET NULL'), 'remover vendedor apagaria a atribuição em cascata')
+  assert.ok(m.includes('ENABLE ROW LEVEL SECURITY'))
+
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes("['equipe_salvar', 'equipe_remover', 'atribuir', 'equipe_config']"),
+    'ações de equipe fora do gate de permissão')
+  assert.ok(rota.includes(".update({ ativo: false })"), 'remover apaga o histórico do vendedor')
+  assert.ok(rota.includes('distribuirRodizio'), 'sem rodízio automático no servidor')
+  // Atribuição só em lead DO portal, e só para vendedor que existe.
+  assert.ok(rota.includes('quizzes.some(q => q.id === String(lead.quiz_id))'),
+    'lead de fora aceitaria responsável')
+  assert.ok(rota.includes('membros.some(m => m.id === memberId)'),
+    'id inventado viraria responsável')
+
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes('Equipe de vendedores'), 'sem tela de equipe')
+  assert.ok(c.includes("'portal:resp'"), 'CSV sem a coluna Responsável')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {

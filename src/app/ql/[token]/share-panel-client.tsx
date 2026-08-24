@@ -20,7 +20,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExportTable, QuizMetricas, LeadPortal } from '@/lib/quiz/leads-core'
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
-  STATUS_PORTAL, STATUS_PORTAL_META, linkWhatsApp, nomeDoLead, type StatusPortal,
+  STATUS_PORTAL, STATUS_PORTAL_META, corDoVendedor, leadParado,
+  linkWhatsAppComMensagem, nomeDoLead, type StatusPortal,
 } from '@/lib/quiz/portal'
 import {
   calcularCustos, diaLocal, diaNoPeriodo, rotuloPeriodo,
@@ -35,7 +36,9 @@ interface Abertura {
   quizzes: { id: string; titulo: string }[]
 }
 
-interface LeadComStatus extends LeadPortal { statusCliente: string }
+interface LeadComStatus extends LeadPortal { statusCliente: string; responsavelId: string | null }
+
+interface Membro { id: string; nome: string; whatsapp: string | null }
 
 interface DadosQuiz {
   quiz: { id: string; titulo: string; publico: string }
@@ -45,6 +48,9 @@ interface DadosQuiz {
   baseMetricas: { data: string | null; concluiu: boolean; temContato: boolean }[]
   /** Lançamentos por dia — a tela recalcula o custo junto com o filtro. */
   investimentos: LancamentoDia[]
+  membros: Membro[]
+  msgWhatsapp: string
+  autoDistribuir: boolean
   tabela: ExportTable | null
 }
 
@@ -71,6 +77,15 @@ export default function SharePanelClient({ token }: { token: string }) {
   // o arquivo baixado — baixar coisa diferente do que se vê é armadilha.
   const [periodo, setPeriodo] = useState<'tudo' | 'hoje' | '7d' | '30d'>('tudo')
   const [diaEspecifico, setDiaEspecifico] = useState('')
+  // Equipe: filtro por responsável + modal de gestão. "Quem sou eu" fica no
+  // navegador do vendedor — mesmo link e senha, cada um vê a própria fila.
+  const [respFiltro, setRespFiltro] = useState<'todos' | 'sem' | string>('todos')
+  const [equipeAberta, setEquipeAberta] = useState(false)
+  const [novoVendedor, setNovoVendedor] = useState('')
+  const [novoZap, setNovoZap] = useState('')
+  const [msgLocal, setMsgLocal] = useState('')
+  const [salvandoEquipe, setSalvandoEquipe] = useState(false)
+  const [erroEquipe, setErroEquipe] = useState<string | null>(null)
 
   const api = async (payload: Record<string, unknown>) => {
     const resp = await fetch(`/api/portal/${token}`, {
@@ -105,7 +120,9 @@ export default function SharePanelClient({ token }: { token: string }) {
     setQuizAtivo(quizId)
     setCarregando(true); setErro(null)
     try {
-      setDados((await api({ senha: s, acao: 'quiz', quizId })) as DadosQuiz)
+      const d = (await api({ senha: s, acao: 'quiz', quizId })) as DadosQuiz
+      setDados(d)
+      setMsgLocal(d.msgWhatsapp ?? '')
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível carregar o funil')
       setDados(null)
@@ -127,6 +144,84 @@ export default function SharePanelClient({ token }: { token: string }) {
     } catch (e) {
       setDados(anterior)
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar o status')
+    }
+  }
+
+  const salvarVendedor = async () => {
+    setSalvandoEquipe(true); setErroEquipe(null)
+    try {
+      const r = await api({ senha: senhaOk ?? '', acao: 'equipe_salvar', nome: novoVendedor, whatsapp: novoZap }) as { membros: Membro[] }
+      setNovoVendedor(''); setNovoZap('')
+      setDados(d => d ? { ...d, membros: r.membros } : d)
+    } catch (e) {
+      setErroEquipe(e instanceof Error ? e.message : 'Não foi possível salvar')
+    } finally {
+      setSalvandoEquipe(false)
+    }
+  }
+
+  const removerVendedor = async (memberId: string) => {
+    try {
+      const r = await api({ senha: senhaOk ?? '', acao: 'equipe_remover', memberId }) as { membros: Membro[] }
+      setDados(d => d ? {
+        ...d,
+        membros: r.membros,
+        // Os leads dele voltam para a fila na tela também.
+        leads: d.leads.map(l => l.responsavelId === memberId ? { ...l, responsavelId: null } : l),
+      } : d)
+    } catch (e) {
+      setErroEquipe(e instanceof Error ? e.message : 'Não foi possível remover')
+    }
+  }
+
+  const salvarConfigEquipe = async (cfg: { msgWhatsapp?: string; autoDistribuir?: boolean }) => {
+    try {
+      await api({ senha: senhaOk ?? '', acao: 'equipe_config', ...cfg })
+      setDados(d => d ? {
+        ...d,
+        ...(cfg.msgWhatsapp !== undefined ? { msgWhatsapp: cfg.msgWhatsapp } : {}),
+        ...(cfg.autoDistribuir !== undefined ? { autoDistribuir: cfg.autoDistribuir } : {}),
+      } : d)
+    } catch (e) {
+      setErroEquipe(e instanceof Error ? e.message : 'Não foi possível salvar')
+    }
+  }
+
+  /** Rodízio manual: reparte na tela e grava um a um (mesma ação de atribuir). */
+  const distribuirAgora = async () => {
+    if (!dados) return
+    setSalvandoEquipe(true); setErroEquipe(null)
+    try {
+      const carga: Record<string, number> = {}
+      for (const l of dados.leads) if (l.responsavelId) carga[l.responsavelId] = (carga[l.responsavelId] ?? 0) + 1
+      const ids = dados.membros.map(m => m.id)
+      let i = 0
+      for (const l of dados.leads.filter(x => !x.responsavelId).slice(0, 100)) {
+        let alvo = ids[0]
+        for (const v of ids) if ((carga[v] ?? 0) < (carga[alvo] ?? 0)) alvo = v
+        carga[alvo] = (carga[alvo] ?? 0) + 1
+        await api({ senha: senhaOk ?? '', acao: 'atribuir', leadId: l.id, memberId: alvo })
+        setDados(d => d ? { ...d, leads: d.leads.map(x => x.id === l.id ? { ...x, responsavelId: alvo } : x) } : d)
+        i++
+      }
+      if (i === 0) setErroEquipe('Todos os leads visíveis já têm responsável.')
+    } finally {
+      setSalvandoEquipe(false)
+    }
+  }
+
+  const atribuir = async (leadId: string, memberId: string | null) => {
+    if (!dados) return
+    const anterior = dados
+    setDados({
+      ...dados,
+      leads: dados.leads.map(l => l.id === leadId ? { ...l, responsavelId: memberId } : l),
+    })
+    try {
+      await api({ senha: senhaOk ?? '', acao: 'atribuir', leadId, memberId })
+    } catch (e) {
+      setDados(anterior)
+      setErro(e instanceof Error ? e.message : 'Não foi possível atribuir')
     }
   }
 
@@ -160,6 +255,9 @@ export default function SharePanelClient({ token }: { token: string }) {
         || (l.email ?? '').toLowerCase().includes(q)
         || (l.telefone ?? '').includes(q))) return false
 
+      if (respFiltro === 'sem' && l.responsavelId) return false
+      if (respFiltro !== 'todos' && respFiltro !== 'sem' && l.responsavelId !== respFiltro) return false
+
       if (diaEspecifico) {
         if (!l.data) return false
         const d = new Date(l.data)
@@ -173,7 +271,7 @@ export default function SharePanelClient({ token }: { token: string }) {
       const dias = periodo === '7d' ? 7 : 30
       return t >= agora.getTime() - dias * 86_400_000
     })
-  }, [dados, busca, periodo, diaEspecifico])
+  }, [dados, busca, periodo, diaEspecifico, respFiltro])
 
   /** Respostas do lead nas páginas que o dono liberou — vem da MESMA tabela
    *  do CSV, então tela e arquivo mostram o mesmo conteúdo. */
@@ -213,12 +311,20 @@ export default function SharePanelClient({ token }: { token: string }) {
       if (chave === 'lead:telefone') return l.telefone ?? atual
       return atual
     }
+    const respDe = new Map(dados.leads.map(l => [
+      l.id, dados.membros.find(mb => mb.id === l.responsavelId)?.nome ?? '',
+    ]))
     return {
       ...t,
-      colunas: [...t.colunas, { chave: 'portal:status', rotulo: 'Situação', respostas: 0 }],
+      colunas: [
+        ...t.colunas,
+        { chave: 'portal:status', rotulo: 'Situação', respostas: 0 },
+        { chave: 'portal:resp', rotulo: 'Responsável', respostas: 0 },
+      ],
       linhas: indices.map(({ id, i }) => [
         ...(t.linhas[i] ?? []).map((v, j) => preencher(t.colunas[j]?.chave ?? '', id, v)),
         statusDe.get(id) ?? 'Novo',
+        respDe.get(id) ?? '',
       ]),
       ids: indices.map(x => x.id),
     }
@@ -292,9 +398,11 @@ export default function SharePanelClient({ token }: { token: string }) {
 
   /** O cartão do lead — o MESMO na lista e no kanban (compacto). */
   const cartaoDoLead = (l: LeadComStatus, compacto: boolean) => {
-    const wa = linkWhatsApp(l.telefone)
+    const wa = linkWhatsAppComMensagem(l.telefone, dados?.msgWhatsapp, tituloDoLead(l))
     const st = (l.statusCliente as StatusPortal) in STATUS_PORTAL_META
       ? (l.statusCliente as StatusPortal) : 'novo'
+    const parado = leadParado(l.data, st, l.quente)
+    const resp = dados?.membros.find(mb => mb.id === l.responsavelId) ?? null
     return (
       <div key={l.id}
         draggable={compacto}
@@ -318,6 +426,19 @@ export default function SharePanelClient({ token }: { token: string }) {
             {l.concluiu && !compacto && (
               <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                 ✓ concluiu
+              </span>
+            )}
+            {parado && (
+              <span title="Lead quente sem atendimento há mais de 24h"
+                className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600">
+                ⏰ esperando
+              </span>
+            )}
+            {resp && (
+              <span title={`Responsável: ${resp.nome}`}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                style={{ backgroundColor: corDoVendedor(resp.nome) }}>
+                {resp.nome.slice(0, 1).toUpperCase()}
               </span>
             )}
           </div>
@@ -355,6 +476,20 @@ export default function SharePanelClient({ token }: { token: string }) {
               </svg>
               WhatsApp
             </a>
+          )}
+
+          {portal?.permitirStatus && (dados?.membros.length ?? 0) > 0 && (
+            <select value={l.responsavelId ?? ''}
+              onChange={e => void atribuir(l.id, e.target.value || null)}
+              title="Responsável"
+              className={`rounded-xl border border-slate-200 bg-white font-medium text-slate-600 ${
+                compacto ? 'max-w-[7.5rem] px-1.5 py-1.5 text-[11px]' : 'max-w-[9rem] px-2 py-2 text-xs'
+              }`}>
+              <option value="">— vendedor —</option>
+              {dados?.membros.map(mb => (
+                <option key={mb.id} value={mb.id}>{mb.nome}</option>
+              ))}
+            </select>
           )}
 
           {portal?.permitirStatus && (
@@ -569,6 +704,22 @@ export default function SharePanelClient({ token }: { token: string }) {
                 limpar dia
               </button>
             )}
+            {(dados?.membros.length ?? 0) > 0 && (
+              <select value={respFiltro} onChange={e => setRespFiltro(e.target.value)}
+                className={`rounded-xl border bg-white px-3 py-2 text-xs shadow-sm focus:outline-none ${
+                  respFiltro !== 'todos' ? 'border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'
+                }`}>
+                <option value="todos">👥 Todos os vendedores</option>
+                <option value="sem">Sem responsável</option>
+                {dados?.membros.map(mb => <option key={mb.id} value={mb.id}>{mb.nome}</option>)}
+              </select>
+            )}
+            {portal?.permitirStatus && (
+              <button onClick={() => setEquipeAberta(true)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+                👥 Equipe
+              </button>
+            )}
           </div>
           <div className="flex gap-2">
             <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -582,7 +733,14 @@ export default function SharePanelClient({ token }: { token: string }) {
               ))}
             </div>
             <button
-              onClick={() => { const t = tabelaComStatus(); if (t) baixarCsv(t, `leads-${dados?.quiz.titulo.slice(0, 20) ?? 'funil'}`) }}
+              onClick={() => {
+                const t = tabelaComStatus()
+                if (!t) return
+                // O período vai no NOME do arquivo — "leads-funil-18-08" não
+                // vira bagunça na pasta de quem baixa todo dia.
+                const sufixo = (diaEspecifico ? diaEspecifico.slice(5).split('-').reverse().join('-') : periodo)
+                baixarCsv(t, `leads-${(dados?.quiz.titulo ?? 'funil').slice(0, 20).replace(/\s+/g, '-').toLowerCase()}-${sufixo}`)
+              }}
               disabled={!dados?.tabela || dados.tabela.linhas.length === 0}
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
               ⬇ Baixar CSV
@@ -665,6 +823,91 @@ export default function SharePanelClient({ token }: { token: string }) {
 
         <p className="mt-8 text-center text-xs text-slate-400">Portal gerado com FunilPro</p>
       </main>
+
+      {/* ─── Equipe: cadastro, métricas por vendedor e configurações ──────── */}
+      {equipeAberta && dados && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEquipeAberta(false)}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">👥 Equipe de vendedores</h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Sem senha: cada vendedor abre este mesmo portal e filtra pelos
+                  leads dele. Distribua manualmente ou deixe o rodízio automático.
+                </p>
+              </div>
+              <button onClick={() => setEquipeAberta(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+
+            {/* cadastro */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <input value={novoVendedor} onChange={e => setNovoVendedor(e.target.value)}
+                placeholder="Nome do vendedor"
+                onKeyDown={e => { if (e.key === 'Enter') void salvarVendedor() }}
+                className="min-w-[8rem] flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+              <input value={novoZap} onChange={e => setNovoZap(e.target.value)}
+                placeholder="WhatsApp (opcional)"
+                className="min-w-[8rem] flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+              <button onClick={() => void salvarVendedor()} disabled={salvandoEquipe || novoVendedor.trim().length < 2}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                Adicionar
+              </button>
+            </div>
+
+            {/* lista + métricas por vendedor */}
+            <div className="mt-4 space-y-2">
+              {dados.membros.map(mb => {
+                const doVendedor = dados.leads.filter(l => l.responsavelId === mb.id)
+                const contactados = doVendedor.filter(l => l.statusCliente !== 'novo').length
+                const fechadosV = doVendedor.filter(l => l.statusCliente === 'fechado').length
+                return (
+                  <div key={mb.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                      style={{ backgroundColor: corDoVendedor(mb.nome) }}>
+                      {mb.nome.slice(0, 1).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-gray-900">{mb.nome}</p>
+                      <p className="text-xs text-gray-500">
+                        {doVendedor.length} lead(s) · {contactados} atendido(s) · <span className="font-semibold text-emerald-600">{fechadosV} fechado(s)</span>
+                      </p>
+                    </div>
+                    <button onClick={() => void removerVendedor(mb.id)} title="Remover (os leads dele voltam para a fila)"
+                      className="text-gray-300 hover:text-red-500">✕</button>
+                  </div>
+                )
+              })}
+              {dados.membros.length === 0 && (
+                <p className="py-4 text-center text-xs text-gray-400">Nenhum vendedor ainda — adicione o primeiro acima.</p>
+              )}
+            </div>
+
+            {/* distribuição + configurações */}
+            {dados.membros.length > 0 && (
+              <button onClick={() => void distribuirAgora()} disabled={salvandoEquipe}
+                className="mt-3 w-full rounded-xl border border-indigo-200 bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
+                🔀 Distribuir leads sem responsável (um para cada)
+              </button>
+            )}
+            <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={dados.autoDistribuir}
+                onChange={e => void salvarConfigEquipe({ autoDistribuir: e.target.checked })} />
+              Distribuir automaticamente os leads novos (rodízio)
+            </label>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-gray-700">
+                Mensagem do botão WhatsApp (use {'{nome}'} para o nome do lead)
+              </label>
+              <textarea value={msgLocal} onChange={e => setMsgLocal(e.target.value)}
+                onBlur={() => void salvarConfigEquipe({ msgWhatsapp: msgLocal })}
+                rows={2} placeholder="Olá {nome}! Vi seu interesse e estou entrando em contato 😊"
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+            </div>
+            {erroEquipe && <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs text-red-700">{erroEquipe}</p>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

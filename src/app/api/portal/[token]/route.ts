@@ -23,7 +23,7 @@ import {
 } from '@/lib/quiz/portal-session'
 import { tokenShareValido, verificarSenhaShare } from '@/lib/quiz/share'
 import {
-  publicoPortalValido, statusPortalValido, temContato, type PublicoPortal,
+  distribuirRodizio, publicoPortalValido, statusPortalValido, temContato, type PublicoPortal,
 } from '@/lib/quiz/portal'
 import {
   COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
@@ -41,7 +41,14 @@ interface Corpo {
   quizId?: string
   leadId?: string
   status?: string
+  memberId?: string | null
+  nome?: string
+  whatsapp?: string
+  msgWhatsapp?: string
+  autoDistribuir?: boolean
 }
+
+interface Membro { id: string; nome: string; whatsapp: string | null }
 
 export async function POST(
   request: Request,
@@ -70,7 +77,7 @@ export async function POST(
   const admin = createAdminClient()
   const { data: portal } = await admin
     .from('client_portals')
-    .select('id, tenant_id, nome, password_hash, enabled, mostrar_metricas, mostrar_funil, permitir_status')
+    .select('*')
     .eq('token', token)
     .maybeSingle()
 
@@ -126,6 +133,21 @@ export async function POST(
 
   const acao = corpo.acao ?? 'abrir'
 
+  /** Vendedores ativos do portal — [] quando a migration ainda não rodou. */
+  const listarMembros = async (): Promise<Membro[]> => {
+    const { data, error } = await admin
+      .from('portal_members')
+      .select('id, nome, whatsapp')
+      .eq('portal_id', portalId)
+      .eq('ativo', true)
+      .order('created_at', { ascending: true })
+      .range(0, 99)
+    if (error || !data) return []
+    return data.map(m => ({ id: String(m.id), nome: String(m.nome), whatsapp: m.whatsapp ?? null }))
+  }
+
+  const EQUIPE_MIGRATION = { error: 'Aplique a migration 20260828000000_portal_equipe.sql no Supabase para usar a equipe' }
+
   try {
     if (acao === 'abrir') {
       // Conta acesso só quando a senha foi apresentada; F5 não inflaria o número.
@@ -171,6 +193,37 @@ export async function POST(
           })
         : tabela
 
+      const membros = await listarMembros()
+
+      // Responsável por lead: a coluna pode não existir ainda (migration).
+      const respAtual: Record<string, string> = {}
+      const { data: atribs } = await admin
+        .from('portal_lead_status')
+        .select('lead_id, assigned_member_id')
+        .eq('portal_id', portalId)
+        .not('assigned_member_id', 'is', null)
+        .range(0, 9_999)
+      for (const r of atribs ?? []) {
+        if (r.assigned_member_id) respAtual[String(r.lead_id)] = String(r.assigned_member_id)
+      }
+
+      // Rodízio AUTOMÁTICO: lead visível sem dono é repartido na hora entre
+      // os vendedores — quem tem menos recebe primeiro. Ligado pelo gestor.
+      if (Boolean((portal as { auto_distribuir?: boolean }).auto_distribuir) && membros.length > 0) {
+        const carga: Record<string, number> = {}
+        for (const mid of Object.values(respAtual)) carga[mid] = (carga[mid] ?? 0) + 1
+        const semDono = leads.filter(l => !respAtual[l.id]).map(l => l.id).slice(0, 200)
+        const novos = distribuirRodizio(semDono, membros.map(m => m.id), carga)
+        for (const n of novos) {
+          const { error } = await admin.from('portal_lead_status').upsert({
+            tenant_id: tenantId, portal_id: portalId, lead_id: n.leadId,
+            assigned_member_id: n.memberId, updated_at: new Date().toISOString(),
+          }, { onConflict: 'portal_id,lead_id' })
+          if (error) break                     // migration pendente: sem drama
+          respAtual[n.leadId] = n.memberId
+        }
+      }
+
       const statusPorLead: Record<string, string> = {}
       for (const r of statusRows.data ?? []) statusPorLead[String(r.lead_id)] = String(r.status)
 
@@ -193,7 +246,14 @@ export async function POST(
 
       return comSessao({
         quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico },
-        leads: leads.map(l => ({ ...l, statusCliente: statusPorLead[l.id] ?? 'novo' })),
+        leads: leads.map(l => ({
+          ...l,
+          statusCliente: statusPorLead[l.id] ?? 'novo',
+          responsavelId: respAtual[l.id] ?? null,
+        })),
+        membros,
+        msgWhatsapp: String((portal as { msg_whatsapp?: string | null }).msg_whatsapp ?? ''),
+        autoDistribuir: Boolean((portal as { auto_distribuir?: boolean }).auto_distribuir),
         metricas: m,
         baseMetricas,
         // Os lançamentos POR DIA vão para a tela: o custo é recalculado junto
@@ -244,6 +304,69 @@ export async function POST(
         updated_at: new Date().toISOString(),
       }, { onConflict: 'portal_id,lead_id' })
       if (error) return NextResponse.json({ error: 'Não foi possível salvar' }, { status: 500 })
+      return comSessao({ ok: true })
+    }
+
+    // ── Equipe (gestor): tudo gateado pela mesma permissão de marcação ──────
+    if (['equipe_salvar', 'equipe_remover', 'atribuir', 'equipe_config'].includes(acao)) {
+      if (!portal.permitir_status) {
+        return NextResponse.json({ error: 'A gestão de equipe está desativada neste portal' }, { status: 403 })
+      }
+
+      if (acao === 'equipe_salvar') {
+        const nome = String(corpo.nome ?? '').trim().slice(0, 60)
+        if (nome.length < 2) return NextResponse.json({ error: 'Informe o nome do vendedor' }, { status: 400 })
+        const { error } = await admin.from('portal_members').insert({
+          tenant_id: tenantId, portal_id: portalId, nome,
+          whatsapp: String(corpo.whatsapp ?? '').trim().slice(0, 20) || null,
+        })
+        if (error) {
+          if (error.code === '42P01' || error.code === 'PGRST205') return NextResponse.json(EQUIPE_MIGRATION, { status: 400 })
+          if (error.code === '23505') return NextResponse.json({ error: 'Já existe um vendedor com esse nome' }, { status: 400 })
+          return NextResponse.json({ error: 'Não foi possível salvar' }, { status: 500 })
+        }
+        return comSessao({ ok: true, membros: await listarMembros() })
+      }
+
+      if (acao === 'equipe_remover') {
+        // Desativa (não apaga): o histórico de quem fechou o quê permanece.
+        await admin.from('portal_members')
+          .update({ ativo: false })
+          .eq('id', String(corpo.memberId ?? ''))
+          .eq('portal_id', portalId)
+        return comSessao({ ok: true, membros: await listarMembros() })
+      }
+
+      if (acao === 'equipe_config') {
+        const { error } = await admin.from('client_portals').update({
+          ...(corpo.msgWhatsapp !== undefined ? { msg_whatsapp: String(corpo.msgWhatsapp).slice(0, 300) || null } : {}),
+          ...(corpo.autoDistribuir !== undefined ? { auto_distribuir: Boolean(corpo.autoDistribuir) } : {}),
+          updated_at: new Date().toISOString(),
+        }).eq('id', portalId)
+        if (error) return NextResponse.json(EQUIPE_MIGRATION, { status: 400 })
+        return comSessao({ ok: true })
+      }
+
+      // 'atribuir': responsável do lead — só lead dos funis do portal.
+      const leadId = String(corpo.leadId ?? '')
+      const { data: lead } = await admin
+        .from('quiz_leads').select('id, quiz_id')
+        .eq('id', leadId).eq('tenant_id', tenantId).maybeSingle()
+      if (!lead || !quizzes.some(q => q.id === String(lead.quiz_id))) {
+        return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
+      }
+      const memberId = corpo.memberId ? String(corpo.memberId) : null
+      if (memberId) {
+        const membros = await listarMembros()
+        if (!membros.some(m => m.id === memberId)) {
+          return NextResponse.json({ error: 'Vendedor não encontrado' }, { status: 404 })
+        }
+      }
+      const { error } = await admin.from('portal_lead_status').upsert({
+        tenant_id: tenantId, portal_id: portalId, lead_id: leadId,
+        assigned_member_id: memberId, updated_at: new Date().toISOString(),
+      }, { onConflict: 'portal_id,lead_id' })
+      if (error) return NextResponse.json(EQUIPE_MIGRATION, { status: 400 })
       return comSessao({ ok: true })
     }
 
