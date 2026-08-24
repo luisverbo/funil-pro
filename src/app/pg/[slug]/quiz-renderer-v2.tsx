@@ -879,11 +879,15 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'image' && config.image_url && (
           <div className={`flex ${config.image_align === 'left' ? 'justify-start' : config.image_align === 'right' ? 'justify-end' : 'justify-center'}`}>
+            {/* `object-contain` + altura automática: a imagem aparece
+                INTEIRA. Com `object-cover` (o que havia aqui), qualquer
+                altura imposta recortava as laterais — foi o que "comeu" a
+                foto no celular. */}
             <img src={config.image_url} alt=""
-              className={`rounded-xl object-cover ${
-                config.image_size === 'small' ? 'max-w-xs' :
+              className={`rounded-xl h-auto object-contain ${
+                config.image_size === 'small' ? 'max-w-xs w-full' :
                 config.image_size === 'large' ? 'max-w-2xl w-full' :
-                config.image_size === 'full' ? 'w-full' : 'max-w-md'
+                config.image_size === 'full' ? 'w-full' : 'max-w-md w-full'
               }`}
             />
           </div>
@@ -962,8 +966,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'hero' && (
           <div className={config.hero_align === 'left' ? 'text-left' : 'text-center'}>
+            {/* Sem altura fixa: banner largo em tela estreita ficava com as
+                laterais cortadas. Agora encolhe proporcionalmente. */}
             {config.hero_image_url && (
-              <img src={config.hero_image_url} alt="" className="w-full max-h-72 object-cover rounded-2xl mb-6" />
+              <img src={config.hero_image_url} alt="" className="w-full h-auto object-contain rounded-2xl mb-6" />
             )}
             <h1 className="text-3xl md:text-5xl font-extrabold leading-tight" style={{ color: theme.textColor }}>
               {resolveVars(config.hero_headline ?? '')}

@@ -88,6 +88,34 @@ test('4) o marca-texto grava cor no estilo (styleWithCSS + hiliteColor)', () => 
   assert.ok(f.includes("execCommand('backColor'"), 'sem alternativa para navegador antigo')
 })
 
+test('5) imagem do quiz aparece INTEIRA — nada de recorte lateral', () => {
+  // O relato: "está comendo a foto". `object-cover` faz a imagem PREENCHER a
+  // caixa, cortando o que sobra — num banner largo aberto no celular, some
+  // metade do texto nas laterais.
+  const r = ler('src/app/pg/[slug]/quiz-renderer-v2.tsx')
+
+  // Sem comentários: o código EXPLICA o defeito antigo, e essa menção não
+  // pode ser confundida com o defeito de volta.
+  const semComentarios = r.replace(/\/\*[\s\S]*?\*\//g, '')
+  const bloco = semComentarios.slice(
+    semComentarios.indexOf("block.type === 'image'"),
+    semComentarios.indexOf("block.type === 'video'"))
+  assert.ok(bloco.includes('object-contain'), 'o bloco de imagem voltaria a recortar')
+  assert.ok(!bloco.includes('object-cover'), 'object-cover no bloco de imagem corta as laterais')
+  assert.ok(bloco.includes('h-auto'), 'sem altura automática a proporção se perde')
+
+  const hero = semComentarios.slice(
+    semComentarios.indexOf("block.type === 'hero'"),
+    semComentarios.indexOf("block.type === 'testimonials'"))
+  assert.ok(!/max-h-72 object-cover/.test(hero), 'o hero voltaria a cortar banner largo')
+
+  // A prévia do editor precisa mostrar o MESMO enquadramento do publicado —
+  // senão o defeito volta a ser invisível para quem monta a página.
+  const ed = ler('src/components/quiz/quiz-editor-v2.tsx')
+  const previa = ed.slice(ed.indexOf('config.image_url'), ed.indexOf('config.image_url') + 200)
+  assert.ok(previa.includes('object-contain'), 'prévia recortando e publicação não')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 for (const { name, fn } of suite) {
