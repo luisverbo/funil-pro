@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { linkWhatsAppDoBotao } from '@/lib/quiz/portal'
 import type { QuizData, QuizBlock, BlockOption, BlockConfig, CarouselItem, ChartDatum } from '@/app/actions/quiz-v2'
 import { resolveTheme } from '@/lib/quiz/theme'
 import { capturarOrigem } from '@/lib/tracking/params'
@@ -952,6 +953,26 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           const align = `flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`
           const cls = `font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${btnSize}`
           const st = { background: config.button_color || primaryColor, ...(config.button_pulse ? { animation: 'pulseCta 1.2s ease-in-out infinite' } : {}) }
+          // WhatsApp: o link é montado do número + mensagem que o dono digitou.
+          // `resolveVars` na mensagem faz {{nome}} virar o nome respondido —
+          // a conversa já abre personalizada, que é o ponto do recurso.
+          if (config.button_action === 'whatsapp') {
+            const zap = linkWhatsAppDoBotao(config.button_whatsapp, resolveVars(config.button_whatsapp_msg ?? ''))
+            return (
+              <div className={align}>
+                <a href={zap ?? '#'} target="_blank" rel="noopener noreferrer"
+                  onClick={() => tracker.track('button_clicked', page.id, block.id, { text: config.button_text || 'Chamar no WhatsApp', url: zap })}
+                  className={`${cls} inline-flex items-center gap-2`}
+                  style={{ ...st, background: config.button_color || '#25D366' }}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                    <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07a8.2 8.2 0 0 1-2.4-1.49 9 9 0 0 1-1.66-2.07c-.17-.3-.02-.46.13-.61.14-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.11 3.22 5.1 4.51.71.31 1.27.5 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01a9.4 9.4 0 0 1-4.8-1.31l-.34-.2-3.56.93.95-3.47-.22-.36a9.42 9.42 0 1 1 7.98 4.41zM12.05 1.25C6.11 1.25 1.3 6.07 1.3 12c0 1.9.5 3.74 1.44 5.37L1.25 22.75l5.52-1.45a10.7 10.7 0 0 0 5.27 1.38h.01c5.93 0 10.75-4.82 10.75-10.75S17.98 1.25 12.05 1.25z"/>
+                  </svg>
+                  {config.button_text || 'Chamar no WhatsApp'}
+                </a>
+              </div>
+            )
+          }
+
           // Botão de link externo abre a URL; os demais avançam o quiz (na posição)
           if (config.button_action === 'external_url') {
             return (
