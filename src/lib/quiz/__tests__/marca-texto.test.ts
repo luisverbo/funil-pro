@@ -122,6 +122,20 @@ test('5) imagem do quiz aparece INTEIRA — nada de recorte lateral', () => {
   assert.ok(previa.includes('object-contain'), 'prévia recortando e publicação não')
 })
 
+test('6) cada página do quiz começa no TOPO', () => {
+  // O defeito: quem rolava até o fim para achar o botão continuava rolado ao
+  // avançar — a página seguinte abria no meio, com o começo do texto acima
+  // da dobra. É onde o quiz perde gente.
+  const r = ler('src/app/pg/[slug]/quiz-renderer-v2.tsx')
+  const semComentarios = r.replace(/\/\*[\s\S]*?\*\//g, '')
+  assert.ok(semComentarios.includes("window.scrollTo({ top: 0"), 'a página seguinte abriria rolada')
+  // Precisa valer para a troca de página E para a tela de resultado.
+  const efeito = semComentarios.slice(
+    semComentarios.indexOf("window.scrollTo({ top: 0"),
+    semComentarios.indexOf("window.scrollTo({ top: 0") + 120)
+  assert.ok(/\[pageIdx, phase\]/.test(efeito), 'o topo não seria refeito ao mudar de página ou no resultado')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 for (const { name, fn } of suite) {
