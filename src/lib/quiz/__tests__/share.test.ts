@@ -576,6 +576,26 @@ test('15) CAUSA RAIZ: nenhum arquivo de actions re-exporta tipos', () => {
   }
 })
 
+test('13o) telefone que NÃO bate nunca vira gestor', () => {
+  // O defeito relatado: vendedor logou e viu a lista inteira. O telefone não
+  // casava com nenhum cadastro e o código caía em "gestor" em silêncio.
+  const r = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(r.includes('telefoneInformado.length > 0 && !membroAtual'),
+    'telefone errado voltaria a virar gestor')
+  assert.ok(r.includes('Este WhatsApp não está cadastrado na equipe'),
+    'a recusa precisa dizer o que fazer')
+  // Vendedor removido não pode ser promovido a gestor pelo cookie antigo.
+  assert.ok(r.includes("!porSenha && sessao.membroId && !membroAtual"),
+    'cookie de vendedor apagado viraria acesso total')
+  // Sair: sessão de 12h presa era o outro caminho para "entrei e vi tudo".
+  assert.ok(r.includes("acao === 'sair'"), 'sem como trocar de usuário')
+  assert.ok(r.includes("maxAge: 0"), 'sair não apaga o cookie')
+
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes('👑 Gestor · vendo todos'), 'o gestor não percebe que vê tudo')
+  assert.ok(c.includes('void sair()'), 'sem botão de sair')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 for (const { name, fn } of suite) {
