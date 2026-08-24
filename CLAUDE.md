@@ -483,7 +483,7 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-08-23 — Portal do cliente + Gestor de Tráfego Fase 1 completa + causa raiz das server actions
+**Última atualização:** 2026-08-24 — Portal do cliente completo (equipe, kanban, custos por período, modo vagas)
 
 **O que foi feito (2026-08-19 a 23):**
 - **Gestor de Tráfego — Fase 1 COMPLETA** (PRs #48–#50): sincronização Meta
@@ -515,7 +515,25 @@ APP_SECRET=
   `src/lib/quiz/painel-client.ts` com mesmas assinaturas via typeof import;
   carga do editor via `/api/quiz-editor-load/[id]`) — imune a id de build
   embutido (dois deploys por merge = janela dupla de skew)
-- Bateria HONESTA: `npm run test:cs` → **600/600**
+- **Portal do cliente — rodada 2** (PRs #58–#67): editar acesso sem trocar
+  link/senha; público `com_contato` (lead que deixou telefone/e-mail = 🔥,
+  mesmo sem clicar no botão final) e `paginas` (só quem preencheu as páginas
+  marcadas); sessão 12h em cookie httpOnly assinado (chave = password_hash;
+  trocar senha derruba sessões; F5 não desloga); nome derivado das respostas
+  (estrutura + fallback por FORMATO — quiz reeditado troca ids de bloco);
+  respostas de páginas escolhidas visíveis por lead; filtro por dia (lista,
+  métricas, custos e CSV com o MESMO recorte — `src/lib/quiz/custos.ts`
+  compartilhado dono/cliente); kanban largura total com drag-and-drop; custo
+  por venda (fechados); régua real de conclusão (`idsQueConcluiram`: viu a
+  última página = chegou ao final); EQUIPE sem login (portal_members,
+  responsável por lead, rodízio manual/automático, métricas por vendedor,
+  msg padrão do WhatsApp {nome}, selo ⏰ +24h); modo por funil
+  vendas/vagas (vocabulário: Candidatos/Entrevista/Contratado); renomear
+  página na lista (slug intocado)
+- Migrations pendentes do portal (Studio): `20260826000000_portal_paginas`,
+  `20260827000000_portal_publico_paginas`, `20260828000000_portal_equipe`,
+  `20260829000000_portal_modo` (as ações avisam na tela qual falta)
+- Bateria HONESTA: `npm run test:cs` → **622/622**
 
 **Migrations pendentes de aplicar no Studio (hcadyqktfowfkxsbogmj):**
 - `20260818000000_trafego_fase1.sql` — APLICADA (confirmado 2026-08-19)
