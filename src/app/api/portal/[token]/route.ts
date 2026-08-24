@@ -158,7 +158,7 @@ export async function POST(
   // o cliente, por mais que ele adivinhe ids.
   const rv = await admin
     .from('client_portal_quizzes')
-    .select('page_id, publico, paginas, modo, pages(title)')
+    .select('page_id, publico, paginas, modo, desde, pages(title)')
     .eq('portal_id', portalId)
   let vinculos = rv.data
   if (rv.error) {
@@ -166,7 +166,7 @@ export async function POST(
       .from('client_portal_quizzes')
       .select('page_id, publico, pages(title)')
       .eq('portal_id', portalId)
-    vinculos = (r2.data ?? []).map(v => ({ ...v, paginas: [] as unknown[], modo: 'vendas' }))
+    vinculos = (r2.data ?? []).map(v => ({ ...v, paginas: [] as unknown[], modo: 'vendas', desde: null }))
   }
 
   const quizzes = (vinculos ?? []).map(v => ({
@@ -178,6 +178,8 @@ export async function POST(
       : [],
     modo: (modoPortalValido((v as { modo?: unknown }).modo)
       ? (v as { modo: ModoPortal }).modo : 'vendas') as ModoPortal,
+    desde: typeof (v as { desde?: unknown }).desde === 'string'
+      ? (v as { desde: string }).desde : null,
   }))
 
   const acao = corpo.acao ?? 'abrir'
@@ -217,7 +219,7 @@ export async function POST(
 
       // Os leads primeiro: a tabela do CSV é montada com EXATAMENTE os mesmos
       // ids, para arquivo e tela nunca divergirem.
-      const leads = await leadsParaPortal(admin, quiz.id, tenantId, quiz.publico, quiz.paginas)
+      const leads = await leadsParaPortal(admin, quiz.id, tenantId, quiz.publico, quiz.paginas, quiz.desde)
 
       const [statusRows, metricas, tabela, investimentos] = await Promise.all([
         admin.from('portal_lead_status')
@@ -296,7 +298,7 @@ export async function POST(
       // todo o histórico, e não mexiam quando o cliente trocava o filtro.
       const baseMetricas = portal.mostrar_metricas
         ? (ehGestor
-            ? (await leadsParaPortal(admin, quiz.id, tenantId, 'todos'))
+            ? (await leadsParaPortal(admin, quiz.id, tenantId, 'todos', [], quiz.desde))
                 .map(l => ({ data: l.data, concluiu: l.concluiu, temContato: l.quente }))
             // Vendedor: os números são os DELE — "112 entraram" no painel de
             // quem recebeu 8 leads seria confusão, não informação.
@@ -341,7 +343,7 @@ export async function POST(
       // Lead fora do público liberado é invisível também para ESCRITA.
       // Para 'paginas' a regra precisa das respostas — a lista visível decide.
       const visiveis = quiz.publico === 'paginas'
-        ? new Set((await leadsParaPortal(admin, quiz.id, tenantId, 'paginas', quiz.paginas)).map(l => l.id))
+        ? new Set((await leadsParaPortal(admin, quiz.id, tenantId, 'paginas', quiz.paginas, quiz.desde)).map(l => l.id))
         : null
       const foraDoPublico =
         (quiz.publico === 'concluidos' && lead.status !== 'completed')

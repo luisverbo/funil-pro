@@ -535,6 +535,8 @@ export async function leadsParaPortal(
   publico: 'com_contato' | 'paginas' | 'concluidos' | 'com_resposta' | 'todos',
   /** Páginas exigidas quando publico === 'paginas'. */
   paginasExigidas: string[] = [],
+  /** 'YYYY-MM-DD': esconde o que entrou ANTES deste dia (data de corte). */
+  desde: string | null = null,
 ): Promise<LeadPortal[]> {
   const [{ data: rows }, { data: pageRow }, { porLead: respostas, digitadas }] = await Promise.all([
     admin
@@ -569,6 +571,16 @@ export async function leadsParaPortal(
   })
 
   let leads = enriquecidos
+  // Corte por data: o que é anterior some do portal (nada é apagado — o dono
+  // continua vendo tudo no painel dele).
+  if (desde) {
+    leads = leads.filter(l => {
+      if (!l.started_at) return false
+      const d = new Date(l.started_at)
+      const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      return dia >= desde
+    })
+  }
   if (publico === 'com_contato') {
     leads = leads.filter(l => temContato({ email: l.email, phone: l.telefone }))
   } else if (publico === 'paginas') {
