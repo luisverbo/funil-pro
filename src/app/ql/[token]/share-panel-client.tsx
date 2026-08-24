@@ -22,7 +22,10 @@ import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
   STATUS_PORTAL, STATUS_PORTAL_META, linkWhatsApp, nomeDoLead, type StatusPortal,
 } from '@/lib/quiz/portal'
-import { calcularCustos, type LancamentoDia } from '@/lib/quiz/custos'
+import {
+  calcularCustos, diaLocal, diaNoPeriodo, rotuloPeriodo,
+  type FiltroPeriodo, type LancamentoDia,
+} from '@/lib/quiz/custos'
 
 interface Abertura {
   nome: string
@@ -38,6 +41,8 @@ interface DadosQuiz {
   quiz: { id: string; titulo: string; publico: string }
   leads: LeadComStatus[]
   metricas: QuizMetricas | null
+  /** Metadados de TODOS os leads — a tela recalcula os números por período. */
+  baseMetricas: { data: string | null; concluiu: boolean; temContato: boolean }[]
   /** Lançamentos por dia — a tela recalcula o custo junto com o filtro. */
   investimentos: LancamentoDia[]
   tabela: ExportTable | null
@@ -221,22 +226,63 @@ export default function SharePanelClient({ token }: { token: string }) {
 
   const m = dados?.metricas
 
+  /** O MESMO filtro para lista, métricas, custos e arquivo baixado. */
+  const filtro: FiltroPeriodo = useMemo(
+    () => ({ modo: periodo, ...(diaEspecifico ? { dia: diaEspecifico } : {}) }),
+    [periodo, diaEspecifico],
+  )
+
+  /**
+   * Números do topo RECALCULADOS pelo período — antes vinham prontos do
+   * servidor, sobre todo o histórico, e não mexiam ao trocar o filtro.
+   */
+  const resumo = useMemo(() => {
+    const base = dados?.baseMetricas ?? []
+    if (base.length === 0) return null
+    const noPeriodo = base.filter(l => {
+      if (!l.data) return filtro.modo === 'tudo' && !filtro.dia
+      return diaNoPeriodo(diaLocal(l.data), filtro)
+    })
+    const concluiram = noPeriodo.filter(l => l.concluiu).length
+    return {
+      total: noPeriodo.length,
+      concluiram,
+      comContato: noPeriodo.filter(l => l.temContato).length,
+      conversao: noPeriodo.length > 0 ? Math.round((concluiram / noPeriodo.length) * 100) : 0,
+      rotulo: rotuloPeriodo(filtro),
+    }
+  }, [dados, filtro])
+
   /**
    * Custos DO PERÍODO ESCOLHIDO: gasto e leads recortados pelo mesmo filtro.
    * Antes o investido era o total de todos os tempos — misturava períodos.
    */
   const custos = useMemo(() => {
     if (!dados || dados.investimentos.length === 0) return null
-    return calcularCustos(
+
+    // Custo por lead sobre TODOS que entraram (o gasto trouxe todo mundo, não
+    // só o recorte que o cliente enxerga); fechados vêm da lista visível, que
+    // é onde o cliente marca o desfecho.
+    const base = calcularCustos(
+      dados.investimentos,
+      dados.baseMetricas.map(l => ({ data: l.data, temContato: l.temContato, fechado: false })),
+      filtro,
+    )
+    const fechados = calcularCustos(
       dados.investimentos,
       dados.leads.map(l => ({
         data: l.data,
         temContato: l.quente,
         fechado: l.statusCliente === 'fechado',
       })),
-      { modo: periodo, ...(diaEspecifico ? { dia: diaEspecifico } : {}) },
+      filtro,
     )
-  }, [dados, periodo, diaEspecifico])
+    return {
+      ...base,
+      fechados: fechados.fechados,
+      custoPorVendaCents: fechados.custoPorVendaCents,
+    }
+  }, [dados, filtro])
 
   const [visao, setVisao] = useState<'lista' | 'kanban'>('lista')
   // Arrastar e soltar do kanban: o id viaja no dataTransfer; a coluna sob o
@@ -385,31 +431,31 @@ export default function SharePanelClient({ token }: { token: string }) {
       <main className="mx-auto -mt-8 max-w-5xl px-4 pb-10">
         {erro && <p className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
-        {/* A conta que interessa: entrou X, chegou ao final Y (Z%) */}
-        {m && m.total > 0 && (
+        {/* A conta que interessa: entrou X, chegou ao final Y (Z%) — do PERÍODO */}
+        {resumo && resumo.total > 0 && (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-center">
               <div>
-                <p className="text-3xl font-bold text-slate-900">{m.total}</p>
+                <p className="text-3xl font-bold text-slate-900">{resumo.total}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-500">entraram</p>
               </div>
               <span className="text-2xl text-slate-300">→</span>
               <div>
-                <p className="text-3xl font-bold text-orange-600">🔥 {m.completed}</p>
+                <p className="text-3xl font-bold text-orange-600">🔥 {resumo.concluiram}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-500">chegaram ao final</p>
               </div>
               <span className="text-2xl text-slate-300">=</span>
               <div>
-                <p className="text-3xl font-bold text-indigo-600">{m.completionRate}%</p>
+                <p className="text-3xl font-bold text-indigo-600">{resumo.conversao}%</p>
                 <p className="text-xs uppercase tracking-wide text-slate-500">de conversão</p>
               </div>
             </div>
             <div className="mx-auto mt-3 h-2.5 max-w-md overflow-hidden rounded-full bg-slate-100">
               <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-indigo-500"
-                style={{ width: `${Math.max(m.completionRate, m.completed > 0 ? 3 : 0)}%` }} />
+                style={{ width: `${Math.max(resumo.conversao, resumo.concluiram > 0 ? 3 : 0)}%` }} />
             </div>
             <p className="mt-2 text-center text-xs text-slate-400">
-              De cada 100 pessoas que entram no funil, {m.completionRate} chegam ao final.
+              De cada 100 pessoas que entram no funil, {resumo.conversao} chegam ao final — {resumo.rotulo}.
             </p>
 
             {/* Custo — só quando o dono lançou investimento. */}
@@ -457,13 +503,13 @@ export default function SharePanelClient({ token }: { token: string }) {
         )}
 
         {/* Métricas */}
-        {m && (
+        {resumo && (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
-              { r: 'Leads', v: m.total, n: `${m.hoje} hoje` },
-              { r: '🔥 Quentes', v: m.completed, n: `${m.completionRate}% concluíram` },
-              { r: 'Com contato', v: m.comContato, n: 'e-mail ou telefone' },
-              { r: 'Últimos 7 dias', v: m.ultimos7d, n: 'novos leads' },
+              { r: 'Leads', v: resumo.total, n: resumo.rotulo },
+              { r: '🔥 Com contato', v: resumo.comContato, n: 'dá para atender' },
+              { r: 'Chegaram ao final', v: resumo.concluiram, n: `${resumo.conversao}% de conversão` },
+              { r: 'Fechados', v: custos?.fechados ?? leadsFiltrados.filter(l => l.statusCliente === 'fechado').length, n: 'marcados por você' },
             ].map(c => (
               <div key={c.r} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{c.r}</p>
@@ -477,7 +523,9 @@ export default function SharePanelClient({ token }: { token: string }) {
         {/* Funil (só se o dono liberou) */}
         {m && m.funil.length > 1 && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Etapas do funil</h2>
+            <h2 className="text-sm font-semibold text-slate-900">
+              Etapas do funil <span className="font-normal text-slate-400">· todo o período</span>
+            </h2>
             <div className="mt-3 space-y-2">
               {m.funil.map(e => (
                 <div key={e.pageId} className="flex items-center gap-3">
