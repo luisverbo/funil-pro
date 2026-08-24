@@ -21,7 +21,7 @@ import type { ExportTable, QuizMetricas, LeadPortal } from '@/lib/quiz/leads-cor
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
   STATUS_PORTAL, STATUS_PORTAL_META, corDoVendedor, leadParado,
-  linkWhatsAppComMensagem, nomeDoLead, type StatusPortal,
+  linkWhatsAppComMensagem, nomeDoLead, vocabulario, type StatusPortal,
 } from '@/lib/quiz/portal'
 import {
   calcularCustos, diaLocal, diaNoPeriodo, rotuloPeriodo,
@@ -41,7 +41,7 @@ interface LeadComStatus extends LeadPortal { statusCliente: string; responsavelI
 interface Membro { id: string; nome: string; whatsapp: string | null }
 
 interface DadosQuiz {
-  quiz: { id: string; titulo: string; publico: string }
+  quiz: { id: string; titulo: string; publico: string; modo?: 'vendas' | 'vagas' }
   leads: LeadComStatus[]
   metricas: QuizMetricas | null
   /** Metadados de TODOS os leads — a tela recalcula os números por período. */
@@ -295,7 +295,10 @@ export default function SharePanelClient({ token }: { token: string }) {
   const tabelaComStatus = (): ExportTable | null => {
     if (!dados?.tabela) return null
     const t = dados.tabela
-    const statusDe = new Map(dados.leads.map(l => [l.id, STATUS_PORTAL_META[(l.statusCliente as StatusPortal)]?.rotulo ?? l.statusCliente]))
+    const statusDe = new Map(dados.leads.map(l => [
+      l.id,
+      voc.status[(l.statusCliente as StatusPortal)] ?? l.statusCliente,
+    ]))
     // O arquivo sai com o MESMO filtro da tela (busca + dia).
     const visiveis = new Set(leadsFiltrados.map(l => l.id))
     const indices = t.ids.map((id, i) => ({ id, i })).filter(x => visiveis.has(x.id))
@@ -331,6 +334,8 @@ export default function SharePanelClient({ token }: { token: string }) {
   }
 
   const m = dados?.metricas
+  /** Vocabulário do funil ativo: leads (vendas) ou candidatos (vagas). */
+  const voc = vocabulario(dados?.quiz.modo === 'vagas' ? 'vagas' : 'vendas')
 
   /** O MESMO filtro para lista, métricas, custos e arquivo baixado. */
   const filtro: FiltroPeriodo = useMemo(
@@ -420,7 +425,7 @@ export default function SharePanelClient({ token }: { token: string }) {
             <p className="truncate font-semibold text-slate-900">{tituloDoLead(l)}</p>
             {l.quente && (
               <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-600">
-                🔥 Quente
+                🔥 {voc.quente}
               </span>
             )}
             {l.concluiu && !compacto && (
@@ -499,7 +504,7 @@ export default function SharePanelClient({ token }: { token: string }) {
                 compacto ? 'px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'
               }`}>
               {STATUS_PORTAL.map(opt => (
-                <option key={opt} value={opt}>{STATUS_PORTAL_META[opt].rotulo}</option>
+                <option key={opt} value={opt}>{voc.status[opt]}</option>
               ))}
             </select>
           )}
@@ -641,7 +646,7 @@ export default function SharePanelClient({ token }: { token: string }) {
         {resumo && (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
-              { r: 'Leads', v: resumo.total, n: resumo.rotulo },
+              { r: voc.varios, v: resumo.total, n: resumo.rotulo },
               { r: '🔥 Com contato', v: resumo.comContato, n: 'dá para atender' },
               { r: 'Chegaram ao final', v: resumo.concluiram, n: `${resumo.conversao}% de conversão` },
               { r: 'Fechados', v: custos?.fechados ?? leadsFiltrados.filter(l => l.statusCliente === 'fechado').length, n: 'marcados por você' },
@@ -763,9 +768,9 @@ export default function SharePanelClient({ token }: { token: string }) {
           ) : leadsFiltrados.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
               <p className="text-3xl">📭</p>
-              <p className="mt-2 text-sm font-medium text-slate-700">Nenhum lead por aqui ainda</p>
+              <p className="mt-2 text-sm font-medium text-slate-700">Nenhum {voc.um} por aqui ainda</p>
               <p className="mt-1 text-xs text-slate-400">
-                Assim que um lead {dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.
+                Assim que um {voc.um} {dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.
               </p>
             </div>
           ) : visao === 'kanban' ? (
@@ -797,7 +802,7 @@ export default function SharePanelClient({ token }: { token: string }) {
                     >
                       <div className="flex items-center justify-between px-2 py-1.5">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_PORTAL_META[coluna].cor}`}>
-                          {STATUS_PORTAL_META[coluna].rotulo}
+                          {voc.status[coluna]}
                         </span>
                         <span className="text-xs font-semibold text-slate-500">{doGrupo.length}</span>
                       </div>

@@ -12,7 +12,7 @@ import {
 import {
   gerarTokenShare, hashSenhaShare, validarSenhaShare,
 } from '@/lib/quiz/share'
-import { publicoPortalValido, type PublicoPortal } from '@/lib/quiz/portal'
+import { modoPortalValido, publicoPortalValido, type ModoPortal, type PublicoPortal } from '@/lib/quiz/portal'
 
 // ATENÇÃO: NÃO re-exportar tipos daqui (`export type { ... }`). O Turbopack
 // compila este arquivo 'use server' mantendo a re-exportação em runtime, e o
@@ -532,6 +532,8 @@ export interface PortalQuizConfig {
   publico: PublicoPortal
   /** Páginas do quiz cujas RESPOSTAS o cliente vê em cada lead. Vazio = só contato. */
   paginas: string[]
+  /** vendas (leads) ou vagas (candidatos) — muda o vocabulário do portal. */
+  modo: ModoPortal
 }
 export interface PortalInfo {
   ativo: boolean
@@ -602,7 +604,7 @@ export async function getPortalDoQuiz(quizId: string): Promise<PortalInfo | { er
     // `paginas` pode não existir ainda (migration) — segunda tentativa sem ela.
     const r1 = await admin
       .from('client_portal_quizzes')
-      .select('page_id, publico, paginas, pages(title)')
+      .select('page_id, publico, paginas, modo, pages(title)')
       .eq('portal_id', portal.id)
     let quizzes = r1.data
     if (r1.error) {
@@ -610,7 +612,7 @@ export async function getPortalDoQuiz(quizId: string): Promise<PortalInfo | { er
         .from('client_portal_quizzes')
         .select('page_id, publico, pages(title)')
         .eq('portal_id', portal.id)
-      quizzes = (r2.data ?? []).map(q => ({ ...q, paginas: [] }))
+      quizzes = (r2.data ?? []).map(q => ({ ...q, paginas: [], modo: 'vendas' }))
     }
 
     return {
@@ -627,6 +629,7 @@ export async function getPortalDoQuiz(quizId: string): Promise<PortalInfo | { er
         paginas: Array.isArray((q as { paginas?: unknown }).paginas)
           ? ((q as { paginas: unknown[] }).paginas).filter((x): x is string => typeof x === 'string')
           : [],
+        modo: modoPortalValido((q as { modo?: unknown }).modo) ? (q as { modo: ModoPortal }).modo : 'vendas',
       })),
       mostrarMetricas: Boolean(portal.mostrar_metricas),
       mostrarFunil: Boolean(portal.mostrar_funil),
@@ -646,16 +649,16 @@ async function inserirVinculos(
   admin: ReturnType<typeof createAdminClient>,
   tenantId: string,
   portalId: string,
-  quizzes: { pageId: string; publico: PublicoPortal; paginas: string[] }[],
+  quizzes: { pageId: string; publico: PublicoPortal; paginas: string[]; modo: ModoPortal }[],
 ): Promise<{ error: { code?: string; message: string } | null }> {
   const { error } = await admin.from('client_portal_quizzes').insert(
-    quizzes.map(q => ({ tenant_id: tenantId, portal_id: portalId, page_id: q.pageId, publico: q.publico, paginas: q.paginas })),
+    quizzes.map(q => ({ tenant_id: tenantId, portal_id: portalId, page_id: q.pageId, publico: q.publico, paginas: q.paginas, modo: q.modo })),
   )
   if (error && (error.code === '42703' || error.code === 'PGRST204')) {
     // Coluna `paginas` ainda não existe no banco. Se o dono ESCOLHEU páginas,
     // descartar a escolha em silêncio é mentira — o salvar falha dizendo qual
     // migration falta. Sem escolha, salvar sem a coluna não perde nada.
-    if (quizzes.some(q => q.paginas.length > 0)) {
+    if (quizzes.some(q => q.paginas.length > 0 || q.modo !== 'vendas')) {
       return { error: { message: 'Aplique a migration 20260826000000_portal_paginas.sql no Supabase para escolher as páginas que o cliente vê' } }
     }
     const r2 = await admin.from('client_portal_quizzes').insert(
@@ -670,7 +673,7 @@ export interface AtivarPortalInput {
   nome: string
   senha: string
   /** Quais quizzes entram, com o público e as páginas de resposta de cada um. */
-  quizzes: { pageId: string; publico: PublicoPortal; paginas?: string[] }[]
+  quizzes: { pageId: string; publico: PublicoPortal; paginas?: string[]; modo?: ModoPortal }[]
   mostrarMetricas: boolean
   mostrarFunil: boolean
   permitirStatus: boolean
@@ -708,6 +711,7 @@ export async function ativarPortal(
         paginas: Array.isArray(q.paginas)
           ? q.paginas.filter((x): x is string => typeof x === 'string').slice(0, 50)
           : [],
+        modo: modoPortalValido(q.modo) ? q.modo : 'vendas' as ModoPortal,
       }))
     if (quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
 
@@ -788,6 +792,7 @@ export async function atualizarPortalConfig(
         paginas: Array.isArray(q.paginas)
           ? q.paginas.filter((x): x is string => typeof x === 'string').slice(0, 50)
           : [],
+        modo: modoPortalValido(q.modo) ? q.modo : 'vendas' as ModoPortal,
       }))
     if (quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
 
