@@ -378,6 +378,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   const [leadData, setLeadData] = useState<{ name?: string; email?: string; phone?: string }>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [phase, setPhase] = useState<'answering' | 'submitting' | 'done'>('answering')
+  /** Bloco da página atual — usado para garantir a subida ao topo na troca. */
+  const topoRef = useRef<HTMLDivElement>(null)
   const [resultBlock, setResultBlock] = useState<QuizBlock | null>(null)
   const [transitionKey, setTransitionKey] = useState(0)
   // Blocos com appear_delay que já foram revelados — usado para não validar/errar
@@ -499,17 +501,28 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
    * Toda página nova começa NO TOPO.
    *
    * O defeito: quem rola até o fim para achar o botão continuava rolado ao
-   * avançar — a página seguinte abria no meio, com o começo do texto acima da
-   * dobra. Numa sequência de perguntas isso faz a pessoa achar que pulou uma
-   * etapa (e é onde o quiz perde gente).
+   * avançar — a página seguinte abria no meio, com o título acima da dobra.
    *
-   * `behavior: 'auto'` (instantâneo) de propósito: rolagem animada aqui faz a
-   * tela "voar" enquanto o conteúdo novo já entrou, o que confunde mais do
-   * que ajuda. Vale também para a tela de resultado (phase).
+   * Uma chamada só NÃO resolve no Safari do iPhone: ele tem "scroll
+   * anchoring" (segura a posição visual quando o conteúdo acima muda) e
+   * ainda repinta depois da troca. Por isso a subida é repetida ao longo do
+   * primeiro quadro e logo após a animação de entrada — e mexe também em
+   * documentElement/body, que é onde o iOS guarda a rolagem.
    */
   useEffect(() => {
     if (typeof window === 'undefined') return
-    window.scrollTo({ top: 0, behavior: 'auto' })
+    const subir = () => {
+      window.scrollTo(0, 0)
+      if (document.documentElement) document.documentElement.scrollTop = 0
+      if (document.body) document.body.scrollTop = 0
+      // Rede de segurança: se quem rola for um container (e não a janela),
+      // trazer o próprio bloco para o começo da tela resolve do mesmo jeito.
+      topoRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' })
+    }
+    subir()
+    const q1 = requestAnimationFrame(() => { subir(); requestAnimationFrame(subir) })
+    const t = setTimeout(subir, 80)
+    return () => { cancelAnimationFrame(q1); clearTimeout(t) }
   }, [pageIdx, phase])
 
   // Track page views + reseta blocos revelados ao entrar em cada página
@@ -1455,8 +1468,11 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         </div>
       )}
 
-      <div key={transitionKey} className={`flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-8 ${currentPage?.blocks[0]?.type === 'image' ? 'pt-0' : 'pt-6'}`}
-        style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
+      {/* `overflowAnchor: none`: sem isto o navegador SEGURA a posição visual
+          quando o conteúdo acima muda de altura — e desfaz a subida ao topo. */}
+      <div ref={topoRef} key={transitionKey}
+        className={`flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-8 ${currentPage?.blocks[0]?.type === 'image' ? 'pt-0' : 'pt-6'}`}
+        style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards', overflowAnchor: 'none' }}>
         <div className="w-full max-w-xl min-w-0">
           {currentPage?.blocks.map(renderBlock)}
 

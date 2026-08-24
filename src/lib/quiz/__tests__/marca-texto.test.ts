@@ -128,12 +128,14 @@ test('6) cada página do quiz começa no TOPO', () => {
   // da dobra. É onde o quiz perde gente.
   const r = ler('src/app/pg/[slug]/quiz-renderer-v2.tsx')
   const semComentarios = r.replace(/\/\*[\s\S]*?\*\//g, '')
-  assert.ok(semComentarios.includes("window.scrollTo({ top: 0"), 'a página seguinte abriria rolada')
+  assert.ok(semComentarios.includes('window.scrollTo(0, 0)'), 'a página seguinte abriria rolada')
   // Precisa valer para a troca de página E para a tela de resultado.
-  const efeito = semComentarios.slice(
-    semComentarios.indexOf("window.scrollTo({ top: 0"),
-    semComentarios.indexOf("window.scrollTo({ top: 0") + 120)
-  assert.ok(/\[pageIdx, phase\]/.test(efeito), 'o topo não seria refeito ao mudar de página ou no resultado')
+  // Uma chamada só não resiste ao Safari do iPhone (scroll anchoring + repintura):
+  // a subida é repetida no primeiro quadro e logo após a animação de entrada.
+  assert.ok(semComentarios.includes('requestAnimationFrame'), 'sem repetir no quadro seguinte, o iOS desfaz')
+  assert.ok(semComentarios.includes("overflowAnchor: 'none'"), 'o navegador seguraria a posição visual')
+  assert.ok(semComentarios.includes("scrollIntoView({ block: 'start'"), 'sem fallback se quem rola for um container')
+  assert.ok(semComentarios.includes('}, [pageIdx, phase])'), 'o topo não seria refeito ao mudar de página ou no resultado')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
