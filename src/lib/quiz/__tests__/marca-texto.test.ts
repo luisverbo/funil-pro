@@ -138,6 +138,22 @@ test('6) cada página do quiz começa no TOPO', () => {
   assert.ok(semComentarios.includes('}, [pageIdx, phase])'), 'o topo não seria refeito ao mudar de página ou no resultado')
 })
 
+test('7) imagem tem respiro acima — e o dono escolhe quanto', () => {
+  // "Pode encostar na borda, é só não comer a imagem — me dá a opção de
+  // espaço no topo." Encostar nas laterais continua; o que faltava era ar
+  // entre a barra do navegador e a arte.
+  const r = ler('src/app/pg/[slug]/quiz-renderer-v2.tsx')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  assert.ok(r.includes("config.image_top_space === 'none' ? ''"), 'sem controle de espaço acima')
+  assert.ok(/: 'pt-3'/.test(r), 'o padrão precisa ter algum respiro')
+
+  const ed = ler('src/components/quiz/quiz-editor-v2.tsx')
+  assert.ok(ed.includes("setConfigKey('image_top_space'"), 'o editor não oferece a opção')
+  assert.ok(ed.includes("image_top_space: 'small'"), 'bloco novo nasceria colado no topo')
+  // "Colado" continua disponível: encostar é escolha, não imposição.
+  assert.ok(ed.includes("'Colado'"), 'sem a opção de encostar de propósito')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 for (const { name, fn } of suite) {

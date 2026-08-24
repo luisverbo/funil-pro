@@ -128,6 +128,8 @@ export interface BlockConfig {
   // Image
   image_url?: string
   image_size?: 'small' | 'medium' | 'large' | 'full'
+  /** Respiro acima da imagem — 'small' por padrão, para não colar no topo. */
+  image_top_space?: 'none' | 'small' | 'medium' | 'large'
   image_align?: 'left' | 'center' | 'right'
 
   // Video
