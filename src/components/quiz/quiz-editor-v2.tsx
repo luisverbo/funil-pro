@@ -104,7 +104,7 @@ function defaultConfig(type: BlockType): BlockConfig {
     case 'field_textarea':return { label: 'Sua mensagem',        placeholder: 'Digite aqui...', required: false }
     case 'heading':       return { heading_text: 'Seu título aqui', heading_size: 'lg', heading_align: 'center' }
     case 'text_block':    return { content: '<p>Digite seu texto aqui...</p>' }
-    case 'image':         return { image_url: '', image_size: 'medium', image_align: 'center' }
+    case 'image':         return { image_url: '', image_size: 'medium', image_align: 'center', image_top_space: 'small' }
     case 'video':         return { video_url: '' }
     case 'button':        return { button_text: 'Próximo →', button_action: 'next_page', button_color: '#6366f1', button_align: 'center' }
     case 'final_capture': return { show_name: true, show_email: true, show_phone: false, submit_text: 'Ver meu resultado →', pixel_event: 'Lead' }
@@ -1768,6 +1768,20 @@ function BlockEditor({
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className={labelCls}>Espaço acima</label>
+            <div className="flex gap-2">
+              {(['none','small','medium','large'] as const).map(e => (
+                <button key={e} onClick={() => setConfigKey('image_top_space', e)}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(config.image_top_space ?? 'small') === e ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 text-gray-600 hover:border-indigo-200'}`}>
+                  {e === 'none' ? 'Colado' : e === 'small' ? 'P' : e === 'medium' ? 'M' : 'G'}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Respiro entre o topo da página e a imagem. &quot;Colado&quot; encosta na barra do navegador.
+            </p>
           </div>
         </>
       )}

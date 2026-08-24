@@ -909,6 +909,11 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'image' && config.image_url && (
           <div className={`flex ${config.image_size === 'full' ? 'overflow-visible' : ''} ${
+            // Respiro acima: imagem colada na barra do navegador fica sufocada.
+            config.image_top_space === 'none' ? '' :
+            config.image_top_space === 'medium' ? 'pt-6' :
+            config.image_top_space === 'large' ? 'pt-10' : 'pt-3'
+          } ${
             config.image_align === 'left' ? 'justify-start' : config.image_align === 'right' ? 'justify-end' : 'justify-center'
           }`}>
             {/* `object-contain` + altura automática: a imagem aparece
