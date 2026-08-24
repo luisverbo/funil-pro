@@ -495,6 +495,23 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /**
+   * Toda página nova começa NO TOPO.
+   *
+   * O defeito: quem rola até o fim para achar o botão continuava rolado ao
+   * avançar — a página seguinte abria no meio, com o começo do texto acima da
+   * dobra. Numa sequência de perguntas isso faz a pessoa achar que pulou uma
+   * etapa (e é onde o quiz perde gente).
+   *
+   * `behavior: 'auto'` (instantâneo) de propósito: rolagem animada aqui faz a
+   * tela "voar" enquanto o conteúdo novo já entrou, o que confunde mais do
+   * que ajuda. Vale também para a tela de resultado (phase).
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [pageIdx, phase])
+
   // Track page views + reseta blocos revelados ao entrar em cada página
   useEffect(() => {
     const currentPage = pages[pageIdx]
