@@ -89,3 +89,62 @@ export function custoPorLead(gastoCents: number, leads: number): number | null {
   if (!Number.isFinite(gastoCents) || gastoCents <= 0 || leads <= 0) return null
   return Math.round(gastoCents / leads)
 }
+
+// ─── Equipe de vendedores ───────────────────────────────────────────────────
+
+/**
+ * Rodízio: reparte os leads SEM responsável um-para-cada entre os vendedores
+ * ativos, continuando de onde a última distribuição parou (quem tem menos
+ * recebe primeiro). Determinístico: mesmo estado, mesmo resultado.
+ */
+export function distribuirRodizio(
+  leadsSemDono: string[],
+  vendedores: string[],
+  jaAtribuidos: Record<string, number> = {},
+): { leadId: string; memberId: string }[] {
+  if (vendedores.length === 0 || leadsSemDono.length === 0) return []
+  const carga = new Map(vendedores.map(v => [v, jaAtribuidos[v] ?? 0]))
+  const out: { leadId: string; memberId: string }[] = []
+  for (const leadId of leadsSemDono) {
+    // O vendedor com MENOS leads recebe o próximo; empate segue a ordem.
+    let escolhido = vendedores[0]
+    for (const v of vendedores) {
+      if ((carga.get(v) ?? 0) < (carga.get(escolhido) ?? 0)) escolhido = v
+    }
+    carga.set(escolhido, (carga.get(escolhido) ?? 0) + 1)
+    out.push({ leadId, memberId: escolhido })
+  }
+  return out
+}
+
+/** Link do WhatsApp com a mensagem padrão ({nome} vira o nome do lead). */
+export function linkWhatsAppComMensagem(
+  telefone: string | null | undefined,
+  template: string | null | undefined,
+  nomeLead: string,
+): string | null {
+  const base = linkWhatsApp(telefone)
+  if (!base) return null
+  const msg = (template ?? '').trim()
+  if (!msg) return base
+  const texto = msg.replace(/\{nome\}/gi, nomeLead.split(' ')[0] ?? '')
+  return `${base}?text=${encodeURIComponent(texto)}`
+}
+
+/** Lead quente parado: sem atendimento (status novo) há mais de 24h. */
+export function leadParado(
+  data: string | null,
+  statusCliente: string,
+  quente: boolean,
+  agora = Date.now(),
+): boolean {
+  if (!quente || statusCliente !== 'novo' || !data) return false
+  return agora - new Date(data).getTime() > 24 * 60 * 60 * 1000
+}
+
+/** Cor estável para o avatar do vendedor, derivada do nome. */
+export function corDoVendedor(nome: string): string {
+  let h = 0
+  for (const c of nome) h = (h * 31 + c.charCodeAt(0)) % 360
+  return `hsl(${h}, 65%, 45%)`
+}
