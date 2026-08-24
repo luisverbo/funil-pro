@@ -19,12 +19,12 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  PORTAL_COOKIE, PORTAL_SESSAO_MS, criarSessaoPortal, sessaoPortalValida,
+  PORTAL_COOKIE, PORTAL_SESSAO_MS, criarSessaoPortal, lerSessaoPortal,
 } from '@/lib/quiz/portal-session'
 import { tokenShareValido, verificarSenhaShare } from '@/lib/quiz/share'
 import {
-  distribuirRodizio, modoPortalValido, publicoPortalValido, statusPortalValido,
-  temContato, type ModoPortal, type PublicoPortal,
+  distribuirRodizio, identificarMembro, modoPortalValido, publicoPortalValido,
+  statusPortalValido, temContato, type ModoPortal, type PublicoPortal,
 } from '@/lib/quiz/portal'
 import {
   COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
@@ -43,6 +43,8 @@ interface Corpo {
   leadId?: string
   status?: string
   memberId?: string | null
+  /** Telefone digitado na entrada: identifica QUAL vendedor está entrando. */
+  telefone?: string
   nome?: string
   whatsapp?: string
   msgWhatsapp?: string
@@ -84,7 +86,8 @@ export async function POST(
 
   const chave = String(portal?.password_hash ?? '')
   const porSenha = Boolean(portal?.enabled) && senha.length > 0 && verificarSenhaShare(senha, chave)
-  const porCookie = Boolean(portal?.enabled) && sessaoPortalValida(cookieSessao, token, chave)
+  const sessao = lerSessaoPortal(cookieSessao, token, chave)
+  const porCookie = Boolean(portal?.enabled) && sessao.valida
 
   if (!portal || !portal.enabled || (!porSenha && !porCookie)) {
     // Espera só quando alguém TENTOU senha — cookie vencido é rotina, não ataque.
@@ -92,10 +95,39 @@ export async function POST(
     return NextResponse.json(RECUSADO, { status: 401 })
   }
 
+  const tenantId = String(portal.tenant_id)
+  const portalId = String(portal.id)
+
+  /** Vendedores ativos do portal — [] quando a migration ainda não rodou. */
+  const listarMembros = async (): Promise<Membro[]> => {
+    const { data, error } = await admin
+      .from('portal_members')
+      .select('id, nome, whatsapp')
+      .eq('portal_id', portalId)
+      .eq('ativo', true)
+      .order('created_at', { ascending: true })
+      .range(0, 99)
+    if (error || !data) return []
+    return data.map(m => ({ id: String(m.id), nome: String(m.nome), whatsapp: m.whatsapp ?? null }))
+  }
+
+  const membrosDoPortal = await listarMembros()
+
+  /**
+   * QUEM está entrando. O telefone digitado identifica o vendedor (a senha
+   * continua sendo a barreira); depois disso o id viaja ASSINADO no cookie —
+   * trocar o id à mão invalida a sessão. Sem telefone conhecido = gestor.
+   */
+  const membroAtual = porSenha
+    ? identificarMembro(membrosDoPortal, String(corpo.telefone ?? ''))
+    : (sessao.membroId ? membrosDoPortal.find(m => m.id === sessao.membroId) ?? null : null)
+
+  const ehGestor = membroAtual === null
+
   /** Renova o cookie de sessão a cada resposta autenticada. */
   const comSessao = (payload: unknown, status = 200) => {
     const resp = NextResponse.json(payload, { status })
-    resp.cookies.set(PORTAL_COOKIE, criarSessaoPortal(token, chave), {
+    resp.cookies.set(PORTAL_COOKIE, criarSessaoPortal(token, chave, membroAtual?.id ?? null), {
       httpOnly: true,                 // JS da página não lê — nem o dele, nem o de terceiro
       secure: true,
       sameSite: 'lax',
@@ -104,9 +136,6 @@ export async function POST(
     })
     return resp
   }
-
-  const tenantId = String(portal.tenant_id)
-  const portalId = String(portal.id)
 
   // Os funis DO PORTAL — tudo o que existe fora desta lista não existe para
   // o cliente, por mais que ele adivinhe ids.
@@ -136,19 +165,6 @@ export async function POST(
 
   const acao = corpo.acao ?? 'abrir'
 
-  /** Vendedores ativos do portal — [] quando a migration ainda não rodou. */
-  const listarMembros = async (): Promise<Membro[]> => {
-    const { data, error } = await admin
-      .from('portal_members')
-      .select('id, nome, whatsapp')
-      .eq('portal_id', portalId)
-      .eq('ativo', true)
-      .order('created_at', { ascending: true })
-      .range(0, 99)
-    if (error || !data) return []
-    return data.map(m => ({ id: String(m.id), nome: String(m.nome), whatsapp: m.whatsapp ?? null }))
-  }
-
   const EQUIPE_MIGRATION = { error: 'Aplique a migration 20260828000000_portal_equipe.sql no Supabase para usar a equipe' }
 
   try {
@@ -159,6 +175,10 @@ export async function POST(
       }
       return comSessao({
         nome: String(portal.nome ?? 'Cliente'),
+        // Quem entrou: vendedor identificado pelo telefone, ou o gestor.
+        membroAtual: membroAtual ? { id: membroAtual.id, nome: membroAtual.nome } : null,
+        ehGestor,
+        temEquipe: membrosDoPortal.length > 0,
         permitirStatus: Boolean(portal.permitir_status),
         mostrarMetricas: Boolean(portal.mostrar_metricas),
         mostrarFunil: Boolean(portal.mostrar_funil),
@@ -196,7 +216,7 @@ export async function POST(
           })
         : tabela
 
-      const membros = await listarMembros()
+      const membros = membrosDoPortal
 
       // Responsável por lead: a coluna pode não existir ainda (migration).
       const respAtual: Record<string, string> = {}
@@ -235,25 +255,32 @@ export async function POST(
         ...(portal.mostrar_funil ? {} : { funil: [] }),
       } : null
 
+      // O VENDEDOR só recebe a fila dele — filtrar no servidor é o que
+      // garante que a lista dos outros não viaja pela rede.
+      const visiveis = leads
+        .map(l => ({
+          ...l,
+          statusCliente: statusPorLead[l.id] ?? 'novo',
+          responsavelId: respAtual[l.id] ?? null,
+        }))
+        .filter(l => ehGestor || l.responsavelId === membroAtual!.id)
+
       // Metadados de TODOS os leads do funil (sem nome nem contato): é o que
       // permite à tela recalcular "entraram / chegaram ao final / conversão"
       // POR PERÍODO. Antes esses números vinham prontos do servidor, sobre
       // todo o histórico, e não mexiam quando o cliente trocava o filtro.
       const baseMetricas = portal.mostrar_metricas
-        ? (await leadsParaPortal(admin, quiz.id, tenantId, 'todos')).map(l => ({
-            data: l.data,
-            concluiu: l.concluiu,
-            temContato: l.quente,
-          }))
+        ? (ehGestor
+            ? (await leadsParaPortal(admin, quiz.id, tenantId, 'todos'))
+                .map(l => ({ data: l.data, concluiu: l.concluiu, temContato: l.quente }))
+            // Vendedor: os números são os DELE — "112 entraram" no painel de
+            // quem recebeu 8 leads seria confusão, não informação.
+            : visiveis.map(l => ({ data: l.data, concluiu: l.concluiu, temContato: l.quente })))
         : []
 
       return comSessao({
         quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico, modo: quiz.modo },
-        leads: leads.map(l => ({
-          ...l,
-          statusCliente: statusPorLead[l.id] ?? 'novo',
-          responsavelId: respAtual[l.id] ?? null,
-        })),
+        leads: visiveis,
         membros,
         msgWhatsapp: String((portal as { msg_whatsapp?: string | null }).msg_whatsapp ?? ''),
         autoDistribuir: Boolean((portal as { auto_distribuir?: boolean }).auto_distribuir),
@@ -299,6 +326,17 @@ export async function POST(
         return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
       }
 
+      // Vendedor marca só o que é dele.
+      if (!ehGestor) {
+        const { data: dono } = await admin
+          .from('portal_lead_status')
+          .select('assigned_member_id')
+          .eq('portal_id', portalId).eq('lead_id', leadId).maybeSingle()
+        if (String(dono?.assigned_member_id ?? '') !== membroAtual!.id) {
+          return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
+        }
+      }
+
       const { error } = await admin.from('portal_lead_status').upsert({
         tenant_id: tenantId,
         portal_id: portalId,
@@ -314,6 +352,11 @@ export async function POST(
     if (['equipe_salvar', 'equipe_remover', 'atribuir', 'equipe_config'].includes(acao)) {
       if (!portal.permitir_status) {
         return NextResponse.json({ error: 'A gestão de equipe está desativada neste portal' }, { status: 403 })
+      }
+      // Vendedor não gerencia equipe nem redistribui lead: ele TRABALHA a
+      // fila dele. Sem isto, bastaria chamar a rota na mão para reatribuir.
+      if (!ehGestor) {
+        return NextResponse.json({ error: 'Apenas o gestor pode gerenciar a equipe' }, { status: 403 })
       }
 
       if (acao === 'equipe_salvar') {
