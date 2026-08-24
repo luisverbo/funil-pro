@@ -23,8 +23,9 @@ import {
 } from '@/lib/quiz/portal-session'
 import { tokenShareValido, verificarSenhaShare } from '@/lib/quiz/share'
 import {
-  distribuirRodizio, identificarMembro, modoPortalValido, publicoPortalValido,
-  statusPortalValido, temContato, type ModoPortal, type PublicoPortal,
+  distribuirRodizio, etapasDoPortal, identificarMembro, modoPortalValido,
+  normalizarEtapas, publicoPortalValido, statusPortalValido, temContato,
+  type ModoPortal, type PublicoPortal,
 } from '@/lib/quiz/portal'
 import {
   COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
@@ -49,6 +50,7 @@ interface Corpo {
   whatsapp?: string
   msgWhatsapp?: string
   autoDistribuir?: boolean
+  etapas?: unknown
 }
 
 interface Membro { id: string; nome: string; whatsapp: string | null }
@@ -308,6 +310,8 @@ export async function POST(
       return comSessao({
         quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico, modo: quiz.modo },
         leads: visiveis,
+        // Etapas do kanban: padrão do modo + o que o gestor renomeou/desligou.
+        etapas: etapasDoPortal(quiz.modo, (portal as { etapas?: unknown }).etapas),
         membros,
         msgWhatsapp: String((portal as { msg_whatsapp?: string | null }).msg_whatsapp ?? ''),
         autoDistribuir: Boolean((portal as { auto_distribuir?: boolean }).auto_distribuir),
@@ -414,9 +418,17 @@ export async function POST(
         const { error } = await admin.from('client_portals').update({
           ...(corpo.msgWhatsapp !== undefined ? { msg_whatsapp: String(corpo.msgWhatsapp).slice(0, 300) || null } : {}),
           ...(corpo.autoDistribuir !== undefined ? { auto_distribuir: Boolean(corpo.autoDistribuir) } : {}),
+          ...(corpo.etapas !== undefined ? { etapas: normalizarEtapas(corpo.etapas) } : {}),
           updated_at: new Date().toISOString(),
         }).eq('id', portalId)
-        if (error) return NextResponse.json(EQUIPE_MIGRATION, { status: 400 })
+        if (error) {
+          if (corpo.etapas !== undefined && (error.code === '42703' || error.code === 'PGRST204')) {
+            return NextResponse.json({
+              error: 'Aplique a migration 20260831000000_portal_etapas.sql no Supabase para personalizar as etapas',
+            }, { status: 400 })
+          }
+          return NextResponse.json(EQUIPE_MIGRATION, { status: 400 })
+        }
         return comSessao({ ok: true })
       }
 

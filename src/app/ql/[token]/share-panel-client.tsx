@@ -20,8 +20,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ExportTable, QuizMetricas, LeadPortal } from '@/lib/quiz/leads-core'
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 import {
-  STATUS_PORTAL, STATUS_PORTAL_META, corDoVendedor, leadParado,
-  linkWhatsAppComMensagem, nomeDoLead, vocabulario, type StatusPortal,
+  STATUS_PORTAL, STATUS_PORTAL_META, corDoVendedor, etapasAtivas, leadParado,
+  linkWhatsAppComMensagem, nomeDoLead, vocabulario,
+  type EtapaPortal, type StatusPortal,
 } from '@/lib/quiz/portal'
 import {
   calcularCustos, diaLocal, diaNoPeriodo, rotuloPeriodo,
@@ -53,6 +54,8 @@ interface DadosQuiz {
   /** Lançamentos por dia — a tela recalcula o custo junto com o filtro. */
   investimentos: LancamentoDia[]
   membros: Membro[]
+  /** Etapas do kanban configuradas pelo gestor (rótulo + ligada/desligada). */
+  etapas: EtapaPortal[]
   msgWhatsapp: string
   autoDistribuir: boolean
   tabela: ExportTable | null
@@ -98,6 +101,8 @@ export default function SharePanelClient({ token }: { token: string }) {
   const [novoZap, setNovoZap] = useState('')
   const [msgLocal, setMsgLocal] = useState('')
   const [salvandoEquipe, setSalvandoEquipe] = useState(false)
+  // Rascunho das etapas enquanto o gestor edita (só grava ao sair do campo).
+  const [etapasLocal, setEtapasLocal] = useState<EtapaPortal[]>([])
   const [erroEquipe, setErroEquipe] = useState<string | null>(null)
 
   const api = async (payload: Record<string, unknown>) => {
@@ -144,6 +149,7 @@ export default function SharePanelClient({ token }: { token: string }) {
       const d = (await api({ senha: s, acao: 'quiz', quizId })) as DadosQuiz
       setDados(d)
       setMsgLocal(d.msgWhatsapp ?? '')
+      setEtapasLocal(d.etapas ?? [])
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível carregar o funil')
       setDados(null)
@@ -195,13 +201,14 @@ export default function SharePanelClient({ token }: { token: string }) {
     }
   }
 
-  const salvarConfigEquipe = async (cfg: { msgWhatsapp?: string; autoDistribuir?: boolean }) => {
+  const salvarConfigEquipe = async (cfg: { msgWhatsapp?: string; autoDistribuir?: boolean; etapas?: EtapaPortal[] }) => {
     try {
       await api({ senha: senhaOk ?? '', acao: 'equipe_config', ...cfg })
       setDados(d => d ? {
         ...d,
         ...(cfg.msgWhatsapp !== undefined ? { msgWhatsapp: cfg.msgWhatsapp } : {}),
         ...(cfg.autoDistribuir !== undefined ? { autoDistribuir: cfg.autoDistribuir } : {}),
+        ...(cfg.etapas !== undefined ? { etapas: cfg.etapas } : {}),
       } : d)
     } catch (e) {
       setErroEquipe(e instanceof Error ? e.message : 'Não foi possível salvar')
@@ -318,7 +325,7 @@ export default function SharePanelClient({ token }: { token: string }) {
     const t = dados.tabela
     const statusDe = new Map(dados.leads.map(l => [
       l.id,
-      voc.status[(l.statusCliente as StatusPortal)] ?? l.statusCliente,
+      rotuloEtapa(l.statusCliente as StatusPortal) ?? l.statusCliente,
     ]))
     // O arquivo sai com o MESMO filtro da tela (busca + dia).
     const visiveis = new Set(leadsFiltrados.map(l => l.id))
@@ -357,6 +364,17 @@ export default function SharePanelClient({ token }: { token: string }) {
   const m = dados?.metricas
   /** Vocabulário do funil ativo: leads (vendas) ou candidatos (vagas). */
   const voc = vocabulario(dados?.quiz.modo === 'vagas' ? 'vagas' : 'vendas')
+  /** Etapas que o gestor deixou ligadas (com o nome que ele deu). */
+  const etapas = useMemo<EtapaPortal[]>(() => {
+    const cfg = dados?.etapas
+    if (cfg && cfg.length > 0) return etapasAtivas(cfg)
+    // Antes da migration: o padrão do modo, todas ligadas.
+    return STATUS_PORTAL.map(chave => ({ chave, rotulo: voc.status[chave], ativo: true }))
+  }, [dados, voc])
+  const rotuloEtapa = (chave: StatusPortal) =>
+    etapas.find(e => e.chave === chave)?.rotulo
+    ?? dados?.etapas?.find(e => e.chave === chave)?.rotulo
+    ?? voc.status[chave]
 
   /** O MESMO filtro para lista, métricas, custos e arquivo baixado. */
   const filtro: FiltroPeriodo = useMemo(
@@ -524,9 +542,14 @@ export default function SharePanelClient({ token }: { token: string }) {
               className={`rounded-xl border-0 font-semibold ${STATUS_PORTAL_META[st].cor} ${
                 compacto ? 'px-2 py-1.5 text-[11px]' : 'px-3 py-2 text-xs'
               }`}>
-              {STATUS_PORTAL.map(opt => (
-                <option key={opt} value={opt}>{voc.status[opt]}</option>
+              {etapas.map(e => (
+                <option key={e.chave} value={e.chave}>{e.rotulo}</option>
               ))}
+              {/* A etapa atual pode ter sido desligada depois de marcada — ela
+                  continua na lista para não sumir o valor do lead. */}
+              {!etapas.some(e => e.chave === st) && (
+                <option value={st}>{rotuloEtapa(st)}</option>
+              )}
             </select>
           )}
         </div>
@@ -834,7 +857,7 @@ export default function SharePanelClient({ token }: { token: string }) {
                o seletor continua valendo (celular não arrasta). */
             <div className="relative left-1/2 w-screen -translate-x-1/2 overflow-x-auto px-4 pb-3">
               <div className="mx-auto flex w-max gap-3 pr-8">
-                {STATUS_PORTAL.map(coluna => {
+                {etapas.map(({ chave: coluna }) => {
                   const doGrupo = leadsFiltrados.filter(l =>
                     ((l.statusCliente as StatusPortal) in STATUS_PORTAL_META
                       ? l.statusCliente : 'novo') === coluna)
@@ -857,7 +880,7 @@ export default function SharePanelClient({ token }: { token: string }) {
                     >
                       <div className="flex items-center justify-between px-2 py-1.5">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${STATUS_PORTAL_META[coluna].cor}`}>
-                          {voc.status[coluna]}
+                          {rotuloEtapa(coluna)}
                         </span>
                         <span className="text-xs font-semibold text-slate-500">{doGrupo.length}</span>
                       </div>
@@ -954,6 +977,42 @@ export default function SharePanelClient({ token }: { token: string }) {
                 onChange={e => void salvarConfigEquipe({ autoDistribuir: e.target.checked })} />
               Distribuir automaticamente os leads novos (rodízio)
             </label>
+
+            {/* Etapas do quadro: cada negócio tem um caminho — um agenda
+                visita, outro manda orçamento. Rótulo livre; chave fixa, para
+                o que já foi marcado não perder sentido. */}
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-gray-700">Etapas do quadro</p>
+              <p className="mt-0.5 text-[11px] text-gray-400">
+                Renomeie como você trabalha (ex.: &quot;Orçamento enviado&quot;) e desligue as
+                que não usa. &quot;Novo&quot; e o fechamento são fixos.
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {(etapasLocal.length > 0 ? etapasLocal : etapas).map((e, i) => {
+                  const fixa = e.chave === 'novo' || e.chave === 'fechado'
+                  return (
+                    <div key={e.chave} className="flex items-center gap-2">
+                      <input type="checkbox" checked={e.ativo} disabled={fixa}
+                        title={fixa ? 'Esta etapa não pode ser desligada' : 'Mostrar no quadro'}
+                        onChange={ev => {
+                          const novo = (etapasLocal.length > 0 ? etapasLocal : etapas).map((x, j) =>
+                            j === i ? { ...x, ativo: ev.target.checked } : x)
+                          setEtapasLocal(novo)
+                          void salvarConfigEquipe({ etapas: novo })
+                        }} />
+                      <input type="text" value={e.rotulo}
+                        onChange={ev => setEtapasLocal(
+                          (etapasLocal.length > 0 ? etapasLocal : etapas).map((x, j) =>
+                            j === i ? { ...x, rotulo: ev.target.value } : x))}
+                        onBlur={() => void salvarConfigEquipe({ etapas: etapasLocal })}
+                        className={`min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-sm ${
+                          e.ativo ? 'border-gray-300 text-gray-800' : 'border-gray-200 text-gray-400'
+                        }`} />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
 
             <div className="mt-4">
               <label className="text-xs font-semibold text-gray-700">
