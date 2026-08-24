@@ -25,7 +25,8 @@ import {
   linkWhatsApp, linkWhatsAppComMensagem, nomeDoLead, statusPortalValido,
   temContato, publicoPortalValido, distribuirRodizio, leadParado,
   vocabulario, modoPortalValido, chaveTelefone, identificarMembro,
-  etapasDoPortal, etapasAtivas, normalizarEtapas, type EtapaPortal,
+  etapasDoPortal, etapasAtivas, normalizarEtapas, linkWhatsAppDoBotao,
+  type EtapaPortal,
 } from '../portal'
 import { contatoDasRespostas, contatoPorFormato, preencheuPaginas } from '../leads-core'
 import {
@@ -659,6 +660,34 @@ test('13q) etapas do quadro: renomear não reescreve o que já foi marcado', () 
 
   const m = ler('supabase/migrations/20260831000000_portal_etapas.sql')
   assert.ok(m.includes('ADD COLUMN IF NOT EXISTS etapas jsonb'), 'sem onde guardar')
+})
+
+test('13r) botão de WhatsApp: número com DDD vira link pronto', () => {
+  // O dono digita "(11) 99999-8888" e uma mensagem; o link é montado sozinho.
+  assert.equal(
+    linkWhatsAppDoBotao('(11) 99999-8888', 'Olá! Quero saber mais.'),
+    `https://wa.me/5511999998888?text=${encodeURIComponent('Olá! Quero saber mais.')}`)
+  // Sem mensagem, link limpo.
+  assert.equal(linkWhatsAppDoBotao('11999998888'), 'https://wa.me/5511999998888')
+  assert.equal(linkWhatsAppDoBotao('11999998888', '   '), 'https://wa.me/5511999998888')
+  // Número impossível não vira link quebrado — vira ausência.
+  assert.equal(linkWhatsAppDoBotao('123'), null)
+  assert.equal(linkWhatsAppDoBotao(''), null)
+  assert.equal(linkWhatsAppDoBotao(null, 'oi'), null)
+
+  // A MESMA regra de DDI do portal — uma só definição de telefone brasileiro.
+  const p = ler('src/lib/quiz/portal.ts')
+  assert.ok(p.includes('const base = linkWhatsApp(numero)'), 'regra de número duplicada')
+
+  const r = ler('src/app/pg/[slug]/quiz-renderer-v2.tsx')
+  assert.ok(r.includes("config.button_action === 'whatsapp'"), 'o botão não tem a ação')
+  // A mensagem passa por resolveVars: {{nome}} abre a conversa personalizada.
+  assert.ok(r.includes('resolveVars(config.button_whatsapp_msg'), '{{nome}} sairia cru na conversa')
+
+  const ed = ler('src/components/quiz/quiz-editor-v2.tsx')
+  assert.ok(ed.includes('Abrir WhatsApp'), 'a ação não aparece no editor')
+  assert.ok(ed.includes("setConfigKey('button_whatsapp'"), 'sem campo de número')
+  assert.ok(ed.includes("setConfigKey('button_whatsapp_msg'"), 'sem campo de mensagem')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

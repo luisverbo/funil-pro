@@ -1806,10 +1806,38 @@ function BlockEditor({
             <label className={labelCls}>Ação</label>
             <select value={config.button_action ?? 'next_page'} onChange={e => setConfigKey('button_action', e.target.value as BlockConfig['button_action'])} className={inputCls}>
               <option value="next_page">Próxima página</option>
+              <option value="whatsapp">💬 Abrir WhatsApp</option>
               <option value="external_url">URL externa</option>
               <option value="submit">Enviar formulário</option>
             </select>
           </div>
+          {config.button_action === 'whatsapp' && (
+            <>
+              <div>
+                <label className={labelCls}>Número com DDD</label>
+                <input value={config.button_whatsapp ?? ''} onChange={e => setConfigKey('button_whatsapp', e.target.value)}
+                  className={inputCls} placeholder="(11) 99999-8888" inputMode="tel" />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Só o número com DDD — o 55 do Brasil entra sozinho. O link do WhatsApp é montado na hora.
+                </p>
+              </div>
+              <div>
+                <label className={labelCls}>Mensagem já escrita (opcional)</label>
+                <textarea value={config.button_whatsapp_msg ?? ''} onChange={e => setConfigKey('button_whatsapp_msg', e.target.value)}
+                  rows={3} className={inputCls}
+                  placeholder="Olá! Vim pelo diagnóstico e quero saber mais." />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  A conversa abre com esse texto pronto. Use {'{{nome}}'} para incluir o nome que a pessoa respondeu.
+                </p>
+              </div>
+              {config.button_whatsapp && !/^\+?\d{0,3}?\s*\(?\d{2}\)?\s*\d{4,5}-?\d{4}$/.test(config.button_whatsapp.trim()) && (
+                <p className="text-[11px] text-amber-600">
+                  Confira o número: precisa ter DDD + 8 ou 9 dígitos.
+                </p>
+              )}
+            </>
+          )}
+
           {config.button_action === 'external_url' && (
             <div>
               <label className={labelCls}>URL</label>

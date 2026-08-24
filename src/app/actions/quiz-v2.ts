@@ -137,7 +137,11 @@ export interface BlockConfig {
 
   // Button
   button_text?: string
-  button_action?: 'next_page' | 'external_url' | 'submit'
+  button_action?: 'next_page' | 'external_url' | 'submit' | 'whatsapp'
+  /** Número com DDD (o DDI 55 entra sozinho) — ação 'whatsapp'. */
+  button_whatsapp?: string
+  /** Mensagem que já vai escrita na conversa; aceita {{nome}}, {{email}}… */
+  button_whatsapp_msg?: string
   button_url?: string
   button_color?: string
   button_align?: 'left' | 'center' | 'right'

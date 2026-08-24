@@ -288,3 +288,25 @@ export function normalizarEtapas(bruto: unknown): EtapaPortal[] {
   }
   return out
 }
+
+// ─── Botão de WhatsApp do quiz ──────────────────────────────────────────────
+
+/**
+ * Link de WhatsApp a partir do número que o dono digitou + mensagem padrão.
+ *
+ * Reaproveita a mesma leitura de número do portal (DDI deduzido, zero à
+ * esquerda removido) — um lugar só decide o que é um telefone brasileiro
+ * válido, em vez de duas regras que divergem com o tempo.
+ *
+ * Variáveis do quiz ({{nome}}, {{email}}…) NÃO são resolvidas aqui: quem
+ * chama já entrega o texto pronto, porque só ele conhece as respostas.
+ */
+export function linkWhatsAppDoBotao(
+  numero: string | null | undefined,
+  mensagem?: string | null,
+): string | null {
+  const base = linkWhatsApp(numero)
+  if (!base) return null
+  const texto = (mensagem ?? '').trim()
+  return texto ? `${base}?text=${encodeURIComponent(texto)}` : base
+}
