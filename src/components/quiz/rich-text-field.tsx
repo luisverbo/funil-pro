@@ -16,7 +16,28 @@ const FONT_SIZES = [
 ]
 
 const COLORS = ['#111827', '#6b7280', '#ffffff', '#ef4444', '#f97316', '#f59e0b', '#eab308', '#22c55e', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e']
-const HIGHLIGHTS = ['#fef08a', '#fde68a', '#bbf7d0', '#a7f3d0', '#bfdbfe', '#bae6fd', '#fbcfe8', '#fecaca', '#fed7aa', '#e9d5ff', '#c7d2fe', '#d9f99d']
+/**
+ * Cores de MARCA-TEXTO — tom de marcador, não de papel colorido.
+ *
+ * A paleta anterior usava pastéis (nível 200): no editor pareciam certas, mas
+ * no texto publicado sumiam contra o fundo branco. Estes tons são saturados
+ * o bastante para "acender" e claros o bastante para o texto preto continuar
+ * legível por cima — que é o ponto de um marca-texto.
+ */
+const HIGHLIGHTS = [
+  '#fde047',  // amarelo clássico
+  '#facc15',  // amarelo ouro
+  '#fb923c',  // laranja
+  '#f87171',  // vermelho
+  '#f472b6',  // rosa
+  '#c084fc',  // roxo
+  '#a855f7',  // violeta
+  '#60a5fa',  // azul
+  '#22d3ee',  // ciano
+  '#2dd4bf',  // turquesa
+  '#4ade80',  // verde
+  '#a3e635',  // verde-limão
+]
 
 export default function RichTextField({ value, onChange, placeholder }: Props) {
   const ref = useRef<HTMLDivElement>(null)
