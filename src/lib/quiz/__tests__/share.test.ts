@@ -25,6 +25,7 @@ import {
   linkWhatsApp, linkWhatsAppComMensagem, nomeDoLead, statusPortalValido,
   temContato, publicoPortalValido, distribuirRodizio, leadParado,
   vocabulario, modoPortalValido, chaveTelefone, identificarMembro,
+  etapasDoPortal, etapasAtivas, normalizarEtapas, type EtapaPortal,
 } from '../portal'
 import { contatoDasRespostas, contatoPorFormato, preencheuPaginas } from '../leads-core'
 import {
@@ -397,7 +398,7 @@ test('13j) público "preencheu as páginas marcadas": só entra quem cumpriu', (
   // Kanban + custo por venda no portal.
   const c = ler('src/app/ql/[token]/share-panel-client.tsx')
   assert.ok(c.includes("'kanban'"), 'sem visão kanban')
-  assert.ok(c.includes('STATUS_PORTAL.map(coluna =>'), 'kanban sem uma coluna por situação')
+  assert.ok(c.includes('etapas.map(({ chave: coluna })'), 'kanban sem uma coluna por situação')
   // Largura total + arrastar e soltar (com o seletor mantido para o celular).
   assert.ok(c.includes('w-screen'), 'o quadro voltaria a ficar cortado na coluna central')
   assert.ok(c.includes('draggable={compacto}'), 'cartão do kanban não arrasta')
@@ -487,9 +488,12 @@ test('13n) modo do funil: vagas fala "candidato", vendas fala "lead"', () => {
 
   // O portal usa o vocabulário nos status (select, kanban e CSV).
   const c = ler('src/app/ql/[token]/share-panel-client.tsx')
-  assert.ok(c.includes('voc.status[opt]'), 'o select mostraria "Fechado" para RH')
-  assert.ok(c.includes('voc.status[coluna]'), 'o kanban ignoraria o modo')
-  assert.ok(c.includes('voc.status[(l.statusCliente'), 'o CSV sairia com o rótulo errado')
+  // Os rótulos vêm das ETAPAS, que já nascem do vocabulário do modo (e podem
+  // ser renomeadas pelo gestor) — no select, no kanban e no CSV.
+  assert.ok(c.includes('rotulo: voc.status[chave]'), 'as etapas ignorariam o modo')
+  assert.ok(c.includes('{e.rotulo}</option>'), 'o select mostraria "Fechado" para RH')
+  assert.ok(c.includes('{rotuloEtapa(coluna)}'), 'o kanban ignoraria o modo')
+  assert.ok(c.includes('rotuloEtapa(l.statusCliente'), 'o CSV sairia com o rótulo errado')
 })
 
 test('13o) telefone identifica o vendedor — e ele só enxerga a fila dele', () => {
@@ -613,6 +617,48 @@ test('13p) data de corte: esconde do cliente, sem apagar nada', () => {
   const v = ler('src/components/quiz/quiz-leads-view.tsx')
   assert.ok(v.includes('Mostrar a partir de'), 'o dono não tem como escolher a data')
   assert.ok(v.includes('nada é apagado'), 'a tela precisa deixar claro que não apaga')
+})
+
+test('13q) etapas do quadro: renomear não reescreve o que já foi marcado', () => {
+  // Cada negócio tem um caminho: um agenda visita, outro manda orçamento.
+  const cfg = [{ chave: 'agendado', rotulo: 'Orçamento enviado', ativo: true }]
+  const e: EtapaPortal[] = etapasDoPortal('vendas', cfg)
+  const agendado = e.find((x: EtapaPortal) => x.chave === 'agendado')!
+  assert.equal(agendado.rotulo, 'Orçamento enviado')
+  assert.equal(agendado.chave, 'agendado', 'a CHAVE precisa ser estável — o histórico depende dela')
+
+  // Sem configuração: o padrão do modo.
+  assert.equal(
+    etapasDoPortal('vagas', []).find((x: EtapaPortal) => x.chave === 'agendado')!.rotulo,
+    'Entrevista marcada')
+
+  // Entrada e desfecho não podem ser desligados: sem eles não há funil.
+  const semNovo: EtapaPortal[] = etapasDoPortal('vendas', [
+    { chave: 'novo', ativo: false }, { chave: 'fechado', ativo: false },
+    { chave: 'agendado', ativo: false },
+  ])
+  assert.equal(semNovo.find((x: EtapaPortal) => x.chave === 'novo')!.ativo, true)
+  assert.equal(semNovo.find((x: EtapaPortal) => x.chave === 'fechado')!.ativo, true)
+  assert.equal(semNovo.find((x: EtapaPortal) => x.chave === 'agendado')!.ativo, false, 'esta pode sair')
+  assert.equal(etapasAtivas(semNovo).length, 4)
+
+  // O que vem da tela é limpo: chave inventada não entra, duplicata some.
+  const limpo = normalizarEtapas([
+    { chave: 'agendado', rotulo: 'X' }, { chave: 'agendado', rotulo: 'Y' },
+    { chave: 'inventada', rotulo: 'Z' }, 'lixo',
+  ])
+  assert.equal(limpo.length, 1)
+  assert.equal(limpo[0].rotulo, 'X')
+
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes('Etapas do quadro'), 'o gestor não tem como configurar')
+  assert.ok(c.includes('etapas.map(({ chave: coluna })'), 'o kanban ignoraria as etapas desligadas')
+  // Etapa desligada DEPOIS de marcada continua no seletor daquele lead.
+  assert.ok(c.includes('!etapas.some(e => e.chave === st)'),
+    'o valor do lead sumiria do seletor ao desligar a etapa')
+
+  const m = ler('supabase/migrations/20260831000000_portal_etapas.sql')
+  assert.ok(m.includes('ADD COLUMN IF NOT EXISTS etapas jsonb'), 'sem onde guardar')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

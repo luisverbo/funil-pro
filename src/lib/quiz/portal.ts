@@ -225,3 +225,66 @@ export function vocabulario(modo: ModoPortal): VocabularioPortal {
     },
   }
 }
+
+// ─── Etapas do kanban, configuráveis por portal ─────────────────────────────
+
+export interface EtapaPortal {
+  chave: StatusPortal
+  rotulo: string
+  ativo: boolean
+}
+
+/**
+ * As etapas que o portal mostra, misturando o padrão do MODO com o que o
+ * gestor configurou.
+ *
+ * Duas regras que protegem o histórico:
+ *   • as CHAVES são fixas — renomear "Agendado" para "Orçamento enviado" não
+ *     reescreve o que já foi marcado, só troca o texto;
+ *   • 'novo' e 'fechado' não podem ser desligados: sem entrada e sem desfecho
+ *     o quadro deixa de ser um funil.
+ */
+export function etapasDoPortal(
+  modo: ModoPortal,
+  config: unknown,
+): EtapaPortal[] {
+  const voc = vocabulario(modo)
+  const salvas = Array.isArray(config) ? config as Record<string, unknown>[] : []
+  const porChave = new Map<string, Record<string, unknown>>()
+  for (const e of salvas) {
+    const c = String(e?.chave ?? '')
+    if (statusPortalValido(c)) porChave.set(c, e)
+  }
+
+  return STATUS_PORTAL.map(chave => {
+    const salva = porChave.get(chave)
+    const rotulo = typeof salva?.rotulo === 'string' && salva.rotulo.trim()
+      ? salva.rotulo.trim().slice(0, 30)
+      : voc.status[chave]
+    const obrigatoria = chave === 'novo' || chave === 'fechado'
+    const ativo = obrigatoria ? true : salva?.ativo !== false
+    return { chave, rotulo, ativo }
+  })
+}
+
+/** Só o que aparece no quadro. */
+export function etapasAtivas(etapas: EtapaPortal[]): EtapaPortal[] {
+  return etapas.filter(e => e.ativo)
+}
+
+/** Limpa o que veio da tela antes de gravar — lista fechada de chaves. */
+export function normalizarEtapas(bruto: unknown): EtapaPortal[] {
+  const lista = Array.isArray(bruto) ? bruto as Record<string, unknown>[] : []
+  const out: EtapaPortal[] = []
+  for (const e of lista) {
+    const chave = String(e?.chave ?? '')
+    if (!statusPortalValido(chave)) continue
+    if (out.some(x => x.chave === chave)) continue
+    out.push({
+      chave,
+      rotulo: String(e?.rotulo ?? '').trim().slice(0, 30),
+      ativo: chave === 'novo' || chave === 'fechado' ? true : e?.ativo !== false,
+    })
+  }
+  return out
+}
