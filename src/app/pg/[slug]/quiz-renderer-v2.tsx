@@ -878,16 +878,22 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         )}
 
         {block.type === 'image' && config.image_url && (
-          <div className={`flex ${config.image_align === 'left' ? 'justify-start' : config.image_align === 'right' ? 'justify-end' : 'justify-center'}`}>
+          <div className={`flex ${config.image_size === 'full' ? 'overflow-visible' : ''} ${
+            config.image_align === 'left' ? 'justify-start' : config.image_align === 'right' ? 'justify-end' : 'justify-center'
+          }`}>
             {/* `object-contain` + altura automática: a imagem aparece
                 INTEIRA. Com `object-cover` (o que havia aqui), qualquer
                 altura imposta recortava as laterais — foi o que "comeu" a
                 foto no celular. */}
             <img src={config.image_url} alt=""
-              className={`rounded-xl h-auto object-contain ${
-                config.image_size === 'small' ? 'max-w-xs w-full' :
-                config.image_size === 'large' ? 'max-w-2xl w-full' :
-                config.image_size === 'full' ? 'w-full' : 'max-w-md w-full'
+              className={`h-auto object-contain ${
+                config.image_size === 'small' ? 'max-w-xs w-full rounded-xl' :
+                config.image_size === 'large' ? 'max-w-2xl w-full rounded-xl' :
+                // "Cheia": encosta nas bordas da tela de verdade — a moldura
+                // sobrando dos lados era o que fazia a arte parecer solta.
+                // `-mx-4` cancela o respiro do container; nada é cortado.
+                config.image_size === 'full' ? 'w-[calc(100%+2rem)] -mx-4 max-w-none' :
+                'max-w-md w-full rounded-xl'
               }`}
             />
           </div>
