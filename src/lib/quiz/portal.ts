@@ -148,3 +148,52 @@ export function corDoVendedor(nome: string): string {
   for (const c of nome) h = (h * 31 + c.charCodeAt(0)) % 360
   return `hsl(${h}, 65%, 45%)`
 }
+
+// ─── Modo do funil: vendas ou vaga de emprego ───────────────────────────────
+
+export const MODOS_PORTAL = ['vendas', 'vagas'] as const
+export type ModoPortal = typeof MODOS_PORTAL[number]
+
+export function modoPortalValido(m: unknown): m is ModoPortal {
+  return typeof m === 'string' && (MODOS_PORTAL as readonly string[]).includes(m)
+}
+
+export interface VocabularioPortal {
+  um: string          // "lead" | "candidato"
+  varios: string      // "Leads" | "Candidatos"
+  quente: string      // selo de quem dá para atender
+  status: Record<StatusPortal, string>
+}
+
+/**
+ * O texto que o CLIENTE lê, por modo. Para quem recebe currículo, "lead
+ * fechado" soa errado — a estrutura é a mesma, o vocabulário é que vende.
+ */
+export function vocabulario(modo: ModoPortal): VocabularioPortal {
+  if (modo === 'vagas') {
+    return {
+      um: 'candidato',
+      varios: 'Candidatos',
+      quente: 'Completo',
+      status: {
+        novo: 'Novo',
+        contactado: 'Contactado',
+        agendado: 'Entrevista marcada',
+        fechado: 'Contratado ✓',
+        perdido: 'Descartado',
+      },
+    }
+  }
+  return {
+    um: 'lead',
+    varios: 'Leads',
+    quente: 'Quente',
+    status: {
+      novo: 'Novo',
+      contactado: 'Contactado',
+      agendado: 'Agendado',
+      fechado: 'Fechado ✓',
+      perdido: 'Perdido',
+    },
+  }
+}

@@ -23,7 +23,8 @@ import {
 } from '@/lib/quiz/portal-session'
 import { tokenShareValido, verificarSenhaShare } from '@/lib/quiz/share'
 import {
-  distribuirRodizio, publicoPortalValido, statusPortalValido, temContato, type PublicoPortal,
+  distribuirRodizio, modoPortalValido, publicoPortalValido, statusPortalValido,
+  temContato, type ModoPortal, type PublicoPortal,
 } from '@/lib/quiz/portal'
 import {
   COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
@@ -111,7 +112,7 @@ export async function POST(
   // o cliente, por mais que ele adivinhe ids.
   const rv = await admin
     .from('client_portal_quizzes')
-    .select('page_id, publico, paginas, pages(title)')
+    .select('page_id, publico, paginas, modo, pages(title)')
     .eq('portal_id', portalId)
   let vinculos = rv.data
   if (rv.error) {
@@ -119,7 +120,7 @@ export async function POST(
       .from('client_portal_quizzes')
       .select('page_id, publico, pages(title)')
       .eq('portal_id', portalId)
-    vinculos = (r2.data ?? []).map(v => ({ ...v, paginas: [] as unknown[] }))
+    vinculos = (r2.data ?? []).map(v => ({ ...v, paginas: [] as unknown[], modo: 'vendas' }))
   }
 
   const quizzes = (vinculos ?? []).map(v => ({
@@ -129,6 +130,8 @@ export async function POST(
     paginas: Array.isArray((v as { paginas?: unknown }).paginas)
       ? ((v as { paginas: unknown[] }).paginas).filter((x): x is string => typeof x === 'string')
       : [],
+    modo: (modoPortalValido((v as { modo?: unknown }).modo)
+      ? (v as { modo: ModoPortal }).modo : 'vendas') as ModoPortal,
   }))
 
   const acao = corpo.acao ?? 'abrir'
@@ -245,7 +248,7 @@ export async function POST(
         : []
 
       return comSessao({
-        quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico },
+        quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico, modo: quiz.modo },
         leads: leads.map(l => ({
           ...l,
           statusCliente: statusPorLead[l.id] ?? 'novo',

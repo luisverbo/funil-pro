@@ -20,7 +20,7 @@ import type {
   QuizMetricas, ExportPageInfo, ExportPublico, ExportLeadResumo,
 } from '@/lib/quiz/leads-core'
 import type { QuizPage } from '@/app/actions/quiz-v2'
-import { type PublicoPortal } from '@/lib/quiz/portal'
+import { type ModoPortal, type PublicoPortal } from '@/lib/quiz/portal'
 
 type Period = '24h' | '7d' | '30d' | 'all'
 
@@ -535,6 +535,8 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
   const [selecao, setSelecao] = useState<Map<string, PublicoPortal>>(new Map([[quizId, 'com_contato']]))
   // Páginas do quiz cujas RESPOSTAS o cliente vê em cada lead (por funil).
   const [paginasSel, setPaginasSel] = useState<Map<string, Set<string>>>(new Map())
+  // Tipo por funil: vendas (leads) ou vaga de emprego (candidatos).
+  const [modoSel, setModoSel] = useState<Map<string, ModoPortal>>(new Map())
   const [estruturas, setEstruturas] = useState<Map<string, ExportPageInfo[]>>(new Map())
   const [permitirStatus, setPermitirStatus] = useState(true)
   const [mostrarMetricas, setMostrarMetricas] = useState(true)
@@ -569,6 +571,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
         if (r.quizzes.length > 0) {
           setSelecao(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, x.publico])))
           setPaginasSel(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, new Set(x.paginas ?? [])])))
+          setModoSel(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, x.modo ?? 'vendas'])))
           for (const x of r.quizzes) carregarEstrutura(x.pageId)
           setNome(r.nome)
           setPermitirStatus(r.permitirStatus)
@@ -612,6 +615,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
       nome,
       quizzes: [...selecao].map(([pageId, publico]) => ({
         pageId, publico, paginas: [...(paginasSel.get(pageId) ?? [])],
+        modo: modoSel.get(pageId) ?? 'vendas',
       })),
       mostrarMetricas, mostrarFunil, permitirStatus,
     })
@@ -628,6 +632,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
       senha,
       quizzes: [...selecao].map(([pageId, publico]) => ({
         pageId, publico, paginas: [...(paginasSel.get(pageId) ?? [])],
+        modo: modoSel.get(pageId) ?? 'vendas',
       })),
       mostrarMetricas, mostrarFunil, permitirStatus,
       ...(info?.portalId ? { portalId: info.portalId } : {}),
@@ -714,6 +719,21 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
                         <span className="truncate">{q.titulo}</span>
                         {q.id === quizId && <span className="text-[10px] text-indigo-500">(este)</span>}
                       </label>
+                      {marcado && (
+                        <div className="mt-1.5 ml-6 flex gap-1">
+                          {([['vendas', '💼 Vendas (leads)'], ['vagas', '📋 Vaga de emprego (candidatos)']] as const).map(([v, r]) => (
+                            <button key={v} type="button"
+                              onClick={() => setModoSel(prev => new Map(prev).set(q.id, v))}
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                (modoSel.get(q.id) ?? 'vendas') === v
+                                  ? 'bg-slate-800 text-white'
+                                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                              }`}>
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {marcado && (
                         <div className="mt-1.5 ml-6 flex flex-wrap gap-1">
                           {PUBLICO_OPCOES.map(o => (

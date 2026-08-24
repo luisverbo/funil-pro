@@ -24,6 +24,7 @@ import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../l
 import {
   linkWhatsApp, linkWhatsAppComMensagem, nomeDoLead, statusPortalValido,
   temContato, publicoPortalValido, distribuirRodizio, leadParado,
+  vocabulario, modoPortalValido,
 } from '../portal'
 import { contatoDasRespostas, contatoPorFormato, preencheuPaginas } from '../leads-core'
 import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
@@ -345,7 +346,7 @@ test('13g) quiz EDITADO depois dos leads: o formato reconhece o contato', () => 
 
 test('13h) escolha de páginas nunca é descartada em silêncio', () => {
   const a = ler('src/app/actions/quiz-leads.ts')
-  assert.ok(a.includes("quizzes.some(q => q.paginas.length > 0)"),
+  assert.ok(a.includes("quizzes.some(q => q.paginas.length > 0 || q.modo !== 'vendas')"),
     'salvar sem a coluna descartaria a escolha sem avisar')
   assert.ok(a.includes('20260826000000_portal_paginas.sql'),
     'o erro não diz qual migration falta')
@@ -458,6 +459,30 @@ test('13m) equipe: migração, ações gateadas e vendedor nunca apagado', () =>
   const c = ler('src/app/ql/[token]/share-panel-client.tsx')
   assert.ok(c.includes('Equipe de vendedores'), 'sem tela de equipe')
   assert.ok(c.includes("'portal:resp'"), 'CSV sem a coluna Responsável')
+})
+
+test('13n) modo do funil: vagas fala "candidato", vendas fala "lead"', () => {
+  const vagas = vocabulario('vagas')
+  assert.equal(vagas.varios, 'Candidatos')
+  assert.equal(vagas.status.fechado, 'Contratado ✓', 'RH não fecha lead, contrata gente')
+  assert.equal(vagas.status.agendado, 'Entrevista marcada')
+  assert.equal(vagas.status.perdido, 'Descartado')
+
+  const vendas = vocabulario('vendas')
+  assert.equal(vendas.varios, 'Leads')
+  assert.equal(vendas.status.fechado, 'Fechado ✓')
+
+  assert.equal(modoPortalValido('vagas'), true)
+  assert.equal(modoPortalValido('rh'), false)
+
+  const m = ler('supabase/migrations/20260829000000_portal_modo.sql')
+  assert.ok(m.includes("CHECK (modo IN ('vendas', 'vagas'))"), 'o banco aceitaria modo inventado')
+
+  // O portal usa o vocabulário nos status (select, kanban e CSV).
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  assert.ok(c.includes('voc.status[opt]'), 'o select mostraria "Fechado" para RH')
+  assert.ok(c.includes('voc.status[coluna]'), 'o kanban ignoraria o modo')
+  assert.ok(c.includes('voc.status[(l.statusCliente'), 'o CSV sairia com o rótulo errado')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {
