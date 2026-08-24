@@ -179,10 +179,23 @@ export async function POST(
         ...(portal.mostrar_funil ? {} : { funil: [] }),
       } : null
 
+      // Metadados de TODOS os leads do funil (sem nome nem contato): é o que
+      // permite à tela recalcular "entraram / chegaram ao final / conversão"
+      // POR PERÍODO. Antes esses números vinham prontos do servidor, sobre
+      // todo o histórico, e não mexiam quando o cliente trocava o filtro.
+      const baseMetricas = portal.mostrar_metricas
+        ? (await leadsParaPortal(admin, quiz.id, tenantId, 'todos')).map(l => ({
+            data: l.data,
+            concluiu: l.concluiu,
+            temContato: l.quente,
+          }))
+        : []
+
       return comSessao({
         quiz: { id: quiz.id, titulo: quiz.titulo, publico: quiz.publico },
         leads: leads.map(l => ({ ...l, statusCliente: statusPorLead[l.id] ?? 'novo' })),
         metricas: m,
+        baseMetricas,
         // Os lançamentos POR DIA vão para a tela: o custo é recalculado junto
         // com o filtro de período, em vez de ser um total fixo de todo o tempo.
         investimentos: portal.mostrar_metricas ? investimentos : [],

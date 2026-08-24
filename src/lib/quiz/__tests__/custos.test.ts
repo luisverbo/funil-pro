@@ -130,6 +130,36 @@ test('7) a MESMA conta serve o dono e o cliente', () => {
   assert.ok(!rota.includes('custoPorLead('), 'a conta antiga (total fixo) continua na rota')
 })
 
+test('8) o topo do portal responde ao filtro (era fixo do servidor)', () => {
+  const c = ler('src/app/ql/[token]/share-panel-client.tsx')
+  // Os números do topo vinham prontos do servidor, sobre TODO o histórico:
+  // trocar o filtro não mexia em nada.
+  assert.ok(c.includes('const resumo = useMemo'), 'o topo não é recalculado na tela')
+  assert.ok(c.includes('baseMetricas'), 'a tela não recebe a base para recalcular')
+  assert.ok(!/\{m\.total\}/.test(c), 'ainda usa o número fixo do servidor')
+  assert.ok(!/\{m\.completionRate\}%/.test(c), 'a conversão continua fixa')
+  // Um filtro só governa lista, métricas, custos e arquivo.
+  assert.ok(c.includes('const filtro: FiltroPeriodo'), 'filtros separados divergem entre si')
+  // O funil por página continua do histórico — e a tela DIZ isso.
+  assert.ok(c.includes('todo o período'), 'o funil pareceria filtrado sem ser')
+
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  assert.ok(rota.includes('baseMetricas'), 'o servidor não manda a base')
+  // Metadados apenas: nada de nome/telefone nessa lista.
+  const trecho = rota.slice(rota.indexOf('const baseMetricas'), rota.indexOf('const baseMetricas') + 400)
+  assert.ok(!/nome|telefone|email/.test(trecho), 'a base de métricas vazaria contato')
+})
+
+test('9) renomear página: existe, e NÃO troca o endereço público', () => {
+  const p = ler('src/app/(dashboard)/pages/pages-client.tsx')
+  assert.ok(p.includes('confirmarRenome'), 'não há como renomear a página')
+  assert.ok(p.includes('savePageSettings(id, { title: nome })'),
+    'renomear precisa mexer SÓ no título')
+  const corpo = p.slice(p.indexOf('async function confirmarRenome'), p.indexOf('function handleDuplicate'))
+  assert.ok(!corpo.includes('slug'), 'trocar o endereço mataria link já divulgado')
+  assert.ok(corpo.includes("nome === atual"), 'salvaria sem mudança nenhuma')
+})
+
 // ─── Execução ───────────────────────────────────────────────────────────────
 
 for (const { name, fn } of suite) {

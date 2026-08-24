@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { createPage, deletePage, duplicatePage } from '@/app/actions/pages'
+import { createPage, deletePage, duplicatePage, savePageSettings } from '@/app/actions/pages'
 import { PAGE_TEMPLATES } from '@/lib/page-templates'
 
 const TEMPLATE_JSON: Record<string, object> = Object.fromEntries(
@@ -55,6 +55,9 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   const [selectedTemplate, setSelectedTemplate] = useState('blank')
   const [pageName, setPageName] = useState('')
   const [isPending, startTransition] = useTransition()
+  const [renomeando, setRenomeando] = useState<string | null>(null)
+  const [novoNome, setNovoNome] = useState('')
+  const [erroNome, setErroNome] = useState<string | null>(null)
 
   const filtered = filter === 'all' ? pages : pages.filter((p) => p.page_type === filter)
   // Quiz e Bio Link pulam a etapa de template (têm editor próprio)
@@ -87,6 +90,23 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   function handleDelete(id: string, name: string) {
     if (!confirm(`Excluir "${name}"?`)) return
     startTransition(async () => { await deletePage(id); router.refresh() })
+  }
+
+  /**
+   * Renomear a página na própria lista — antes não havia como trocar o nome
+   * depois de criada. O ENDEREÇO (slug) não muda de propósito: link já
+   * divulgado, ou já dentro de um portal de cliente, não pode morrer porque
+   * alguém corrigiu um título.
+   */
+  async function confirmarRenome(id: string) {
+    const nome = novoNome.trim()
+    const atual = pages.find(p => p.id === id)?.title ?? ''
+    setRenomeando(null)
+    if (!nome || nome === atual) return
+    setErroNome(null)
+    const r = await savePageSettings(id, { title: nome })
+    if (r && 'error' in r && r.error) { setErroNome(r.error); return }
+    startTransition(() => router.refresh())
   }
 
   function handleDuplicate(id: string) {
@@ -150,11 +170,38 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
                 </div>
                 <div className="p-4 flex-1 flex flex-col gap-1">
                   <div className="flex items-start justify-between gap-2">
-                    <h2 className="font-semibold text-gray-900 text-base leading-snug">{page.title}</h2>
+                    {renomeando === page.id ? (
+                      <input
+                        autoFocus
+                        value={novoNome}
+                        onChange={e => setNovoNome(e.target.value)}
+                        onBlur={() => void confirmarRenome(page.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') void confirmarRenome(page.id)
+                          if (e.key === 'Escape') { setRenomeando(null); setErroNome(null) }
+                        }}
+                        className="min-w-0 flex-1 rounded-lg border border-indigo-400 px-2 py-1 text-base font-semibold text-gray-900 focus:outline-none"
+                      />
+                    ) : (
+                      <h2 className="group flex min-w-0 items-center gap-1.5 font-semibold text-gray-900 text-base leading-snug">
+                        <span className="truncate">{page.title}</span>
+                        <button
+                          onClick={() => { setRenomeando(page.id); setNovoNome(page.title); setErroNome(null) }}
+                          title="Renomear"
+                          className="shrink-0 text-gray-300 transition-colors hover:text-indigo-600">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                          </svg>
+                        </button>
+                      </h2>
+                    )}
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${TYPE_COLORS[page.page_type] ?? 'bg-gray-100 text-gray-600'}`}>
                       {typeMeta?.label ?? page.page_type}
                     </span>
                   </div>
+                  {erroNome && renomeando === page.id && (
+                    <p className="text-xs text-red-600">{erroNome}</p>
+                  )}
                   {page.slug && <p className="text-xs text-gray-400 font-mono">/pg/{page.slug}</p>}
                   <div className="flex items-center gap-1.5 mt-1">
                     <div className={`w-1.5 h-1.5 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`} />
