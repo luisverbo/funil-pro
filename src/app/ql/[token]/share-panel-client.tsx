@@ -114,6 +114,13 @@ export default function SharePanelClient({ token }: { token: string }) {
     return json
   }
 
+  /** Apaga a sessão e volta para a tela de senha (trocar de usuário). */
+  const sair = async () => {
+    try { await api({ acao: 'sair' }) } catch { /* mesmo falhando, limpa a tela */ }
+    setPortal(null); setDados(null); setSenhaOk(null); setSenha('')
+    setVerificandoSessao(false)
+  }
+
   const entrar = async () => {
     setCarregando(true); setErro(null)
     try {
@@ -575,7 +582,7 @@ export default function SharePanelClient({ token }: { token: string }) {
           <p className="text-xs font-medium uppercase tracking-widest text-indigo-300">Portal de leads</p>
           <div className="mt-1 flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold">{portal.nome}</h1>
-            {portal.membroAtual && (
+            {portal.membroAtual ? (
               <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
                   style={{ backgroundColor: corDoVendedor(portal.membroAtual.nome) }}>
@@ -583,7 +590,17 @@ export default function SharePanelClient({ token }: { token: string }) {
                 </span>
                 {portal.membroAtual.nome} · seus {voc.varios.toLowerCase()}
               </span>
+            ) : portal.temEquipe && (
+              // Sem isto, o gestor não percebia que estava vendo TUDO — foi
+              // assim que "entrei como vendedor e vi todo mundo" aconteceu.
+              <span className="rounded-full bg-white/10 px-3 py-1 text-sm">
+                👑 Gestor · vendo todos os {voc.varios.toLowerCase()}
+              </span>
             )}
+            <button onClick={() => void sair()}
+              className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white">
+              Sair
+            </button>
           </div>
           {portal.quizzes.length > 1 && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -800,9 +817,15 @@ export default function SharePanelClient({ token }: { token: string }) {
           ) : leadsFiltrados.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
               <p className="text-3xl">📭</p>
-              <p className="mt-2 text-sm font-medium text-slate-700">Nenhum {voc.um} por aqui ainda</p>
+              <p className="mt-2 text-sm font-medium text-slate-700">
+                {portal?.membroAtual
+                  ? `Nenhum ${voc.um} atribuído a você ainda`
+                  : `Nenhum ${voc.um} por aqui ainda`}
+              </p>
               <p className="mt-1 text-xs text-slate-400">
-                Assim que um {voc.um} {dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.
+                {portal?.membroAtual
+                  ? 'Peça ao gestor para distribuir — ou aguarde o rodízio automático.'
+                  : `Assim que um ${voc.um} ${dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.`}
               </p>
             </div>
           ) : visao === 'kanban' ? (

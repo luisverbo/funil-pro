@@ -115,12 +115,29 @@ export async function POST(
 
   /**
    * QUEM está entrando. O telefone digitado identifica o vendedor (a senha
-   * continua sendo a barreira); depois disso o id viaja ASSINADO no cookie —
-   * trocar o id à mão invalida a sessão. Sem telefone conhecido = gestor.
+   * continua sendo a barreira); depois disso o id viaja ASSINADO no cookie.
+   *
+   * DEFEITO CORRIGIDO: telefone que não batia com nenhum vendedor caía em
+   * modo GESTOR silenciosamente — quem digitava o número errado via a lista
+   * inteira. Agora número informado e não encontrado é RECUSA explícita;
+   * campo em branco (e só ele) é o gestor.
    */
+  const telefoneInformado = String(corpo.telefone ?? '').trim()
   const membroAtual = porSenha
-    ? identificarMembro(membrosDoPortal, String(corpo.telefone ?? ''))
+    ? identificarMembro(membrosDoPortal, telefoneInformado)
     : (sessao.membroId ? membrosDoPortal.find(m => m.id === sessao.membroId) ?? null : null)
+
+  if (porSenha && telefoneInformado.length > 0 && !membroAtual) {
+    return NextResponse.json({
+      error: 'Este WhatsApp não está cadastrado na equipe. Confira o número com o gestor — ou deixe o campo em branco para entrar como gestor.',
+    }, { status: 401 })
+  }
+
+  // Cookie de vendedor cujo cadastro foi removido: derruba a sessão em vez de
+  // promover a pessoa a gestor sem querer.
+  if (!porSenha && sessao.membroId && !membroAtual) {
+    return NextResponse.json(RECUSADO, { status: 401 })
+  }
 
   const ehGestor = membroAtual === null
 
@@ -168,6 +185,14 @@ export async function POST(
   const EQUIPE_MIGRATION = { error: 'Aplique a migration 20260828000000_portal_equipe.sql no Supabase para usar a equipe' }
 
   try {
+    if (acao === 'sair') {
+      // Sessão de 12h é ótima para o dia a dia, mas presa quando duas pessoas
+      // usam o mesmo navegador. "Sair" apaga o cookie e devolve a tela de senha.
+      const resp = NextResponse.json({ ok: true })
+      resp.cookies.set(PORTAL_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 })
+      return resp
+    }
+
     if (acao === 'abrir') {
       // Conta acesso só quando a senha foi apresentada; F5 não inflaria o número.
       if (porSenha) {
