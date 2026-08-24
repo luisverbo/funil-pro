@@ -149,6 +149,34 @@ export function corDoVendedor(nome: string): string {
   return `hsl(${h}, 65%, 45%)`
 }
 
+/**
+ * Só os dígitos do telefone, para comparar números anotados de jeitos
+ * diferentes: "(88) 99999-8888", "88999998888" e "5588999998888" são a mesma
+ * pessoa. Compara pelos ÚLTIMOS 8 dígitos — é o que sobra igual quando um
+ * anotou com DDI/DDD e o outro não.
+ */
+export function chaveTelefone(bruto: string | null | undefined): string | null {
+  const d = (bruto ?? '').replace(/\D/g, '')
+  if (d.length < 8) return null
+  return d.slice(-8)
+}
+
+/**
+ * Qual vendedor está entrando, pelo telefone digitado na tela de senha.
+ *
+ * É identificação, NÃO autenticação: a senha do portal continua sendo a
+ * barreira. O telefone só decide QUAL fila a pessoa vê — o que evita o
+ * gestor e cinco vendedores olhando a mesma lista bagunçada.
+ */
+export function identificarMembro<T extends { id: string; whatsapp?: string | null }>(
+  membros: T[],
+  telefoneDigitado: string,
+): T | null {
+  const chave = chaveTelefone(telefoneDigitado)
+  if (!chave) return null
+  return membros.find(m => chaveTelefone(m.whatsapp) === chave) ?? null
+}
+
 // ─── Modo do funil: vendas ou vaga de emprego ───────────────────────────────
 
 export const MODOS_PORTAL = ['vendas', 'vagas'] as const

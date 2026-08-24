@@ -24,10 +24,12 @@ import { funilPorPagina, type ExportPageInfo, type ExportLeadResumo } from '../l
 import {
   linkWhatsApp, linkWhatsAppComMensagem, nomeDoLead, statusPortalValido,
   temContato, publicoPortalValido, distribuirRodizio, leadParado,
-  vocabulario, modoPortalValido,
+  vocabulario, modoPortalValido, chaveTelefone, identificarMembro,
 } from '../portal'
 import { contatoDasRespostas, contatoPorFormato, preencheuPaginas } from '../leads-core'
-import { criarSessaoPortal, sessaoPortalValida, PORTAL_SESSAO_MS } from '../portal-session'
+import {
+  criarSessaoPortal, sessaoPortalValida, lerSessaoPortal, PORTAL_SESSAO_MS,
+} from '../portal-session'
 
 const RAIZ = process.cwd()
 const ler = (rel: string) => readFileSync(join(RAIZ, rel), 'utf8')
@@ -128,7 +130,12 @@ test('9) a migration do portal: sem senha em claro, RLS, e o link antigo sobrevi
 test('10) o portal não persiste a senha no navegador', () => {
   const c = ler('src/app/ql/[token]/share-panel-client.tsx')
     .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
-  assert.ok(!c.includes('localStorage'), 'senha em localStorage sobrevive à aba')
+  // O navegador guarda só o TELEFONE (identificação, para não redigitar).
+  // Senha em armazenamento sobreviveria à aba — isso continua proibido.
+  for (const uso of c.match(/localStorage\.[a-zA-Z]+\([^)]*\)/g) ?? []) {
+    assert.ok(uso.includes('fp_tel_'), `localStorage guardando outra coisa: ${uso}`)
+    assert.ok(!/senha/i.test(uso), 'senha em localStorage sobrevive à aba')
+  }
   assert.ok(!c.includes('document.cookie'), 'senha em cookie viaja em toda requisição')
   assert.ok(c.includes("type=\"password\""), 'o campo mostraria a senha digitada')
 })
@@ -483,6 +490,48 @@ test('13n) modo do funil: vagas fala "candidato", vendas fala "lead"', () => {
   assert.ok(c.includes('voc.status[opt]'), 'o select mostraria "Fechado" para RH')
   assert.ok(c.includes('voc.status[coluna]'), 'o kanban ignoraria o modo')
   assert.ok(c.includes('voc.status[(l.statusCliente'), 'o CSV sairia com o rótulo errado')
+})
+
+test('13o) telefone identifica o vendedor — e ele só enxerga a fila dele', () => {
+  // Mesma senha para todos; o TELEFONE diz quem é. Números anotados de jeitos
+  // diferentes precisam bater: com DDI, sem DDI, com máscara.
+  assert.equal(chaveTelefone('(88) 99999-8888'), '99998888')
+  assert.equal(chaveTelefone('5588999998888'), '99998888')
+  assert.equal(chaveTelefone('88999998888'), '99998888')
+  assert.equal(chaveTelefone('123'), null, 'número curto demais não identifica ninguém')
+  assert.equal(chaveTelefone(''), null)
+
+  const equipe = [
+    { id: 'm1', whatsapp: '(88) 99999-8888' },
+    { id: 'm2', whatsapp: '5588988887777' },
+  ]
+  assert.equal(identificarMembro(equipe, '88999998888')?.id, 'm1')
+  assert.equal(identificarMembro(equipe, '(88) 98888-7777')?.id, 'm2')
+  assert.equal(identificarMembro(equipe, '11912345678'), null, 'desconhecido = gestor')
+  assert.equal(identificarMembro(equipe, ''), null)
+
+  // O id do vendedor viaja ASSINADO: trocar à mão invalida a sessão.
+  const chave = 'salt:hash'
+  const cookie = criarSessaoPortal('tok123', chave, 'm1')
+  assert.deepEqual(lerSessaoPortal(cookie, 'tok123', chave), { valida: true, membroId: 'm1' })
+  const forjado = cookie.replace('.m1.', '.m2.')
+  assert.equal(lerSessaoPortal(forjado, 'tok123', chave).valida, false,
+    'trocar o vendedor no cookie daria acesso à fila do colega')
+  // Gestor continua valendo (sem membro).
+  assert.deepEqual(lerSessaoPortal(criarSessaoPortal('t', chave), 't', chave),
+    { valida: true, membroId: null })
+  assert.equal(sessaoPortalValida(cookie, 'tok123', chave), true)
+
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  // A FILA é filtrada no SERVIDOR: a lista dos outros nem viaja pela rede.
+  assert.ok(rota.includes("filter(l => ehGestor || l.responsavelId === membroAtual!.id)"),
+    'o vendedor receberia os leads de todo mundo e filtraria na tela')
+  // Vendedor não gerencia equipe nem redistribui lead.
+  assert.ok(rota.includes("Apenas o gestor pode gerenciar a equipe"),
+    'vendedor poderia reatribuir lead chamando a rota na mão')
+  // E só marca status do que é dele.
+  assert.ok(rota.includes("String(dono?.assigned_member_id ?? '') !== membroAtual!.id"),
+    'vendedor marcaria lead de colega')
 })
 
 test('14) o painel NÃO chama server action — transporte é HTTP', () => {

@@ -30,6 +30,10 @@ import {
 
 interface Abertura {
   nome: string
+  /** Vendedor identificado pelo telefone; null = gestor (vê tudo). */
+  membroAtual: { id: string; nome: string } | null
+  ehGestor: boolean
+  temEquipe: boolean
   permitirStatus: boolean
   mostrarMetricas: boolean
   mostrarFunil: boolean
@@ -65,6 +69,14 @@ const brl = (cents: number) =>
 
 export default function SharePanelClient({ token }: { token: string }) {
   const [senha, setSenha] = useState('')
+  // Telefone na entrada: identifica QUAL vendedor está abrindo (a senha é a
+  // mesma para todos). Fica no navegador só para preencher o campo de novo.
+  const [telefone, setTelefone] = useState(() => {
+    // Inicializador (não efeito): a regra do projeto proíbe setState dentro de
+    // useEffect, e no servidor o valor precisa ser o mesmo da 1ª pintura.
+    if (typeof window === 'undefined') return ''
+    try { return localStorage.getItem(`fp_tel_${token}`) ?? '' } catch { return '' }
+  })
   const [senhaOk, setSenhaOk] = useState<string | null>(null)
   const [portal, setPortal] = useState<Abertura | null>(null)
   const [quizAtivo, setQuizAtivo] = useState<string | null>(null)
@@ -73,6 +85,7 @@ export default function SharePanelClient({ token }: { token: string }) {
   const [erro, setErro] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [verificandoSessao, setVerificandoSessao] = useState(true)
+  const ehGestor = portal?.ehGestor !== false
   // Filtro por dia: chips rápidos + data específica. Vale para a lista E para
   // o arquivo baixado — baixar coisa diferente do que se vê é armadilha.
   const [periodo, setPeriodo] = useState<'tudo' | 'hoje' | '7d' | '30d'>('tudo')
@@ -104,8 +117,9 @@ export default function SharePanelClient({ token }: { token: string }) {
   const entrar = async () => {
     setCarregando(true); setErro(null)
     try {
-      const r = (await api({ senha, acao: 'abrir' })) as Abertura
+      const r = (await api({ senha, telefone, acao: 'abrir' })) as Abertura
       setSenhaOk(senha)
+      try { localStorage.setItem(`fp_tel_${token}`, telefone) } catch { /* opcional */ }
       setPortal(r)
       if (r.quizzes.length > 0) void abrirQuiz(r.quizzes[0].id, senha)
     } catch (e) {
@@ -483,7 +497,7 @@ export default function SharePanelClient({ token }: { token: string }) {
             </a>
           )}
 
-          {portal?.permitirStatus && (dados?.membros.length ?? 0) > 0 && (
+          {ehGestor && portal?.permitirStatus && (dados?.membros.length ?? 0) > 0 && (
             <select value={l.responsavelId ?? ''}
               onChange={e => void atribuir(l.id, e.target.value || null)}
               title="Responsável"
@@ -536,6 +550,13 @@ export default function SharePanelClient({ token }: { token: string }) {
           <input type="password" value={senha} onChange={e => setSenha(e.target.value)}
             placeholder="Senha" autoFocus
             className="mt-5 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          <input type="tel" inputMode="tel" value={telefone} onChange={e => setTelefone(e.target.value)}
+            placeholder="Seu WhatsApp (vendedor) — opcional"
+            className="mt-2 w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+          <p className="mt-1.5 text-xs text-gray-400">
+            Vendedor: informe seu WhatsApp para ver apenas os seus.
+            Gestor: deixe em branco para ver tudo.
+          </p>
           {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
           <button type="submit" disabled={carregando || senha.trim().length === 0}
             className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50">
@@ -552,7 +573,18 @@ export default function SharePanelClient({ token }: { token: string }) {
       <header className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-4 pb-16 pt-8 text-white">
         <div className="mx-auto max-w-5xl">
           <p className="text-xs font-medium uppercase tracking-widest text-indigo-300">Portal de leads</p>
-          <h1 className="mt-1 text-2xl font-bold">{portal.nome}</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold">{portal.nome}</h1>
+            {portal.membroAtual && (
+              <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                  style={{ backgroundColor: corDoVendedor(portal.membroAtual.nome) }}>
+                  {portal.membroAtual.nome.slice(0, 1).toUpperCase()}
+                </span>
+                {portal.membroAtual.nome} · seus {voc.varios.toLowerCase()}
+              </span>
+            )}
+          </div>
           {portal.quizzes.length > 1 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {portal.quizzes.map(q => (
@@ -709,7 +741,7 @@ export default function SharePanelClient({ token }: { token: string }) {
                 limpar dia
               </button>
             )}
-            {(dados?.membros.length ?? 0) > 0 && (
+            {ehGestor && (dados?.membros.length ?? 0) > 0 && (
               <select value={respFiltro} onChange={e => setRespFiltro(e.target.value)}
                 className={`rounded-xl border bg-white px-3 py-2 text-xs shadow-sm focus:outline-none ${
                   respFiltro !== 'todos' ? 'border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-600'
@@ -719,7 +751,7 @@ export default function SharePanelClient({ token }: { token: string }) {
                 {dados?.membros.map(mb => <option key={mb.id} value={mb.id}>{mb.nome}</option>)}
               </select>
             )}
-            {portal?.permitirStatus && (
+            {ehGestor && portal?.permitirStatus && (
               <button onClick={() => setEquipeAberta(true)}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50">
                 👥 Equipe
