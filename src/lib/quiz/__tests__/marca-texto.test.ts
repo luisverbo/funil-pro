@@ -104,6 +104,12 @@ test('5) imagem do quiz aparece INTEIRA — nada de recorte lateral', () => {
   assert.ok(!bloco.includes('object-cover'), 'object-cover no bloco de imagem corta as laterais')
   assert.ok(bloco.includes('h-auto'), 'sem altura automática a proporção se perde')
 
+  // "Cheia" encosta nas bordas SEM cortar: a largura ganha de volta o respiro
+  // do container (-mx-4), em vez de a imagem ser recortada para preencher.
+  assert.ok(bloco.includes('-mx-4'), 'o tamanho Cheia deixaria moldura sobrando')
+  assert.ok(bloco.includes('w-[calc(100%+2rem)]'), 'a largura não compensa o respiro')
+  assert.ok(!/full' \? '[^']*object-cover/.test(bloco), 'encostar na borda não pode recortar')
+
   const hero = semComentarios.slice(
     semComentarios.indexOf("block.type === 'hero'"),
     semComentarios.indexOf("block.type === 'testimonials'"))
