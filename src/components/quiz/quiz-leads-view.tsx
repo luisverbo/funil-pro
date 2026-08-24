@@ -537,6 +537,8 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
   const [paginasSel, setPaginasSel] = useState<Map<string, Set<string>>>(new Map())
   // Tipo por funil: vendas (leads) ou vaga de emprego (candidatos).
   const [modoSel, setModoSel] = useState<Map<string, ModoPortal>>(new Map())
+  // Data de corte por funil: o cliente só vê o que entrou a partir dela.
+  const [desdeSel, setDesdeSel] = useState<Map<string, string>>(new Map())
   const [estruturas, setEstruturas] = useState<Map<string, ExportPageInfo[]>>(new Map())
   const [permitirStatus, setPermitirStatus] = useState(true)
   const [mostrarMetricas, setMostrarMetricas] = useState(true)
@@ -572,6 +574,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
           setSelecao(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, x.publico])))
           setPaginasSel(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, new Set(x.paginas ?? [])])))
           setModoSel(new Map(r.quizzes.map((x: PortalQuizConfig) => [x.pageId, x.modo ?? 'vendas'])))
+          setDesdeSel(new Map(r.quizzes.filter((x: PortalQuizConfig) => x.desde).map((x: PortalQuizConfig) => [x.pageId, x.desde!])))
           for (const x of r.quizzes) carregarEstrutura(x.pageId)
           setNome(r.nome)
           setPermitirStatus(r.permitirStatus)
@@ -616,6 +619,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
       quizzes: [...selecao].map(([pageId, publico]) => ({
         pageId, publico, paginas: [...(paginasSel.get(pageId) ?? [])],
         modo: modoSel.get(pageId) ?? 'vendas',
+        desde: desdeSel.get(pageId) || null,
       })),
       mostrarMetricas, mostrarFunil, permitirStatus,
     })
@@ -633,6 +637,7 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
       quizzes: [...selecao].map(([pageId, publico]) => ({
         pageId, publico, paginas: [...(paginasSel.get(pageId) ?? [])],
         modo: modoSel.get(pageId) ?? 'vendas',
+        desde: desdeSel.get(pageId) || null,
       })),
       mostrarMetricas, mostrarFunil, permitirStatus,
       ...(info?.portalId ? { portalId: info.portalId } : {}),
@@ -750,6 +755,33 @@ function ShareModal({ quizId, onClose }: { quizId: string; onClose: () => void }
                               {o.rotulo}
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {marcado && (
+                        <div className="mt-2 ml-6 flex flex-wrap items-center gap-2">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                            Mostrar a partir de
+                          </span>
+                          <input type="date" value={desdeSel.get(q.id) ?? ''}
+                            onChange={e => setDesdeSel(prev => {
+                              const novo = new Map(prev)
+                              if (e.target.value) novo.set(q.id, e.target.value)
+                              else novo.delete(q.id)
+                              return novo
+                            })}
+                            className={`min-w-0 shrink rounded-lg border px-2 py-1 text-[11px] ${
+                              desdeSel.get(q.id) ? 'border-indigo-500 text-indigo-700' : 'border-gray-200 text-gray-500'
+                            }`} />
+                          {desdeSel.get(q.id) && (
+                            <button type="button"
+                              onClick={() => setDesdeSel(prev => { const n = new Map(prev); n.delete(q.id); return n })}
+                              className="text-[11px] text-gray-400 hover:text-gray-600">
+                              mostrar tudo
+                            </button>
+                          )}
+                          <span className="w-full text-[11px] text-gray-400">
+                            Esconde do cliente o que entrou antes — nada é apagado, você continua vendo tudo aqui.
+                          </span>
                         </div>
                       )}
                       {marcado && (estruturas.get(q.id) ?? []).filter(p => p.colunas.length > 0).length > 0 && (

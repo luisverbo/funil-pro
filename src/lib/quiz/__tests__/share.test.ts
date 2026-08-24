@@ -353,7 +353,7 @@ test('13g) quiz EDITADO depois dos leads: o formato reconhece o contato', () => 
 
 test('13h) escolha de páginas nunca é descartada em silêncio', () => {
   const a = ler('src/app/actions/quiz-leads.ts')
-  assert.ok(a.includes("quizzes.some(q => q.paginas.length > 0 || q.modo !== 'vendas')"),
+  assert.ok(a.includes("quizzes.some(q => q.paginas.length > 0 || q.modo !== 'vendas' || q.desde)"),
     'salvar sem a coluna descartaria a escolha sem avisar')
   assert.ok(a.includes('20260826000000_portal_paginas.sql'),
     'o erro não diz qual migration falta')
@@ -594,6 +594,25 @@ test('13o) telefone que NÃO bate nunca vira gestor', () => {
   const c = ler('src/app/ql/[token]/share-panel-client.tsx')
   assert.ok(c.includes('👑 Gestor · vendo todos'), 'o gestor não percebe que vê tudo')
   assert.ok(c.includes('void sair()'), 'sem botão de sair')
+})
+
+test('13p) data de corte: esconde do cliente, sem apagar nada', () => {
+  const m = ler('supabase/migrations/20260830000000_portal_data_corte.sql')
+  assert.ok(m.includes('ADD COLUMN IF NOT EXISTS desde date'), 'sem onde guardar o corte')
+  assert.ok(!/DELETE|TRUNCATE/i.test(m), 'a data de corte NUNCA pode apagar lead')
+
+  const core = ler('src/lib/quiz/leads-core.ts')
+  assert.ok(core.includes('if (desde) {'), 'o corte não é aplicado')
+  assert.ok(core.includes('return dia >= desde'), 'o dia do corte precisa ENTRAR na lista')
+
+  const rota = ler('src/app/api/portal/[token]/route.ts')
+  // O corte vale para a lista E para as métricas — senão "112 entraram"
+  // voltaria a aparecer com 8 leads na tela.
+  assert.ok((rota.match(/quiz\.desde/g) ?? []).length >= 3, 'métricas ignorariam o corte')
+
+  const v = ler('src/components/quiz/quiz-leads-view.tsx')
+  assert.ok(v.includes('Mostrar a partir de'), 'o dono não tem como escolher a data')
+  assert.ok(v.includes('nada é apagado'), 'a tela precisa deixar claro que não apaga')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
