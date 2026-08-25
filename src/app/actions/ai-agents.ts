@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { nomeNoTranscript } from '@/lib/agents/contato'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -473,6 +474,26 @@ export async function listConversations(
       const byConv = new Map((mtgs ?? []).map(m => [m.conversation_id as string, m.lead_name as string]))
       for (const c of conversations) {
         if (!c.lead_name && byConv.has(c.id)) c.lead_name = byConv.get(c.id) ?? null
+      }
+    }
+    // Última rede: conversa ainda sem nome — lê o transcript e usa o nome que a
+    // pessoa digitou. Cobre as conversas antigas, de quando o lead não era criado.
+    const aindaSemNome = conversations.filter(c => !c.lead_name).map(c => c.id)
+    if (aindaSemNome.length > 0) {
+      const { data: msgs } = await supabase
+        .from('agent_messages')
+        .select('conversation_id, role, content, created_at')
+        .in('conversation_id', aindaSemNome)
+        .order('created_at', { ascending: true })
+      const porConversa = new Map<string, { role: string; content: string }[]>()
+      for (const m of msgs ?? []) {
+        const arr = porConversa.get(m.conversation_id as string) ?? []
+        arr.push({ role: m.role as string, content: (m.content as string) ?? '' })
+        porConversa.set(m.conversation_id as string, arr)
+      }
+      for (const c of conversations) {
+        if (c.lead_name) continue
+        c.lead_name = nomeNoTranscript(porConversa.get(c.id) ?? [])
       }
     }
     return { conversations, total: count ?? 0 }
