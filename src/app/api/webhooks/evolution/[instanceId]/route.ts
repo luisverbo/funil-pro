@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage } from '@/lib/agents/chat'
 import { getMediaBase64 } from '@/lib/evolution'
 import { transcribeAudio } from '@/lib/agents/transcribe'
+import { comandoDoDono, MARCA_ASSUMIDA } from '@/lib/agents/comando'
 
 // Processamento síncrono do agente (Anthropic + delays entre partes) exige mais que o default de 10s
 export const maxDuration = 60
@@ -56,7 +57,47 @@ export async function POST(
   }
 
   const messageData = body.data
-  if (!messageData?.key?.remoteJid || messageData.key.fromMe) {
+  if (!messageData?.key?.remoteJid) {
+    return NextResponse.json({ received: true })
+  }
+
+  // Mensagem SUA (fromMe): normalmente ignorada — MAS se começar com "/" é um
+  // comando: você assumiu a conversa pelo próprio celular e o agente cala.
+  // "/on" devolve a conversa ao agente. Idempotente: reentrega não muda nada.
+  if (messageData.key.fromMe) {
+    const textoDono = messageData.message?.conversation ?? messageData.message?.extendedTextMessage?.text ?? ''
+    const cmd = comandoDoDono(textoDono)
+    if (cmd) {
+      const foneLead = extractPhone(messageData.key.remoteJid)
+      if (foneLead) {
+        const { data: inst } = await admin
+          .from('whatsapp_instances').select('tenant_id').eq('id', instanceId).single()
+        if (inst) {
+          // O lead pelo telefone (últimos 8 dígitos: DDI/9 extra não atrapalham)
+          const { data: leadsDoFone } = await admin
+            .from('leads').select('id')
+            .eq('tenant_id', inst.tenant_id)
+            .like('phone', `%${foneLead.slice(-8)}`)
+            .range(0, 9)
+          for (const l of leadsDoFone ?? []) {
+            if (cmd === 'pausar') {
+              await admin.from('agent_conversations')
+                .update({ status: 'handed_to_human', outcome_summary: MARCA_ASSUMIDA, ended_at: new Date().toISOString() })
+                .eq('tenant_id', inst.tenant_id).eq('lead_id', l.id)
+                .in('status', ['active', 'qualified', 'scheduled'])
+              // O motor de funil também não pode falar por cima de você.
+              await admin.from('leads').update({ agent_active: false }).eq('id', l.id)
+            } else {
+              await admin.from('agent_conversations')
+                .update({ status: 'active', outcome_summary: null, ended_at: null })
+                .eq('tenant_id', inst.tenant_id).eq('lead_id', l.id)
+                .eq('status', 'handed_to_human')
+                .like('outcome_summary', '%assumida pelo dono%')
+            }
+          }
+        }
+      }
+    }
     return NextResponse.json({ received: true })
   }
 

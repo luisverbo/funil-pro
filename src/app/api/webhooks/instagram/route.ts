@@ -5,6 +5,7 @@ import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
 import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
 import { resolveSteps, startSequence, type DmStep } from '@/lib/instagram/sequence'
 import { logInbound, logOutbound } from '@/lib/instagram/inbox'
+import { comandoDoDono, MARCA_ASSUMIDA } from '@/lib/agents/comando'
 
 export const maxDuration = 60
 
@@ -139,7 +140,44 @@ export async function POST(request: NextRequest) {
 
     // DMs recebidas
     for (const m of entry.messaging ?? []) {
-      if (m.message?.is_echo) continue          // ignora ecos das próprias mensagens
+      if (m.message?.is_echo) {
+        // Eco da SUA mensagem. Começando com "/" é comando: "/" cala o agente
+        // nesta conversa (você assumiu pelo app do Instagram); "/on" devolve.
+        const cmd = comandoDoDono(m.message?.text)
+        const alvo = m.recipient?.id            // o IGSID do lead na conversa
+        if (cmd && alvo) {
+          try {
+            const { data: th } = await admin.from('ig_threads')
+              .select('id, tenant_id').eq('ig_user_id', alvo).limit(1).maybeSingle()
+            if (th) {
+              // human_mode já pausa IA e automações do Instagram — o comando é
+              // só um atalho para o mesmo botão do inbox.
+              await admin.from('ig_threads')
+                .update({ human_mode: cmd === 'pausar' }).eq('id', th.id)
+              // E a conversa do AGENTE (lead por ig_user_id) também.
+              const { data: leadIg } = await admin.from('leads').select('id')
+                .eq('tenant_id', th.tenant_id)
+                .contains('metadata', { ig_user_id: alvo })
+                .limit(1).maybeSingle()
+              if (leadIg) {
+                if (cmd === 'pausar') {
+                  await admin.from('agent_conversations')
+                    .update({ status: 'handed_to_human', outcome_summary: MARCA_ASSUMIDA, ended_at: new Date().toISOString() })
+                    .eq('tenant_id', th.tenant_id).eq('lead_id', leadIg.id)
+                    .in('status', ['active', 'qualified', 'scheduled'])
+                } else {
+                  await admin.from('agent_conversations')
+                    .update({ status: 'active', outcome_summary: null, ended_at: null })
+                    .eq('tenant_id', th.tenant_id).eq('lead_id', leadIg.id)
+                    .eq('status', 'handed_to_human')
+                    .like('outcome_summary', '%assumida pelo dono%')
+                }
+              }
+            }
+          } catch (e) { console.error('[ig] comando do dono', String(e)) }
+        }
+        continue                                 // eco nunca vira resposta
+      }
       const senderId = m.sender?.id
       // Toque em botão (postback) conta como resposta: usa o payload/título como texto
       const text = (m.message?.text ?? m.postback?.payload ?? m.postback?.title ?? '').trim()
