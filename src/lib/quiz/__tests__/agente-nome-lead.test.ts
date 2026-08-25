@@ -19,7 +19,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { nomeNoTranscript, extractContact } from '@/lib/agents/contato'
+import { nomeNoTranscript, extractContact, contatoJaConhecido } from '@/lib/agents/contato'
 
 const RAIZ = process.cwd()
 
@@ -86,6 +86,39 @@ const tests: Record<string, () => void> = {
     )
     assert.equal(c.phone, '11988887777')
     assert.equal(c.email, 'luis@empresa.com.br')
+  },
+  // ── Contato pedido duas vezes ─────────────────────────────────────────────
+  // Relatado com a conversa inteira: o lead preencheu nome, e-mail e WhatsApp
+  // no formulário da landing e, na hora de agendar, o agente pediu e-mail e
+  // WhatsApp DE NOVO. O cadastro tinha os dados; o prompt é que não sabia.
+
+  'contato já informado entra no prompt e é proibido pedir de novo': () => {
+    const { jaSabemos, faltaContato, aviso } = contatoJaConhecido({
+      name: 'Lucas Lima', email: 'luisverbo@gmail.com', phone: '21980120036',
+    })
+    assert.equal(faltaContato.length, 0, 'não falta nada — não há o que perguntar')
+    assert.equal(jaSabemos.length, 3)
+    assert.ok(aviso.includes('luisverbo@gmail.com'), 'o e-mail conhecido tem que ir no prompt')
+    assert.ok(/NUNCA peça de novo/.test(aviso), 'o prompt precisa proibir repetir a pergunta')
+  },
+
+  'só o que falta é pedido': () => {
+    const { jaSabemos, faltaContato } = contatoJaConhecido({ name: 'Lucas', email: null, phone: '' })
+    assert.deepEqual(faltaContato, ['e-mail', 'WhatsApp'])
+    assert.deepEqual(jaSabemos, ['nome: Lucas'])
+  },
+
+  'lead sem nada conhecido não ganha aviso vazio no prompt': () => {
+    const { aviso, faltaContato } = contatoJaConhecido({})
+    assert.equal(aviso, '')
+    assert.equal(faltaContato.length, 3)
+  },
+
+  'agendamento cai no cadastro quando o modelo não devolve o contato': () => {
+    const src = readFileSync(join(RAIZ, 'src/lib/agents/chat.ts'), 'utf8')
+    assert.ok(src.includes('ex.email || leadEmail'), 'e-mail do cadastro precisa ser fallback do agendamento')
+    assert.ok(src.includes('ex.phone || leadPhone'), 'telefone do cadastro precisa ser fallback do agendamento')
+    assert.ok(src.includes("select('name, email, phone')"), 'o motor precisa ler o contato do lead, não só o nome')
   },
 }
 
