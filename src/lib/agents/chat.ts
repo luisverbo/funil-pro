@@ -162,7 +162,7 @@ async function resolveInstanceName(
   return { instanceName: instance?.instance_name ?? null, phone: leadRow.phone }
 }
 
-async function sendPartsViaWhatsApp(
+export async function sendPartsViaWhatsApp(
   leadId: string,
   parts: string[],
   admin: ReturnType<typeof createAdminClient>,
