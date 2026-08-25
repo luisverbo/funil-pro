@@ -483,7 +483,37 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-08-24 — Portal do cliente completo (equipe, kanban, custos por período, modo vagas)
+**Última atualização:** 2026-08-25 — Agente: gate/contato, portal de agentes, origem, comando /, atendimento ao vivo
+
+**O que foi feito (2026-08-25, PRs #80–#86):**
+- **Agente pede contato só com lead quente** (PR #80): `src/lib/agents/gate.ts`
+  (statusDoGate determinístico pela última resposta), opção capture_mode
+  'qualified' no wizard; formulário NUNCA junto dos botões de escolha
+- **"Anônimo" resolvido — causa raiz** (PR #81): `leads.funnel_id` era NOT
+  NULL e o agente standalone insere lead sem funil → insert falhava calado.
+  Migration solta o NOT NULL (APLICADA); inserts logam erro;
+  `src/lib/agents/contato.ts` (extractContact + nomeNoTranscript) recupera o
+  nome do transcript nas conversas antigas
+- **Contato nunca pedido 2x** (PR #82): motor lê name/email/phone do lead,
+  `contatoJaConhecido()` entra no prompt, schedule usa cadastro como fallback
+- **Portal do cliente para AGENTES** (PR #83): mesmas telas do portal de quiz
+  com fonte `agent_conversations`; quente = ATINGIU O OBJETIVO do agente
+  (`src/lib/agents/portal-core.ts::atingiuObjetivo` — reunião conta sempre);
+  públicos quentes/agendados/com_contato/todos; transcrição opt-in;
+  migration `20260902000000_portal_agentes.sql` APLICADA; botão 🔗 Portal no
+  card do agente; salvar por um lado (quiz⇄agente) não apaga o outro
+- **Origem por canal** (PR #84): coluna Origem + filtro por canal + quadro
+  "qual canal converte mais" nas conversas do agente; test drive fora das contagens
+- **Comando "/" cala o agente** (PR #85): eco da mensagem do dono (fromMe /
+  is_echo) começando com '/' pausa a conversa ('/on' devolve); silêncio TOTAL
+  (`src/lib/agents/comando.ts`); furo fechado: motor não abre conversa nova
+  por cima da assumida
+- **Atendimento ao vivo** (PR #86): drawer de conversas com Assumir/Responder/
+  Devolver; GET público de polling p/ chat web (só entrega em modo humano);
+  entrega WhatsApp/Instagram na hora
+- Bateria: **692/692**
+
+**Atualização anterior:** 2026-08-24 — Portal do cliente completo (equipe, kanban, custos por período, modo vagas)
 
 **O que foi feito (2026-08-19 a 23):**
 - **Gestor de Tráfego — Fase 1 COMPLETA** (PRs #48–#50): sincronização Meta
