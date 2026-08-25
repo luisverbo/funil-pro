@@ -36,3 +36,6 @@ export const MARCA_ASSUMIDA = 'Conversa assumida pelo dono (comando /)'
 export function conversaAssumidaPeloDono(outcome: string | null | undefined): boolean {
   return (outcome ?? '').includes('assumida pelo dono')
 }
+
+/** Marca quando o dono assume PELO PAINEL (chat web) — mesma família da "/" */
+export const MARCA_ASSUMIDA_PAINEL = 'Conversa assumida pelo dono (painel)'

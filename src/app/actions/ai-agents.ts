@@ -6,6 +6,9 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { nomeNoTranscript } from '@/lib/agents/contato'
+import { MARCA_ASSUMIDA_PAINEL, conversaAssumidaPeloDono } from '@/lib/agents/comando'
+import { sendPartsViaWhatsApp } from '@/lib/agents/chat'
+import { sendInstagramDM } from '@/lib/instagram'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +108,105 @@ function sanitize(data: Partial<AgentInput>): Record<string, unknown> {
     if (key in data) out[key] = data[key]
   }
   return out
+}
+
+
+// ─── Atendimento humano (assumir a conversa no lugar do agente) ─────────────
+
+/** A conversa do tenant, ou null — toda ação de atendimento passa por aqui. */
+async function conversaDoTenant(conversationId: string) {
+  const tenantId = await getTenantId()
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('agent_conversations')
+    .select('id, agent_id, lead_id, status, outcome_summary, channel')
+    .eq('id', conversationId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  return data ? { admin, tenantId, conversa: data } : null
+}
+
+/**
+ * Assume a conversa: o agente para NA HORA (silêncio total, sem despedida) e
+ * quem responde é você. Mesma marca do comando "/" — os dois caminhos levam
+ * ao mesmo estado.
+ */
+export async function assumirConversa(conversationId: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const ctx = await conversaDoTenant(conversationId)
+    if (!ctx) return { error: 'Conversa não encontrada' }
+    const { admin, conversa } = ctx
+    await admin.from('agent_conversations')
+      .update({ status: 'handed_to_human', outcome_summary: MARCA_ASSUMIDA_PAINEL, ended_at: new Date().toISOString() })
+      .eq('id', conversa.id)
+    if (conversa.lead_id) {
+      await admin.from('leads').update({ agent_active: false }).eq('id', conversa.lead_id)
+    }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Devolve a conversa ao agente — só se foi você quem assumiu. */
+export async function devolverConversa(conversationId: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const ctx = await conversaDoTenant(conversationId)
+    if (!ctx) return { error: 'Conversa não encontrada' }
+    const { admin, conversa } = ctx
+    if (!conversaAssumidaPeloDono(conversa.outcome_summary)) {
+      return { error: 'Esta conversa não está assumida por você' }
+    }
+    await admin.from('agent_conversations')
+      .update({ status: 'active', outcome_summary: null, ended_at: null })
+      .eq('id', conversa.id)
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/**
+ * Sua resposta na conversa assumida. Grava no histórico e ENTREGA pelo canal:
+ * WhatsApp e Instagram saem na hora; no chat web o navegador do visitante
+ * busca mensagens novas sozinho (polling) enquanto a aba estiver aberta.
+ */
+export async function enviarMensagemHumana(
+  conversationId: string,
+  texto: string,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const limpo = texto.trim().slice(0, 2000)
+    if (!limpo) return { error: 'Escreva a mensagem' }
+    const ctx = await conversaDoTenant(conversationId)
+    if (!ctx) return { error: 'Conversa não encontrada' }
+    const { admin, tenantId, conversa } = ctx
+    if (!conversaAssumidaPeloDono(conversa.outcome_summary)) {
+      return { error: 'Assuma a conversa antes de responder' }
+    }
+
+    const canal = (conversa as { channel?: string | null }).channel ?? 'web'
+    if (canal === 'whatsapp' && conversa.lead_id) {
+      const { data: ag } = await admin
+        .from('ai_agents').select('whatsapp_instance_id').eq('id', conversa.agent_id).maybeSingle()
+      await sendPartsViaWhatsApp(conversa.lead_id, [limpo], admin, ag?.whatsapp_instance_id ?? null)
+    } else if (canal === 'instagram' && conversa.lead_id) {
+      const { data: lead } = await admin
+        .from('leads').select('metadata').eq('id', conversa.lead_id).maybeSingle()
+      const igId = (lead?.metadata as { ig_user_id?: string } | null)?.ig_user_id
+      if (!igId) return { error: 'Lead do Instagram sem identificador — responda pelo app' }
+      await sendInstagramDM(igId, limpo)
+    }
+    // Chat web: só gravar basta — o navegador do visitante puxa sozinho.
+
+    const { error } = await admin.from('agent_messages').insert({
+      conversation_id: conversa.id, tenant_id: tenantId, role: 'agent', content: limpo,
+    })
+    if (error) return { error: 'Não foi possível gravar a mensagem' }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
 }
 
 // ─── Conversation stats helper ──────────────────────────────────────────────

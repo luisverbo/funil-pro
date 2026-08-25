@@ -1,8 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { listConversations, getConversation, setMessageFeedback, addCorrection, deleteConversations } from '@/app/actions/ai-agents'
+import { listConversations, getConversation, setMessageFeedback, addCorrection, deleteConversations, assumirConversa, devolverConversa, enviarMensagemHumana } from '@/app/actions/ai-agents'
+
+/** A conversa está nas SUAS mãos (assumida pelo painel ou pelo comando /)? */
+const assumida = (summary: string | null | undefined) => (summary ?? '').includes('assumida pelo dono')
 
 type Conversation = {
   id: string; status: string; channel: string | null; qualification_score: number | null
@@ -53,6 +56,61 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
   const [correcting, setCorrecting] = useState<{ msgId: string; context: string; original: string } | null>(null)
   const [correctionText, setCorrectionText] = useState('')
   const [savingCorrection, setSavingCorrection] = useState(false)
+  const [respostaHumana, setRespostaHumana] = useState('')
+  const [enviandoHumana, setEnviandoHumana] = useState(false)
+  const [erroHumano, setErroHumano] = useState<string | null>(null)
+  const drawerRef = useRef(drawer)
+  useEffect(() => { drawerRef.current = drawer }, [drawer])
+
+  // Com o drawer aberto, o transcript se atualiza sozinho (5s): é o que faz o
+  // atendimento ao vivo funcionar — a resposta do lead aparece sem F5.
+  useEffect(() => {
+    if (!drawer?.id) return
+    const t = setInterval(() => {
+      void (async () => {
+        const atual = drawerRef.current
+        if (!atual) return
+        const { conversation, messages: m } = await getConversation(atual.id)
+        if (conversation && drawerRef.current?.id === atual.id) {
+          setDrawer(d => d && d.id === atual.id
+            ? { ...d, status: conversation.status, summary: conversation.outcome_summary }
+            : d)
+          setMessages(prev => (m && m.length !== prev.length ? m : prev))
+        }
+      })()
+    }, 5000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawer?.id])
+
+  async function assumir() {
+    if (!drawer) return
+    setErroHumano(null)
+    const r = await assumirConversa(drawer.id)
+    if ('error' in r) { setErroHumano(r.error); return }
+    setDrawer(d => d ? { ...d, status: 'handed_to_human', summary: 'Conversa assumida pelo dono (painel)' } : d)
+    setConversations(cs => cs.map(c => c.id === drawer.id ? { ...c, status: 'handed_to_human' } : c))
+  }
+
+  async function devolver() {
+    if (!drawer) return
+    setErroHumano(null)
+    const r = await devolverConversa(drawer.id)
+    if ('error' in r) { setErroHumano(r.error); return }
+    setDrawer(d => d ? { ...d, status: 'active', summary: null } : d)
+    setConversations(cs => cs.map(c => c.id === drawer.id ? { ...c, status: 'active' } : c))
+  }
+
+  async function responderComoHumano() {
+    if (!drawer || !respostaHumana.trim()) return
+    setEnviandoHumana(true); setErroHumano(null)
+    const texto = respostaHumana
+    const r = await enviarMensagemHumana(drawer.id, texto)
+    setEnviandoHumana(false)
+    if ('error' in r) { setErroHumano(r.error); return }
+    setRespostaHumana('')
+    setMessages(m => [...m, { id: `local-${Date.now()}`, role: 'agent', content: texto.trim() }])
+  }
 
   async function markBad(msgId: string, idx: number) {
     let context = ''
@@ -266,6 +324,18 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
                 {drawer.score != null && <span className="ml-2 text-xs text-gray-500">Score: {drawer.score}</span>}
               </div>
               <div className="flex items-center gap-2">
+                {assumida(drawer.summary) ? (
+                  <button onClick={() => void devolver()}
+                    className="text-sm px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100">
+                    🤖 Devolver ao agente
+                  </button>
+                ) : (
+                  <button onClick={() => void assumir()}
+                    title="O agente para nesta conversa e quem responde é você"
+                    className="text-sm px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100">
+                    🙋 Assumir conversa
+                  </button>
+                )}
                 <button onClick={() => deleteOne(drawer.id)} disabled={deleting}
                   className="text-sm px-3 py-1.5 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
                   🗑 Excluir
@@ -298,6 +368,24 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
               ))}
               {messages.length === 0 && <p className="text-center text-sm text-gray-400">Sem mensagens</p>}
             </div>
+            {assumida(drawer.summary) && (
+              <div className="border-t bg-white px-4 py-3">
+                <p className="mb-1.5 text-[11px] text-amber-600">
+                  🙋 Você está atendendo — o agente ficou em silêncio nesta conversa.
+                </p>
+                <div className="flex gap-2">
+                  <input value={respostaHumana} onChange={e => setRespostaHumana(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') void responderComoHumano() }}
+                    placeholder="Sua resposta para o lead…"
+                    className="min-w-0 flex-1 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                  <button onClick={() => void responderComoHumano()} disabled={enviandoHumana || !respostaHumana.trim()}
+                    className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {enviandoHumana ? '…' : 'Enviar'}
+                  </button>
+                </div>
+                {erroHumano && <p className="mt-1.5 text-xs text-red-600">{erroHumano}</p>}
+              </div>
+            )}
           </div>
         </div>
       )}

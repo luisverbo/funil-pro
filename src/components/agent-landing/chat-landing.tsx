@@ -55,6 +55,10 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   const landingUrlRef = useRef<string>('')
   const restoredRef = useRef(false)
   const storageKey = `fp_chat_${slug}`
+  // Atendimento HUMANO: quando o dono assume a conversa pelo painel, as
+  // respostas dele chegam por polling — o POST devolve vazio nesse modo.
+  const vistosRef = useRef<Set<string>>(new Set())
+  const cursorRef = useRef<string>('')
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -131,6 +135,30 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
     }
   }, [])
 
+  // Busca mensagens do atendente humano a cada 4s enquanto a aba está aberta.
+  // Fora do modo humano o servidor devolve vazio — o custo é um GET leve.
+  useEffect(() => {
+    if (!conversationId) return
+    let vivo = true
+    const puxar = async () => {
+      try {
+        const r = await fetch(`/api/agents/public/${slug}/chat?conversationId=${conversationId}&after=${encodeURIComponent(cursorRef.current)}`)
+        const d = await r.json() as { humano?: boolean; mensagens?: { id: string; texto: string; em: string }[] }
+        if (!vivo) return
+        for (const m of d.mensagens ?? []) {
+          if (vistosRef.current.has(m.id)) continue
+          vistosRef.current.add(m.id)
+          if (m.em > cursorRef.current) cursorRef.current = m.em
+          setMessages(prev => [...prev, { role: 'agent', content: m.texto, ts: Date.now() }])
+        }
+      } catch { /* rede oscilou: tenta no próximo tick */ }
+    }
+    // Cursor começa AGORA: histórico já está na tela; só interessam as novas.
+    if (!cursorRef.current) cursorRef.current = new Date().toISOString()
+    const timer = setInterval(() => { void puxar() }, 4000)
+    return () => { vivo = false; clearInterval(timer) }
+  }, [conversationId, slug])
+
   async function sendMessage(text: string) {
     const clean = text.trim()
     if (!clean || typing) return
@@ -157,7 +185,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
         return
       }
       const parts = (data.parts && data.parts.length > 0) ? data.parts : (data.reply ? [data.reply] : [])
-      await revealParts(parts)
+      if (parts.length > 0) await revealParts(parts)
       if (data.action) setLastAction(data.action)
       if (Array.isArray(data.choices) && data.choices.length > 0) setChoices(data.choices)
       if (data.gateStatus) setGateStatus(data.gateStatus)

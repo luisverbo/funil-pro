@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage } from '@/lib/agents/chat'
+import { conversaAssumidaPeloDono } from '@/lib/agents/comando'
 
 export const maxDuration = 60
 
@@ -105,5 +106,59 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const msg = String(err)
     if (msg.includes('activation_limit_reached')) return NextResponse.json({ error: 'activation_limit_reached' }, { status: 429 })
     return NextResponse.json({ error: msg }, { status: 500 })
+  }
+}
+
+/**
+ * Polling do visitante: mensagens novas do ATENDENTE HUMANO.
+ *
+ * Quando o dono assume a conversa pelo painel, o agente cala e as respostas
+ * dele chegam por aqui — o navegador do visitante consulta a cada poucos
+ * segundos. Fora do modo humano devolve lista vazia (as respostas do agente
+ * já chegam na resposta do POST; duplicar aqui viraria eco na tela).
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const url = new URL(request.url)
+  const conversationId = url.searchParams.get('conversationId') ?? ''
+  const after = url.searchParams.get('after') ?? ''
+  if (!conversationId) return NextResponse.json({ humano: false, mensagens: [] })
+
+  try {
+    const admin = createAdminClient()
+    const { data: agent } = await admin
+      .from('ai_agents')
+      .select('id, tenant_id, public_enabled')
+      .eq('public_slug', slug)
+      .maybeSingle()
+    if (!agent || !agent.public_enabled) {
+      return NextResponse.json({ error: 'agent_unavailable' }, { status: 404 })
+    }
+    const { data: conv } = await admin
+      .from('agent_conversations')
+      .select('id, status, outcome_summary')
+      .eq('id', conversationId)
+      .eq('agent_id', agent.id)
+      .maybeSingle()
+    if (!conv) return NextResponse.json({ humano: false, mensagens: [] })
+
+    const humano = conv.status === 'handed_to_human' && conversaAssumidaPeloDono(conv.outcome_summary)
+    if (!humano) return NextResponse.json({ humano: false, mensagens: [] })
+
+    let q = admin
+      .from('agent_messages')
+      .select('id, content, created_at')
+      .eq('conversation_id', conversationId)
+      .eq('role', 'agent')
+      .order('created_at', { ascending: true })
+      .limit(30)
+    if (after) q = q.gt('created_at', after)
+    const { data: msgs } = await q
+    return NextResponse.json({
+      humano: true,
+      mensagens: (msgs ?? []).map(m => ({ id: String(m.id), texto: String(m.content ?? ''), em: String(m.created_at) })),
+    })
+  } catch {
+    return NextResponse.json({ humano: false, mensagens: [] })
   }
 }
