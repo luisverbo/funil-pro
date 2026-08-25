@@ -39,14 +39,24 @@ interface Abertura {
   mostrarMetricas: boolean
   mostrarFunil: boolean
   quizzes: { id: string; titulo: string }[]
+  /** Agentes IA do portal — chegam junto dos quizzes, viram chips 🤖. */
+  agentes?: { id: string; titulo: string }[]
 }
 
-interface LeadComStatus extends LeadPortal { statusCliente: string; responsavelId: string | null }
+interface LeadComStatus extends LeadPortal {
+  statusCliente: string
+  responsavelId: string | null
+  /** Presentes só quando a fonte é um AGENTE. */
+  canal?: string
+  situacao?: string
+  reuniaoEm?: string | null
+  scoreAgente?: number | null
+}
 
 interface Membro { id: string; nome: string; whatsapp: string | null }
 
 interface DadosQuiz {
-  quiz: { id: string; titulo: string; publico: string; modo?: 'vendas' | 'vagas' }
+  quiz: { id: string; titulo: string; publico: string; modo?: 'vendas' | 'vagas'; tipo?: 'agente' }
   leads: LeadComStatus[]
   metricas: QuizMetricas | null
   /** Metadados de TODOS os leads — a tela recalcula os números por período. */
@@ -134,6 +144,7 @@ export default function SharePanelClient({ token }: { token: string }) {
       try { localStorage.setItem(`fp_tel_${token}`, telefone) } catch { /* opcional */ }
       setPortal(r)
       if (r.quizzes.length > 0) void abrirQuiz(r.quizzes[0].id, senha)
+      else if ((r.agentes ?? []).length > 0) void abrirQuiz(r.agentes![0].id, senha, 'agente')
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível abrir')
     } finally {
@@ -141,12 +152,14 @@ export default function SharePanelClient({ token }: { token: string }) {
     }
   }
 
-  const abrirQuiz = async (quizId: string, senhaUsar?: string) => {
+  const abrirQuiz = async (quizId: string, senhaUsar?: string, tipo: 'quiz' | 'agente' = 'quiz') => {
     const s = senhaUsar ?? senhaOk ?? ''
     setQuizAtivo(quizId)
     setCarregando(true); setErro(null)
     try {
-      const d = (await api({ senha: s, acao: 'quiz', quizId })) as DadosQuiz
+      const d = (await api(tipo === 'agente'
+        ? { senha: s, acao: 'agente', agenteId: quizId }
+        : { senha: s, acao: 'quiz', quizId })) as DadosQuiz
       setDados(d)
       setMsgLocal(d.msgWhatsapp ?? '')
       setEtapasLocal(d.etapas ?? [])
@@ -167,7 +180,8 @@ export default function SharePanelClient({ token }: { token: string }) {
       leads: dados.leads.map(l => l.id === leadId ? { ...l, statusCliente: status } : l),
     })
     try {
-      await api({ senha: senhaOk ?? '', acao: 'status', leadId, status })
+      await api({ senha: senhaOk ?? '', acao: 'status', leadId, status,
+        ...(dados.quiz.tipo === 'agente' ? { origem: 'agente' } : {}) })
     } catch (e) {
       setDados(anterior)
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar o status')
@@ -228,7 +242,8 @@ export default function SharePanelClient({ token }: { token: string }) {
         let alvo = ids[0]
         for (const v of ids) if ((carga[v] ?? 0) < (carga[alvo] ?? 0)) alvo = v
         carga[alvo] = (carga[alvo] ?? 0) + 1
-        await api({ senha: senhaOk ?? '', acao: 'atribuir', leadId: l.id, memberId: alvo })
+        await api({ senha: senhaOk ?? '', acao: 'atribuir', leadId: l.id, memberId: alvo,
+          ...(dados.quiz.tipo === 'agente' ? { origem: 'agente' } : {}) })
         setDados(d => d ? { ...d, leads: d.leads.map(x => x.id === l.id ? { ...x, responsavelId: alvo } : x) } : d)
         i++
       }
@@ -246,7 +261,8 @@ export default function SharePanelClient({ token }: { token: string }) {
       leads: dados.leads.map(l => l.id === leadId ? { ...l, responsavelId: memberId } : l),
     })
     try {
-      await api({ senha: senhaOk ?? '', acao: 'atribuir', leadId, memberId })
+      await api({ senha: senhaOk ?? '', acao: 'atribuir', leadId, memberId,
+        ...(dados.quiz.tipo === 'agente' ? { origem: 'agente' } : {}) })
     } catch (e) {
       setDados(anterior)
       setErro(e instanceof Error ? e.message : 'Não foi possível atribuir')
@@ -265,6 +281,7 @@ export default function SharePanelClient({ token }: { token: string }) {
         const r = (await api({ acao: 'abrir' })) as Abertura
         setPortal(r)
         if (r.quizzes.length > 0) void abrirQuiz(r.quizzes[0].id, '')
+        else if ((r.agentes ?? []).length > 0) void abrirQuiz(r.agentes![0].id, '', 'agente')
       } catch {
         setVerificandoSessao(false)   // sem sessão: pede a senha
       }
@@ -362,6 +379,8 @@ export default function SharePanelClient({ token }: { token: string }) {
   }
 
   const m = dados?.metricas
+  /** Fonte ativa é um AGENTE? Muda a régua ("objetivo") e alguns rótulos. */
+  const ehAgente = dados?.quiz.tipo === 'agente'
   /** Vocabulário do funil ativo: leads (vendas) ou candidatos (vagas). */
   const voc = vocabulario(dados?.quiz.modo === 'vagas' ? 'vagas' : 'vendas')
   /** Etapas que o gestor deixou ligadas (com o nome que ele deu). */
@@ -491,11 +510,18 @@ export default function SharePanelClient({ token }: { token: string }) {
             {l.data ? ` · ${new Date(l.data).toLocaleDateString('pt-BR')}` : ''}
           </p>
           {l.resultado && !compacto && <p className="mt-0.5 text-xs text-indigo-600">Resultado: {l.resultado}</p>}
+          {l.canal && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              <span className="font-medium text-indigo-600">{l.canal}</span>
+              {l.situacao ? ` · ${l.situacao}` : ''}
+              {l.reuniaoEm ? ` · 📅 ${new Date(l.reuniaoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}
+            </p>
+          )}
 
           {(respostasDoLead.get(l.id) ?? []).length > 0 && (
             <details className="mt-2">
               <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600">
-                Ver respostas ({respostasDoLead.get(l.id)!.length})
+                {dados?.quiz.tipo === 'agente' ? 'Ver detalhes da conversa' : `Ver respostas (${respostasDoLead.get(l.id)!.length})`}
               </summary>
               <div className={`mt-2 grid gap-1.5 rounded-xl bg-slate-50 p-3 ${compacto ? '' : 'sm:grid-cols-2'}`}>
                 {respostasDoLead.get(l.id)!.map((r, i) => (
@@ -625,7 +651,7 @@ export default function SharePanelClient({ token }: { token: string }) {
               Sair
             </button>
           </div>
-          {portal.quizzes.length > 1 && (
+          {portal.quizzes.length + (portal.agentes ?? []).length > 1 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {portal.quizzes.map(q => (
                 <button key={q.id} onClick={() => void abrirQuiz(q.id)}
@@ -633,6 +659,14 @@ export default function SharePanelClient({ token }: { token: string }) {
                     q.id === quizAtivo ? 'bg-white text-slate-900 font-semibold' : 'bg-white/10 text-white hover:bg-white/20'
                   }`}>
                   {q.titulo}
+                </button>
+              ))}
+              {(portal.agentes ?? []).map(a => (
+                <button key={a.id} onClick={() => void abrirQuiz(a.id, undefined, 'agente')}
+                  className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
+                    a.id === quizAtivo ? 'bg-white text-slate-900 font-semibold' : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}>
+                  🤖 {a.titulo}
                 </button>
               ))}
             </div>
@@ -649,12 +683,12 @@ export default function SharePanelClient({ token }: { token: string }) {
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-center">
               <div>
                 <p className="text-3xl font-bold text-slate-900">{resumo.total}</p>
-                <p className="text-xs uppercase tracking-wide text-slate-500">entraram</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{ehAgente ? 'conversas' : 'entraram'}</p>
               </div>
               <span className="text-2xl text-slate-300">→</span>
               <div>
                 <p className="text-3xl font-bold text-orange-600">🔥 {resumo.concluiram}</p>
-                <p className="text-xs uppercase tracking-wide text-slate-500">chegaram ao final</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">{ehAgente ? 'atingiram o objetivo' : 'chegaram ao final'}</p>
               </div>
               <span className="text-2xl text-slate-300">=</span>
               <div>
@@ -667,7 +701,9 @@ export default function SharePanelClient({ token }: { token: string }) {
                 style={{ width: `${Math.max(resumo.conversao, resumo.concluiram > 0 ? 3 : 0)}%` }} />
             </div>
             <p className="mt-2 text-center text-xs text-slate-400">
-              De cada 100 pessoas que entram no funil, {resumo.conversao} chegam ao final — {resumo.rotulo}.
+              {ehAgente
+                ? `De cada 100 conversas com o agente, ${resumo.conversao} viram lead quente — ${resumo.rotulo}.`
+                : `De cada 100 pessoas que entram no funil, ${resumo.conversao} chegam ao final — ${resumo.rotulo}.`}
             </p>
 
             {/* Custo — só quando o dono lançou investimento. */}
@@ -720,7 +756,7 @@ export default function SharePanelClient({ token }: { token: string }) {
             {[
               { r: voc.varios, v: resumo.total, n: resumo.rotulo },
               { r: '🔥 Com contato', v: resumo.comContato, n: 'dá para atender' },
-              { r: 'Chegaram ao final', v: resumo.concluiram, n: `${resumo.conversao}% de conversão` },
+              { r: ehAgente ? '🎯 Objetivo atingido' : 'Chegaram ao final', v: resumo.concluiram, n: `${resumo.conversao}% de conversão` },
               { r: 'Fechados', v: custos?.fechados ?? leadsFiltrados.filter(l => l.statusCliente === 'fechado').length, n: 'marcados por você' },
             ].map(c => (
               <div key={c.r} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -736,7 +772,7 @@ export default function SharePanelClient({ token }: { token: string }) {
         {m && m.funil.length > 1 && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">
-              Etapas do funil <span className="font-normal text-slate-400">· todo o período</span>
+              {ehAgente ? 'Conversão do agente' : 'Etapas do funil'} <span className="font-normal text-slate-400">· todo o período</span>
             </h2>
             <div className="mt-3 space-y-2">
               {m.funil.map(e => (
@@ -848,7 +884,9 @@ export default function SharePanelClient({ token }: { token: string }) {
               <p className="mt-1 text-xs text-slate-400">
                 {portal?.membroAtual
                   ? 'Peça ao gestor para distribuir — ou aguarde o rodízio automático.'
-                  : `Assim que um ${voc.um} ${dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.`}
+                  : ehAgente
+                    ? 'Assim que uma conversa do agente virar lead do público liberado, ela aparece aqui.'
+                    : `Assim que um ${voc.um} ${dados?.quiz.publico === 'concluidos' ? 'concluir o funil' : 'chegar'}, ele aparece nesta lista.`}
               </p>
             </div>
           ) : visao === 'kanban' ? (

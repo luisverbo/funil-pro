@@ -13,6 +13,7 @@ import {
   gerarTokenShare, hashSenhaShare, validarSenhaShare,
 } from '@/lib/quiz/share'
 import { modoPortalValido, publicoPortalValido, type ModoPortal, type PublicoPortal } from '@/lib/quiz/portal'
+import { publicoAgenteValido, type PublicoAgente } from '@/lib/agents/portal-core'
 
 // ATENÇÃO: NÃO re-exportar tipos daqui (`export type { ... }`). O Turbopack
 // compila este arquivo 'use server' mantendo a re-exportação em runtime, e o
@@ -526,6 +527,17 @@ function publicoNaoAceito(erro: { code?: string; message?: string } | null): boo
 const PUBLICO_MIGRATION_MSG =
   'Aplique a migration 20260825000000_portal_publico_contato.sql no Supabase para usar a opção "Deixou contato"'
 
+export interface PortalAgenteConfig {
+  agentId: string
+  titulo: string
+  /** quentes = só quem atingiu o objetivo do agente (o lead quente). */
+  publico: PublicoAgente
+  /** Transcrição completa visível para o cliente — sensível, padrão false. */
+  mostrarConversa: boolean
+  /** 'YYYY-MM-DD' — o cliente só vê conversas a partir deste dia. */
+  desde: string | null
+}
+
 export interface PortalQuizConfig {
   pageId: string
   titulo: string
@@ -545,9 +557,114 @@ export interface PortalInfo {
   acessos: number
   ultimoAcesso: string | null
   quizzes: PortalQuizConfig[]
+  agentes: PortalAgenteConfig[]
   mostrarMetricas: boolean
   mostrarFunil: boolean
   permitirStatus: boolean
+}
+
+
+const AGENTE_MIGRATION_MSG =
+  'Aplique a migration 20260902000000_portal_agentes.sql no Supabase para colocar agentes no portal'
+
+/** Vínculos de AGENTE do portal — [] quando a migration ainda não rodou. */
+async function lerVinculosAgentes(
+  admin: ReturnType<typeof createAdminClient>,
+  portalId: string,
+): Promise<PortalAgenteConfig[]> {
+  const { data, error } = await admin
+    .from('client_portal_agents')
+    .select('agent_id, publico, mostrar_conversa, desde, ai_agents(name)')
+    .eq('portal_id', portalId)
+  if (error || !data) return []
+  return data.map(v => ({
+    agentId: String(v.agent_id),
+    titulo: String((v.ai_agents as { name?: string } | null)?.name ?? 'Agente'),
+    publico: publicoAgenteValido(v.publico) ? v.publico : 'quentes',
+    mostrarConversa: Boolean(v.mostrar_conversa),
+    desde: typeof v.desde === 'string' ? v.desde : null,
+  }))
+}
+
+/** Normaliza e insere os vínculos de agente (lista branca do tenant). */
+async function gravarVinculosAgentes(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  portalId: string,
+  agentes: { agentId: string; publico?: unknown; mostrarConversa?: unknown; desde?: unknown }[],
+): Promise<{ error: string | null }> {
+  await admin.from('client_portal_agents').delete().eq('portal_id', portalId).eq('tenant_id', tenantId)
+  if (agentes.length === 0) return { error: null }
+  const { data: donos } = await admin
+    .from('ai_agents').select('id').eq('tenant_id', tenantId)
+    .in('id', agentes.map(a => a.agentId).slice(0, 100))
+  const permitidos = new Set((donos ?? []).map(a => String(a.id)))
+  const linhas = agentes
+    .filter(a => permitidos.has(a.agentId))
+    .map(a => ({
+      tenant_id: tenantId, portal_id: portalId, agent_id: a.agentId,
+      publico: publicoAgenteValido(a.publico) ? a.publico : 'quentes',
+      mostrar_conversa: Boolean(a.mostrarConversa),
+      desde: typeof a.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.desde) ? a.desde : null,
+    }))
+  if (linhas.length === 0) return { error: 'Nenhum agente válido na seleção' }
+  const { error } = await admin.from('client_portal_agents').insert(linhas)
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return { error: AGENTE_MIGRATION_MSG }
+    return { error: error.message }
+  }
+  return { error: null }
+}
+
+/** Agentes IA do tenant — para o dono escolher quais entram no portal. */
+export async function listarAgentesDoTenant(): Promise<{ id: string; titulo: string }[] | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from('ai_agents')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .range(0, 199)
+    return (data ?? []).map(a => ({ id: String(a.id), titulo: String(a.name ?? 'Agente') }))
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/**
+ * O portal que contém este AGENTE (se houver) — o modal da página de agentes
+ * abre a partir daqui, do mesmo jeito que o do quiz abre por getPortalDoQuiz.
+ */
+export async function getPortalDoAgente(agentId: string): Promise<PortalInfo | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: dono } = await admin
+      .from('ai_agents').select('id').eq('id', agentId).eq('tenant_id', tenantId).maybeSingle()
+    if (!dono) return { error: 'Agente não encontrado ou sem permissão' }
+
+    const vazio: PortalInfo = {
+      ativo: false, portalId: null, token: null, nome: '', acessos: 0, ultimoAcesso: null,
+      quizzes: [], agentes: [], mostrarMetricas: true, mostrarFunil: false, permitirStatus: true,
+    }
+    const { data: vinculo, error } = await admin
+      .from('client_portal_agents')
+      .select('portal_id')
+      .eq('agent_id', agentId)
+      .eq('tenant_id', tenantId)
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return { error: AGENTE_MIGRATION_MSG }
+      return { error: error.message }
+    }
+    if (!vinculo) return vazio
+    return montarPortalInfo(admin, tenantId, String(vinculo.portal_id))
+  } catch (err) {
+    return { error: String(err) }
+  }
 }
 
 /** Quizzes do tenant — para o dono escolher quais entram no portal. */
@@ -566,6 +683,62 @@ export async function listarQuizzesDoTenant(): Promise<{ id: string; titulo: str
       .map(p => ({ id: String(p.id), titulo: String(p.title ?? 'Quiz') }))
   } catch (err) {
     return { error: String(err) }
+  }
+}
+
+
+/** Monta o PortalInfo completo (quizzes + agentes) a partir do id do portal. */
+async function montarPortalInfo(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  portalId: string,
+): Promise<PortalInfo> {
+  const vazio: PortalInfo = {
+    ativo: false, portalId: null, token: null, nome: '', acessos: 0, ultimoAcesso: null,
+    quizzes: [], agentes: [], mostrarMetricas: true, mostrarFunil: false, permitirStatus: true,
+  }
+  const { data: portal } = await admin
+    .from('client_portals')
+    .select('id, nome, token, enabled, access_count, last_access_at, mostrar_metricas, mostrar_funil, permitir_status')
+    .eq('id', portalId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (!portal) return vazio
+
+  const r1 = await admin
+    .from('client_portal_quizzes')
+    .select('page_id, publico, paginas, modo, desde, pages(title)')
+    .eq('portal_id', portal.id)
+  let quizzes = r1.data
+  if (r1.error) {
+    const r2 = await admin
+      .from('client_portal_quizzes')
+      .select('page_id, publico, pages(title)')
+      .eq('portal_id', portal.id)
+    quizzes = (r2.data ?? []).map(q => ({ ...q, paginas: [], modo: 'vendas', desde: null }))
+  }
+
+  return {
+    ativo: Boolean(portal.enabled),
+    portalId: String(portal.id),
+    token: portal.enabled ? String(portal.token) : null,
+    nome: String(portal.nome ?? ''),
+    acessos: Number(portal.access_count ?? 0),
+    ultimoAcesso: portal.last_access_at ?? null,
+    quizzes: (quizzes ?? []).map(q => ({
+      pageId: String(q.page_id),
+      titulo: String((q.pages as { title?: string } | null)?.title ?? 'Quiz'),
+      publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos',
+      paginas: Array.isArray((q as { paginas?: unknown }).paginas)
+        ? ((q as { paginas: unknown[] }).paginas).filter((x): x is string => typeof x === 'string')
+        : [],
+      modo: modoPortalValido((q as { modo?: unknown }).modo) ? (q as { modo: ModoPortal }).modo : 'vendas',
+      desde: typeof (q as { desde?: unknown }).desde === 'string' ? (q as { desde: string }).desde : null,
+    })),
+    agentes: await lerVinculosAgentes(admin, String(portal.id)),
+    mostrarMetricas: Boolean(portal.mostrar_metricas),
+    mostrarFunil: Boolean(portal.mostrar_funil),
+    permitirStatus: Boolean(portal.permitir_status),
   }
 }
 
@@ -588,56 +761,13 @@ export async function getPortalDoQuiz(quizId: string): Promise<PortalInfo | { er
     if (error) {
       return portalTabelaAusente(error) ? { error: PORTAL_MIGRATION_MSG } : { error: error.message }
     }
-
-    const vazio: PortalInfo = {
-      ativo: false, portalId: null, token: null, nome: '', acessos: 0, ultimoAcesso: null,
-      quizzes: [], mostrarMetricas: true, mostrarFunil: false, permitirStatus: true,
+    if (!vinculo) {
+      return {
+        ativo: false, portalId: null, token: null, nome: '', acessos: 0, ultimoAcesso: null,
+        quizzes: [], agentes: [], mostrarMetricas: true, mostrarFunil: false, permitirStatus: true,
+      }
     }
-    if (!vinculo) return vazio
-
-    const { data: portal } = await admin
-      .from('client_portals')
-      .select('id, nome, token, enabled, access_count, last_access_at, mostrar_metricas, mostrar_funil, permitir_status')
-      .eq('id', vinculo.portal_id)
-      .eq('tenant_id', tenantId)
-      .maybeSingle()
-    if (!portal) return vazio
-
-    // `paginas` pode não existir ainda (migration) — segunda tentativa sem ela.
-    const r1 = await admin
-      .from('client_portal_quizzes')
-      .select('page_id, publico, paginas, modo, desde, pages(title)')
-      .eq('portal_id', portal.id)
-    let quizzes = r1.data
-    if (r1.error) {
-      const r2 = await admin
-        .from('client_portal_quizzes')
-        .select('page_id, publico, pages(title)')
-        .eq('portal_id', portal.id)
-      quizzes = (r2.data ?? []).map(q => ({ ...q, paginas: [], modo: 'vendas', desde: null }))
-    }
-
-    return {
-      ativo: Boolean(portal.enabled),
-      portalId: String(portal.id),
-      token: portal.enabled ? String(portal.token) : null,
-      nome: String(portal.nome ?? ''),
-      acessos: Number(portal.access_count ?? 0),
-      ultimoAcesso: portal.last_access_at ?? null,
-      quizzes: (quizzes ?? []).map(q => ({
-        pageId: String(q.page_id),
-        titulo: String((q.pages as { title?: string } | null)?.title ?? 'Quiz'),
-        publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos',
-        paginas: Array.isArray((q as { paginas?: unknown }).paginas)
-          ? ((q as { paginas: unknown[] }).paginas).filter((x): x is string => typeof x === 'string')
-          : [],
-        modo: modoPortalValido((q as { modo?: unknown }).modo) ? (q as { modo: ModoPortal }).modo : 'vendas',
-        desde: typeof (q as { desde?: unknown }).desde === 'string' ? (q as { desde: string }).desde : null,
-      })),
-      mostrarMetricas: Boolean(portal.mostrar_metricas),
-      mostrarFunil: Boolean(portal.mostrar_funil),
-      permitirStatus: Boolean(portal.permitir_status),
-    }
+    return await montarPortalInfo(admin, tenantId, String(vinculo.portal_id))
   } catch (err) {
     return { error: String(err) }
   }
@@ -675,8 +805,13 @@ async function inserirVinculos(
 export interface AtivarPortalInput {
   nome: string
   senha: string
-  /** Quais quizzes entram, com o público e as páginas de resposta de cada um. */
-  quizzes: { pageId: string; publico: PublicoPortal; paginas?: string[]; modo?: ModoPortal; desde?: string | null }[]
+  /** Quais quizzes entram, com o público e as páginas de resposta de cada um.
+   *  AUSENTE (undefined) = não mexer nos vínculos de quiz existentes. */
+  quizzes?: { pageId: string; publico: PublicoPortal; paginas?: string[]; modo?: ModoPortal; desde?: string | null }[]
+  /** Quais agentes IA entram. AUSENTE = não mexer nos vínculos de agente —
+   *  é o que impede o modal do quiz de apagar os agentes do portal (e
+   *  vice-versa) ao salvar. */
+  agentes?: { agentId: string; publico?: string; mostrarConversa?: boolean; desde?: string | null }[]
   mostrarMetricas: boolean
   mostrarFunil: boolean
   permitirStatus: boolean
@@ -695,29 +830,36 @@ export async function ativarPortal(
     const tenantId = await getTenantId()
     const invalida = validarSenhaShare(entrada.senha)
     if (invalida) return { error: invalida }
-    if (!Array.isArray(entrada.quizzes) || entrada.quizzes.length === 0) {
-      return { error: 'Escolha ao menos um funil para o portal' }
+    const temQuiz = Array.isArray(entrada.quizzes) && entrada.quizzes.length > 0
+    const temAgente = Array.isArray(entrada.agentes) && entrada.agentes.length > 0
+    // Ao CRIAR, precisa entrar alguma coisa; ao renovar, listas ausentes
+    // significam "não mexa" — os vínculos existentes continuam.
+    if (!entrada.portalId && !temQuiz && !temAgente) {
+      return { error: 'Escolha ao menos um funil ou agente para o portal' }
     }
 
     const admin = createAdminClient()
 
     // Lista branca: só quizzes DESTE tenant entram — id de fora é descartado.
-    const { data: paginas } = await admin
-      .from('pages').select('id').eq('tenant_id', tenantId)
-      .in('id', entrada.quizzes.map(q => q.pageId).slice(0, 100))
-    const permitidos = new Set((paginas ?? []).map(p => String(p.id)))
-    const quizzes = entrada.quizzes
-      .filter(q => permitidos.has(q.pageId))
-      .map(q => ({
-        pageId: q.pageId,
-        publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos' as PublicoPortal,
-        paginas: Array.isArray(q.paginas)
-          ? q.paginas.filter((x): x is string => typeof x === 'string').slice(0, 50)
-          : [],
-        modo: modoPortalValido(q.modo) ? q.modo : 'vendas' as ModoPortal,
-        desde: typeof q.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.desde) ? q.desde : null,
-      }))
-    if (quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
+    let quizzes: { pageId: string; publico: PublicoPortal; paginas: string[]; modo: ModoPortal; desde: string | null }[] | null = null
+    if (entrada.quizzes !== undefined) {
+      const { data: paginas } = await admin
+        .from('pages').select('id').eq('tenant_id', tenantId)
+        .in('id', entrada.quizzes.map(q => q.pageId).slice(0, 100))
+      const permitidos = new Set((paginas ?? []).map(p => String(p.id)))
+      quizzes = entrada.quizzes
+        .filter(q => permitidos.has(q.pageId))
+        .map(q => ({
+          pageId: q.pageId,
+          publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos' as PublicoPortal,
+          paginas: Array.isArray(q.paginas)
+            ? q.paginas.filter((x): x is string => typeof x === 'string').slice(0, 50)
+            : [],
+          modo: modoPortalValido(q.modo) ? q.modo : 'vendas' as ModoPortal,
+          desde: typeof q.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.desde) ? q.desde : null,
+        }))
+      if (temQuiz && quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
+    }
 
     const token = gerarTokenShare()
     const linha = {
@@ -748,11 +890,21 @@ export async function ativarPortal(
       portalId = String(data.id)
     }
 
-    // Vínculos recriados do zero: o que saiu da seleção sai do portal.
-    await admin.from('client_portal_quizzes').delete().eq('portal_id', portalId).eq('tenant_id', tenantId)
-    const { error: erroVinculo } = await inserirVinculos(admin, tenantId, portalId!, quizzes)
-    if (erroVinculo) {
-      return { error: publicoNaoAceito(erroVinculo) ? PUBLICO_MIGRATION_MSG : erroVinculo.message }
+    // Vínculos recriados do zero — SÓ da lista que veio: quem salva pelos
+    // quizzes não mexe nos agentes, quem salva pelos agentes não mexe nos
+    // quizzes.
+    if (quizzes !== null) {
+      await admin.from('client_portal_quizzes').delete().eq('portal_id', portalId).eq('tenant_id', tenantId)
+      if (quizzes.length > 0) {
+        const { error: erroVinculo } = await inserirVinculos(admin, tenantId, portalId!, quizzes)
+        if (erroVinculo) {
+          return { error: publicoNaoAceito(erroVinculo) ? PUBLICO_MIGRATION_MSG : erroVinculo.message }
+        }
+      }
+    }
+    if (entrada.agentes !== undefined) {
+      const { error: erroAg } = await gravarVinculosAgentes(admin, tenantId, portalId!, entrada.agentes)
+      if (erroAg) return { error: erroAg }
     }
 
     return { token, portalId }
@@ -774,9 +926,6 @@ export async function atualizarPortalConfig(
 ): Promise<{ ok: true } | { error: string }> {
   try {
     const tenantId = await getTenantId()
-    if (!Array.isArray(entrada.quizzes) || entrada.quizzes.length === 0) {
-      return { error: 'Escolha ao menos um funil para o portal' }
-    }
     const admin = createAdminClient()
 
     const { data: portal } = await admin
@@ -784,22 +933,25 @@ export async function atualizarPortalConfig(
       .eq('id', entrada.portalId).eq('tenant_id', tenantId).maybeSingle()
     if (!portal) return { error: 'Portal não encontrado' }
 
-    const { data: paginas } = await admin
-      .from('pages').select('id').eq('tenant_id', tenantId)
-      .in('id', entrada.quizzes.map(q => q.pageId).slice(0, 100))
-    const permitidos = new Set((paginas ?? []).map(p => String(p.id)))
-    const quizzes = entrada.quizzes
-      .filter(q => permitidos.has(q.pageId))
-      .map(q => ({
-        pageId: q.pageId,
-        publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos' as PublicoPortal,
-        paginas: Array.isArray(q.paginas)
-          ? q.paginas.filter((x): x is string => typeof x === 'string').slice(0, 50)
-          : [],
-        modo: modoPortalValido(q.modo) ? q.modo : 'vendas' as ModoPortal,
-        desde: typeof q.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.desde) ? q.desde : null,
-      }))
-    if (quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
+    let quizzes: { pageId: string; publico: PublicoPortal; paginas: string[]; modo: ModoPortal; desde: string | null }[] | null = null
+    if (entrada.quizzes !== undefined) {
+      const { data: paginas } = await admin
+        .from('pages').select('id').eq('tenant_id', tenantId)
+        .in('id', entrada.quizzes.map(q => q.pageId).slice(0, 100))
+      const permitidos = new Set((paginas ?? []).map(p => String(p.id)))
+      quizzes = entrada.quizzes
+        .filter(q => permitidos.has(q.pageId))
+        .map(q => ({
+          pageId: q.pageId,
+          publico: publicoPortalValido(q.publico) ? q.publico : 'concluidos' as PublicoPortal,
+          paginas: Array.isArray(q.paginas)
+            ? q.paginas.filter((x): x is string => typeof x === 'string').slice(0, 50)
+            : [],
+          modo: modoPortalValido(q.modo) ? q.modo : 'vendas' as ModoPortal,
+          desde: typeof q.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.desde) ? q.desde : null,
+        }))
+      if (entrada.quizzes.length > 0 && quizzes.length === 0) return { error: 'Nenhum funil válido na seleção' }
+    }
 
     const { error } = await admin.from('client_portals').update({
       nome: entrada.nome.trim().slice(0, 80) || 'Cliente',
@@ -810,11 +962,19 @@ export async function atualizarPortalConfig(
     }).eq('id', entrada.portalId).eq('tenant_id', tenantId)
     if (error) return { error: error.message }
 
-    await admin.from('client_portal_quizzes').delete()
-      .eq('portal_id', entrada.portalId).eq('tenant_id', tenantId)
-    const { error: erroVinculo } = await inserirVinculos(admin, tenantId, entrada.portalId, quizzes)
-    if (erroVinculo) {
-      return { error: publicoNaoAceito(erroVinculo) ? PUBLICO_MIGRATION_MSG : erroVinculo.message }
+    if (quizzes !== null) {
+      await admin.from('client_portal_quizzes').delete()
+        .eq('portal_id', entrada.portalId).eq('tenant_id', tenantId)
+      if (quizzes.length > 0) {
+        const { error: erroVinculo } = await inserirVinculos(admin, tenantId, entrada.portalId, quizzes)
+        if (erroVinculo) {
+          return { error: publicoNaoAceito(erroVinculo) ? PUBLICO_MIGRATION_MSG : erroVinculo.message }
+        }
+      }
+    }
+    if (entrada.agentes !== undefined) {
+      const { error: erroAg } = await gravarVinculosAgentes(admin, tenantId, entrada.portalId, entrada.agentes)
+      if (erroAg) return { error: erroAg }
     }
     return { ok: true }
   } catch (err) {

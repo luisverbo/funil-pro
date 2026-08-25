@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useTransition } from 'react'
+import AgentPortalModal from '@/components/agents/agent-portal-modal'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Bot } from 'lucide-react'
@@ -47,6 +48,7 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
   const [editAgent, setEditAgent] = useState<Agent | null>(null)
   const [editDocs, setEditDocs] = useState<{ id: string; file_name: string; uploaded_at: string }[]>([])
   const [testAgentId, setTestAgentId] = useState<string | null>(null)
+  const [portalDe, setPortalDe] = useState<{ id: string; name: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -207,6 +209,7 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
                   <div className="grid grid-cols-2 gap-2 mt-auto">
                     <button onClick={() => openEdit(agent.id)} className="px-3 py-2 text-sm font-medium bg-gray-900 text-white rounded-xl hover:bg-gray-700 transition-colors">✏️ Editar</button>
                     <button onClick={() => setTestAgentId(agent.id)} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">💬 Testar</button>
+                    <button onClick={() => setPortalDe({ id: agent.id, name: agent.name })} title="Link + senha para o cliente receber os leads deste agente" className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">🔗 Portal</button>
                     <Link href={`/agents/${agent.id}/conversations`} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 text-center transition-colors">🗂 Conversas</Link>
                     <Link href={`/agents/${agent.id}/meetings`} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 text-center transition-colors">📅 Reuniões</Link>
                   </div>
@@ -381,6 +384,10 @@ export default function AgentsClient({ agents, funnels, instances, isScale }: Pr
             )}
           </div>
         </div>
+      )}
+
+      {portalDe && (
+        <AgentPortalModal agentId={portalDe.id} agentName={portalDe.name} onClose={() => setPortalDe(null)} />
       )}
 
       {testAgentId && (

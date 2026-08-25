@@ -55,6 +55,8 @@ export const ativarPortal = op('ativarPortal')
 export const atualizarPortalConfig = op('atualizarPortalConfig')
 export const desativarPortal = op('desativarPortal')
 export const listarQuizzesDoTenant = op('listarQuizzesDoTenant')
+export const getPortalDoAgente = op('getPortalDoAgente')
+export const listarAgentesDoTenant = op('listarAgentesDoTenant')
 
 // Investimento manual
 export const listarInvestimentos = op('listarInvestimentos')
