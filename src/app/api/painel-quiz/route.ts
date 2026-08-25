@@ -19,6 +19,7 @@ import {
   getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads,
   getExportStructure, exportLeadsTable, getLeadDetail,
   getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
+  getPortalDoAgente, listarAgentesDoTenant,
   listarInvestimentos, salvarInvestimento, excluirInvestimento, getCustosDoQuiz,
 } from '@/app/actions/quiz-leads'
 import { saveQuizV2, publishQuizV2 } from '@/app/actions/quiz-v2'
@@ -31,6 +32,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads,
   getExportStructure, exportLeadsTable, getLeadDetail,
   getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
+  getPortalDoAgente, listarAgentesDoTenant,
   listarInvestimentos, salvarInvestimento, excluirInvestimento, getCustosDoQuiz,
   saveQuizV2, publishQuizV2,
 }

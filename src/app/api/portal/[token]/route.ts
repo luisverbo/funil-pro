@@ -30,6 +30,7 @@ import {
 import {
   COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
 } from '@/lib/quiz/leads-core'
+import { conversasParaPortal, publicoAgenteValido, type PublicoAgente } from '@/lib/agents/portal-core'
 
 export const maxDuration = 60
 
@@ -43,6 +44,9 @@ interface Corpo {
   quizId?: string
   leadId?: string
   status?: string
+  /** 'agente' quando o funil ativo é um agente IA — muda a tabela de escrita. */
+  origem?: string
+  agenteId?: string
   memberId?: string | null
   /** Telefone digitado na entrada: identifica QUAL vendedor está entrando. */
   telefone?: string
@@ -184,6 +188,21 @@ export async function POST(
       ? (v as { desde: string }).desde : null,
   }))
 
+  // Os AGENTES do portal — mesma lista branca dos quizzes: o que está fora
+  // não existe para o cliente. Erro aqui = migration pendente → lista vazia
+  // (o portal segue funcionando só com os quizzes).
+  const ra = await admin
+    .from('client_portal_agents')
+    .select('agent_id, publico, mostrar_conversa, desde, ai_agents(name)')
+    .eq('portal_id', portalId)
+  const agentes = (ra.data ?? []).map(v => ({
+    id: String(v.agent_id),
+    titulo: String((v.ai_agents as { name?: string } | null)?.name ?? 'Agente'),
+    publico: (publicoAgenteValido(v.publico) ? v.publico : 'quentes') as PublicoAgente,
+    mostrarConversa: Boolean(v.mostrar_conversa),
+    desde: typeof v.desde === 'string' ? v.desde : null,
+  }))
+
   const acao = corpo.acao ?? 'abrir'
 
   const EQUIPE_MIGRATION = { error: 'Aplique a migration 20260828000000_portal_equipe.sql no Supabase para usar a equipe' }
@@ -212,6 +231,7 @@ export async function POST(
         mostrarMetricas: Boolean(portal.mostrar_metricas),
         mostrarFunil: Boolean(portal.mostrar_funil),
         quizzes: quizzes.map(q => ({ id: q.id, titulo: q.titulo })),
+        agentes: agentes.map(a => ({ id: a.id, titulo: a.titulo })),
       })
     }
 
@@ -322,6 +342,154 @@ export async function POST(
         investimentos: portal.mostrar_metricas ? investimentos : [],
         tabela: 'error' in tabelaFinal ? null : tabelaFinal,
       })
+    }
+
+    if (acao === 'agente') {
+      const ag = agentes.find(a => a.id === corpo.agenteId)
+      if (!ag) return NextResponse.json({ error: 'Agente não está neste portal' }, { status: 404 })
+
+      // Uma chamada devolve leads do público liberado + base de métricas +
+      // tabela de export + funil de conversão — tudo do MESMO recorte.
+      const montagem = await conversasParaPortal(admin, ag.id, tenantId, {
+        publico: ag.publico, desde: ag.desde, mostrarConversa: ag.mostrarConversa,
+      })
+
+      // Desfecho/responsável por conversa. Erro = migration pendente → vazio.
+      const { data: statusRows } = await admin
+        .from('portal_agent_status')
+        .select('conversation_id, status, assigned_member_id')
+        .eq('portal_id', portalId)
+        .range(0, 9_999)
+      const statusPorConversa: Record<string, string> = {}
+      const respAtual: Record<string, string> = {}
+      for (const r of statusRows ?? []) {
+        statusPorConversa[String(r.conversation_id)] = String(r.status)
+        if (r.assigned_member_id) respAtual[String(r.conversation_id)] = String(r.assigned_member_id)
+      }
+
+      // Rodízio automático — mesmo desenho do quiz, na tabela do agente.
+      if (Boolean((portal as { auto_distribuir?: boolean }).auto_distribuir) && membrosDoPortal.length > 0) {
+        const carga: Record<string, number> = {}
+        for (const mid of Object.values(respAtual)) carga[mid] = (carga[mid] ?? 0) + 1
+        const semDono = montagem.leads.filter(l => !respAtual[l.id]).map(l => l.id).slice(0, 200)
+        const novos = distribuirRodizio(semDono, membrosDoPortal.map(m => m.id), carga)
+        for (const n of novos) {
+          const { error } = await admin.from('portal_agent_status').upsert({
+            tenant_id: tenantId, portal_id: portalId, conversation_id: n.leadId,
+            assigned_member_id: n.memberId, updated_at: new Date().toISOString(),
+          }, { onConflict: 'portal_id,conversation_id' })
+          if (error) break                   // migration pendente: sem drama
+          respAtual[n.leadId] = n.memberId
+        }
+      }
+
+      const visiveis = montagem.leads
+        .map(l => ({
+          ...l,
+          statusCliente: statusPorConversa[l.id] ?? 'novo',
+          responsavelId: respAtual[l.id] ?? null,
+        }))
+        .filter(l => ehGestor || l.responsavelId === membroAtual!.id)
+
+      // Vendedor mede só a fila dele — mesma regra do quiz.
+      const baseMetricas = portal.mostrar_metricas
+        ? (ehGestor
+            ? montagem.base
+            : visiveis.map(l => ({ data: l.data, concluiu: l.concluiu, temContato: Boolean(l.email || l.telefone) })))
+        : []
+
+      // Tabela recortada para o vendedor (ids/linhas em posição casada).
+      const idsVisiveis = new Set(visiveis.map(l => l.id))
+      const indices = montagem.tabela.ids.map((id, i) => ({ id, i })).filter(x => idsVisiveis.has(x.id))
+      const tabela = {
+        ...montagem.tabela,
+        ids: indices.map(x => x.id),
+        linhas: indices.map(x => montagem.tabela.linhas[x.i] ?? []),
+      }
+
+      return comSessao({
+        quiz: { id: ag.id, titulo: ag.titulo, publico: ag.publico, modo: 'vendas', tipo: 'agente' },
+        leads: visiveis,
+        etapas: etapasDoPortal('vendas', (portal as { etapas?: unknown }).etapas),
+        membros: membrosDoPortal,
+        msgWhatsapp: String((portal as { msg_whatsapp?: string | null }).msg_whatsapp ?? ''),
+        autoDistribuir: Boolean((portal as { auto_distribuir?: boolean }).auto_distribuir),
+        metricas: portal.mostrar_metricas ? {
+          total: montagem.base.length,
+          completed: montagem.base.filter(b => b.concluiu).length,
+          inProgress: 0,
+          completionRate: montagem.base.length > 0
+            ? Math.round((montagem.base.filter(b => b.concluiu).length / montagem.base.length) * 100) : 0,
+          hoje: 0, ultimos7d: 0,
+          comContato: montagem.base.filter(b => b.temContato).length,
+          funil: portal.mostrar_funil ? montagem.funil : [],
+        } : null,
+        baseMetricas,
+        investimentos: [],
+        tabela,
+      })
+    }
+
+    // ── Desfecho/responsável de CONVERSA do agente ──────────────────────────
+    if ((acao === 'status' || acao === 'atribuir') && corpo.origem === 'agente') {
+      if (acao === 'status' && !portal.permitir_status) {
+        return NextResponse.json({ error: 'A marcação de status está desativada neste portal' }, { status: 403 })
+      }
+      if (acao === 'status' && !statusPortalValido(corpo.status)) {
+        return NextResponse.json({ error: 'Status inválido' }, { status: 400 })
+      }
+      if (acao === 'atribuir' && !ehGestor) {
+        return NextResponse.json({ error: 'Apenas o gestor pode atribuir' }, { status: 403 })
+      }
+      const conversaId = typeof corpo.leadId === 'string' ? corpo.leadId : ''
+
+      // A conversa precisa pertencer a um agente DO portal — e ao público
+      // liberado (fora do público é invisível também para escrita).
+      const { data: conv } = await admin
+        .from('agent_conversations')
+        .select('id, agent_id')
+        .eq('id', conversaId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      const ag = conv ? agentes.find(a => a.id === String(conv.agent_id)) : null
+      if (!conv || !ag) {
+        return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
+      }
+      if (ag.publico !== 'todos') {
+        const m2 = await conversasParaPortal(admin, ag.id, tenantId, {
+          publico: ag.publico, desde: ag.desde, mostrarConversa: false,
+        })
+        if (!m2.leads.some(l => l.id === conversaId)) {
+          return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
+        }
+      }
+
+      // Vendedor marca só o que é dele; gestor atribui só vendedor existente.
+      if (acao === 'status' && !ehGestor) {
+        const { data: dono } = await admin
+          .from('portal_agent_status')
+          .select('assigned_member_id')
+          .eq('portal_id', portalId).eq('conversation_id', conversaId).maybeSingle()
+        if (String(dono?.assigned_member_id ?? '') !== membroAtual!.id) {
+          return NextResponse.json({ error: 'Lead não encontrado neste portal' }, { status: 404 })
+        }
+      }
+      const memberId = corpo.memberId ? String(corpo.memberId) : null
+      if (acao === 'atribuir' && memberId && !membrosDoPortal.some(m => m.id === memberId)) {
+        return NextResponse.json({ error: 'Vendedor não encontrado' }, { status: 404 })
+      }
+
+      const { error } = await admin.from('portal_agent_status').upsert({
+        tenant_id: tenantId, portal_id: portalId, conversation_id: conversaId,
+        ...(acao === 'status' ? { status: corpo.status } : { assigned_member_id: memberId }),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'portal_id,conversation_id' })
+      if (error) {
+        return NextResponse.json({
+          error: 'Aplique a migration 20260902000000_portal_agentes.sql no Supabase para marcar leads do agente',
+        }, { status: 400 })
+      }
+      return comSessao({ ok: true })
     }
 
     if (acao === 'status') {
