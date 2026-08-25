@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { statusDoGate, type StatusGate } from './gate'
 import { sendTextMessage } from '@/lib/evolution'
 import { isSchedulingEnabled, getAvailableSlots, bookMeeting, googleCalendarLink, slotLabel, type SchedulingConfig, type Slot } from '@/lib/agents/scheduling'
 
@@ -42,6 +43,8 @@ export interface AgentChatResult {
   action: { type: string; data: Record<string, unknown> }
   conversationId: string
   choices?: string[]   // opções de resposta rápida (botões no chat web)
+  /** Situação no gate de qualificação — libera (ou não) o pedido de contato. */
+  gateStatus?: StatusGate
 }
 
 function objectiveInstructions(agent: AgentRow): string {
@@ -830,13 +833,19 @@ Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manh�
     ? (action.data.choices as unknown[]).filter((c): c is string => typeof c === 'string' && c.trim().length > 0).slice(0, 6)
     : []
 
-  // Trava determinística: se o lead JÁ respondeu uma das faixas do gate, os botões
-  // de faixa nunca reaparecem (o modelo às vezes re-emitia as opções)
-  if (choices.length > 0 && schedCfg?.gate?.enabled) {
-    const gateLabels = new Set((schedCfg.gate.options ?? []).map(o => o.label.trim().toLowerCase()).filter(Boolean))
-    const leadAnswered = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
-      .some(t => gateLabels.has(t.trim().toLowerCase()))
-    if (leadAnswered) choices = choices.filter(c => !gateLabels.has(c.trim().toLowerCase()))
+  // Situação do lead no gate, lida do que ele JÁ disse — determinística, não
+  // depende de o modelo lembrar de avisar. É ela que libera o pedido de
+  // contato lá na tela (e que impede os botões de faixa de reaparecerem).
+  const falasDoLead = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
+  const gateStatus = statusDoGate(
+    schedCfg?.gate?.options,
+    falasDoLead,
+    Boolean(schedCfg?.gate?.enabled),
+  )
+
+  if (choices.length > 0 && gateStatus !== 'sem_gate' && gateStatus !== 'nao_respondido') {
+    const gateLabels = new Set((schedCfg?.gate?.options ?? []).map(o => o.label.trim().toLowerCase()).filter(Boolean))
+    choices = choices.filter(c => !gateLabels.has(c.trim().toLowerCase()))
   }
   if (choices.length > 0 && isWhatsapp && parts.length > 0) {
     parts[parts.length - 1] += '\n\n' + choices.map((c, i) => `${i + 1}) ${c}`).join('\n')
@@ -884,5 +893,9 @@ Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manh�
     await resumeFunnel(leadId, agentId, action.type, admin).catch(err => console.error(`[chat] resumeFunnel falhou: ${String(err)}`))
   }
 
-  return { reply, parts, action, conversationId: conversationId ?? '', choices: choices.length > 0 ? choices : undefined }
+  return {
+    reply, parts, action, conversationId: conversationId ?? '',
+    choices: choices.length > 0 ? choices : undefined,
+    gateStatus,
+  }
 }
