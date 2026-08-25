@@ -64,3 +64,29 @@ export function nomeNoTranscript(mensagens: { role: string; content: string }[])
   // currentMessage vazio: o transcript inteiro já vem em historyPairs
   return extractContact(falas, mensagens, '', null).name
 }
+
+// O que o agente JÁ sabe do lead (formulário da landing, conversa anterior).
+// Sem isso no prompt ele pedia e-mail e WhatsApp de novo na hora de agendar —
+// com o dado já salvo no cadastro. Pedir o que a pessoa já deu queima a venda.
+export function contatoJaConhecido(lead: { name?: string | null; email?: string | null; phone?: string | null }): {
+  jaSabemos: string[]
+  faltaContato: string[]
+  aviso: string
+} {
+  const nome = lead.name?.trim() || null
+  const email = lead.email?.trim() || null
+  const fone = lead.phone?.trim() || null
+  const jaSabemos = [
+    nome ? `nome: ${nome}` : null,
+    email ? `e-mail: ${email}` : null,
+    fone ? `WhatsApp: ${fone}` : null,
+  ].filter((x): x is string => x !== null)
+  const faltaContato = [
+    nome ? null : 'nome',
+    email ? null : 'e-mail',
+    fone ? null : 'WhatsApp',
+  ].filter((x): x is string => x !== null)
+  const aviso = jaSabemos.length === 0 ? '' :
+    `\nDados que o lead JÁ te deu (estão no cadastro dele) — ${jaSabemos.join(', ')}. NUNCA peça de novo um dado desta lista: pedir o que a pessoa já informou passa desatenção e é o jeito mais rápido de perder a venda. Se precisar confirmar, confirme mostrando o valor ("confirmo o convite no ${email ?? 'seu e-mail'}?"), nunca perguntando do zero.`
+  return { jaSabemos, faltaContato, aviso }
+}

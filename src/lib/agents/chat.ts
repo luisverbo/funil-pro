@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { statusDoGate, type StatusGate } from './gate'
-import { extractContact } from './contato'
+import { extractContact, contatoJaConhecido } from './contato'
 import { sendTextMessage } from '@/lib/evolution'
 import { isSchedulingEnabled, getAvailableSlots, bookMeeting, googleCalendarLink, slotLabel, type SchedulingConfig, type Slot } from '@/lib/agents/scheduling'
 
@@ -436,10 +436,15 @@ export async function processAgentMessage(
   // Contexto do lead: nome e dados conhecidos deixam a conversa pessoal.
   // Roda DEPOIS de adotar o lead da conversa (chat web só manda conversationId).
   let leadName: string | null = null
+  let leadEmail: string | null = null
+  let leadPhone: string | null = null
   if (leadId) {
-    const { data: leadRow } = await admin.from('leads').select('name').eq('id', leadId).single()
+    const { data: leadRow } = await admin.from('leads').select('name, email, phone').eq('id', leadId).single()
     leadName = leadRow?.name?.trim() || null
+    leadEmail = leadRow?.email?.trim() || null
+    leadPhone = leadRow?.phone?.trim() || null
   }
+  const { jaSabemos, faltaContato, aviso: contatoConhecido } = contatoJaConhecido({ name: leadName, email: leadEmail, phone: leadPhone })
 
   // Conversa já ENCERRADA (lead dispensado, transferido ou abandonado): não reengaja.
   // Sem isso, o lead que continua digitando fazia o agente responder pra sempre.
@@ -565,6 +570,8 @@ ${pageLine}
 Agora no Brasil: ${nowBR.label} (use para cumprimentar certo — bom dia/boa tarde/boa noite — e nunca cumprimente errado).
 ${leadName ? `O lead se chama ${leadName}. Use o primeiro nome dele de vez em quando (a cada 3-4 mensagens, não em todas — repetir nome toda hora soa vendedor falso).` : `Você ainda NÃO sabe o nome do lead. LOGO no começo, antes de entrar nas perguntas do roteiro, pergunte o nome dele de um jeito leve ("antes de mais nada, como é seu nome?" / "com quem eu falo?") e use o nome no resto da conversa. Perguntar o nome primeiro é justamente o que faz parecer um atendente de verdade, não um robô.`}
 
+${contatoConhecido}
+
 Tom de voz: ${a.tone_of_voice ?? 'amigável e consultivo'}
 
 ${docs.length > 0 ? `Documentos de referência:\n${docs.map(d => d.extracted_text).join('\n\n')}` : ''}
@@ -594,7 +601,7 @@ Como agendar bem:
 - Ofereça no MÁXIMO 2-3 opções por vez (de dias/períodos diferentes quando possível) — lista longa paralisa o lead.
 - Ao oferecer horários, emita-os TAMBÉM como botões: |||ACTION:{"action":"continue","data":{"choices":["segunda 14:00","terça 09:00"]}}||| (labels curtos; quando o lead clicar/escolher, você mapeia de volta pro iso EXATO da lista).
 - Pergunte primeiro se ele prefere manhã ou tarde / início ou fim de semana, se a lista permitir filtrar.
-- ANTES de confirmar, você PRECISA ter três dados do lead: NOME, E-MAIL e WHATSAPP (com DDD). Você já deve saber o nome; peça o e-mail e o WhatsApp de forma natural ("pra eu te enviar o convite e o lembrete, me passa seu melhor e-mail e o WhatsApp com DDD?"). NÃO confirme o horário sem ter os três — sem isso não dá pra te lembrar da reunião.
+- ANTES de confirmar, você PRECISA ter três dados do lead: NOME, E-MAIL e WHATSAPP (com DDD). ${jaSabemos.length > 0 ? `Destes, você JÁ tem ${jaSabemos.join(', ')} — NÃO peça esses de novo, use o que está no cadastro. ` : ''}Peça de forma natural APENAS o que estiver faltando${faltaContato.length > 0 ? ` (falta: ${faltaContato.join(' e ')})` : ' — não falta nada, pode agendar direto'}. NÃO confirme o horário sem ter os três.
 - Só depois de ter horário escolhido + nome + e-mail + whatsapp, marque a action "schedule" com o iso EXATO da lista e os dados de contato:
 |||ACTION:{"action":"schedule","data":{"datetime":"<iso EXATO da lista>","topic":"<assunto em 3-5 palavras>","name":"<nome>","email":"<email>","phone":"<whatsapp com DDD>"}}|||
 - A confirmação oficial (com link da reunião e da agenda) é enviada automaticamente pelo sistema depois da sua mensagem — não invente link.
@@ -723,8 +730,8 @@ Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manh�
     const leadTexts = [...cappedHistory.filter(h => h.role === 'lead').map(h => h.content), message]
     const ex = extractContact(leadTexts, cappedHistory, message, typeof action.data.name === 'string' ? action.data.name : null)
     const cName = (typeof action.data.name === 'string' ? action.data.name.trim() : '') || ex.name || leadName || null
-    const cEmail = (typeof action.data.email === 'string' ? action.data.email.trim() : '') || ex.email || null
-    const cPhone = (typeof action.data.phone === 'string' ? action.data.phone.replace(/[^\d+]/g, '') : '') || ex.phone || null
+    const cEmail = (typeof action.data.email === 'string' ? action.data.email.trim() : '') || ex.email || leadEmail || null
+    const cPhone = (typeof action.data.phone === 'string' ? action.data.phone.replace(/[^\d+]/g, '') : '') || ex.phone || leadPhone || null
 
     // Cria/atualiza o lead com o contato coletado (resolve o "Anônimo" no painel e
     // dá telefone/e-mail pro lembrete). No canal web o lead costuma ser anônimo.
