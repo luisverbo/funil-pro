@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { statusDoGate, type StatusGate } from './gate'
 import { extractContact, contatoJaConhecido } from './contato'
+import { conversaAssumidaPeloDono } from './comando'
 import { sendTextMessage } from '@/lib/evolution'
 import { isSchedulingEnabled, getAvailableSlots, bookMeeting, googleCalendarLink, slotLabel, type SchedulingConfig, type Slot } from '@/lib/agents/scheduling'
 
@@ -401,26 +402,33 @@ export async function processAgentMessage(
   let messageCount = 0
   let history: { role: string; content: string }[] = []
   let convStatus: string | null = null
+  let convOutcome: string | null = null
 
   if (!conversationId && leadId) {
     const { data: existing } = await admin
       .from('agent_conversations')
-      .select('id, message_count')
+      .select('id, message_count, status, outcome_summary')
       .eq('agent_id', agentId)
       .eq('lead_id', leadId)
-      .eq('status', 'active')
+      // A conversa ASSUMIDA pelo dono (comando /) também precisa ser achada:
+      // buscando só 'active', o motor criava uma conversa NOVA para o mesmo
+      // lead e voltava a responder por cima do dono.
+      .in('status', ['active', 'handed_to_human'])
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    if (existing) conversationId = existing.id
+    if (existing && (existing.status === 'active' || conversaAssumidaPeloDono(existing.outcome_summary))) {
+      conversationId = existing.id
+    }
   }
 
   if (conversationId) {
     const { data: conv } = await admin
-      .from('agent_conversations').select('id, message_count, status, lead_id').eq('id', conversationId).single()
+      .from('agent_conversations').select('id, message_count, status, lead_id, outcome_summary').eq('id', conversationId).single()
     if (conv) {
       messageCount = conv.message_count ?? 0
       convStatus = conv.status ?? null
+      convOutcome = (conv as { outcome_summary?: string | null }).outcome_summary ?? null
       // Adota o lead já ligado à conversa (o chat web só manda conversationId,
       // não leadId — sem isso cada mensagem tratava o lead como desconhecido
       // e criava leads duplicados/órfãos)
@@ -450,6 +458,12 @@ export async function processAgentMessage(
   // Sem isso, o lead que continua digitando fazia o agente responder pra sempre.
   const TERMINAL_STOP = ['disqualified', 'handed_to_human', 'abandoned']
   if (!testMode && convStatus && TERMINAL_STOP.includes(convStatus)) {
+    // VOCÊ assumiu esta conversa (comando /): silêncio absoluto — nem
+    // despedida. O dono está falando; o agente só registra o histórico.
+    if (conversaAssumidaPeloDono(convOutcome)) {
+      await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'lead', content: message })
+      return { reply: '', parts: [], action: { type: 'continue', data: {} }, conversationId: conversationId ?? '' }
+    }
     // Registra a fala do lead (histórico), mas responde só uma vez de forma seca —
     // o objetivo é encerrar, não puxar conversa. Não chama a IA (economia + para o loop).
     await admin.from('agent_messages').insert({ conversation_id: conversationId, tenant_id: a.tenant_id, role: 'lead', content: message })
