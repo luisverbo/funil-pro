@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { statusDoGate, type StatusGate } from './gate'
+import { extractContact } from './contato'
 import { sendTextMessage } from '@/lib/evolution'
 import { isSchedulingEnabled, getAvailableSlots, bookMeeting, googleCalendarLink, slotLabel, type SchedulingConfig, type Slot } from '@/lib/agents/scheduling'
 
@@ -121,62 +122,6 @@ function brazilNow(): { hours: number; minutes: number; label: string } {
   return { hours, minutes, label: `${get('weekday')}, ${get('day')} de ${get('month')}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}` }
 }
 
-// Extrai contato do que o LEAD digitou, sem depender de o modelo devolver certinho.
-// email/telefone por regex (confiável); nome por heurística: resposta curta logo
-// após a Ana perguntar o nome. actionName (se o modelo mandou) tem prioridade no nome.
-function extractContact(
-  leadTexts: string[],
-  historyPairs: { role: string; content: string }[],
-  currentMessage: string,
-  actionName?: string | null
-): { name: string | null; email: string | null; phone: string | null } {
-  const all = leadTexts.join('\n')
-  const email = all.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0]?.toLowerCase() ?? null
-
-  let phone: string | null = null
-  for (const t of leadTexts) {
-    const digits = t.replace(/\D/g, '')
-    if (digits.length >= 10 && digits.length <= 13) { phone = digits; break }
-  }
-
-  const STOPWORDS = /\b(sim|nao|não|ok|okay|oi|ola|olá|blz|beleza|quero|pode|podemos|isso|claro|bom|boa|dia|tarde|noite|obrigado|obrigada|valeu|legal|show|top|mil|reais|menos|mais|ainda|invisto|whatsapp|email|gmail|hotmail|manha|manhã|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b/i
-  const cleanCandidate = (raw: string): string | null => {
-    let cand = raw.trim()
-    // limpa prefixos: "meu nome é / me chamo / sou o(a) / aqui é / é / pode me chamar de"
-    cand = cand.replace(/^(meu nome (é|e)\s+|me chamo\s+|pode me chamar de\s+|sou (o |a )?|aqui (é|e)( o| a)?\s+|(é|e)\s+(o |a )?)/i, '').trim()
-    // corta o que vem depois de vírgula/pontuação ("Lucas, tudo bem?")
-    cand = cand.split(/[,!?\n]/)[0].replace(/[.;]+$/, '').trim()
-    const words = cand.split(/\s+/)
-    const looksName = cand.length >= 2 && cand.length <= 40 && words.length <= 4
-      && /^[\p{L}][\p{L}'\- ]*$/u.test(cand) && !STOPWORDS.test(cand) && !/\d/.test(cand)
-    if (!looksName) return null
-    return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
-  }
-
-  let name: string | null = actionName?.trim() || null
-  const seq = [...historyPairs, { role: 'lead', content: currentMessage }]
-  if (!name) {
-    // 1) auto-apresentação em qualquer mensagem do lead ("meu nome é X", "me chamo X", "aqui é X")
-    for (const m of seq) {
-      if (m.role !== 'lead') continue
-      const intro = m.content.match(/(?:meu nome (?:é|e)|me chamo|pode me chamar de|aqui (?:é|e)(?: o| a)?|sou (?:o|a))\s+([\p{L}][\p{L}'\- ]{1,40})/iu)
-      if (intro?.[1]) { const n = cleanCandidate(intro[1]); if (n) { name = n; break } }
-    }
-  }
-  if (!name) {
-    // 2) resposta curta do lead logo após a Ana pedir o nome (regex ampla: nome/chamar/com quem falo)
-    for (let i = 0; i < seq.length - 1; i++) {
-      const a = seq[i]
-      if (a.role !== 'agent') continue
-      if (!/nome|cham(o|ar|a)|com quem\s+(eu\s+)?fal|quem fala|com quem tenho/i.test(a.content)) continue
-      const reply = seq[i + 1]
-      if (reply.role !== 'lead') continue
-      const n = cleanCandidate(reply.content)
-      if (n) { name = n; break }
-    }
-  }
-  return { name, email, phone }
-}
 
 function withinBusinessHours(agent: AgentRow): boolean {
   if (!agent.business_hours_only) return true
@@ -743,9 +688,12 @@ Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manh�
           phone: c.phone ?? undefined,
         }).eq('id', resolvedLeadId)
       } else {
-        const { data: newLead } = await admin.from('leads').insert({
+        // Erro aqui NÃO pode ser engolido: era o que deixava a conversa sem
+        // lead ligado (painel mostrando "Anônimo" mesmo com o nome digitado)
+        const { data: newLead, error: erroLead } = await admin.from('leads').insert({
           tenant_id: a.tenant_id, funnel_id: null, name: c.name, email: c.email, phone: c.phone, status: 'active',
         }).select('id').single()
+        if (erroLead) console.error('[agente] falha ao criar lead do contato capturado:', erroLead.message)
         resolvedLeadId = newLead?.id
         if (resolvedLeadId && conversationId) {
           await admin.from('agent_conversations').update({ lead_id: resolvedLeadId }).eq('id', conversationId).is('lead_id', null)
@@ -787,9 +735,10 @@ Sempre que a SUA pergunta tiver 2-4 respostas naturais e curtas (sim/não, manh�
           name: cName ?? undefined, email: cEmail ?? undefined, phone: cPhone ?? undefined,
         }).eq('id', bookLeadId)
       } else {
-        const { data: newLead } = await admin.from('leads').insert({
+        const { data: newLead, error: erroLead } = await admin.from('leads').insert({
           tenant_id: a.tenant_id, funnel_id: null, name: cName, email: cEmail, phone: cPhone, status: 'active',
         }).select('id').single()
+        if (erroLead) console.error('[agente] falha ao criar lead do agendamento:', erroLead.message)
         bookLeadId = newLead?.id
       }
       // Garante o vínculo conversa→lead (se ainda não houver) — é o que faz o
