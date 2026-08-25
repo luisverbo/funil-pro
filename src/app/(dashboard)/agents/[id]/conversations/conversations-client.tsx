@@ -5,9 +5,17 @@ import Link from 'next/link'
 import { listConversations, getConversation, setMessageFeedback, addCorrection, deleteConversations } from '@/app/actions/ai-agents'
 
 type Conversation = {
-  id: string; status: string; qualification_score: number | null
+  id: string; status: string; channel: string | null; qualification_score: number | null
   message_count: number; started_at: string; ended_at: string | null; lead_name: string | null
 }
+
+/** Origem da conversa — de onde o lead veio. */
+const CANAIS: Record<string, { rotulo: string; emoji: string }> = {
+  whatsapp: { rotulo: 'WhatsApp', emoji: '📱' },
+  web: { rotulo: 'Site', emoji: '💬' },
+  instagram: { rotulo: 'Instagram', emoji: '📸' },
+}
+const canalDe = (c: string | null) => CANAIS[c ?? 'web'] ?? { rotulo: c ?? '—', emoji: '❓' }
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Ativa', qualified: 'Qualificado', disqualified: 'Desqualificado',
@@ -31,12 +39,13 @@ function fmtDuration(start: string, end: string | null): string {
 interface Props {
   agentId: string; agentName: string
   initialConversations: Conversation[]; total: number
-  funnel?: { total: number; withContact: number; qualified: number; scheduled: number; sold: number }
+  funnel?: { total: number; withContact: number; qualified: number; scheduled: number; sold: number; porCanal?: { canal: string; total: number; quentes: number; taxa: number }[] }
 }
 
 export default function ConversationsClient({ agentId, agentName, initialConversations, total, funnel }: Props) {
   const [conversations, setConversations] = useState(initialConversations)
   const [filter, setFilter] = useState('')
+  const [canalFiltro, setCanalFiltro] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [drawer, setDrawer] = useState<{ id: string; status: string; lead_name: string | null; score: number | null; summary: string | null } | null>(null)
@@ -62,11 +71,19 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
     setCorrecting(null)
   }
 
-  async function applyFilter(f: string) {
+  async function applyFilter(f: string, canal?: string) {
+    const ch = canal ?? canalFiltro
     setFilter(f)
     setSelected(new Set())
-    const { conversations: c } = await listConversations(agentId, { status: f || undefined, page: 0, pageSize: 50 })
+    const { conversations: c } = await listConversations(agentId, {
+      status: f || undefined, channel: ch || undefined, page: 0, pageSize: 50,
+    })
     setConversations(c)
+  }
+
+  function applyCanal(ch: string) {
+    setCanalFiltro(ch)
+    void applyFilter(filter, ch)
   }
 
   async function openConversation(id: string) {
@@ -137,7 +154,51 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
         </div>
       )}
 
+      {/* Origem: qual canal traz mais conversa e qual converte mais — a conta
+          que decide onde investir. Só aparece com 2+ canais em uso. */}
+      {funnel && (funnel.porCanal ?? []).length > 1 && (
+        <div className="rounded-xl bg-white border border-gray-100 shadow-sm px-4 py-3 mb-5">
+          <p className="text-xs font-semibold text-gray-700 mb-2">📊 Origem das conversas · qual canal converte mais</p>
+          <div className="space-y-1.5">
+            {(funnel.porCanal ?? []).map(c => {
+              const info = canalDe(c.canal)
+              const max = Math.max(...(funnel.porCanal ?? []).map(x => x.total), 1)
+              return (
+                <div key={c.canal} className="flex items-center gap-2">
+                  <span className="w-28 shrink-0 text-xs text-gray-600">{info.emoji} {info.rotulo}</span>
+                  <div className="h-4 flex-1 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
+                      style={{ width: `${Math.round((c.total / max) * 100)}%` }} />
+                  </div>
+                  <span className="w-40 shrink-0 text-right text-xs tabular-nums text-gray-600">
+                    {c.total} conversa(s) · <span className="font-semibold text-orange-600">🔥 {c.quentes}</span> · {c.taxa}%
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 mb-4">
+        {(funnel?.porCanal ?? []).length > 1 && (
+          <>
+            <button onClick={() => applyCanal('')}
+              className={`text-xs px-3 py-1.5 rounded-full ${canalFiltro === '' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              Todos os canais
+            </button>
+            {(funnel?.porCanal ?? []).map(c => {
+              const info = canalDe(c.canal)
+              return (
+                <button key={c.canal} onClick={() => applyCanal(c.canal)}
+                  className={`text-xs px-3 py-1.5 rounded-full ${canalFiltro === c.canal ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {info.emoji} {info.rotulo}
+                </button>
+              )
+            })}
+            <span className="w-px self-stretch bg-gray-200" />
+          </>
+        )}
         {FILTERS.map(f => (
           <button key={f || 'all'} onClick={() => applyFilter(f)}
             className={`text-xs px-3 py-1.5 rounded-full ${filter === f ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -165,6 +226,7 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
                   onChange={toggleAll} className="w-4 h-4 accent-indigo-600" />
               </th>
               <th className="px-4 py-2 font-medium">Lead</th>
+              <th className="px-4 py-2 font-medium">Origem</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2 font-medium">Score</th>
               <th className="px-4 py-2 font-medium">Mensagens</th>
@@ -174,13 +236,14 @@ export default function ConversationsClient({ agentId, agentName, initialConvers
           </thead>
           <tbody>
             {conversations.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Nenhuma conversa</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Nenhuma conversa</td></tr>
             ) : conversations.map(c => (
               <tr key={c.id} onClick={() => openConversation(c.id)} className="border-t hover:bg-gray-50 cursor-pointer">
                 <td className="px-3 py-2.5" onClick={e => toggleSelect(c.id, e)}>
                   <input type="checkbox" checked={selected.has(c.id)} onChange={() => {}} className="w-4 h-4 accent-indigo-600" />
                 </td>
                 <td className="px-4 py-2.5">{c.lead_name ?? 'Anônimo'}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap text-gray-600">{canalDe(c.channel).emoji} {canalDe(c.channel).rotulo}</td>
                 <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CLS[c.status] ?? 'bg-gray-100'}`}>{STATUS_LABELS[c.status] ?? c.status}</span></td>
                 <td className="px-4 py-2.5">{c.qualification_score ?? '—'}</td>
                 <td className="px-4 py-2.5">{c.message_count}</td>

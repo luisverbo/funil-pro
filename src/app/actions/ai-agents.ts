@@ -404,38 +404,69 @@ export async function getAgentStats(id: string): Promise<{
 
 // Funil do agente: visão rápida de conversão em cada etapa
 export interface AgentFunnel {
+  /** Origem das conversas: quantas por canal e quantas viraram lead quente. */
+  porCanal: { canal: string; total: number; quentes: number; taxa: number }[]
   total: number; withContact: number; qualified: number; scheduled: number; sold: number
 }
 export async function getAgentFunnel(agentId: string): Promise<AgentFunnel> {
   try {
     const tenantId = await getTenantId()
     const supabase = await getSupabase()
-    const { data: convs } = await supabase
+    const r1 = await supabase
       .from('agent_conversations')
-      .select('status, lead_id')
+      .select('status, lead_id, channel')
       .eq('agent_id', agentId).eq('tenant_id', tenantId)
-    const list = convs ?? []
+    // `channel` pode não existir em banco antigo — segunda tentativa sem ela.
+    const convs = r1.error
+      ? ((await supabase
+          .from('agent_conversations')
+          .select('status, lead_id')
+          .eq('agent_id', agentId).eq('tenant_id', tenantId)).data ?? [])
+          .map(c => ({ ...c, channel: null as string | null }))
+      : (r1.data ?? [])
+    // Test drive fora das contagens: conversa simulada não é lead.
+    const list = convs.filter(c => (c as { channel?: string | null }).channel !== 'test')
     const { count: meetings } = await supabase
       .from('agent_meetings')
       .select('id', { count: 'exact', head: true })
       .eq('agent_id', agentId).eq('tenant_id', tenantId).eq('status', 'confirmed')
+    const QUENTES = ['qualified', 'scheduled', 'sold', 'routed_to_funnel']
+    // Origem: qual canal traz mais conversa e qual converte mais — é a conta
+    // que decide onde investir. Ordenado por volume.
+    const porCanalMapa = new Map<string, { total: number; quentes: number }>()
+    for (const c of list) {
+      const canal = (c as { channel?: string | null }).channel ?? 'web'
+      const atual = porCanalMapa.get(canal) ?? { total: 0, quentes: 0 }
+      atual.total++
+      if (QUENTES.includes(c.status)) atual.quentes++
+      porCanalMapa.set(canal, atual)
+    }
+    const porCanal = [...porCanalMapa.entries()]
+      .map(([canal, v]) => ({
+        canal,
+        total: v.total,
+        quentes: v.quentes,
+        taxa: v.total > 0 ? Math.round((v.quentes / v.total) * 100) : 0,
+      }))
+      .sort((a, b) => b.total - a.total)
     return {
       total: list.length,
       withContact: list.filter(c => c.lead_id).length,
-      qualified: list.filter(c => ['qualified', 'scheduled', 'sold', 'routed_to_funnel'].includes(c.status)).length,
+      qualified: list.filter(c => QUENTES.includes(c.status)).length,
       scheduled: meetings ?? list.filter(c => c.status === 'scheduled').length,
       sold: list.filter(c => c.status === 'sold').length,
+      porCanal,
     }
   } catch {
-    return { total: 0, withContact: 0, qualified: 0, scheduled: 0, sold: 0 }
+    return { total: 0, withContact: 0, qualified: 0, scheduled: 0, sold: 0, porCanal: [] }
   }
 }
 
 export async function listConversations(
   agentId: string,
-  opts: { status?: string; page?: number; pageSize?: number } = {}
+  opts: { status?: string; channel?: string; page?: number; pageSize?: number } = {}
 ): Promise<{
-  conversations: { id: string; status: string; qualification_score: number | null; message_count: number; started_at: string; ended_at: string | null; lead_name: string | null }[]
+  conversations: { id: string; status: string; channel: string | null; qualification_score: number | null; message_count: number; started_at: string; ended_at: string | null; lead_name: string | null }[]
   total: number
   error?: string
 }> {
@@ -444,21 +475,38 @@ export async function listConversations(
     const supabase = await getSupabase()
     const page = opts.page ?? 0
     const pageSize = opts.pageSize ?? 20
-    let query = supabase
-      .from('agent_conversations')
-      .select('id, status, qualification_score, message_count, started_at, ended_at, leads(name)', { count: 'exact' })
-      .eq('agent_id', agentId).eq('tenant_id', tenantId)
-    if (opts.status) query = query.eq('status', opts.status)
-    const { data, count, error } = await query
-      .order('started_at', { ascending: false })
-      .range(page * pageSize, page * pageSize + pageSize - 1)
+    const montar = (comCanal: boolean) => {
+      let q = supabase
+        .from('agent_conversations')
+        .select(comCanal
+          ? 'id, status, channel, qualification_score, message_count, started_at, ended_at, leads(name)'
+          : 'id, status, qualification_score, message_count, started_at, ended_at, leads(name)',
+          { count: 'exact' })
+        .eq('agent_id', agentId).eq('tenant_id', tenantId)
+      if (opts.status) q = q.eq('status', opts.status)
+      if (comCanal && opts.channel) q = q.eq('channel', opts.channel)
+      return q.order('started_at', { ascending: false })
+        .range(page * pageSize, page * pageSize + pageSize - 1)
+    }
+    let { data, count, error } = await montar(true)
+    if (error) {
+      // Banco sem a coluna `channel`: tenta sem ela (e sem o filtro de canal).
+      ;({ data, count, error } = await montar(false))
+    }
     if (error) return { conversations: [], total: 0, error: error.message }
-    const conversations = (data ?? []).map((c) => {
-      const leadRel = (c as { leads?: { name?: string | null } | { name?: string | null }[] }).leads
+    // O select é montado em runtime (com/sem `channel`), então o parser de
+    // tipos do supabase-js não consegue inferir a linha — cast explícito.
+    const linhas = (data ?? []) as unknown as Record<string, unknown>[]
+    const conversations = linhas.map((c) => {
+      const leadRel = c.leads as { name?: string | null } | { name?: string | null }[] | null | undefined
       const lead = Array.isArray(leadRel) ? leadRel[0] : leadRel
       return {
-        id: c.id, status: c.status, qualification_score: c.qualification_score,
-        message_count: c.message_count, started_at: c.started_at, ended_at: c.ended_at,
+        id: String(c.id), status: String(c.status),
+        channel: typeof c.channel === 'string' ? c.channel : null,
+        qualification_score: typeof c.qualification_score === 'number' ? c.qualification_score : null,
+        message_count: Number(c.message_count ?? 0),
+        started_at: String(c.started_at),
+        ended_at: typeof c.ended_at === 'string' ? c.ended_at : null,
         lead_name: lead?.name ?? null,
       }
     })
