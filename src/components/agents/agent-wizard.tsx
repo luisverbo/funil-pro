@@ -729,10 +729,17 @@ export default function AgentWizard({ agent, funnels, instances, documents, onCl
                   </Field>
                   <Field label="Quando pedir o contato do visitante">
                     <select className={inputCls} value={lc('capture_mode') || 'inline'} onChange={e => setLc('capture_mode', e.target.value)}>
-                      <option value="inline">Durante a conversa (recomendado)</option>
+                      <option value="qualified">🔥 Só depois de qualificar (recomendado)</option>
+                      <option value="inline">Durante a conversa (após algumas mensagens)</option>
                       <option value="gate">Logo no início (antes de conversar)</option>
                       <option value="none">Nunca pedir</option>
                     </select>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      &quot;Só depois de qualificar&quot; usa o filtro de investimento: quem não
+                      passa na faixa nunca recebe o pedido de contato — você não gasta
+                      atendimento com lead frio. Sem filtro configurado, ele se comporta
+                      como &quot;durante a conversa&quot;.
+                    </p>
                   </Field>
                   <Field label="Tema visual">
                     <select className={inputCls} value={(lcObj('theme').preset as string) || 'clean'}

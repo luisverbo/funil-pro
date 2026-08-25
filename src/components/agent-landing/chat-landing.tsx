@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { resolveTheme } from '@/lib/quiz/theme'
+import { podePedirContato, type StatusGate } from '@/lib/agents/gate'
 import type { QuizTheme } from '@/app/actions/quiz-v2'
 
 export interface LandingConfig {
@@ -10,7 +11,8 @@ export interface LandingConfig {
   subheadline?: string
   avatar_url?: string
   quick_replies?: string[]
-  capture_mode?: 'inline' | 'gate' | 'none'
+  /** 'qualified': só pede contato DEPOIS de o lead passar no filtro. */
+  capture_mode?: 'inline' | 'gate' | 'none' | 'qualified'
   capture_after?: number        // nº de mensagens do agente antes de pedir contato (modo inline)
   pixel_id?: string
 }
@@ -43,6 +45,8 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
   const [showCapture, setShowCapture] = useState(config.capture_mode === 'gate')
   const [lastAction, setLastAction] = useState<Action | null>(null)
   const [choices, setChoices] = useState<string[]>([])
+  /** Situação do lead no filtro de qualificação, vinda do servidor. */
+  const [gateStatus, setGateStatus] = useState<StatusGate>('sem_gate')
   const [cap, setCap] = useState({ name: '', email: '', phone: '' })
   const [capError, setCapError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -145,7 +149,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
           landingUrl: landingUrlRef.current,
         }),
       })
-      const data = await res.json() as { parts?: string[]; reply?: string; conversationId?: string; action?: Action; error?: string; choices?: string[] }
+      const data = await res.json() as { parts?: string[]; reply?: string; conversationId?: string; action?: Action; error?: string; choices?: string[]; gateStatus?: StatusGate }
       setTyping(false)
       if (data.conversationId) setConversationId(data.conversationId)
       if (data.error) {
@@ -156,13 +160,26 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
       await revealParts(parts)
       if (data.action) setLastAction(data.action)
       if (Array.isArray(data.choices) && data.choices.length > 0) setChoices(data.choices)
+      if (data.gateStatus) setGateStatus(data.gateStatus)
       inputRef.current?.focus()
 
       // Captura inline: após N mensagens do agente, pede contato (se ainda não
       // capturou). Default 4 (não 2) pra não pular por cima do início da conversa,
       // onde o próprio agente já pede o nome de forma natural.
       const after = config.capture_after ?? 4
-      if (config.capture_mode !== 'none' && !captured && (agentMsgCount + parts.length) >= after) {
+      // Pedir contato ANTES de qualificar desperdiça o momento mais caro da
+      // conversa — e queima a chance de ela seguir leve. No modo 'qualified',
+      // o formulário só aparece depois de o lead passar no filtro.
+      const liberado = podePedirContato(
+        config.capture_mode,
+        data.gateStatus ?? gateStatus,
+        agentMsgCount + parts.length,
+        after,
+      )
+      // NUNCA junto dos botões: enquanto houver escolha pendente, a pergunta
+      // do agente é a única coisa na tela (foi o que apareceu duplicado).
+      const temEscolhaPendente = Array.isArray(data.choices) && data.choices.length > 0
+      if (liberado && !captured && !temEscolhaPendente) {
         setShowCapture(true)
       }
     } catch {
@@ -259,7 +276,7 @@ export default function ChatLanding({ slug, agentName, greeting, config }: {
           )}
 
           {/* Captura de contato inline */}
-          {showCapture && !captured && (
+          {showCapture && !captured && choices.length === 0 && (
             <div className="self-stretch mt-2 p-4 rounded-2xl border" style={{ background: theme.cardBg, borderColor: theme.cardBorder }}>
               <p className="text-sm font-medium mb-3" style={{ color: theme.textColor }}>
                 Para continuar, deixe seu contato 👇
