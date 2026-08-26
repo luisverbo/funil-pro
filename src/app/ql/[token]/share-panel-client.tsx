@@ -28,6 +28,7 @@ import {
   calcularCustos, diaLocal, diaNoPeriodo, rotuloPeriodo,
   type FiltroPeriodo, type LancamentoDia,
 } from '@/lib/quiz/custos'
+import { lerValorDigitado } from '@/lib/quiz/valor-venda'
 
 interface Abertura {
   nome: string
@@ -170,6 +171,33 @@ export default function SharePanelClient({ token }: { token: string }) {
       setDados(null)
     } finally {
       setCarregando(false)
+    }
+  }
+
+  // Valor da venda digitado à mão — para o cliente que não tem ERP integrado.
+  // Sem isto, faturamento e custo por venda só existiam com Mercos.
+  const [editandoValor, setEditandoValor] = useState<string | null>(null)
+  const [rascunhoValor, setRascunhoValor] = useState('')
+  const [erroValor, setErroValor] = useState<string | null>(null)
+
+  const salvarValor = async (leadId: string, texto: string) => {
+    const lido = lerValorDigitado(texto)
+    if (!lido.ok) { setErroValor(lido.erro); return }
+    if (!dados) return
+    const anterior = dados
+    setDados({
+      ...dados,
+      leads: dados.leads.map(l => l.id === leadId ? { ...l, valorVendaCents: lido.cents } : l),
+    })
+    setEditandoValor(null); setErroValor(null)
+    try {
+      await api({
+        senha: senhaOk ?? '', acao: 'valor', leadId, valorCents: lido.cents,
+        ...(dados.quiz.tipo === 'agente' ? { origem: 'agente' } : {}),
+      })
+    } catch (e) {
+      setDados(anterior)
+      setErro(e instanceof Error ? e.message : 'Não foi possível salvar o valor')
     }
   }
 
@@ -470,7 +498,7 @@ export default function SharePanelClient({ token }: { token: string }) {
     const resp = dados?.membros.find(mb => mb.id === l.responsavelId) ?? null
     return (
       <div key={l.id}
-        draggable={compacto}
+        draggable={compacto && editandoValor !== l.id}
         onDragStart={compacto ? (e => {
           e.dataTransfer.setData('text/plain', l.id)
           e.dataTransfer.effectAllowed = 'move'
@@ -493,10 +521,50 @@ export default function SharePanelClient({ token }: { token: string }) {
                 ✓ concluiu
               </span>
             )}
-            {l.statusCliente === 'fechado' && (l.valorVendaCents ?? 0) > 0 && (
+            {/* Valor da venda: vem do ERP quando há integração, ou é digitado
+                aqui mesmo — é ele que alimenta faturamento e custo por venda. */}
+            {l.statusCliente === 'fechado' && portal?.permitirStatus && (
+              editandoValor === l.id ? (
+                <span className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  <input autoFocus value={rascunhoValor}
+                    onChange={e => { setRascunhoValor(e.target.value); setErroValor(null) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') void salvarValor(l.id, rascunhoValor)
+                      if (e.key === 'Escape') { setEditandoValor(null); setErroValor(null) }
+                    }}
+                    placeholder="1.500,00" inputMode="decimal"
+                    className="w-24 rounded-lg border border-emerald-300 px-2 py-0.5 text-[11px] focus:outline-none" />
+                  <button onClick={() => void salvarValor(l.id, rascunhoValor)}
+                    className="rounded-lg bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                    ok
+                  </button>
+                  <button onClick={() => { setEditandoValor(null); setErroValor(null) }}
+                    className="text-[11px] text-slate-400">✕</button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    setEditandoValor(l.id)
+                    setRascunhoValor((l.valorVendaCents ?? 0) > 0 ? String((l.valorVendaCents! / 100).toFixed(2)).replace('.', ',') : '')
+                    setErroValor(null)
+                  }}
+                  title="Valor desta venda"
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                    (l.valorVendaCents ?? 0) > 0
+                      ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                      : 'border border-dashed border-emerald-300 text-emerald-600 hover:bg-emerald-50'
+                  }`}>
+                  {(l.valorVendaCents ?? 0) > 0 ? `💰 ${brl(l.valorVendaCents!)}` : '+ valor da venda'}
+                </button>
+              )
+            )}
+            {l.statusCliente === 'fechado' && !portal?.permitirStatus && (l.valorVendaCents ?? 0) > 0 && (
               <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
                 💰 {brl(l.valorVendaCents!)}
               </span>
+            )}
+            {editandoValor === l.id && erroValor && (
+              <span className="text-[11px] font-medium text-red-600">{erroValor}</span>
             )}
             {parado && (
               <span title="Lead quente sem atendimento há mais de 24h"
