@@ -31,6 +31,7 @@ import {
   COLUNAS_LEAD, metricasDoQuiz, montarTabelaLeads, leadsParaPortal, investimentosDoQuiz,
 } from '@/lib/quiz/leads-core'
 import { conversasParaPortal, publicoAgenteValido, type PublicoAgente } from '@/lib/agents/portal-core'
+import { valorVendaValido } from '@/lib/quiz/valor-venda'
 
 export const maxDuration = 60
 
@@ -47,6 +48,8 @@ interface Corpo {
   /** 'agente' quando o funil ativo é um agente IA — muda a tabela de escrita. */
   origem?: string
   agenteId?: string
+  /** Valor da venda em CENTAVOS, digitado pelo cliente (null = limpar). */
+  valorCents?: number | null
   memberId?: string | null
   /** Telefone digitado na entrada: identifica QUAL vendedor está entrando. */
   telefone?: string
@@ -443,12 +446,16 @@ export async function POST(
     }
 
     // ── Desfecho/responsável de CONVERSA do agente ──────────────────────────
-    if ((acao === 'status' || acao === 'atribuir') && corpo.origem === 'agente') {
-      if (acao === 'status' && !portal.permitir_status) {
+    if ((acao === 'status' || acao === 'atribuir' || acao === 'valor') && corpo.origem === 'agente') {
+      if (acao !== 'atribuir' && !portal.permitir_status) {
         return NextResponse.json({ error: 'A marcação de status está desativada neste portal' }, { status: 403 })
       }
       if (acao === 'status' && !statusPortalValido(corpo.status)) {
         return NextResponse.json({ error: 'Status inválido' }, { status: 400 })
+      }
+      // Valor digitado à mão (cliente sem ERP integrado): null limpa.
+      if (acao === 'valor' && corpo.valorCents !== null && !valorVendaValido(corpo.valorCents)) {
+        return NextResponse.json({ error: 'Valor inválido' }, { status: 400 })
       }
       if (acao === 'atribuir' && !ehGestor) {
         return NextResponse.json({ error: 'Apenas o gestor pode atribuir' }, { status: 403 })
@@ -477,7 +484,7 @@ export async function POST(
       }
 
       // Vendedor marca só o que é dele; gestor atribui só vendedor existente.
-      if (acao === 'status' && !ehGestor) {
+      if (acao !== 'atribuir' && !ehGestor) {
         const { data: dono } = await admin
           .from('portal_agent_status')
           .select('assigned_member_id')
@@ -493,7 +500,9 @@ export async function POST(
 
       const { error } = await admin.from('portal_agent_status').upsert({
         tenant_id: tenantId, portal_id: portalId, conversation_id: conversaId,
-        ...(acao === 'status' ? { status: corpo.status } : { assigned_member_id: memberId }),
+        ...(acao === 'status' ? { status: corpo.status }
+          : acao === 'valor' ? { sale_value_cents: corpo.valorCents }
+          : { assigned_member_id: memberId }),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'portal_id,conversation_id' })
       if (error) {
@@ -504,12 +513,16 @@ export async function POST(
       return comSessao({ ok: true })
     }
 
-    if (acao === 'status') {
+    if (acao === 'status' || acao === 'valor') {
       if (!portal.permitir_status) {
         return NextResponse.json({ error: 'A marcação de status está desativada neste portal' }, { status: 403 })
       }
-      if (!statusPortalValido(corpo.status)) {
+      if (acao === 'status' && !statusPortalValido(corpo.status)) {
         return NextResponse.json({ error: 'Status inválido' }, { status: 400 })
+      }
+      // Valor digitado à mão (cliente sem ERP integrado): null limpa.
+      if (acao === 'valor' && corpo.valorCents !== null && !valorVendaValido(corpo.valorCents)) {
+        return NextResponse.json({ error: 'Valor inválido' }, { status: 400 })
       }
       const leadId = typeof corpo.leadId === 'string' ? corpo.leadId : ''
 
@@ -552,10 +565,21 @@ export async function POST(
         tenant_id: tenantId,
         portal_id: portalId,
         lead_id: leadId,
-        status: corpo.status,
+        ...(acao === 'valor'
+          ? { sale_value_cents: corpo.valorCents }
+          : { status: corpo.status }),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'portal_id,lead_id' })
-      if (error) return NextResponse.json({ error: 'Não foi possível salvar' }, { status: 500 })
+      if (error) {
+        // Coluna do valor pode não existir (migration do Mercos pendente):
+        // dizer QUAL migration falta é melhor que "não foi possível salvar".
+        if (acao === 'valor' && (error.code === '42703' || error.code === 'PGRST204')) {
+          return NextResponse.json({
+            error: 'Aplique a migration 20260903000000_mercos.sql no Supabase para registrar o valor da venda',
+          }, { status: 400 })
+        }
+        return NextResponse.json({ error: 'Não foi possível salvar' }, { status: 500 })
+      }
       return comSessao({ ok: true })
     }
 

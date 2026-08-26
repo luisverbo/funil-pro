@@ -402,7 +402,9 @@ test('13j) público "preencheu as páginas marcadas": só entra quem cumpriu', (
   assert.ok(c.includes('etapas.map(({ chave: coluna })'), 'kanban sem uma coluna por situação')
   // Largura total + arrastar e soltar (com o seletor mantido para o celular).
   assert.ok(c.includes('w-screen'), 'o quadro voltaria a ficar cortado na coluna central')
-  assert.ok(c.includes('draggable={compacto}'), 'cartão do kanban não arrasta')
+  // Arrasta no kanban (compacto). A exceção é digitar o valor da venda no
+  // cartão: com o arraste ligado, o campo perde o foco a cada toque.
+  assert.ok(/draggable=\{compacto\b/.test(c), 'cartão do kanban não arrasta')
   assert.ok(c.includes("e.dataTransfer.getData('text/plain')"), 'a coluna não recebe o solto')
   assert.ok(c.includes('void marcarStatus(id, coluna)'), 'soltar não grava o status')
   assert.ok(c.includes("statusCliente === 'fechado'"), 'custo por venda sem contar os fechados')
