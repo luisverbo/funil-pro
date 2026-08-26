@@ -13,6 +13,17 @@
 // Todo evento fica em mercos_events com o resultado — quando "a venda não
 // apareceu", a resposta está lá, não no achismo.
 //
+// ALCANCE: por padrão a venda procura o lead em TODOS os funis e agentes da
+// conta. Isso é errado quando o Mercos é de UM cliente específico — a venda
+// dele fecharia o lead de outro funil onde a mesma pessoa apareceu. Por isso
+// a URL aceita o recorte:
+//
+//   .../api/webhooks/mercos/<tenant>?quiz=<pageId>
+//   .../api/webhooks/mercos/<tenant>?quiz=<id1>,<id2>&agente=<id3>
+//
+// Com recorte, só os funis/agentes indicados são tocados. Cada cliente com
+// Mercos próprio recebe a SUA URL, e as contas nunca se cruzam.
+//
 // Segurança: mesma família dos outros webhooks (tenants.webhook_tokens).
 // Com chave configurada, a requisição precisa apresentá-la (header, query ou
 // corpo); sem chave, aceita — igual Hotmart/Kiwify.
@@ -37,6 +48,7 @@ async function aplicarDesfecho(
   contato: { email: string | null; telefone: string | null },
   status: 'fechado' | 'perdido',
   valorCents: number | null,
+  alcance: { quizzes: Set<string>; agentes: Set<string> },
 ): Promise<string[]> {
   const tocados: string[] = []
   if (!contato.email && !contato.telefone) return tocados
@@ -46,12 +58,19 @@ async function aplicarDesfecho(
   const confere = (l: { email?: string | null; phone?: string | null }) =>
     ehOMesmoContato(l, { email: contato.email, telefone: contato.telefone })
 
+  // Com recorte na URL, o que NÃO foi listado fica de fora por inteiro:
+  // "?quiz=X" quer dizer "só esse funil" — nem os agentes entram.
+  const temRecorte = alcance.quizzes.size > 0 || alcance.agentes.size > 0
+
   // ── Leads de QUIZ ─────────────────────────────────────────────────────────
+  if (!temRecorte || alcance.quizzes.size > 0) {
   const { data: candidatosQuiz } = await admin.rpc('casar_quiz_leads_por_contato', {
     p_tenant: tenantId, p_email: contato.email, p_fone: contato.telefone,
   })
   const quizLeads = ((candidatosQuiz ?? []) as { id: string; quiz_id: string; email: string | null; phone: string | null }[])
     .filter(confere)
+    // Recorte da URL: fora dele, o lead não é desta integração.
+    .filter(l => alcance.quizzes.size === 0 || alcance.quizzes.has(String(l.quiz_id)))
 
   for (const l of quizLeads) {
     const { data: vinculos } = await admin
@@ -66,8 +85,10 @@ async function aplicarDesfecho(
       if (!error) tocados.push(`quiz:${l.id}`)
     }
   }
+  }
 
   // ── Leads de AGENTE (conversas) ───────────────────────────────────────────
+  if (!temRecorte || alcance.agentes.size > 0) {
   const { data: candidatosLead } = await admin.rpc('casar_leads_por_contato', {
     p_tenant: tenantId, p_email: contato.email, p_fone: contato.telefone,
   })
@@ -80,6 +101,7 @@ async function aplicarDesfecho(
       .eq('tenant_id', tenantId).eq('lead_id', l.id)
       .order('started_at', { ascending: false }).range(0, 9)
     for (const c of convs ?? []) {
+      if (alcance.agentes.size > 0 && !alcance.agentes.has(String(c.agent_id))) continue
       const { data: vinculos } = await admin
         .from('client_portal_agents').select('portal_id')
         .eq('tenant_id', tenantId).eq('agent_id', c.agent_id)
@@ -93,7 +115,28 @@ async function aplicarDesfecho(
       }
     }
   }
+  }
   return tocados
+}
+
+/** Recorte vindo da URL: ?quiz=id1,id2&agente=id3 (repetível). */
+function lerAlcance(busca: URLSearchParams): { quizzes: Set<string>; agentes: Set<string> } {
+  const juntar = (chaves: string[]) => {
+    const fora = new Set<string>()
+    for (const chave of chaves) {
+      for (const bruto of busca.getAll(chave)) {
+        for (const id of bruto.split(',')) {
+          const limpo = id.trim()
+          if (limpo) fora.add(limpo)
+        }
+      }
+    }
+    return fora
+  }
+  return {
+    quizzes: juntar(['quiz', 'quizzes', 'funil']),
+    agentes: juntar(['agente', 'agentes', 'agent']),
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
@@ -167,13 +210,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ten
 
     const valorCents = extrairValorCents(body)
     const status = destino === 'perder' ? 'perdido' as const : 'fechado' as const
-    const tocados = await aplicarDesfecho(admin, tenantId, contato, status, valorCents)
+    const alcance = lerAlcance(new URL(req.url).searchParams)
+    const tocados = await aplicarDesfecho(admin, tenantId, contato, status, valorCents, alcance)
 
     await registrar(
       tocados.length > 0 ? 'casado' : 'sem_correspondencia',
       tocados.length > 0
         ? `${tocados.length} lead(s) → ${status}${valorCents ? ` · R$ ${(valorCents / 100).toFixed(2)}` : ''}`
-        : `nenhum lead com ${contato.email ?? ''} ${contato.telefone ?? ''}`.trim(),
+        : `nenhum lead com ${contato.email ?? ''} ${contato.telefone ?? ''}`.trim()
+          + (alcance.quizzes.size + alcance.agentes.size > 0 ? ' (dentro do recorte da URL)' : ''),
     )
     return NextResponse.json({ ok: true, leads: tocados.length })
   } catch (err) {

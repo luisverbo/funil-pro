@@ -110,6 +110,31 @@ const tests: Record<string, () => void> = {
     assert.ok(sql.includes('mercos_clientes'))
     assert.ok(sql.includes('mercos_events'))
   },
+  // ── Alcance: a conta do Mercos é de UM cliente ─────────────────────────────
+  // Sem recorte, a venda de um cliente fecharia o lead de outro funil onde a
+  // mesma pessoa apareceu. A URL carrega o recorte.
+
+  'recorte da URL é lido de quiz e agente (e aceita lista)': () => {
+    const src = ler('src/app/api/webhooks/mercos/[tenantId]/route.ts')
+    assert.ok(src.includes('function lerAlcance'), 'falta a leitura do recorte da URL')
+    assert.ok(/getAll\(chave\)/.test(src), 'o parâmetro precisa ser repetível')
+    assert.ok(/split\(','\)/.test(src), 'a lista separada por vírgula precisa valer')
+  },
+  'com recorte, o que não foi listado fica INTEIRO de fora': () => {
+    const src = ler('src/app/api/webhooks/mercos/[tenantId]/route.ts')
+    assert.ok(/const temRecorte = alcance\.quizzes\.size > 0 \|\| alcance\.agentes\.size > 0/.test(src))
+    assert.ok(/if \(!temRecorte \|\| alcance\.quizzes\.size > 0\)/.test(src),
+      '"?quiz=X" quer dizer só esse funil — agentes não podem entrar')
+    assert.ok(/if \(!temRecorte \|\| alcance\.agentes\.size > 0\)/.test(src))
+    assert.ok(/alcance\.quizzes\.has\(String\(l\.quiz_id\)\)/.test(src), 'o funil precisa ser conferido lead a lead')
+    assert.ok(/alcance\.agentes\.has\(String\(c\.agent_id\)\)/.test(src), 'o agente precisa ser conferido conversa a conversa')
+  },
+  'a tela monta a URL recortada para colar no Mercos': () => {
+    const src = ler('src/components/integrations/mercos-scope-field.tsx')
+    assert.ok(src.includes("params.set('quiz'"), 'a URL precisa sair com o funil escolhido')
+    assert.ok(src.includes("params.set('agente'"), 'e com o agente escolhido')
+    assert.ok(src.includes('pode fechar o lead errado'), 'o risco precisa estar escrito na tela')
+  },
 }
 
 // ─── Execução ───────────────────────────────────────────────────────────────
