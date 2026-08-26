@@ -24,6 +24,7 @@ import {
   destinoDoEvento, extrairClienteId, extrairContato, extrairEvento,
   extrairValorCents, tokenConfere,
 } from '@/lib/webhooks/mercos'
+import { ehOMesmoContato } from '@/lib/webhooks/contato-match'
 
 export const maxDuration = 60
 
@@ -38,17 +39,21 @@ async function aplicarDesfecho(
   valorCents: number | null,
 ): Promise<string[]> {
   const tocados: string[] = []
-  const fone8 = contato.telefone ? contato.telefone.slice(-8) : null
+  if (!contato.email && !contato.telefone) return tocados
+
+  // O banco FILTRA (dígitos, tolerante a formatação e DDI); o código DECIDE
+  // (DDD precisa bater) — marcar a venda no lead errado é pior que não marcar.
+  const confere = (l: { email?: string | null; phone?: string | null }) =>
+    ehOMesmoContato(l, { email: contato.email, telefone: contato.telefone })
 
   // ── Leads de QUIZ ─────────────────────────────────────────────────────────
-  let qq = admin.from('quiz_leads').select('id, quiz_id').eq('tenant_id', tenantId)
-  if (contato.email && fone8) qq = qq.or(`email.ilike.${contato.email},phone.like.%${fone8}`)
-  else if (contato.email) qq = qq.ilike('email', contato.email)
-  else if (fone8) qq = qq.like('phone', `%${fone8}`)
-  else return tocados
-  const { data: quizLeads } = await qq.range(0, 49)
+  const { data: candidatosQuiz } = await admin.rpc('casar_quiz_leads_por_contato', {
+    p_tenant: tenantId, p_email: contato.email, p_fone: contato.telefone,
+  })
+  const quizLeads = ((candidatosQuiz ?? []) as { id: string; quiz_id: string; email: string | null; phone: string | null }[])
+    .filter(confere)
 
-  for (const l of quizLeads ?? []) {
+  for (const l of quizLeads) {
     const { data: vinculos } = await admin
       .from('client_portal_quizzes').select('portal_id')
       .eq('tenant_id', tenantId).eq('page_id', l.quiz_id)
@@ -63,13 +68,13 @@ async function aplicarDesfecho(
   }
 
   // ── Leads de AGENTE (conversas) ───────────────────────────────────────────
-  let ql = admin.from('leads').select('id').eq('tenant_id', tenantId)
-  if (contato.email && fone8) ql = ql.or(`email.ilike.${contato.email},phone.like.%${fone8}`)
-  else if (contato.email) ql = ql.ilike('email', contato.email)
-  else ql = ql.like('phone', `%${fone8}`)
-  const { data: leads } = await ql.range(0, 49)
+  const { data: candidatosLead } = await admin.rpc('casar_leads_por_contato', {
+    p_tenant: tenantId, p_email: contato.email, p_fone: contato.telefone,
+  })
+  const leads = ((candidatosLead ?? []) as { id: string; email: string | null; phone: string | null }[])
+    .filter(confere)
 
-  for (const l of leads ?? []) {
+  for (const l of leads) {
     const { data: convs } = await admin
       .from('agent_conversations').select('id, agent_id')
       .eq('tenant_id', tenantId).eq('lead_id', l.id)
