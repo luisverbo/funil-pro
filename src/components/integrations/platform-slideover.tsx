@@ -5,6 +5,7 @@ import { addProduct, deleteProduct } from '@/app/actions/products'
 import type { Product } from '@/types'
 
 import WebhookTokenField from './webhook-token-field'
+import MercosScopeField from './mercos-scope-field'
 
 interface Platform {
   id: string
@@ -163,6 +164,10 @@ export default function PlatformSlideover({ platform, initialProducts, onClose }
               ))}
             </ol>
           </div>
+
+          {/* Mercos: a conta do ERP é de UM cliente — a URL sai recortada
+              para o funil dele, senão a venda fecha lead de outro funil. */}
+          {platform.id === 'mercos' && <MercosScopeField webhookUrl={platform.webhookUrl} />}
 
           {/* Chave de validação: plataformas que mandam token na requisição.
               Sem chave salva o webhook aceita tudo — colar a chave fecha a porta. */}

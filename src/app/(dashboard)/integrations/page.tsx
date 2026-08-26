@@ -60,8 +60,8 @@ const PLATFORM_DEFS = [
     textColor: '#5B21B6',
     icon: 'MC',
     instructions: [
-      'Acesse Mercos → Minha Conta → Sistema → Webhooks',
-      'Cole a URL acima em "URL do endpoint" e deixe a Situação como Ativo',
+      'Escolha abaixo de qual funil é esta conta do Mercos e copie a URL recortada',
+      'Acesse Mercos → Minha Conta → Sistema → Webhooks e cole a URL em "URL do endpoint" (Situação: Ativo)',
       'Marque os eventos: pedido.gerado, pedido.faturado, pedido.cancelado, cliente.cadastrado e cliente.atualizado',
       'Em "Chave de validação", clique em Gerar nova chave, copie e cole no campo abaixo',
       'Salve — quando um pedido for faturado, o lead vai para "Fechado" no portal com o valor da venda',
