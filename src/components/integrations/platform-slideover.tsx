@@ -4,6 +4,8 @@ import React, { useState, useTransition } from 'react'
 import { addProduct, deleteProduct } from '@/app/actions/products'
 import type { Product } from '@/types'
 
+import WebhookTokenField from './webhook-token-field'
+
 interface Platform {
   id: string
   name: string
@@ -12,6 +14,8 @@ interface Platform {
   icon: string
   webhookUrl: string
   instructions: string[]
+  /** Token/chave de validação já salvo (tenants.webhook_tokens). */
+  webhookToken?: string | null
 }
 
 interface Props {
@@ -159,6 +163,20 @@ export default function PlatformSlideover({ platform, initialProducts, onClose }
               ))}
             </ol>
           </div>
+
+          {/* Chave de validação: plataformas que mandam token na requisição.
+              Sem chave salva o webhook aceita tudo — colar a chave fecha a porta. */}
+          {(platform.id === 'kiwify' || platform.id === 'mercos') && (
+            <WebhookTokenField
+              platform={platform.id}
+              currentToken={platform.webhookToken ?? null}
+              label={platform.id === 'mercos' ? 'Chave de validação do Mercos' : 'Token da Kiwify'}
+              instruction={platform.id === 'mercos'
+                ? 'Cole aqui a chave gerada no Mercos (Gerar nova chave) — só requisições com ela serão aceitas.'
+                : 'Cole o token exibido na tela de webhooks da Kiwify.'}
+              fieldLabel={platform.id === 'mercos' ? 'Chave de validação' : 'Token'}
+            />
+          )}
 
           {/* Products */}
           <div>

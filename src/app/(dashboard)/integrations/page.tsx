@@ -53,6 +53,21 @@ const PLATFORM_DEFS = [
     ],
   },
   {
+    id: 'mercos',
+    name: 'Mercos',
+    color: '#5B21B6',
+    bgColor: '#f3efff',
+    textColor: '#5B21B6',
+    icon: 'MC',
+    instructions: [
+      'Acesse Mercos → Minha Conta → Sistema → Webhooks',
+      'Cole a URL acima em "URL do endpoint" e deixe a Situação como Ativo',
+      'Marque os eventos: pedido.gerado, pedido.faturado, pedido.cancelado, cliente.cadastrado e cliente.atualizado',
+      'Em "Chave de validação", clique em Gerar nova chave, copie e cole no campo abaixo',
+      'Salve — quando um pedido for faturado, o lead vai para "Fechado" no portal com o valor da venda',
+    ],
+  },
+  {
     id: 'yampi',
     name: 'Yampi',
     color: '#16A34A',

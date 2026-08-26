@@ -245,7 +245,7 @@ export async function POST(
 
       const [statusRows, metricas, tabela, investimentos] = await Promise.all([
         admin.from('portal_lead_status')
-          .select('lead_id, status').eq('portal_id', portalId).range(0, 9_999),
+          .select('lead_id, status, sale_value_cents').eq('portal_id', portalId).range(0, 9_999),
         portal.mostrar_metricas ? metricasDoQuiz(admin, quiz.id, tenantId) : Promise.resolve(null),
         // Só as páginas que o dono liberou viram colunas de resposta; lista
         // vazia = só os dados de contato do lead.
@@ -297,7 +297,12 @@ export async function POST(
       }
 
       const statusPorLead: Record<string, string> = {}
-      for (const r of statusRows.data ?? []) statusPorLead[String(r.lead_id)] = String(r.status)
+      const valorPorLead: Record<string, number> = {}
+      for (const r of statusRows.data ?? []) {
+        statusPorLead[String(r.lead_id)] = String(r.status)
+        const v = (r as { sale_value_cents?: number | null }).sale_value_cents
+        if (typeof v === 'number' && v > 0) valorPorLead[String(r.lead_id)] = v
+      }
 
       const m = metricas && portal.mostrar_metricas ? {
         ...metricas,
@@ -311,6 +316,9 @@ export async function POST(
           ...l,
           statusCliente: statusPorLead[l.id] ?? 'novo',
           responsavelId: respAtual[l.id] ?? null,
+          // Valor vindo do Mercos (venda casada pelo webhook) — fecha o ciclo
+          // custo por venda / faturamento no portal.
+          valorVendaCents: valorPorLead[l.id] ?? null,
         }))
         .filter(l => ehGestor || l.responsavelId === membroAtual!.id)
 
@@ -357,14 +365,17 @@ export async function POST(
       // Desfecho/responsável por conversa. Erro = migration pendente → vazio.
       const { data: statusRows } = await admin
         .from('portal_agent_status')
-        .select('conversation_id, status, assigned_member_id')
+        .select('conversation_id, status, assigned_member_id, sale_value_cents')
         .eq('portal_id', portalId)
         .range(0, 9_999)
       const statusPorConversa: Record<string, string> = {}
       const respAtual: Record<string, string> = {}
+      const valorPorConversa: Record<string, number> = {}
       for (const r of statusRows ?? []) {
         statusPorConversa[String(r.conversation_id)] = String(r.status)
         if (r.assigned_member_id) respAtual[String(r.conversation_id)] = String(r.assigned_member_id)
+        const v = (r as { sale_value_cents?: number | null }).sale_value_cents
+        if (typeof v === 'number' && v > 0) valorPorConversa[String(r.conversation_id)] = v
       }
 
       // Rodízio automático — mesmo desenho do quiz, na tabela do agente.
@@ -388,6 +399,7 @@ export async function POST(
           ...l,
           statusCliente: statusPorConversa[l.id] ?? 'novo',
           responsavelId: respAtual[l.id] ?? null,
+          valorVendaCents: valorPorConversa[l.id] ?? null,
         }))
         .filter(l => ehGestor || l.responsavelId === membroAtual!.id)
 

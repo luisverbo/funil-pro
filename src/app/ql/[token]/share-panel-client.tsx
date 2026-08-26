@@ -51,6 +51,8 @@ interface LeadComStatus extends LeadPortal {
   situacao?: string
   reuniaoEm?: string | null
   scoreAgente?: number | null
+  /** Valor da venda casada pelo webhook do Mercos (ou marcada com valor). */
+  valorVendaCents?: number | null
 }
 
 interface Membro { id: string; nome: string; whatsapp: string | null }
@@ -491,6 +493,11 @@ export default function SharePanelClient({ token }: { token: string }) {
                 ✓ concluiu
               </span>
             )}
+            {l.statusCliente === 'fechado' && (l.valorVendaCents ?? 0) > 0 && (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                💰 {brl(l.valorVendaCents!)}
+              </span>
+            )}
             {parado && (
               <span title="Lead quente sem atendimento há mais de 24h"
                 className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600">
@@ -706,6 +713,18 @@ export default function SharePanelClient({ token }: { token: string }) {
                 : `De cada 100 pessoas que entram no funil, ${resumo.conversao} chegam ao final — ${resumo.rotulo}.`}
             </p>
 
+            {!custos && (() => {
+              const vendas = leadsFiltrados.filter(l => l.statusCliente === 'fechado' && (l.valorVendaCents ?? 0) > 0)
+              const faturado = vendas.reduce((soma, l) => soma + (l.valorVendaCents ?? 0), 0)
+              if (faturado === 0) return null
+              return (
+                <p className="mt-3 text-center text-xs text-emerald-700">
+                  💰 Faturado no período: <span className="font-bold">{brl(faturado)}</span>
+                  {' '}· ticket médio {brl(Math.round(faturado / vendas.length))}
+                </p>
+              )
+            })()}
+
             {/* Custo — só quando o dono lançou investimento. */}
             {custos && (
               <div className="mt-4 border-t border-slate-100 pt-4">
@@ -740,6 +759,20 @@ export default function SharePanelClient({ token }: { token: string }) {
                     </p>
                   </div>
                 </div>
+                {(() => {
+                  const vendas = leadsFiltrados.filter(l => l.statusCliente === 'fechado' && (l.valorVendaCents ?? 0) > 0)
+                  const faturado = vendas.reduce((soma, l) => soma + (l.valorVendaCents ?? 0), 0)
+                  if (faturado === 0) return null
+                  return (
+                    <p className="mt-2 text-center text-xs text-emerald-700">
+                      💰 Faturado no período: <span className="font-bold">{brl(faturado)}</span>
+                      {' '}· ticket médio {brl(Math.round(faturado / vendas.length))}
+                      {custos.investidoCents > 0 && faturado > 0
+                        ? ` · retorno ${(faturado / custos.investidoCents).toFixed(1)}x sobre o investido`
+                        : ''}
+                    </p>
+                  )
+                })()}
                 {custos.investidoCents === 0 && (
                   <p className="mt-2 text-center text-[11px] text-slate-400">
                     Nenhum investimento lançado neste período.
