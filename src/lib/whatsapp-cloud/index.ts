@@ -111,3 +111,27 @@ export async function listarTemplatesCloud(
     return { ok: false, erro: String(err) }
   }
 }
+
+// ─── Mídia ──────────────────────────────────────────────────────────────────
+
+export type TipoMidiaCloud = 'image' | 'video' | 'audio' | 'document'
+
+/**
+ * Envia mídia por LINK público (o Storage hospeda; a Meta busca).
+ * Limites da Cloud API: imagem 5MB (jpeg/png/webp), vídeo 16MB (mp4/3gpp),
+ * áudio 16MB (aac/mp3/ogg-opus/amr/mp4), documento 100MB.
+ * Legenda vale para imagem/vídeo/documento; áudio não tem legenda.
+ */
+export function enviarMidiaCloud(
+  conta: ContaCloud,
+  para: string,
+  tipo: TipoMidiaCloud,
+  link: string,
+  caption?: string,
+  filename?: string,
+) {
+  const media: Record<string, unknown> = { link }
+  if (caption && tipo !== 'audio') media.caption = caption
+  if (filename && tipo === 'document') media.filename = filename
+  return chamarGraph(conta, { to: para, type: tipo, [tipo]: media })
+}

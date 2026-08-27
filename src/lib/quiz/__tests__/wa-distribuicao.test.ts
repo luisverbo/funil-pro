@@ -114,6 +114,47 @@ const tests: Record<string, () => void> = {
     assert.ok(ui.includes('Jogar em automação'), 'falta o modal de automação')
     assert.ok(ui.includes('Equipe e departamentos'), 'falta a gestão da equipe')
   },
+  // ── Mídia, catálogo e a fila Esperando ────────────────────────────────────
+  'mídia: só os formatos que a Cloud API aceita, com limite por tipo': () => {
+    const src = ler('src/app/actions/wa-inbox.ts')
+    assert.ok(src.includes("'image/jpeg'"), 'imagem jpeg precisa entrar')
+    assert.ok(src.includes("'video/mp4'"), 'vídeo mp4 precisa entrar')
+    assert.ok(src.includes("'audio/ogg'"), 'áudio ogg precisa entrar')
+    assert.ok(src.includes("'application/pdf'"), 'documento pdf precisa entrar')
+    assert.ok(src.includes('não é aceito pelo WhatsApp'), 'formato recusado precisa de recado claro')
+    assert.ok(/enviarWaMidiaMsg[\s\S]{0,400}dentroDaJanela/.test(src),
+      'mídia também respeita a janela de 24h')
+  },
+  'catálogo: visibilidade por departamento e envio com legenda pronta': () => {
+    const src = ler('src/app/actions/wa-inbox.ts')
+    assert.ok(src.includes('listarWaProdutos'))
+    assert.ok(src.includes('departamento_id: entrada.departamentoId ?? null'),
+      'NULL = toda a equipe; preenchido = só quem vende')
+    const ui = ler('src/app/(dashboard)/whatsapp/whatsapp-client.tsx')
+    assert.ok(/pr\.departamentoId === eu\?\.departamentoId/.test(ui),
+      'atendente só vê os produtos liberados para o departamento dele')
+    assert.ok(ui.includes('enviarMidiaProduto'), 'a foto do produto sai com UM clique')
+    assert.ok(/nome e preço na legenda/.test(ui), 'a legenda pronta é o valor da feature')
+  },
+  'composer: 📎 anexos e 📦 catálogo existem; bolha mostra a mídia': () => {
+    const ui = ler('src/app/(dashboard)/whatsapp/whatsapp-client.tsx')
+    assert.ok(ui.includes('anexarEEnviar'), 'falta o envio de anexos')
+    assert.ok(ui.includes("m.tipo === 'imagem'"), 'imagem precisa renderizar na bolha')
+    assert.ok(ui.includes("m.tipo === 'audio'"), 'áudio precisa de player na bolha')
+    assert.ok(ui.includes("m.tipo === 'documento'"), 'documento precisa de link na bolha')
+  },
+  'fila ⏳ Esperando: aberta, sem dono e sem IA cuidando': () => {
+    const ui = ler('src/app/(dashboard)/whatsapp/whatsapp-client.tsx')
+    assert.ok(ui.includes("'⏳ Esperando'"), 'falta a aba de quem ninguém atendeu')
+    assert.ok(/!c\.atendenteId && c\.modo !== 'ia'/.test(ui),
+      'conversa com IA cuidando NÃO está esperando — o agente está atendendo')
+  },
+  'migration: media_url e catálogo wa_produtos': () => {
+    const sql = ler('supabase/migrations/20260907000000_wa_midia_produtos.sql').toLowerCase()
+    assert.ok(sql.includes('media_url'))
+    assert.ok(sql.includes('wa_produtos'))
+    assert.ok(sql.includes('departamento_id'), 'a visibilidade por departamento vive no banco')
+  },
 }
 
 // ─── Execução ───────────────────────────────────────────────────────────────

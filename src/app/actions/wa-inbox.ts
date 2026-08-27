@@ -16,7 +16,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { enviarTextoCloud, enviarTemplateCloud, listarTemplatesCloud } from '@/lib/whatsapp-cloud'
+import { enviarTextoCloud, enviarTemplateCloud, listarTemplatesCloud, enviarMidiaCloud, type TipoMidiaCloud } from '@/lib/whatsapp-cloud'
 import { dentroDaJanela } from '@/lib/whatsapp-cloud/webhook-parser'
 import { aplicarDesfecho, ALCANCE_TOTAL } from '@/lib/sales/fechar-lead'
 import { valorVendaValido } from '@/lib/quiz/valor-venda'
@@ -184,6 +184,7 @@ export interface WaMensagem {
   corpo: string | null
   templateName: string | null
   statusEntrega: string | null
+  mediaUrl: string | null
   createdAt: string
 }
 
@@ -215,7 +216,7 @@ export async function getWaConversa(conversaId: string): Promise<{
 
     const { data: msgs } = await admin
       .from('wa_messages')
-      .select('id, direcao, autor, autor_nome, tipo, corpo, template_name, status_entrega, created_at')
+      .select('id, direcao, autor, autor_nome, tipo, corpo, template_name, status_entrega, media_url, created_at')
       .eq('conversation_id', conv.id)
       .order('created_at', { ascending: true })
       .range(0, 999)
@@ -271,6 +272,7 @@ export async function getWaConversa(conversaId: string): Promise<{
         id: String(m.id), direcao: String(m.direcao), autor: String(m.autor),
         autorNome: m.autor_nome ?? null, tipo: String(m.tipo), corpo: m.corpo ?? null,
         templateName: m.template_name ?? null, statusEntrega: m.status_entrega ?? null,
+        mediaUrl: (m as { media_url?: string | null }).media_url ?? null,
         createdAt: String(m.created_at),
       })),
       dossie,
@@ -740,6 +742,201 @@ export async function setWaContaDepartamento(
       if (error.code === '42703' || error.code === 'PGRST204') return { error: EQUIPE_MIGRATION }
       return { error: error.message }
     }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// ─── Mídia: upload + envio ──────────────────────────────────────────────────
+
+// Tipos e limites que a CLOUD API aceita — validar aqui evita o erro da Meta.
+const MIDIA_TIPOS: Record<string, { tipo: TipoMidiaCloud; maxMb: number }> = {
+  'image/jpeg': { tipo: 'image', maxMb: 5 },
+  'image/png': { tipo: 'image', maxMb: 5 },
+  'image/webp': { tipo: 'image', maxMb: 5 },
+  'video/mp4': { tipo: 'video', maxMb: 16 },
+  'video/3gpp': { tipo: 'video', maxMb: 16 },
+  'audio/aac': { tipo: 'audio', maxMb: 16 },
+  'audio/mpeg': { tipo: 'audio', maxMb: 16 },
+  'audio/mp3': { tipo: 'audio', maxMb: 16 },
+  'audio/mp4': { tipo: 'audio', maxMb: 16 },
+  'audio/ogg': { tipo: 'audio', maxMb: 16 },
+  'audio/amr': { tipo: 'audio', maxMb: 16 },
+  'application/pdf': { tipo: 'document', maxMb: 25 },
+  'application/msword': { tipo: 'document', maxMb: 25 },
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { tipo: 'document', maxMb: 25 },
+  'application/vnd.ms-excel': { tipo: 'document', maxMb: 25 },
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { tipo: 'document', maxMb: 25 },
+  'text/plain': { tipo: 'document', maxMb: 25 },
+}
+
+const EXT_MIDIA: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'video/mp4': 'mp4', 'video/3gpp': '3gp',
+  'audio/aac': 'aac', 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a',
+  'audio/ogg': 'ogg', 'audio/amr': 'amr',
+  'application/pdf': 'pdf', 'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/plain': 'txt',
+}
+
+/** Sobe o arquivo para o Storage e devolve a URL pública + o tipo da Meta. */
+export async function uploadWaMidia(formData: FormData): Promise<
+  { url: string; tipo: TipoMidiaCloud; filename: string } | { error: string }
+> {
+  try {
+    const tenantId = await getTenantId()
+    const file = formData.get('file') as File | null
+    if (!file) return { error: 'Nenhum arquivo' }
+    const regra = MIDIA_TIPOS[file.type]
+    if (!regra) {
+      return { error: `Formato ${file.type || 'desconhecido'} não é aceito pelo WhatsApp — use JPG/PNG/WebP, MP4, MP3/OGG/AAC ou PDF/DOC/XLS` }
+    }
+    if (file.size > regra.maxMb * 1024 * 1024) {
+      return { error: `Arquivo grande demais (máx ${regra.maxMb}MB para ${regra.tipo})` }
+    }
+    const ext = EXT_MIDIA[file.type] ?? 'bin'
+    const path = `${tenantId}/wa/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const admin = createAdminClient()
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const { error } = await admin.storage.from('quiz-assets')
+      .upload(path, buffer, { contentType: file.type, upsert: false })
+    if (error) return { error: `Falha no upload: ${error.message}` }
+    const { data: pub } = admin.storage.from('quiz-assets').getPublicUrl(path)
+    return { url: pub.publicUrl, tipo: regra.tipo, filename: file.name || `arquivo.${ext}` }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Envia mídia na conversa (imagem/vídeo/áudio/documento) — dentro da janela. */
+export async function enviarWaMidiaMsg(
+  conversaId: string,
+  tipo: TipoMidiaCloud,
+  url: string,
+  caption?: string,
+  filename?: string,
+): Promise<{ ok: true } | { error: string; foraDaJanela?: boolean }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const ctx = await contaDaConversa(admin, tenantId, conversaId)
+    if (!ctx) return { error: 'Conversa não encontrada' }
+    if (!dentroDaJanela(ctx.conv.janela_ate, new Date())) {
+      return { error: 'Janela de 24h fechada — envie um template para reabrir a conversa', foraDaJanela: true }
+    }
+    const envio = await enviarMidiaCloud(ctx.conta, String(ctx.conv.telefone), tipo, url, caption, filename)
+    if (!envio.ok) return { error: `A Meta recusou o envio: ${envio.erro}` }
+    const rotulo: Record<TipoMidiaCloud, string> = {
+      image: '📷 imagem', video: '🎬 vídeo', audio: '🎙 áudio', document: `📎 ${filename ?? 'documento'}`,
+    }
+    const tipoBanco: Record<TipoMidiaCloud, string> = {
+      image: 'imagem', video: 'video', audio: 'audio', document: 'documento',
+    }
+    await admin.from('wa_messages').insert({
+      tenant_id: tenantId, conversation_id: conversaId, direcao: 'saida',
+      autor: 'atendente', tipo: tipoBanco[tipo],
+      corpo: caption?.trim() || `[${rotulo[tipo]}]`, media_url: url,
+      wamid: envio.wamid, status_entrega: 'sent',
+    })
+    await admin.from('wa_conversations').update({
+      modo: 'humano', ultima_msg: caption?.trim() || `[${rotulo[tipo]}]`,
+      ultima_msg_at: new Date().toISOString(), status: 'aberta',
+    }).eq('id', conversaId)
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// ─── Catálogo de produtos (fotos prontas para enviar) ───────────────────────
+
+export interface WaProduto {
+  id: string
+  nome: string
+  precoCents: number | null
+  descricao: string | null
+  departamentoId: string | null
+  midias: { url: string; tipo: string; caption?: string }[]
+}
+
+export async function listarWaProdutos(): Promise<{ produtos: WaProduto[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data, error } = await admin.from('wa_produtos')
+      .select('id, nome, preco_cents, descricao, departamento_id, midias')
+      .eq('tenant_id', tenantId).order('nome').range(0, 199)
+    if (error) {
+      const msg = error.code === '42P01' || error.code === 'PGRST205'
+        ? 'Aplique a migration 20260907000000_wa_midia_produtos.sql no Supabase'
+        : error.message
+      return { produtos: [], error: msg }
+    }
+    return {
+      produtos: (data ?? []).map(p => ({
+        id: String(p.id), nome: String(p.nome),
+        precoCents: typeof p.preco_cents === 'number' ? p.preco_cents : null,
+        descricao: p.descricao ?? null,
+        departamentoId: p.departamento_id ?? null,
+        midias: Array.isArray(p.midias)
+          ? (p.midias as { url?: string; tipo?: string; caption?: string }[])
+              .filter(m => typeof m.url === 'string')
+              .map(m => ({ url: String(m.url), tipo: String(m.tipo ?? 'imagem'), caption: m.caption }))
+          : [],
+      })),
+    }
+  } catch (err) {
+    return { produtos: [], error: String(err) }
+  }
+}
+
+export async function salvarWaProduto(entrada: {
+  id?: string
+  nome: string
+  precoCents?: number | null
+  descricao?: string | null
+  departamentoId?: string | null
+  midias: { url: string; tipo: string; caption?: string }[]
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const nome = entrada.nome.trim().slice(0, 80)
+    if (nome.length < 2) return { error: 'Informe o nome do produto' }
+    if (entrada.precoCents != null && !valorVendaValido(entrada.precoCents)) {
+      return { error: 'Preço inválido' }
+    }
+    const linha = {
+      nome,
+      preco_cents: entrada.precoCents ?? null,
+      descricao: entrada.descricao?.trim().slice(0, 500) || null,
+      departamento_id: entrada.departamentoId ?? null,
+      midias: entrada.midias.slice(0, 20),
+    }
+    const { error } = entrada.id
+      ? await admin.from('wa_produtos').update(linha).eq('id', entrada.id).eq('tenant_id', tenantId)
+      : await admin.from('wa_produtos').insert({ tenant_id: tenantId, ...linha })
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') {
+        return { error: 'Aplique a migration 20260907000000_wa_midia_produtos.sql no Supabase' }
+      }
+      return { error: error.message }
+    }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function excluirWaProduto(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    await admin.from('wa_produtos').delete().eq('id', id).eq('tenant_id', tenantId)
     return { ok: true }
   } catch (err) {
     return { error: String(err) }

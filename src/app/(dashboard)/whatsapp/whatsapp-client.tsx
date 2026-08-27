@@ -22,6 +22,8 @@ import {
   listarWaEquipe, salvarWaDepartamento, excluirWaDepartamento, salvarWaAtendente,
   removerWaAtendente, atribuirWaConversa, transferirWaDepartamento,
   listarFunisPublicados, enviarParaAutomacao, setWaContaDepartamento,
+  uploadWaMidia, enviarWaMidiaMsg, listarWaProdutos, salvarWaProduto, excluirWaProduto,
+  type WaProduto,
   type DossieLead, type WaConta, type WaConversaResumo, type WaMensagem,
   type WaDepartamento, type WaAtendente,
 } from '@/app/actions/wa-inbox'
@@ -94,30 +96,30 @@ function demoConversas(): WaConversaResumo[] {
 
 const demoMensagens: Record<string, WaMensagem[]> = {
   'demo-1': [
-    { id: 'd1', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Boa tarde! Vi o anúncio de vocês, ainda tem a condição especial?', templateName: null, statusEntrega: null, createdAt: min(38) },
-    { id: 'd2', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Boa tarde, Lucas! Tem sim 😊 Antes de te passar os valores, me conta rapidinho: hoje vocês já investem em tráfego pago?', templateName: null, statusEntrega: 'read', createdAt: min(37) },
-    { id: 'd3', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Já sim, uns R$ 300 por dia na Meta', templateName: null, statusEntrega: null, createdAt: min(35) },
-    { id: 'd4', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Excelente, com esse volume dá pra estruturar algo sério. Vou te passar pro Luís fechar os detalhes 👍', templateName: null, statusEntrega: 'read', createdAt: min(34) },
-    { id: 'd5', direcao: 'saida', autor: 'atendente', autorNome: 'Luís', tipo: 'texto', corpo: 'Lucas, aqui é o Luís! O plano completo com gestão + qualificação fica R$ 1.890/mês. Fechando hoje, o setup sai de graça.', templateName: null, statusEntrega: 'read', createdAt: min(20) },
-    { id: 'd6', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Fechado! Pode emitir o boleto 🙌', templateName: null, statusEntrega: null, createdAt: min(4) },
+    { id: 'd1', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Boa tarde! Vi o anúncio de vocês, ainda tem a condição especial?', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(38) },
+    { id: 'd2', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Boa tarde, Lucas! Tem sim 😊 Antes de te passar os valores, me conta rapidinho: hoje vocês já investem em tráfego pago?', templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: min(37) },
+    { id: 'd3', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Já sim, uns R$ 300 por dia na Meta', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(35) },
+    { id: 'd4', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Excelente, com esse volume dá pra estruturar algo sério. Vou te passar pro Luís fechar os detalhes 👍', templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: min(34) },
+    { id: 'd5', direcao: 'saida', autor: 'atendente', autorNome: 'Luís', tipo: 'texto', corpo: 'Lucas, aqui é o Luís! O plano completo com gestão + qualificação fica R$ 1.890/mês. Fechando hoje, o setup sai de graça.', templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: min(20) },
+    { id: 'd6', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Fechado! Pode emitir o boleto 🙌', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(4) },
   ],
   'demo-2': [
-    { id: 'd7', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Olá! Atendem clínicas odontológicas?', templateName: null, statusEntrega: null, createdAt: min(15) },
-    { id: 'd8', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Olá, Dra. Fernanda! Atendemos sim — clínicas são metade dos nossos clientes 😊 Vocês já fazem tráfego pago hoje?', templateName: null, statusEntrega: 'read', createdAt: min(14) },
-    { id: 'd9', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Qual o valor do plano trimestral?', templateName: null, statusEntrega: null, createdAt: min(12) },
+    { id: 'd7', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Olá! Atendem clínicas odontológicas?', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(15) },
+    { id: 'd8', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Olá, Dra. Fernanda! Atendemos sim — clínicas são metade dos nossos clientes 😊 Vocês já fazem tráfego pago hoje?', templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: min(14) },
+    { id: 'd9', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Qual o valor do plano trimestral?', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(12) },
   ],
   'demo-3': [
-    { id: 'd10', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Quero uma reunião pra entender o serviço', templateName: null, statusEntrega: null, createdAt: min(50) },
-    { id: 'd11', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Claro! Tenho quinta às 10h ou sexta às 14h. Qual prefere?', templateName: null, statusEntrega: 'read', createdAt: min(49) },
-    { id: 'd12', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Quinta 10h', templateName: null, statusEntrega: null, createdAt: min(46) },
-    { id: 'd13', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Perfeito! Agendei quinta às 10h com o Luís ✅ Vou te mandar o lembrete 1h antes.', templateName: null, statusEntrega: 'delivered', createdAt: min(45) },
+    { id: 'd10', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Quero uma reunião pra entender o serviço', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(50) },
+    { id: 'd11', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Claro! Tenho quinta às 10h ou sexta às 14h. Qual prefere?', templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: min(49) },
+    { id: 'd12', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Quinta 10h', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(46) },
+    { id: 'd13', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Perfeito! Agendei quinta às 10h com o Luís ✅ Vou te mandar o lembrete 1h antes.', templateName: null, mediaUrl: null, statusEntrega: 'delivered', createdAt: min(45) },
   ],
   'demo-4': [
-    { id: 'd14', direcao: 'saida', autor: 'atendente', autorNome: 'Luís', tipo: 'texto', corpo: 'Ana, conseguiu ver a proposta que te mandei?', templateName: null, statusEntrega: 'read', createdAt: min(60 * 27) },
-    { id: 'd15', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'vou pensar e te falo, obrigada', templateName: null, statusEntrega: null, createdAt: min(60 * 26) },
+    { id: 'd14', direcao: 'saida', autor: 'atendente', autorNome: 'Luís', tipo: 'texto', corpo: 'Ana, conseguiu ver a proposta que te mandei?', templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: min(60 * 27) },
+    { id: 'd15', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'vou pensar e te falo, obrigada', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(60 * 26) },
   ],
   'demo-5': [
-    { id: 'd16', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'audio', corpo: '[🎙 áudio]', templateName: null, statusEntrega: null, createdAt: min(60 * 49) },
+    { id: 'd16', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'audio', corpo: '[🎙 áudio]', templateName: null, mediaUrl: null, statusEntrega: null, createdAt: min(60 * 49) },
   ],
 }
 
@@ -146,7 +148,7 @@ const DEMO_TEMPLATES = [
 
 export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const [conversas, setConversas] = useState<WaConversaResumo[]>([])
-  const [filtroStatus, setFiltroStatus] = useState<'aberta' | 'resolvida'>('aberta')
+  const [filtroStatus, setFiltroStatus] = useState<'aberta' | 'esperando' | 'resolvida'>('aberta')
   const [busca, setBusca] = useState('')
   const [ativa, setAtiva] = useState<WaConversaResumo | null>(null)
   const [mensagens, setMensagens] = useState<WaMensagem[]>([])
@@ -190,6 +192,18 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const [novoAtPapel, setNovoAtPapel] = useState('atendente')
   const [erroEquipe, setErroEquipe] = useState<string | null>(null)
   const [automacaoAberta, setAutomacaoAberta] = useState(false)
+  // Mídia + catálogo de produtos
+  const [enviandoMidia, setEnviandoMidia] = useState(false)
+  const [produtosAberto, setProdutosAberto] = useState(false)
+  const [produtos, setProdutos] = useState<WaProduto[]>([])
+  const [cadastrandoProduto, setCadastrandoProduto] = useState(false)
+  const [pNome, setPNome] = useState(''); const [pPreco, setPPreco] = useState('')
+  const [pDesc, setPDesc] = useState(''); const [pDepto, setPDepto] = useState('')
+  const [pMidias, setPMidias] = useState<{ url: string; tipo: string }[]>([])
+  const [pSubindo, setPSubindo] = useState(false)
+  const [erroProduto, setErroProduto] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const fileProdutoRef = useRef<HTMLInputElement>(null)
   const [funis, setFunis] = useState<{ id: string; nome: string }[]>([])
   const [avisoTopo, setAvisoTopo] = useState<string | null>(null)
 
@@ -199,7 +213,8 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
   const recarregarLista = useCallback(async () => {
     if (demo) return
-    const r = await listarWaConversas({ status: filtroStatus })
+    // "Esperando" é um recorte das abertas: sem atendente e sem IA cuidando.
+    const r = await listarWaConversas({ status: filtroStatus === 'resolvida' ? 'resolvida' : 'aberta' })
     setConversas(r.conversas)
     setCarregouUmaVez(true)
     if (r.error) setErro(r.error)
@@ -262,7 +277,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
       setTexto('')
       setMensagens(m => [...m, {
         id: `demo-local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
-        tipo: 'texto', corpo, templateName: null, statusEntrega: 'read', createdAt: new Date().toISOString(),
+        tipo: 'texto', corpo, templateName: null, mediaUrl: null, statusEntrega: 'read', createdAt: new Date().toISOString(),
       }])
       setAtiva(a => a ? { ...a, modo: 'humano' } : a)
       return
@@ -271,7 +286,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     // Otimista
     setMensagens(m => [...m, {
       id: `local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: null,
-      tipo: 'texto', corpo, templateName: null, statusEntrega: 'sent', createdAt: new Date().toISOString(),
+      tipo: 'texto', corpo, templateName: null, mediaUrl: null, statusEntrega: 'sent', createdAt: new Date().toISOString(),
     }])
     const r = await enviarWaMensagem(ativa.id, corpo)
     setEnviando(false)
@@ -283,6 +298,108 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     }
     setAtiva(a => a ? { ...a, modo: 'humano' } : a)
     setConversas(cs => cs.map(x => x.id === ativa.id ? { ...x, modo: 'humano', ultimaMsg: corpo } : x))
+  }
+
+  /** 📎 do composer: sobe o arquivo e envia na conversa (legenda = texto digitado). */
+  const anexarEEnviar = async (file: File) => {
+    if (!ativa) return
+    setEnviandoMidia(true); setErro(null)
+    try {
+      if (demo) {
+        const url = URL.createObjectURL(file)
+        const tipo = file.type.startsWith('image/') ? 'imagem'
+          : file.type.startsWith('video/') ? 'video'
+          : file.type.startsWith('audio/') ? 'audio' : 'documento'
+        setMensagens(m => [...m, {
+          id: `demo-local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
+          tipo, corpo: texto.trim() || file.name, templateName: null, mediaUrl: url,
+          statusEntrega: 'sent', createdAt: new Date().toISOString(),
+        }])
+        setTexto('')
+        return
+      }
+      const fd = new FormData(); fd.set('file', file)
+      const up = await uploadWaMidia(fd)
+      if ('error' in up) { setErro(up.error); return }
+      const r = await enviarWaMidiaMsg(ativa.id, up.tipo, up.url, texto.trim() || undefined, up.filename)
+      if ('error' in r) { setErro(r.error); if (r.foraDaJanela) void carregarTemplates(); return }
+      setTexto('')
+      void abrirConversa(ativa)
+    } finally {
+      setEnviandoMidia(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  /** 📦: envia uma mídia do catálogo com a legenda do produto — UM clique. */
+  const enviarMidiaProduto = async (prod: WaProduto, midia: { url: string; tipo: string }) => {
+    if (!ativa) return
+    const caption = `${prod.nome}${prod.precoCents ? ` — ${brl(prod.precoCents)}` : ''}${prod.descricao ? `\n${prod.descricao}` : ''}`
+    setProdutosAberto(false)
+    if (demo) {
+      setMensagens(m => [...m, {
+        id: `demo-local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
+        tipo: midia.tipo, corpo: caption, templateName: null, mediaUrl: midia.url,
+        statusEntrega: 'sent', createdAt: new Date().toISOString(),
+      }])
+      return
+    }
+    setEnviandoMidia(true); setErro(null)
+    const r = await enviarWaMidiaMsg(ativa.id, midia.tipo === 'video' ? 'video' : 'image', midia.url, caption)
+    setEnviandoMidia(false)
+    if ('error' in r) { setErro(r.error); if (r.foraDaJanela) void carregarTemplates(); return }
+    void abrirConversa(ativa)
+  }
+
+  const carregarProdutos = async () => {
+    if (demo) {
+      setProdutos([
+        { id: 'demo-p1', nome: 'Plano Completo', precoCents: 189000, descricao: 'Gestão + qualificação de leads', departamentoId: null, midias: [{ url: 'https://placehold.co/600x400/10b981/white?text=Plano+Completo', tipo: 'imagem' }] },
+        { id: 'demo-p2', nome: 'Consultoria Avulsa', precoCents: 49700, descricao: null, departamentoId: 'demo-dep-vendas', midias: [{ url: 'https://placehold.co/600x400/6366f1/white?text=Consultoria', tipo: 'imagem' }] },
+      ])
+      return
+    }
+    const r = await listarWaProdutos()
+    setProdutos(r.produtos)
+    if (r.error) setErroProduto(r.error)
+  }
+
+  const subirMidiaProduto = async (file: File) => {
+    setPSubindo(true); setErroProduto(null)
+    try {
+      if (demo) {
+        setPMidias(ms => [...ms, { url: URL.createObjectURL(file), tipo: file.type.startsWith('video/') ? 'video' : 'imagem' }])
+        return
+      }
+      const fd = new FormData(); fd.set('file', file)
+      const up = await uploadWaMidia(fd)
+      if ('error' in up) { setErroProduto(up.error); return }
+      if (up.tipo !== 'image' && up.tipo !== 'video') { setErroProduto('Produto aceita foto ou vídeo'); return }
+      setPMidias(ms => [...ms, { url: up.url, tipo: up.tipo === 'video' ? 'video' : 'imagem' }])
+    } finally {
+      setPSubindo(false)
+      if (fileProdutoRef.current) fileProdutoRef.current.value = ''
+    }
+  }
+
+  const salvarProduto = async () => {
+    const lido = lerValorDigitado(pPreco)
+    if (!lido.ok) { setErroProduto(lido.erro); return }
+    if (demo) {
+      setProdutos(ps => [...ps, {
+        id: `demo-p-${Date.now()}`, nome: pNome, precoCents: lido.cents, descricao: pDesc || null,
+        departamentoId: pDepto || null, midias: pMidias,
+      }])
+      setCadastrandoProduto(false); setPNome(''); setPPreco(''); setPDesc(''); setPDepto(''); setPMidias([])
+      return
+    }
+    const r = await salvarWaProduto({
+      nome: pNome, precoCents: lido.cents, descricao: pDesc || null,
+      departamentoId: pDepto || null, midias: pMidias,
+    })
+    if ('error' in r) { setErroProduto(r.error); return }
+    setCadastrandoProduto(false); setPNome(''); setPPreco(''); setPDesc(''); setPDepto(''); setPMidias([])
+    void carregarProdutos()
   }
 
   const carregarTemplates = async () => {
@@ -299,7 +416,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
       setTemplates(null)
       setMensagens(m => [...m, {
         id: `demo-local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
-        tipo: 'template', corpo: `[template: ${nome}]`, templateName: nome, statusEntrega: 'sent', createdAt: new Date().toISOString(),
+        tipo: 'template', corpo: `[template: ${nome}]`, templateName: nome, mediaUrl: null, statusEntrega: 'sent', createdAt: new Date().toISOString(),
       }])
       setAtiva(a => a ? { ...a, janelaAte: new Date(Date.now() + 24 * 3600_000).toISOString() } : a)
       return
@@ -497,12 +614,17 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar conversa…"
             className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
           <div className="mt-2 flex rounded-xl bg-slate-100 p-0.5 text-xs font-medium">
-            {([['aberta', 'Abertas'], ['resolvida', 'Resolvidas']] as const).map(([v, r]) => (
-              <button key={v} onClick={() => setFiltroStatus(v)}
-                className={`flex-1 rounded-lg py-1.5 transition ${filtroStatus === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
-                {r}
-              </button>
-            ))}
+            {([['aberta', 'Abertas'], ['esperando', '⏳ Esperando'], ['resolvida', 'Resolvidas']] as const).map(([v, r]) => {
+              const esperando = v === 'esperando'
+                ? conversas.filter(c => c.status === 'aberta' && !c.atendenteId && c.modo !== 'ia').length
+                : 0
+              return (
+                <button key={v} onClick={() => setFiltroStatus(v)}
+                  className={`flex-1 rounded-lg py-1.5 transition ${filtroStatus === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+                  {r}{v === 'esperando' && esperando > 0 ? ` (${esperando})` : ''}
+                </button>
+              )
+            })}
           </div>
           {atendentes.length > 0 && (
             <select value={euSou} onChange={e => setEuSou(e.target.value)}
@@ -536,6 +658,9 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
               || (c.nome ?? '').toLowerCase().includes(busca.toLowerCase())
               || c.telefone.includes(busca))
             .filter(c => !filtroDepto || c.departamentoId === filtroDepto)
+            // Esperando = aberta, sem dono e sem IA cuidando — ninguém atendeu.
+            .filter(c => filtroStatus !== 'esperando' || (c.status === 'aberta' && !c.atendenteId && c.modo !== 'ia'))
+            .filter(c => filtroStatus !== 'aberta' || c.status === 'aberta')
             // Atendente vê a PRÓPRIA fila + as sem dono do departamento dele;
             // gestor vê tudo.
             .filter(c => souGestor
@@ -578,7 +703,9 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
           {carregouUmaVez && conversas.length === 0 && (
             <div className="p-8 text-center">
               <p className="text-3xl">📭</p>
-              <p className="mt-2 text-sm font-medium text-slate-600">Nenhuma conversa {filtroStatus === 'aberta' ? 'aberta' : 'resolvida'}</p>
+              <p className="mt-2 text-sm font-medium text-slate-600">
+                {filtroStatus === 'esperando' ? 'Ninguém esperando atendimento 🎉' : `Nenhuma conversa ${filtroStatus === 'aberta' ? 'aberta' : 'resolvida'}`}
+              </p>
               <p className="mt-1 text-xs text-slate-400">Quando alguém mandar mensagem para o seu número oficial, a conversa aparece aqui.</p>
             </div>
           )}
@@ -735,6 +862,22 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                         : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800'
                     }`}>
                       {minha && m.autor === 'ia' && <p className="mb-0.5 text-[10px] font-bold opacity-80">🤖 agente IA</p>}
+                      {m.mediaUrl && m.tipo === 'imagem' && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.mediaUrl} alt="" className="mb-1 max-h-64 w-full rounded-xl object-cover" />
+                      )}
+                      {m.mediaUrl && m.tipo === 'video' && (
+                        <video src={m.mediaUrl} controls className="mb-1 max-h-64 w-full rounded-xl" />
+                      )}
+                      {m.mediaUrl && m.tipo === 'audio' && (
+                        <audio src={m.mediaUrl} controls className="mb-1 w-56 max-w-full" />
+                      )}
+                      {m.mediaUrl && m.tipo === 'documento' && (
+                        <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer"
+                          className={`mb-1 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${minha ? 'bg-white/15' : 'bg-slate-100'}`}>
+                          📎 Abrir documento
+                        </a>
+                      )}
                       <p className="whitespace-pre-wrap break-words">{m.corpo}</p>
                       <p className={`mt-0.5 text-right text-[10px] ${minha ? 'text-white/70' : 'text-slate-400'}`}>
                         {horaCurta(m.createdAt)}
@@ -768,6 +911,19 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                   </div>
                 )}
                 <div className="flex items-end gap-2">
+                  <input ref={fileRef} type="file" className="hidden"
+                    accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) void anexarEEnviar(f) }} />
+                  <button onClick={() => fileRef.current?.click()} disabled={enviandoMidia}
+                    title="Enviar foto, vídeo, áudio ou documento (o texto digitado vira a legenda)"
+                    className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg text-slate-500 transition hover:bg-slate-200 disabled:opacity-40">
+                    {enviandoMidia ? '…' : '📎'}
+                  </button>
+                  <button onClick={() => { setProdutosAberto(true); void carregarProdutos() }}
+                    title="Catálogo de produtos — envie as fotos com um clique"
+                    className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg text-slate-500 transition hover:bg-slate-200">
+                    📦
+                  </button>
                   <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void enviar() } }}
                     placeholder={ativa.modo === 'ia' ? 'Responder assume a conversa da IA…' : 'Mensagem  ·  "/" para respostas rápidas'}
@@ -865,14 +1021,18 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
       {/* ── Automação: jogar o lead num funil ── */}
       {automacaoAberta && ativa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAutomacaoAberta(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-slate-900">⚡ Jogar em automação</h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              O lead <b>{ativa.nome ?? ativa.telefone}</b> entra no funil escolhido
-              (remarketing, nutrição…) pelo motor de automações.
-            </p>
-            <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setAutomacaoAberta(false)}>
+          <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="relative bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5">
+              <button onClick={() => setAutomacaoAberta(false)}
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white">✕</button>
+              <h3 className="text-lg font-bold text-white">⚡ Jogar em automação</h3>
+              <p className="mt-1 text-xs text-white/70">
+                <b>{ativa.nome ?? ativa.telefone}</b> entra no funil escolhido
+                (remarketing, nutrição…) pelo motor de automações.
+              </p>
+            </div>
+            <div className="max-h-64 space-y-1.5 overflow-y-auto p-5">
               {funis.map(f => (
                 <button key={f.id}
                   onClick={() => {
@@ -882,7 +1042,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                       setAvisoTopo('error' in r ? r.error : `⚡ Lead enviado para "${f.nome}"`)
                     })
                   }}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50">
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50">
                   {f.nome}
                 </button>
               ))}
@@ -894,138 +1054,311 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
       {/* ── Equipe: departamentos, atendentes e distribuição ── */}
       {equipeAberta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEquipeAberta(false)}>
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">👥 Equipe e departamentos</h3>
-                <p className="text-xs text-slate-500">
-                  Conversa nova cai no departamento padrão da conta e é distribuída
-                  sozinha — com afinidade: o lead volta para quem já o atendeu.
-                </p>
-              </div>
-              <button onClick={() => setEquipeAberta(false)} className="text-slate-400">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setEquipeAberta(false)}>
+          <div className="max-h-[92vh] w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+            {/* header */}
+            <div className="relative bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-900 px-6 py-5">
+              <button onClick={() => setEquipeAberta(false)}
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white">✕</button>
+              <h3 className="text-lg font-bold text-white">Equipe e departamentos</h3>
+              <p className="mt-1 max-w-md text-xs leading-relaxed text-white/60">
+                A conversa nova cai no departamento padrão da conta e é distribuída
+                sozinha — com afinidade: o lead volta para quem já o atendeu.
+              </p>
             </div>
 
-            {/* departamentos */}
-            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Departamentos</p>
-            <div className="mt-1.5 space-y-1.5">
-              {departamentos.map(d => (
-                <div key={d.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
-                  <span className="text-sm">{d.emoji}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{d.nome}</span>
-                  <select value={d.distribuicao}
-                    onChange={e => void salvarWaDepartamento({ id: d.id, nome: d.nome, emoji: d.emoji, distribuicao: e.target.value }).then(() => void recarregarEquipe())}
-                    className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
-                    <option value="menos_ocupado">🧠 menos ocupado</option>
-                    <option value="rodizio">🔁 rodízio</option>
-                    <option value="manual">✋ manual</option>
-                  </select>
-                  <button onClick={() => void excluirWaDepartamento(d.id).then(() => void recarregarEquipe())}
-                    className="text-slate-300 hover:text-red-500">✕</button>
+            <div className="max-h-[calc(92vh-96px)] space-y-6 overflow-y-auto p-6">
+              {/* departamentos */}
+              <section>
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-sm">🏢</span>
+                  <h4 className="text-sm font-bold text-slate-900">Departamentos</h4>
                 </div>
-              ))}
-              <div className="flex gap-2">
-                <input value={novoDepto} onChange={e => setNovoDepto(e.target.value)} placeholder="Vendas, Suporte, Financeiro…"
-                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none" />
-                <select value={novoDeptoModo} onChange={e => setNovoDeptoModo(e.target.value)}
-                  className="rounded-xl border border-slate-300 px-2 py-2 text-[10px] text-slate-500 focus:outline-none">
-                  <option value="menos_ocupado">🧠 menos ocupado</option>
-                  <option value="rodizio">🔁 rodízio</option>
-                  <option value="manual">✋ manual</option>
-                </select>
-                <button
-                  onClick={() => void salvarWaDepartamento({ nome: novoDepto, distribuicao: novoDeptoModo })
-                    .then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoDepto(''); void recarregarEquipe() } })}
-                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">＋</button>
-              </div>
-            </div>
-
-            {/* atendentes */}
-            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Atendentes</p>
-            <div className="mt-1.5 space-y-1.5">
-              {atendentes.map(a => (
-                <div key={a.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
-                  <span className="text-sm">{a.papel === 'gestor' ? '👑' : '🙋'}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{a.nome}</span>
-                  <select value={a.departamentoId ?? ''}
-                    onChange={e => void salvarWaAtendente({ id: a.id, nome: a.nome, papel: a.papel, departamentoId: e.target.value || null }).then(() => void recarregarEquipe())}
-                    className="max-w-[7rem] rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
-                    <option value="">sem depto</option>
-                    {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
-                  </select>
-                  <select value={a.papel}
-                    onChange={e => void salvarWaAtendente({ id: a.id, nome: a.nome, papel: e.target.value, departamentoId: a.departamentoId }).then(() => void recarregarEquipe())}
-                    className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
-                    <option value="atendente">atendente</option>
-                    <option value="gestor">gestor</option>
-                  </select>
-                  <button onClick={() => void removerWaAtendente(a.id).then(() => void recarregarEquipe())}
-                    className="text-slate-300 hover:text-red-500">✕</button>
+                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                  {departamentos.map((d, i2) => (
+                    <div key={d.id} className={`flex items-center gap-3 px-4 py-3 ${i2 > 0 ? 'border-t border-slate-100' : ''}`}>
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-base">{d.emoji}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{d.nome}</span>
+                      <select value={d.distribuicao}
+                        onChange={e => void salvarWaDepartamento({ id: d.id, nome: d.nome, emoji: d.emoji, distribuicao: e.target.value }).then(() => void recarregarEquipe())}
+                        className="rounded-lg border-0 bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                        <option value="menos_ocupado">🧠 Menos ocupado</option>
+                        <option value="rodizio">🔁 Rodízio</option>
+                        <option value="manual">✋ Manual</option>
+                      </select>
+                      <button onClick={() => void excluirWaDepartamento(d.id).then(() => void recarregarEquipe())}
+                        title="Excluir departamento"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-500">✕</button>
+                    </div>
+                  ))}
+                  {departamentos.length === 0 && (
+                    <p className="px-4 py-5 text-center text-xs text-slate-400">Nenhum departamento ainda — crie o primeiro abaixo.</p>
+                  )}
+                  {/* linha de criação */}
+                  <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+                    <input value={novoDepto} onChange={e => { setNovoDepto(e.target.value); setErroEquipe(null) }}
+                      onKeyDown={e => { if (e.key === 'Enter' && novoDepto.trim().length >= 2) void salvarWaDepartamento({ nome: novoDepto, distribuicao: novoDeptoModo }).then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoDepto(''); void recarregarEquipe() } }) }}
+                      placeholder="Novo departamento (Vendas, Suporte…)"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                    <select value={novoDeptoModo} onChange={e => setNovoDeptoModo(e.target.value)}
+                      className="rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs font-medium text-slate-600 focus:outline-none">
+                      <option value="menos_ocupado">🧠 Menos ocupado</option>
+                      <option value="rodizio">🔁 Rodízio</option>
+                      <option value="manual">✋ Manual</option>
+                    </select>
+                    <button disabled={novoDepto.trim().length < 2}
+                      onClick={() => void salvarWaDepartamento({ nome: novoDepto, distribuicao: novoDeptoModo })
+                        .then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoDepto(''); void recarregarEquipe() } })}
+                      className="rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:opacity-30">
+                      Adicionar
+                    </button>
+                  </div>
                 </div>
-              ))}
-              <div className="flex gap-2">
-                <input value={novoAtNome} onChange={e => setNovoAtNome(e.target.value)} placeholder="Nome do atendente"
-                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none" />
-                <select value={novoAtDepto} onChange={e => setNovoAtDepto(e.target.value)}
-                  className="rounded-xl border border-slate-300 px-2 py-2 text-[10px] text-slate-500 focus:outline-none">
-                  <option value="">sem depto</option>
-                  {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
-                </select>
-                <select value={novoAtPapel} onChange={e => setNovoAtPapel(e.target.value)}
-                  className="rounded-xl border border-slate-300 px-2 py-2 text-[10px] text-slate-500 focus:outline-none">
-                  <option value="atendente">atendente</option>
-                  <option value="gestor">gestor</option>
-                </select>
-                <button
-                  onClick={() => void salvarWaAtendente({ nome: novoAtNome, papel: novoAtPapel, departamentoId: novoAtDepto || null })
-                    .then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoAtNome(''); void recarregarEquipe() } })}
-                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">＋</button>
-              </div>
-            </div>
+              </section>
 
-            {/* departamento padrão por conta */}
-            {contas.length > 0 && departamentos.length > 0 && (
-              <div className="mt-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Onde caem as conversas novas</p>
-                {contas.map(c => (
-                  <div key={c.id} className="mt-1.5 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
-                    <span className="min-w-0 flex-1 truncate text-sm text-slate-700">💬 {c.nome}</span>
-                    <select defaultValue=""
-                      onChange={e => void setWaContaDepartamento(c.id, e.target.value || null).then(r => { if ('error' in r) setErroEquipe(r.error) })}
-                      className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
-                      <option value="">sem departamento</option>
+              {/* atendentes */}
+              <section>
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-sm">🙋</span>
+                  <h4 className="text-sm font-bold text-slate-900">Atendentes</h4>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                  {atendentes.map((a, i2) => (
+                    <div key={a.id} className={`flex items-center gap-3 px-4 py-3 ${i2 > 0 ? 'border-t border-slate-100' : ''}`}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                        style={{ background: corAvatar(a.nome) }}>
+                        {a.nome.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-800">{a.nome}</span>
+                        <span className="text-[11px] text-slate-400">{a.papel === 'gestor' ? '👑 Gestor — vê e distribui tudo' : 'Atendente — só a própria fila'}</span>
+                      </span>
+                      <select value={a.departamentoId ?? ''}
+                        onChange={e => void salvarWaAtendente({ id: a.id, nome: a.nome, papel: a.papel, departamentoId: e.target.value || null }).then(() => void recarregarEquipe())}
+                        className="max-w-[8.5rem] rounded-lg border-0 bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                        <option value="">Sem departamento</option>
+                        {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
+                      </select>
+                      <select value={a.papel}
+                        onChange={e => void salvarWaAtendente({ id: a.id, nome: a.nome, papel: e.target.value, departamentoId: a.departamentoId }).then(() => void recarregarEquipe())}
+                        className="rounded-lg border-0 bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                        <option value="atendente">Atendente</option>
+                        <option value="gestor">👑 Gestor</option>
+                      </select>
+                      <button onClick={() => void removerWaAtendente(a.id).then(() => void recarregarEquipe())}
+                        title="Remover (o histórico dele permanece)"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-500">✕</button>
+                    </div>
+                  ))}
+                  {atendentes.length === 0 && (
+                    <p className="px-4 py-5 text-center text-xs text-slate-400">Nenhum atendente ainda — adicione o primeiro abaixo.</p>
+                  )}
+                  <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+                    <input value={novoAtNome} onChange={e => { setNovoAtNome(e.target.value); setErroEquipe(null) }}
+                      onKeyDown={e => { if (e.key === 'Enter' && novoAtNome.trim().length >= 2) void salvarWaAtendente({ nome: novoAtNome, papel: novoAtPapel, departamentoId: novoAtDepto || null }).then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoAtNome(''); void recarregarEquipe() } }) }}
+                      placeholder="Nome do atendente"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                    <select value={novoAtDepto} onChange={e => setNovoAtDepto(e.target.value)}
+                      className="rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs font-medium text-slate-600 focus:outline-none">
+                      <option value="">Sem departamento</option>
                       {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
                     </select>
+                    <select value={novoAtPapel} onChange={e => setNovoAtPapel(e.target.value)}
+                      className="rounded-xl border border-slate-200 bg-white px-2.5 py-2.5 text-xs font-medium text-slate-600 focus:outline-none">
+                      <option value="atendente">Atendente</option>
+                      <option value="gestor">👑 Gestor</option>
+                    </select>
+                    <button disabled={novoAtNome.trim().length < 2}
+                      onClick={() => void salvarWaAtendente({ nome: novoAtNome, papel: novoAtPapel, departamentoId: novoAtDepto || null })
+                        .then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoAtNome(''); void recarregarEquipe() } })}
+                      className="rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:opacity-30">
+                      Adicionar
+                    </button>
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              </section>
 
-            {erroEquipe && <p className="mt-3 rounded-xl bg-red-50 p-2 text-xs text-red-700">{erroEquipe}</p>}
+              {/* departamento padrão por conta */}
+              {contas.length > 0 && departamentos.length > 0 && (
+                <section>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-sm">📥</span>
+                    <h4 className="text-sm font-bold text-slate-900">Onde caem as conversas novas</h4>
+                  </div>
+                  <div className="overflow-hidden rounded-2xl border border-slate-200">
+                    {contas.map((c, i2) => (
+                      <div key={c.id} className={`flex items-center gap-3 px-4 py-3 ${i2 > 0 ? 'border-t border-slate-100' : ''}`}>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-base">💬</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{c.nome}</span>
+                        <select defaultValue=""
+                          onChange={e => void setWaContaDepartamento(c.id, e.target.value || null).then(r => { if ('error' in r) setErroEquipe(r.error) })}
+                          className="rounded-lg border-0 bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                          <option value="">Sem departamento</option>
+                          {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {erroEquipe && (
+                <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{erroEquipe}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── Catálogo de produtos: o cliente pede a foto, o atendente clica ── */}
+      {produtosAberto && ativa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setProdutosAberto(false)}>
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="relative bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-5">
+              <button onClick={() => setProdutosAberto(false)}
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white">✕</button>
+              <h3 className="text-lg font-bold text-white">📦 Catálogo de produtos</h3>
+              <p className="mt-1 text-xs text-white/70">
+                Clique numa foto e ela vai para <b>{ativa.nome ?? ativa.telefone}</b> com nome e preço na legenda.
+              </p>
+            </div>
+
+            <div className="max-h-[calc(92vh-96px)] overflow-y-auto p-6">
+              {!cadastrandoProduto ? (
+                <>
+                  <div className="mb-4 flex items-center justify-between">
+                    <p className="text-xs text-slate-400">
+                      {souGestor ? 'Você vê todos os produtos.' : 'Você vê os produtos liberados para o seu departamento.'}
+                    </p>
+                    <button onClick={() => { setCadastrandoProduto(true); setErroProduto(null) }}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-700">
+                      ＋ Cadastrar produto
+                    </button>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {produtos
+                      .filter(pr => souGestor || !pr.departamentoId || pr.departamentoId === eu?.departamentoId)
+                      .map(pr => (
+                      <div key={pr.id} className="overflow-hidden rounded-2xl border border-slate-200">
+                        <div className="flex items-start justify-between gap-2 px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-slate-900">{pr.nome}</p>
+                            <p className="text-xs text-slate-500">
+                              {pr.precoCents ? <span className="font-semibold text-emerald-600">{brl(pr.precoCents)}</span> : 'sem preço'}
+                              {pr.departamentoId
+                                ? ` · ${departamentos.find(d => d.id === pr.departamentoId)?.nome ?? 'restrito'}`
+                                : ' · toda a equipe'}
+                            </p>
+                          </div>
+                          {souGestor && (
+                            <button onClick={() => {
+                                if (demo) { setProdutos(ps => ps.filter(x => x.id !== pr.id)); return }
+                                void excluirWaProduto(pr.id).then(() => void carregarProdutos())
+                              }}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-500">✕</button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 px-3 pb-3">
+                          {pr.midias.map((mid, i2) => (
+                            <button key={i2} onClick={() => void enviarMidiaProduto(pr, mid)}
+                              title="Enviar esta mídia agora"
+                              className="group relative aspect-square overflow-hidden rounded-xl border border-slate-100 transition hover:ring-2 hover:ring-emerald-500">
+                              {mid.tipo === 'video'
+                                ? <video src={mid.url} className="h-full w-full object-cover" />
+                                // eslint-disable-next-line @next/next/no-img-element
+                                : <img src={mid.url} alt="" className="h-full w-full object-cover" />}
+                              <span className="absolute inset-0 flex items-center justify-center bg-emerald-600/0 text-white opacity-0 transition group-hover:bg-emerald-600/60 group-hover:opacity-100">➤ enviar</span>
+                            </button>
+                          ))}
+                          {pr.midias.length === 0 && (
+                            <p className="col-span-3 py-3 text-center text-[11px] text-slate-400">Sem mídias ainda</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {produtos.length === 0 && (
+                    <p className="py-8 text-center text-sm text-slate-400">Nenhum produto cadastrado — clique em ＋ Cadastrar produto.</p>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input value={pNome} onChange={e => setPNome(e.target.value)} placeholder="Nome do produto"
+                      className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                    <input value={pPreco} onChange={e => setPPreco(e.target.value)} placeholder="Preço (ex.: 1.890,00)" inputMode="decimal"
+                      className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                  </div>
+                  <textarea value={pDesc} onChange={e => setPDesc(e.target.value)} rows={2}
+                    placeholder="Descrição curta (vai na legenda junto com o preço)"
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                  <select value={pDepto} onChange={e => setPDepto(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-600 focus:outline-none">
+                    <option value="">👥 Liberado para toda a equipe</option>
+                    {departamentos.map(d => <option key={d.id} value={d.id}>🔒 Só {d.emoji} {d.nome}</option>)}
+                  </select>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {pMidias.map((mid, i2) => (
+                      <div key={i2} className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200">
+                        {mid.tipo === 'video'
+                          ? <video src={mid.url} className="h-full w-full object-cover" />
+                          // eslint-disable-next-line @next/next/no-img-element
+                          : <img src={mid.url} alt="" className="h-full w-full object-cover" />}
+                        <button onClick={() => setPMidias(ms => ms.filter((_, k) => k !== i2))}
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-[10px] text-white opacity-0 transition group-hover:opacity-100">✕</button>
+                      </div>
+                    ))}
+                    <input ref={fileProdutoRef} type="file" className="hidden"
+                      accept="image/jpeg,image/png,image/webp,video/mp4"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) void subirMidiaProduto(f) }} />
+                    <button onClick={() => fileProdutoRef.current?.click()} disabled={pSubindo}
+                      className="flex aspect-square items-center justify-center rounded-xl border-2 border-dashed border-slate-300 text-2xl text-slate-300 transition hover:border-emerald-400 hover:text-emerald-500 disabled:opacity-40">
+                      {pSubindo ? '…' : '＋'}
+                    </button>
+                  </div>
+
+                  {erroProduto && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{erroProduto}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => void salvarProduto()} disabled={pNome.trim().length < 2}
+                      className="flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40">
+                      Salvar produto
+                    </button>
+                    <button onClick={() => setCadastrandoProduto(false)}
+                      className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-50">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!cadastrandoProduto && erroProduto && (
+                <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{erroProduto}</p>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Respostas rápidas (modal) ── */}
       {gerindoRespostas && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setGerindoRespostas(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">⚡ Respostas rápidas</h3>
-                <p className="text-xs text-slate-500">Digite &quot;/&quot; no chat para usar.</p>
-              </div>
-              <button onClick={() => setGerindoRespostas(false)} className="text-slate-400">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setGerindoRespostas(false)}>
+          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="relative bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
+              <button onClick={() => setGerindoRespostas(false)}
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white">✕</button>
+              <h3 className="text-lg font-bold text-white">⚡ Respostas rápidas</h3>
+              <p className="mt-1 text-xs text-white/70">Digite &quot;/&quot; no chat para usar.</p>
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="p-5">
+            <div className="flex gap-2">
               <input value={novoAtalho} onChange={e => setNovoAtalho(e.target.value)} placeholder="atalho"
                 className="w-24 rounded-xl border border-slate-300 px-2 py-2 text-xs focus:outline-none" />
               <input value={novoTexto} onChange={e => setNovoTexto(e.target.value)} placeholder="Texto da resposta"
                 onKeyDown={e => { if (e.key === 'Enter') void salvarWaRespostaRapida(novoAtalho, novoTexto).then(() => { setNovoAtalho(''); setNovoTexto(''); void listarWaRespostasRapidas().then(r => setRespostas(r.respostas)) }) }}
                 className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none" />
               <button onClick={() => void salvarWaRespostaRapida(novoAtalho, novoTexto).then(() => { setNovoAtalho(''); setNovoTexto(''); void listarWaRespostasRapidas().then(r => setRespostas(r.respostas)) })}
-                className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">＋</button>
+                className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-700">Adicionar</button>
             </div>
             <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto">
               {respostas.map(r => (
@@ -1037,6 +1370,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                 </div>
               ))}
               {respostas.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Nenhuma resposta ainda.</p>}
+            </div>
             </div>
           </div>
         </div>
