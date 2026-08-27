@@ -225,7 +225,7 @@ function defaultQuiz(pageTitle = 'Quiz'): QuizData {
 
 // ─── Block Palette (left) ─────────────────────────────────────────────────────
 
-function PaletteItem({ type }: { type: BlockType }) {
+function PaletteItem({ type, onTap }: { type: BlockType; onTap?: (type: BlockType) => void }) {
   const meta = BLOCK_META[type]
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `palette:${type}` })
 
@@ -234,6 +234,7 @@ function PaletteItem({ type }: { type: BlockType }) {
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      onClick={onTap ? () => onTap(type) : undefined}
       className={`flex items-center gap-2 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg cursor-grab active:cursor-grabbing transition select-none ${isDragging ? 'opacity-40' : ''}`}
     >
       <span className="text-base w-5 text-center shrink-0">{meta.icon}</span>
@@ -242,12 +243,13 @@ function PaletteItem({ type }: { type: BlockType }) {
   )
 }
 
-function LeftPanel() {
+function LeftPanel({ onTapBlock }: { onTapBlock?: (type: BlockType) => void }) {
   return (
-    <div className="w-48 bg-white border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
+    <div className="w-full md:w-48 bg-white border-r border-gray-200 overflow-y-auto shrink-0 flex flex-col">
       <div className="px-3 py-3 border-b border-gray-100">
         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Blocos</p>
-        <p className="text-[10px] text-gray-400 mt-0.5">Arraste para a página</p>
+        <p className="text-[10px] text-gray-400 mt-0.5 hidden md:block">Arraste para a página</p>
+        <p className="text-[10px] text-gray-400 mt-0.5 md:hidden">Toque para adicionar à página atual</p>
       </div>
       <div className="flex-1 overflow-y-auto py-2">
         {CATEGORIES.map(cat => {
@@ -258,7 +260,7 @@ function LeftPanel() {
             <div key={cat} className="mb-3">
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1">{cat}</p>
               <div className="px-1 space-y-0.5">
-                {types.map(type => <PaletteItem key={type} type={type} />)}
+                {types.map(type => <PaletteItem key={type} type={type} onTap={onTapBlock} />)}
               </div>
             </div>
           )
@@ -401,7 +403,7 @@ function PagesPanel({
   onDelete: (pageId: string) => void
 }) {
   return (
-    <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-hidden">
+    <div className="w-full md:w-[180px] bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-hidden">
       <div className="px-3 py-3 border-b border-gray-100 shrink-0">
         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Páginas</p>
         <p className="text-[10px] text-gray-400 mt-0.5">{pages.length} {pages.length === 1 ? 'página' : 'páginas'}</p>
@@ -2361,7 +2363,7 @@ function RightPanel({
   const meta = selectedBlock ? BLOCK_META[selectedBlock.type] : null
 
   return (
-    <div className="w-72 bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
+    <div className="w-full md:w-72 bg-white border-l border-gray-200 flex flex-col overflow-hidden shrink-0">
       {selectedBlock ? (
         <>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
@@ -2405,6 +2407,9 @@ interface Props {
 }
 
 export default function QuizEditorV2({ page, initialData, funnels }: Props) {
+  // No celular só cabe UM painel por vez: Blocos / Páginas / Página / Editar.
+  // No desktop (md+) os quatro continuam lado a lado — nada muda lá.
+  const [painelMobile, setPainelMobile] = useState<'blocos' | 'paginas' | 'canvas' | 'editar'>('canvas')
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'builder' | 'leads'>('builder')
   const [data, setData] = useState<QuizData>(() => initialData ?? defaultQuiz(page.title))
@@ -2676,7 +2681,7 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
           <button onClick={() => router.push('/pages')} className="text-gray-500 hover:text-gray-700 shrink-0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <h1 className="text-sm font-semibold text-gray-900 truncate max-w-[180px]">{page.title}</h1>
+          <h1 className="hidden sm:block text-sm font-semibold text-gray-900 truncate max-w-[180px]">{page.title}</h1>
 
           {/* Tabs */}
           <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium shrink-0">
@@ -2721,37 +2726,72 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
           </div>
         )}
 
-        {/* 4-column layout (builder tab) */}
+        {/* 4 colunas no desktop; no celular, UMA por vez + abas no rodapé */}
         <div className={`flex flex-1 overflow-hidden ${activeTab !== 'builder' ? 'hidden' : ''}`}>
-          <LeftPanel />
-          <PagesPanel
-            pages={data.pages}
-            selectedPageId={selectedPageId}
-            onSelectPage={id => { setSelectedPageId(id); setSelectedBlockId(null) }}
-            onAddPage={addPage}
-            onRename={renamePageTitle}
-            onDuplicate={duplicatePage}
-            onDelete={deletePage}
-          />
-          <CenterPanel
-            activePage={activePage}
-            pages={data.pages}
-            selectedId={selectedBlockId}
-            onSelectBlock={setSelectedBlockId}
-            onDeleteBlock={deleteBlock}
-            onDuplicateBlock={duplicateBlock}
-          />
-          <RightPanel
-            selectedBlockId={selectedBlockId}
-            pages={data.pages}
-            currentPageId={selectedPageId}
-            settings={data.settings}
-            funnels={funnels}
-            onUpdateBlock={updateBlock}
-            onUpdateSettings={updateSettings}
-            onMoveBlock={moveBlock}
-          />
+          <div className={`${painelMobile === 'blocos' ? 'flex' : 'hidden'} md:flex w-full md:w-auto md:shrink-0 min-h-0`}>
+            <LeftPanel onTapBlock={type => {
+              // Toque (SÓ no celular) adiciona à página atual. No desktop o
+              // gesto é arrastar — clicar lá não pode criar bloco sem querer.
+              if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) return
+              if (selectedPageId) { addBlock(selectedPageId, type); setPainelMobile('editar') }
+            }} />
+          </div>
+          <div className={`${painelMobile === 'paginas' ? 'flex' : 'hidden'} md:flex w-full md:w-auto md:shrink-0 min-h-0`}>
+            <PagesPanel
+              pages={data.pages}
+              selectedPageId={selectedPageId}
+              onSelectPage={id => { setSelectedPageId(id); setSelectedBlockId(null); setPainelMobile('canvas') }}
+              onAddPage={addPage}
+              onRename={renamePageTitle}
+              onDuplicate={duplicatePage}
+              onDelete={deletePage}
+            />
+          </div>
+          <div className={`${painelMobile === 'canvas' ? 'flex' : 'hidden'} md:flex w-full flex-1 min-w-0 min-h-0`}>
+            <CenterPanel
+              activePage={activePage}
+              pages={data.pages}
+              selectedId={selectedBlockId}
+              onSelectBlock={id => { setSelectedBlockId(id); setPainelMobile('editar') }}
+              onDeleteBlock={deleteBlock}
+              onDuplicateBlock={duplicateBlock}
+            />
+          </div>
+          <div className={`${painelMobile === 'editar' ? 'flex' : 'hidden'} md:flex w-full md:w-auto md:shrink-0 min-h-0`}>
+            <RightPanel
+              selectedBlockId={selectedBlockId}
+              pages={data.pages}
+              currentPageId={selectedPageId}
+              settings={data.settings}
+              funnels={funnels}
+              onUpdateBlock={updateBlock}
+              onUpdateSettings={updateSettings}
+              onMoveBlock={moveBlock}
+            />
+          </div>
         </div>
+
+        {/* Abas do celular — era impossível editar: as 4 colunas fixas
+            estouravam a tela e nada era alcançável. */}
+        {activeTab === 'builder' && (
+          <div className="md:hidden flex border-t border-gray-200 bg-white shrink-0"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            {([
+              ['blocos', '🧩', 'Blocos'],
+              ['paginas', '📄', 'Páginas'],
+              ['canvas', '👁', 'Página'],
+              ['editar', '⚙️', 'Editar'],
+            ] as const).map(([id, icone, rotulo]) => (
+              <button key={id} onClick={() => setPainelMobile(id)}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
+                  painelMobile === id ? 'text-indigo-600 bg-indigo-50' : 'text-gray-500'
+                }`}>
+                <span className="text-base leading-none">{icone}</span>
+                {rotulo}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <DragOverlay dropAnimation={null}>
