@@ -22,7 +22,7 @@ import { aplicarDesfecho, ALCANCE_TOTAL } from '@/lib/sales/fechar-lead'
 import { valorVendaValido } from '@/lib/quiz/valor-venda'
 import { podeResolver, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/distribuicao'
 import { enrollLeadsInFunnel } from '@/app/actions/leads'
-import { foneChave, foneBate } from '@/lib/webhooks/contato-match'
+import { foneChave, foneBate, foneDigitos } from '@/lib/webhooks/contato-match'
 
 async function getTenantId(): Promise<string> {
   const cookieStore = await cookies()
@@ -938,6 +938,146 @@ export async function excluirWaProduto(id: string): Promise<{ ok: true } | { err
     const admin = createAdminClient()
     await admin.from('wa_produtos').delete().eq('id', id).eq('tenant_id', tenantId)
     return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// ─── Leads quentes: do funil direto para o chat ─────────────────────────────
+
+export interface LeadQuenteInbox {
+  nome: string | null
+  telefone: string
+  origem: string          // "Quiz: Diagnóstico" | "Agente: Clayton"
+  quando: string | null
+  detalhe: string | null  // "✅ concluiu" | "🔥 Qualificado" | "📅 Reunião"
+}
+
+/** Telefone no formato da Meta (DDI 55 + número) a partir do que temos. */
+function foneParaMeta(bruto: string): string | null {
+  const d = foneDigitos(bruto)
+  if (d.length < 10) return null
+  return d.length <= 11 ? `55${d}` : d
+}
+
+/**
+ * Leads QUENTES do ecossistema (quiz concluído/com contato + agente que
+ * atingiu o objetivo) que ainda NÃO têm conversa no WhatsApp oficial — a
+ * lista de quem a equipe deveria chamar agora.
+ */
+export async function listarLeadsQuentes(): Promise<{ leads: LeadQuenteInbox[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+
+    // Telefones que JÁ têm conversa (qualquer conta) — esses saem da lista.
+    const { data: convs } = await admin.from('wa_conversations')
+      .select('telefone').eq('tenant_id', tenantId).range(0, 999)
+    const jaNoChat = new Set((convs ?? []).map(c => foneChave(String(c.telefone))))
+
+    const saida: LeadQuenteInbox[] = []
+    const vistos = new Set<string>()
+
+    // ── Quiz: quem deixou telefone (quente = dá para atender) ───────────────
+    const { data: quizLeads } = await admin.from('quiz_leads')
+      .select('name, phone, status, started_at, pages(title)')
+      .eq('tenant_id', tenantId)
+      .not('phone', 'is', null).neq('phone', '')
+      .order('started_at', { ascending: false })
+      .range(0, 199)
+    for (const l of quizLeads ?? []) {
+      const chave = foneChave(String(l.phone))
+      if (!chave || jaNoChat.has(chave) || vistos.has(chave)) continue
+      const fone = foneParaMeta(String(l.phone))
+      if (!fone) continue
+      vistos.add(chave)
+      saida.push({
+        nome: l.name ?? null,
+        telefone: fone,
+        origem: `🧠 ${String((l.pages as { title?: string } | null)?.title ?? 'Quiz')}`,
+        quando: l.started_at ?? null,
+        detalhe: l.status === 'completed' ? '✅ concluiu o funil' : '📱 deixou contato',
+      })
+    }
+
+    // ── Agente: quem atingiu o objetivo (qualificado/agendado/vendido) ──────
+    const { data: convsAg } = await admin.from('agent_conversations')
+      .select('status, started_at, leads(name, phone), ai_agents(name)')
+      .eq('tenant_id', tenantId)
+      .in('status', ['qualified', 'scheduled', 'sold', 'routed_to_funnel'])
+      .order('started_at', { ascending: false })
+      .range(0, 199)
+    const DETALHE: Record<string, string> = {
+      qualified: '🔥 Qualificado', scheduled: '📅 Reunião marcada',
+      sold: '💰 Comprou', routed_to_funnel: 'Encaminhado',
+    }
+    for (const c of convsAg ?? []) {
+      const lead = (Array.isArray(c.leads) ? c.leads[0] : c.leads) as { name?: string | null; phone?: string | null } | null
+      if (!lead?.phone) continue
+      const chave = foneChave(String(lead.phone))
+      if (!chave || jaNoChat.has(chave) || vistos.has(chave)) continue
+      const fone = foneParaMeta(String(lead.phone))
+      if (!fone) continue
+      vistos.add(chave)
+      saida.push({
+        nome: lead.name ?? null,
+        telefone: fone,
+        origem: `🤖 ${String((c.ai_agents as { name?: string } | null)?.name ?? 'Agente')}`,
+        quando: c.started_at ?? null,
+        detalhe: DETALHE[String(c.status)] ?? null,
+      })
+    }
+
+    return { leads: saida.slice(0, 100) }
+  } catch (err) {
+    return { leads: [], error: String(err) }
+  }
+}
+
+/**
+ * Puxa o lead quente para o chat: cria (ou reabre) a conversa na primeira
+ * conta ativa. Como o lead nunca mandou mensagem, a janela está FECHADA —
+ * o composer já abre nos templates, exatamente como a Meta exige.
+ */
+export async function iniciarWaConversa(
+  telefone: string,
+  nome: string | null,
+): Promise<{ ok: true; conversaId: string } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const fone = foneParaMeta(telefone)
+    if (!fone) return { error: 'Telefone inválido' }
+
+    const { data: conta } = await admin.from('wa_accounts')
+      .select('id, departamento_padrao_id').eq('tenant_id', tenantId).eq('status', 'ativa')
+      .order('created_at').limit(1).maybeSingle()
+    if (!conta) return { error: 'Conecte um número oficial primeiro (⚙️)' }
+
+    // Já existe? Reabre em vez de duplicar.
+    const { data: existente } = await admin.from('wa_conversations')
+      .select('id').eq('account_id', conta.id).eq('telefone', fone).maybeSingle()
+    if (existente) {
+      await admin.from('wa_conversations').update({ status: 'aberta' }).eq('id', existente.id)
+      return { ok: true, conversaId: String(existente.id) }
+    }
+
+    // Casa o lead pelo telefone (mesma régua de sempre).
+    const { data: candidatos } = await admin.rpc('casar_leads_por_contato', {
+      p_tenant: tenantId, p_email: null, p_fone: fone,
+    })
+    const lead = ((candidatos ?? []) as { id: string; phone: string | null }[])
+      .find(l => foneBate(foneChave(l.phone), foneChave(fone)))
+
+    const { data: nova, error } = await admin.from('wa_conversations').insert({
+      tenant_id: tenantId, account_id: conta.id, telefone: fone,
+      nome, lead_id: lead?.id ?? null, modo: 'humano',
+      departamento_id: (conta as { departamento_padrao_id?: string | null }).departamento_padrao_id ?? null,
+      janela_ate: null, nao_lidas: 0,
+      ultima_msg: null, ultima_msg_at: new Date().toISOString(), status: 'aberta',
+    }).select('id').single()
+    if (error || !nova) return { error: error?.message ?? 'Não foi possível criar a conversa' }
+    return { ok: true, conversaId: String(nova.id) }
   } catch (err) {
     return { error: String(err) }
   }

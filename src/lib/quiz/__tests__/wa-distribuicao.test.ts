@@ -145,7 +145,7 @@ const tests: Record<string, () => void> = {
   },
   'fila ⏳ Esperando: aberta, sem dono e sem IA cuidando': () => {
     const ui = ler('src/app/(dashboard)/whatsapp/whatsapp-client.tsx')
-    assert.ok(ui.includes("'⏳ Esperando'"), 'falta a aba de quem ninguém atendeu')
+    assert.ok(/\['esperando', '⏳/.test(ui), 'falta a aba de quem ninguém atendeu')
     assert.ok(/!c\.atendenteId && c\.modo !== 'ia'/.test(ui),
       'conversa com IA cuidando NÃO está esperando — o agente está atendendo')
   },
@@ -154,6 +154,25 @@ const tests: Record<string, () => void> = {
     assert.ok(sql.includes('media_url'))
     assert.ok(sql.includes('wa_produtos'))
     assert.ok(sql.includes('departamento_id'), 'a visibilidade por departamento vive no banco')
+  },
+  // ── 🔥 Quentes: do funil direto para o chat ───────────────────────────────
+  'leads quentes do quiz e do agente aparecem no inbox para atender': () => {
+    const src = ler('src/app/actions/wa-inbox.ts')
+    assert.ok(src.includes('listarLeadsQuentes'))
+    assert.ok(/in\('status', \['qualified', 'scheduled', 'sold', 'routed_to_funnel'\]\)/.test(src),
+      'do agente, só quem atingiu o objetivo é quente')
+    assert.ok(src.includes('jaNoChat'), 'quem já está no chat não pode aparecer de novo')
+    assert.ok(src.includes('foneParaMeta'), 'o telefone precisa sair no formato da Meta (DDI 55)')
+  },
+  'atender cria a conversa SEM janela — o composer cai nos templates': () => {
+    const src = ler('src/app/actions/wa-inbox.ts')
+    assert.ok(/iniciarWaConversa[\s\S]{0,2600}janela_ate: null/.test(src),
+      'lead que nunca mandou mensagem só pode receber template — a Meta exige')
+    assert.ok(/iniciarWaConversa[\s\S]{0,900}existente/.test(src),
+      'conversa existente reabre em vez de duplicar')
+    const ui = ler('src/app/(dashboard)/whatsapp/whatsapp-client.tsx')
+    assert.ok(ui.includes("'🔥 Quentes'"), 'falta a aba de leads quentes')
+    assert.ok(ui.includes('atenderQuente'), 'falta o botão Atender')
   },
 }
 
