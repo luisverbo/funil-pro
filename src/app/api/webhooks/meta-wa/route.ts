@@ -22,6 +22,7 @@ import { lerWebhookCloud, novaJanela } from '@/lib/whatsapp-cloud/webhook-parser
 import { enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { processAgentMessage } from '@/lib/agents/chat'
 import { foneChave, foneBate } from '@/lib/webhooks/contato-match'
+import { escolherAtendente, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/distribuicao'
 
 export const maxDuration = 60
 
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: conta } = await admin
         .from('wa_accounts')
-        .select('id, tenant_id, access_token, phone_number_id, agente_plantao_id, status')
+        .select('id, tenant_id, access_token, phone_number_id, agente_plantao_id, status, departamento_padrao_id')
         .eq('phone_number_id', m.phoneNumberId)
         .maybeSingle()
       if (!conta || conta.status !== 'ativa') continue
@@ -107,9 +108,55 @@ export async function POST(request: NextRequest) {
         // Conversa NOVA nasce em modo IA quando a conta tem agente de
         // plantão — o atendente assume quando quiser.
         modo = conta.agente_plantao_id ? 'ia' : 'humano'
+
+        // ── Distribuição automática ─────────────────────────────────────────
+        // Departamento padrão da conta → afinidade (quem já atendeu este
+        // telefone) → menos ocupado/rodízio, conforme o modo do departamento.
+        const deptoId = (conta as { departamento_padrao_id?: string | null }).departamento_padrao_id ?? null
+        let atendenteId: string | null = null
+        if (deptoId) {
+          const [{ data: depto }, { data: time }, { data: anteriores }] = await Promise.all([
+            admin.from('wa_departamentos').select('distribuicao').eq('id', deptoId).maybeSingle(),
+            admin.from('wa_atendentes')
+              .select('id, ativo, ultima_atribuicao_at')
+              .eq('tenant_id', conta.tenant_id).eq('departamento_id', deptoId).eq('ativo', true).range(0, 49),
+            admin.from('wa_conversations')
+              .select('atendente_id')
+              .eq('tenant_id', conta.tenant_id).eq('telefone', m.de)
+              .not('atendente_id', 'is', null)
+              .order('ultima_msg_at', { ascending: false }).limit(1),
+          ])
+          const modoDist = modoDistribuicaoValido(depto?.distribuicao) ? depto.distribuicao : 'menos_ocupado'
+          const ids = (time ?? []).map(a => String(a.id))
+          const cargas: Record<string, number> = {}
+          if (ids.length > 0) {
+            const { data: abertas } = await admin.from('wa_conversations')
+              .select('atendente_id').eq('tenant_id', conta.tenant_id)
+              .eq('status', 'aberta').in('atendente_id', ids).range(0, 999)
+            for (const c of abertas ?? []) {
+              const aid = String(c.atendente_id)
+              cargas[aid] = (cargas[aid] ?? 0) + 1
+            }
+          }
+          atendenteId = escolherAtendente(
+            (time ?? []).map(a => ({
+              id: String(a.id), ativo: Boolean(a.ativo),
+              abertas: cargas[String(a.id)] ?? 0,
+              ultimaAtribuicaoAt: a.ultima_atribuicao_at ?? null,
+            })),
+            modoDist,
+            anteriores?.[0]?.atendente_id ? String(anteriores[0].atendente_id) : null,
+          )
+          if (atendenteId) {
+            await admin.from('wa_atendentes')
+              .update({ ultima_atribuicao_at: new Date().toISOString() }).eq('id', atendenteId)
+          }
+        }
+
         const { data: nova } = await admin.from('wa_conversations').insert({
           tenant_id: conta.tenant_id, account_id: conta.id, telefone: m.de,
           nome: m.nome, lead_id: leadId, modo,
+          departamento_id: deptoId, atendente_id: atendenteId,
           janela_ate: janela, nao_lidas: 1, ultima_msg: m.corpo,
           ultima_msg_at: new Date().toISOString(), status: 'aberta',
         }).select('id').single()

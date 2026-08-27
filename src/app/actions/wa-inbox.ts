@@ -20,6 +20,9 @@ import { enviarTextoCloud, enviarTemplateCloud, listarTemplatesCloud } from '@/l
 import { dentroDaJanela } from '@/lib/whatsapp-cloud/webhook-parser'
 import { aplicarDesfecho, ALCANCE_TOTAL } from '@/lib/sales/fechar-lead'
 import { valorVendaValido } from '@/lib/quiz/valor-venda'
+import { podeResolver, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/distribuicao'
+import { enrollLeadsInFunnel } from '@/app/actions/leads'
+import { foneChave, foneBate } from '@/lib/webhooks/contato-match'
 
 async function getTenantId(): Promise<string> {
   const cookieStore = await cookies()
@@ -130,6 +133,8 @@ export interface WaConversaResumo {
   vendidoCents: number | null
   janelaAte: string | null
   contaNome: string
+  departamentoId: string | null
+  atendenteId: string | null
 }
 
 export async function listarWaConversas(
@@ -140,7 +145,7 @@ export async function listarWaConversas(
     const admin = createAdminClient()
     let q = admin
       .from('wa_conversations')
-      .select('id, nome, telefone, ultima_msg, ultima_msg_at, nao_lidas, status, modo, tags, vendido_cents, janela_ate, wa_accounts(nome)')
+      .select('id, nome, telefone, ultima_msg, ultima_msg_at, nao_lidas, status, modo, tags, vendido_cents, janela_ate, departamento_id, atendente_id, wa_accounts(nome)')
       .eq('tenant_id', tenantId)
       .order('ultima_msg_at', { ascending: false, nullsFirst: false })
       .range(0, 199)
@@ -157,6 +162,8 @@ export async function listarWaConversas(
         vendidoCents: typeof c.vendido_cents === 'number' ? c.vendido_cents : null,
         janelaAte: c.janela_ate ?? null,
         contaNome: String((c.wa_accounts as { nome?: string } | null)?.nome ?? 'WhatsApp'),
+        departamentoId: (c as { departamento_id?: string | null }).departamento_id ?? null,
+        atendenteId: (c as { atendente_id?: string | null }).atendente_id ?? null,
       }))
       .filter(c => !busca
         || (c.nome ?? '').toLowerCase().includes(busca)
@@ -383,6 +390,14 @@ export async function setWaStatus(conversaId: string, status: 'aberta' | 'resolv
   try {
     const tenantId = await getTenantId()
     const admin = createAdminClient()
+    // TRAVA: resolver sem tag deixa o relatório furado ("fechou por quê?").
+    // A conversa só fecha classificada.
+    if (status === 'resolvida') {
+      const { data: conv } = await admin.from('wa_conversations')
+        .select('tags').eq('id', conversaId).eq('tenant_id', tenantId).maybeSingle()
+      const trava = podeResolver(Array.isArray(conv?.tags) ? (conv.tags as string[]) : [])
+      if (!trava.ok) return { error: trava.motivo }
+    }
     const { error } = await admin.from('wa_conversations')
       .update({ status }).eq('id', conversaId).eq('tenant_id', tenantId)
     if (error) return { error: error.message }
@@ -486,6 +501,245 @@ export async function excluirWaRespostaRapida(id: string): Promise<{ ok: true } 
     const tenantId = await getTenantId()
     const admin = createAdminClient()
     await admin.from('wa_respostas_rapidas').delete().eq('id', id).eq('tenant_id', tenantId)
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// ─── Departamentos e equipe ─────────────────────────────────────────────────
+
+export interface WaDepartamento { id: string; nome: string; emoji: string; distribuicao: string }
+export interface WaAtendente { id: string; nome: string; papel: string; departamentoId: string | null; ativo: boolean }
+
+const EQUIPE_MIGRATION = 'Aplique a migration 20260906000000_wa_departamentos.sql no Supabase'
+
+export async function listarWaEquipe(): Promise<{
+  departamentos: WaDepartamento[]
+  atendentes: WaAtendente[]
+  error?: string
+}> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const [deps, ats] = await Promise.all([
+      admin.from('wa_departamentos').select('id, nome, emoji, distribuicao')
+        .eq('tenant_id', tenantId).order('created_at').range(0, 49),
+      admin.from('wa_atendentes').select('id, nome, papel, departamento_id, ativo')
+        .eq('tenant_id', tenantId).eq('ativo', true).order('created_at').range(0, 99),
+    ])
+    if (deps.error) {
+      const msg = deps.error.code === '42P01' || deps.error.code === 'PGRST205' ? EQUIPE_MIGRATION : deps.error.message
+      return { departamentos: [], atendentes: [], error: msg }
+    }
+    return {
+      departamentos: (deps.data ?? []).map(d => ({
+        id: String(d.id), nome: String(d.nome), emoji: String(d.emoji ?? '💼'), distribuicao: String(d.distribuicao),
+      })),
+      atendentes: (ats.data ?? []).map(a => ({
+        id: String(a.id), nome: String(a.nome), papel: String((a as { papel?: string }).papel ?? 'atendente'),
+        departamentoId: (a as { departamento_id?: string | null }).departamento_id ?? null,
+        ativo: Boolean(a.ativo),
+      })),
+    }
+  } catch (err) {
+    return { departamentos: [], atendentes: [], error: String(err) }
+  }
+}
+
+export async function salvarWaDepartamento(entrada: {
+  id?: string; nome: string; emoji?: string; distribuicao?: string
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const nome = entrada.nome.trim().slice(0, 40)
+    if (nome.length < 2) return { error: 'Informe o nome do departamento' }
+    const linha = {
+      nome,
+      emoji: (entrada.emoji ?? '💼').slice(0, 4),
+      distribuicao: modoDistribuicaoValido(entrada.distribuicao) ? entrada.distribuicao : 'menos_ocupado',
+    }
+    const { error } = entrada.id
+      ? await admin.from('wa_departamentos').update(linha).eq('id', entrada.id).eq('tenant_id', tenantId)
+      : await admin.from('wa_departamentos').insert({ tenant_id: tenantId, ...linha })
+    if (error) {
+      if (error.code === '42P01' || error.code === 'PGRST205') return { error: EQUIPE_MIGRATION }
+      if (error.code === '23505') return { error: 'Já existe um departamento com esse nome' }
+      return { error: error.message }
+    }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function excluirWaDepartamento(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    await admin.from('wa_departamentos').delete().eq('id', id).eq('tenant_id', tenantId)
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function salvarWaAtendente(entrada: {
+  id?: string; nome: string; papel?: string; departamentoId?: string | null
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const nome = entrada.nome.trim().slice(0, 60)
+    if (nome.length < 2) return { error: 'Informe o nome' }
+    const linha = {
+      nome,
+      papel: entrada.papel === 'gestor' ? 'gestor' : 'atendente',
+      departamento_id: entrada.departamentoId ?? null,
+    }
+    const { error } = entrada.id
+      ? await admin.from('wa_atendentes').update(linha).eq('id', entrada.id).eq('tenant_id', tenantId)
+      : await admin.from('wa_atendentes').insert({ tenant_id: tenantId, ...linha })
+    if (error) {
+      if (error.code === '42703' || error.code === 'PGRST204') return { error: EQUIPE_MIGRATION }
+      return { error: error.message }
+    }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function removerWaAtendente(id: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    // Desativa (não apaga): histórico de quem atendeu permanece.
+    await admin.from('wa_atendentes').update({ ativo: false }).eq('id', id).eq('tenant_id', tenantId)
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Gestor: atribui/transfere a conversa (null = devolver à fila). */
+export async function atribuirWaConversa(
+  conversaId: string,
+  atendenteId: string | null,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { error } = await admin.from('wa_conversations')
+      .update({ atendente_id: atendenteId })
+      .eq('id', conversaId).eq('tenant_id', tenantId)
+    if (error) return { error: error.message }
+    if (atendenteId) {
+      await admin.from('wa_atendentes')
+        .update({ ultima_atribuicao_at: new Date().toISOString() })
+        .eq('id', atendenteId).eq('tenant_id', tenantId)
+    }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Gestor: muda a conversa de departamento (Vendas → Suporte…). */
+export async function transferirWaDepartamento(
+  conversaId: string,
+  departamentoId: string | null,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    // Trocar de departamento devolve à fila: o atendente antigo é de OUTRO time.
+    const { error } = await admin.from('wa_conversations')
+      .update({ departamento_id: departamentoId, atendente_id: null })
+      .eq('id', conversaId).eq('tenant_id', tenantId)
+    if (error) return { error: error.message }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+// ─── Automação: jogar o lead num funil (remarketing etc.) ───────────────────
+
+export async function listarFunisPublicados(): Promise<{ funis: { id: string; nome: string }[] }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data } = await admin.from('funnels').select('id, name, status')
+      .eq('tenant_id', tenantId).in('status', ['published', 'draft'])
+      .order('created_at', { ascending: false }).range(0, 99)
+    return { funis: (data ?? []).map(f => ({ id: String(f.id), nome: String(f.name ?? 'Funil') + (f.status !== 'published' ? ' (rascunho)' : '') })) }
+  } catch {
+    return { funis: [] }
+  }
+}
+
+/**
+ * Joga o lead da conversa numa automação (funil): remarketing, nutrição, o
+ * que for. Se a conversa ainda não tem lead, cria um com nome+telefone e
+ * liga à conversa — aí a matrícula usa o MESMO motor dos leads (BullMQ).
+ */
+export async function enviarParaAutomacao(
+  conversaId: string,
+  funnelId: string,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: conv } = await admin.from('wa_conversations')
+      .select('id, lead_id, telefone, nome')
+      .eq('id', conversaId).eq('tenant_id', tenantId).maybeSingle()
+    if (!conv) return { error: 'Conversa não encontrada' }
+
+    let leadId = conv.lead_id ? String(conv.lead_id) : null
+    if (!leadId) {
+      // Antes de criar, tenta casar por telefone (mesma régua do Mercos).
+      const { data: candidatos } = await admin.rpc('casar_leads_por_contato', {
+        p_tenant: tenantId, p_email: null, p_fone: String(conv.telefone),
+      })
+      const casado = ((candidatos ?? []) as { id: string; phone: string | null }[])
+        .find(l => foneBate(foneChave(l.phone), foneChave(String(conv.telefone))))
+      leadId = casado?.id ?? null
+      if (!leadId) {
+        const { data: novo, error: erroLead } = await admin.from('leads').insert({
+          tenant_id: tenantId, funnel_id: null, name: conv.nome ?? null,
+          phone: String(conv.telefone), status: 'active',
+        }).select('id').single()
+        if (erroLead || !novo) return { error: 'Não foi possível criar o lead' }
+        leadId = String(novo.id)
+      }
+      await admin.from('wa_conversations').update({ lead_id: leadId }).eq('id', conv.id)
+    }
+
+    const r = await enrollLeadsInFunnel([leadId], funnelId, 0)
+    if (!r.success) return { error: r.error ?? 'Não foi possível matricular no funil' }
+    return { ok: true }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+/** Departamento padrão de uma conta: onde as conversas novas caem. */
+export async function setWaContaDepartamento(
+  contaId: string,
+  departamentoId: string | null,
+): Promise<{ ok: true } | { error: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { error } = await admin.from('wa_accounts')
+      .update({ departamento_padrao_id: departamentoId })
+      .eq('id', contaId).eq('tenant_id', tenantId)
+    if (error) {
+      if (error.code === '42703' || error.code === 'PGRST204') return { error: EQUIPE_MIGRATION }
+      return { error: error.message }
+    }
     return { ok: true }
   } catch (err) {
     return { error: String(err) }
