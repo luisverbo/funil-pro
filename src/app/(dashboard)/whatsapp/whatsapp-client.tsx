@@ -23,7 +23,8 @@ import {
   removerWaAtendente, atribuirWaConversa, transferirWaDepartamento,
   listarFunisPublicados, enviarParaAutomacao, setWaContaDepartamento,
   uploadWaMidia, enviarWaMidiaMsg, listarWaProdutos, salvarWaProduto, excluirWaProduto,
-  type WaProduto,
+  listarLeadsQuentes, iniciarWaConversa,
+  type WaProduto, type LeadQuenteInbox,
   type DossieLead, type WaConta, type WaConversaResumo, type WaMensagem,
   type WaDepartamento, type WaAtendente,
 } from '@/app/actions/wa-inbox'
@@ -148,7 +149,9 @@ const DEMO_TEMPLATES = [
 
 export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const [conversas, setConversas] = useState<WaConversaResumo[]>([])
-  const [filtroStatus, setFiltroStatus] = useState<'aberta' | 'esperando' | 'resolvida'>('aberta')
+  const [filtroStatus, setFiltroStatus] = useState<'aberta' | 'esperando' | 'quentes' | 'resolvida'>('aberta')
+  const [quentes, setQuentes] = useState<LeadQuenteInbox[]>([])
+  const [carregandoQuentes, setCarregandoQuentes] = useState(false)
   const [busca, setBusca] = useState('')
   const [ativa, setAtiva] = useState<WaConversaResumo | null>(null)
   const [mensagens, setMensagens] = useState<WaMensagem[]>([])
@@ -213,12 +216,48 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
   const recarregarLista = useCallback(async () => {
     if (demo) return
+    if (filtroStatus === 'quentes') {
+      setCarregandoQuentes(true)
+      const q = await listarLeadsQuentes()
+      setQuentes(q.leads); setCarregandoQuentes(false)
+      if (q.error) setErro(q.error)
+      return
+    }
     // "Esperando" é um recorte das abertas: sem atendente e sem IA cuidando.
     const r = await listarWaConversas({ status: filtroStatus === 'resolvida' ? 'resolvida' : 'aberta' })
     setConversas(r.conversas)
     setCarregouUmaVez(true)
     if (r.error) setErro(r.error)
   }, [filtroStatus, demo])
+
+  /** 🔥 → 💬: puxa o lead quente do funil para o chat oficial. */
+  const atenderQuente = async (l: LeadQuenteInbox) => {
+    setErro(null)
+    if (demo) {
+      const nova: WaConversaResumo = {
+        // id derivado do telefone: estável e único por lead (sem relógio no render)
+        id: `demo-q-${l.telefone}`, nome: l.nome, telefone: l.telefone,
+        ultimaMsg: null, ultimaMsgAt: new Date().toISOString(), naoLidas: 0,
+        status: 'aberta', modo: 'humano', tags: [l.origem.startsWith('🤖') ? 'agente' : 'quiz'],
+        vendidoCents: null, janelaAte: null, contaNome: 'Comercial',
+        departamentoId: 'demo-dep-vendas', atendenteId: null,
+      }
+      setConversas(cs => [nova, ...cs])
+      setQuentes(qs => qs.filter(x => x.telefone !== l.telefone))
+      setFiltroStatus('aberta')
+      void abrirConversaRef.current?.(nova)
+      return
+    }
+    const r = await iniciarWaConversa(l.telefone, l.nome)
+    if ('error' in r) { setErro(r.error); return }
+    setFiltroStatus('aberta')
+    const lista = await listarWaConversas({ status: 'aberta' })
+    setConversas(lista.conversas)
+    const nova = lista.conversas.find(c => c.id === r.conversaId)
+    if (nova) void abrirConversaRef.current?.(nova)
+  }
+
+  const abrirConversaRef = useRef<((c: WaConversaResumo) => Promise<void>) | null>(null)
 
   const abrirConversa = useCallback(async (c: WaConversaResumo) => {
     setAtiva(c); setTelaMobile('chat'); setErro(null); setTemplates(null)
@@ -232,6 +271,8 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     setMensagens(r.mensagens); setDossie(r.dossie)
     if (r.error) setErro(r.error)
   }, [])
+
+  useEffect(() => { abrirConversaRef.current = abrirConversa }, [abrirConversa])
 
   // Polling: primeira carga imediata (via timeout 0 — a regra do projeto
   // proíbe setState síncrono em efeito) e depois a cada 5s.
@@ -558,6 +599,11 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                   { id: 'demo-at-2', nome: 'Camila', papel: 'atendente', departamentoId: 'demo-dep-vendas', ativo: true },
                   { id: 'demo-at-3', nome: 'Rafael', papel: 'atendente', departamentoId: 'demo-dep-suporte', ativo: true },
                 ])
+                setQuentes([
+                  { nome: 'Roberta Nunes', telefone: '5521988776655', origem: '🧠 Diagnóstico de Tráfego', quando: min(60 * 3), detalhe: '✅ concluiu o funil' },
+                  { nome: 'Carlos Mendes', telefone: '5511977665544', origem: '🤖 Clayton', quando: min(60 * 6), detalhe: '🔥 Qualificado' },
+                  { nome: null, telefone: '5531966554433', origem: '🧠 Quiz Clínicas', quando: min(60 * 30), detalhe: '📱 deixou contato' },
+                ])
                 setRespostas([
                   { id: 'demo-r1', atalho: 'preço', texto: 'Nosso plano completo fica R$ 1.890/mês, com setup grátis fechando este mês 😊' },
                   { id: 'demo-r2', atalho: 'pix', texto: 'Segue nossa chave PIX: contato@suaempresa.com.br — me avisa quando cair que eu já libero!' },
@@ -614,7 +660,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar conversa…"
             className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
           <div className="mt-2 flex rounded-xl bg-slate-100 p-0.5 text-xs font-medium">
-            {([['aberta', 'Abertas'], ['esperando', '⏳ Esperando'], ['resolvida', 'Resolvidas']] as const).map(([v, r]) => {
+            {([['aberta', 'Abertas'], ['esperando', '⏳'], ['quentes', '🔥 Quentes'], ['resolvida', '✓']] as const).map(([v, r]) => {
               const esperando = v === 'esperando'
                 ? conversas.filter(c => c.status === 'aberta' && !c.atendenteId && c.modo !== 'ia').length
                 : 0
@@ -653,6 +699,41 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
           )}
         </div>
         <div className="flex-1 overflow-y-auto">
+          {filtroStatus === 'quentes' ? (
+            <div>
+              <p className="border-b border-amber-100 bg-amber-50/60 px-4 py-2 text-[11px] leading-relaxed text-amber-800">
+                🔥 Leads quentes do funil (quiz e agentes IA) que ainda não estão no
+                chat — clique em <b>Atender</b> para puxar a conversa.
+              </p>
+              {carregandoQuentes && <p className="p-6 text-center text-xs text-slate-400">Buscando leads quentes…</p>}
+              {!carregandoQuentes && quentes.map(l => (
+                <div key={l.telefone} className="flex items-center gap-3 border-b border-slate-50 px-3 py-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow"
+                    style={{ background: corAvatar(l.nome ?? l.telefone) }}>
+                    {iniciais(l.nome, l.telefone)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-900">{l.nome ?? l.telefone}</span>
+                    <span className="block truncate text-[11px] text-slate-500">
+                      {l.origem}{l.detalhe ? ` · ${l.detalhe}` : ''}
+                    </span>
+                  </span>
+                  <button onClick={() => void atenderQuente(l)}
+                    className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-1.5 text-xs font-semibold text-white shadow transition hover:opacity-90">
+                    💬 Atender
+                  </button>
+                </div>
+              ))}
+              {!carregandoQuentes && quentes.length === 0 && (
+                <div className="p-8 text-center">
+                  <p className="text-3xl">🔥</p>
+                  <p className="mt-2 text-sm font-medium text-slate-600">Nenhum lead quente fora do chat</p>
+                  <p className="mt-1 text-xs text-slate-400">Quem esquentar no quiz ou com os agentes IA aparece aqui para você chamar.</p>
+                </div>
+              )}
+            </div>
+          ) : (
+          <>
           {conversas
             .filter(c => !busca.trim()
               || (c.nome ?? '').toLowerCase().includes(busca.toLowerCase())
@@ -708,6 +789,8 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
               </p>
               <p className="mt-1 text-xs text-slate-400">Quando alguém mandar mensagem para o seu número oficial, a conversa aparece aqui.</p>
             </div>
+          )}
+          </>
           )}
         </div>
       </aside>
