@@ -320,13 +320,15 @@ export async function processAgentMessage(
     leadId?: string
     conversationId?: string
     testMode?: boolean
-    channel?: 'whatsapp' | 'web' | 'test' | 'instagram'
+    channel?: 'whatsapp' | 'web' | 'test' | 'instagram' | 'cloud'
   } = {}
 ): Promise<AgentChatResult> {
   let { leadId } = options
   // channel: 'whatsapp' (default) envia via WA e respeita limites; 'web'/'instagram'
   // NÃO enviam via WA (o caller envia) mas respeitam limites; 'test' ignora tudo.
-  const channel: 'whatsapp' | 'web' | 'test' | 'instagram' = options.channel ?? (options.testMode ? 'test' : 'whatsapp')
+  // 'cloud' = WhatsApp pela API OFICIAL: o prompt fala como WhatsApp, mas o
+  // envio é do chamador (Cloud API) — o Evolution não entra.
+  const channel: 'whatsapp' | 'web' | 'test' | 'instagram' | 'cloud' = options.channel ?? (options.testMode ? 'test' : 'whatsapp')
   const testMode = channel === 'test'
   const isWhatsapp = channel === 'whatsapp'
   let { conversationId } = options

@@ -85,15 +85,19 @@ const tests: Record<string, () => void> = {
     assert.ok(src.includes('cliente.cadastrado e cliente.atualizado'),
       'sem contato o log precisa ENSINAR a marcar os eventos de cliente')
     assert.ok(src.includes("from('mercos_events')"), 'todo evento precisa ficar auditável')
-    assert.ok(/sale_value_cents: status === 'fechado' \? valorCents : null/.test(src),
+    assert.ok(/sale_value_cents: status === 'fechado' \? valorCents : null/.test(ler('src/lib/sales/fechar-lead.ts')),
       'perdido não pode carregar valor de venda')
   },
-  'rota: fecha o lead no quiz E no agente, em todos os portais': () => {
-    const src = ler('src/app/api/webhooks/mercos/[tenantId]/route.ts')
+  'fechar-lead (lib compartilhada) atinge quiz E agente, em todos os portais': () => {
+    // A lógica saiu do route do Mercos para src/lib/sales/fechar-lead.ts —
+    // o Vendido do inbox de WhatsApp usa a MESMA função.
+    const src = ler('src/lib/sales/fechar-lead.ts')
     assert.ok(src.includes("from('portal_lead_status')"))
     assert.ok(src.includes("from('portal_agent_status')"))
     assert.ok(src.includes("from('client_portal_quizzes')"))
     assert.ok(src.includes("from('client_portal_agents')"))
+    const rota = ler('src/app/api/webhooks/mercos/[tenantId]/route.ts')
+    assert.ok(rota.includes("from '@/lib/sales/fechar-lead'"), 'o Mercos precisa usar a lib, não uma cópia')
   },
 
   'portal: valor da venda viaja até o cartão e o faturamento': () => {
@@ -121,7 +125,7 @@ const tests: Record<string, () => void> = {
     assert.ok(/split\(','\)/.test(src), 'a lista separada por vírgula precisa valer')
   },
   'com recorte, o que não foi listado fica INTEIRO de fora': () => {
-    const src = ler('src/app/api/webhooks/mercos/[tenantId]/route.ts')
+    const src = ler('src/lib/sales/fechar-lead.ts')
     assert.ok(/const temRecorte = alcance\.quizzes\.size > 0 \|\| alcance\.agentes\.size > 0/.test(src))
     assert.ok(/if \(!temRecorte \|\| alcance\.quizzes\.size > 0\)/.test(src),
       '"?quiz=X" quer dizer só esse funil — agentes não podem entrar')
