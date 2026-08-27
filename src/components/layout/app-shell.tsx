@@ -67,7 +67,7 @@ export default function AppShell({ children, displayName, isAdmin, showContentSt
           className="hidden md:block shrink-0"
           style={{ width: collapsed ? COLLAPSED_W : EXPANDED_W, transition: 'width 200ms ease' }}
         />
-        <main className="flex-1 min-h-screen p-4 md:p-6 pt-[68px] md:pt-6 animate-page-in">
+        <main className="flex-1 min-w-0 min-h-screen p-4 md:p-6 pt-[68px] md:pt-6 animate-page-in">
           {children}
         </main>
       </div>
