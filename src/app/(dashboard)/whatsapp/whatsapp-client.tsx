@@ -71,6 +71,75 @@ interface Props {
   agentes: { id: string; nome: string }[]
 }
 
+// ─── Modo demonstração ───────────────────────────────────────────────────────
+// O dono quer VER a ferramenta antes de configurar a Meta. Tudo daqui vive só
+// na tela: nenhuma action é chamada, nada toca o banco — é um test drive.
+
+const agora = () => Date.now()
+const min = (n: number) => new Date(agora() - n * 60_000).toISOString()
+
+function demoConversas(): WaConversaResumo[] {
+  return [
+    { id: 'demo-1', nome: 'Lucas Lima', telefone: '5521980120036', ultimaMsg: 'Fechado! Pode emitir o boleto 🙌', ultimaMsgAt: min(4), naoLidas: 2, status: 'aberta', modo: 'humano', tags: ['vendido', 'orçamento'], vendidoCents: 189000, janelaAte: new Date(agora() + 5 * 3600_000).toISOString(), contaNome: 'Comercial' },
+    { id: 'demo-2', nome: 'Dra. Fernanda Souza', telefone: '5511998765432', ultimaMsg: 'Qual o valor do plano trimestral?', ultimaMsgAt: min(12), naoLidas: 1, status: 'aberta', modo: 'ia', tags: ['clínica'], vendidoCents: null, janelaAte: new Date(agora() + 21 * 3600_000).toISOString(), contaNome: 'Comercial' },
+    { id: 'demo-3', nome: 'Marcão Distribuidora', telefone: '5587999112233', ultimaMsg: '🤖 Perfeito! Agendei quinta às 10h com o Luís ✅', ultimaMsgAt: min(45), naoLidas: 0, status: 'aberta', modo: 'ia', tags: ['reunião'], vendidoCents: null, janelaAte: new Date(agora() + 15 * 3600_000).toISOString(), contaNome: 'Comercial' },
+    { id: 'demo-4', nome: 'Ana Beatriz', telefone: '5531984551200', ultimaMsg: 'vou pensar e te falo, obrigada', ultimaMsgAt: min(60 * 26), naoLidas: 0, status: 'aberta', modo: 'humano', tags: ['follow-up'], vendidoCents: null, janelaAte: min(60 * 2), contaNome: 'Comercial' },
+    { id: 'demo-5', nome: null, telefone: '5541987223344', ultimaMsg: '[🎙 áudio]', ultimaMsgAt: min(60 * 49), naoLidas: 0, status: 'resolvida', modo: 'humano', tags: [], vendidoCents: null, janelaAte: min(60 * 25), contaNome: 'Comercial' },
+  ]
+}
+
+const demoMensagens: Record<string, WaMensagem[]> = {
+  'demo-1': [
+    { id: 'd1', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Boa tarde! Vi o anúncio de vocês, ainda tem a condição especial?', templateName: null, statusEntrega: null, createdAt: min(38) },
+    { id: 'd2', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Boa tarde, Lucas! Tem sim 😊 Antes de te passar os valores, me conta rapidinho: hoje vocês já investem em tráfego pago?', templateName: null, statusEntrega: 'read', createdAt: min(37) },
+    { id: 'd3', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Já sim, uns R$ 300 por dia na Meta', templateName: null, statusEntrega: null, createdAt: min(35) },
+    { id: 'd4', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Excelente, com esse volume dá pra estruturar algo sério. Vou te passar pro Luís fechar os detalhes 👍', templateName: null, statusEntrega: 'read', createdAt: min(34) },
+    { id: 'd5', direcao: 'saida', autor: 'atendente', autorNome: 'Luís', tipo: 'texto', corpo: 'Lucas, aqui é o Luís! O plano completo com gestão + qualificação fica R$ 1.890/mês. Fechando hoje, o setup sai de graça.', templateName: null, statusEntrega: 'read', createdAt: min(20) },
+    { id: 'd6', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Fechado! Pode emitir o boleto 🙌', templateName: null, statusEntrega: null, createdAt: min(4) },
+  ],
+  'demo-2': [
+    { id: 'd7', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Olá! Atendem clínicas odontológicas?', templateName: null, statusEntrega: null, createdAt: min(15) },
+    { id: 'd8', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Olá, Dra. Fernanda! Atendemos sim — clínicas são metade dos nossos clientes 😊 Vocês já fazem tráfego pago hoje?', templateName: null, statusEntrega: 'read', createdAt: min(14) },
+    { id: 'd9', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Qual o valor do plano trimestral?', templateName: null, statusEntrega: null, createdAt: min(12) },
+  ],
+  'demo-3': [
+    { id: 'd10', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Quero uma reunião pra entender o serviço', templateName: null, statusEntrega: null, createdAt: min(50) },
+    { id: 'd11', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Claro! Tenho quinta às 10h ou sexta às 14h. Qual prefere?', templateName: null, statusEntrega: 'read', createdAt: min(49) },
+    { id: 'd12', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'Quinta 10h', templateName: null, statusEntrega: null, createdAt: min(46) },
+    { id: 'd13', direcao: 'saida', autor: 'ia', autorNome: null, tipo: 'texto', corpo: 'Perfeito! Agendei quinta às 10h com o Luís ✅ Vou te mandar o lembrete 1h antes.', templateName: null, statusEntrega: 'delivered', createdAt: min(45) },
+  ],
+  'demo-4': [
+    { id: 'd14', direcao: 'saida', autor: 'atendente', autorNome: 'Luís', tipo: 'texto', corpo: 'Ana, conseguiu ver a proposta que te mandei?', templateName: null, statusEntrega: 'read', createdAt: min(60 * 27) },
+    { id: 'd15', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'texto', corpo: 'vou pensar e te falo, obrigada', templateName: null, statusEntrega: null, createdAt: min(60 * 26) },
+  ],
+  'demo-5': [
+    { id: 'd16', direcao: 'entrada', autor: 'lead', autorNome: null, tipo: 'audio', corpo: '[🎙 áudio]', templateName: null, statusEntrega: null, createdAt: min(60 * 49) },
+  ],
+}
+
+const demoDossies: Record<string, DossieLead> = {
+  'demo-1': {
+    leadId: 'demo', nome: 'Lucas Lima', email: 'lucas@corretora.com.br', origem: null,
+    conversasAgente: [{ agente: 'Clayton', situacao: 'qualified', quando: min(60 * 24 * 2) }],
+    quizzes: [{ titulo: 'Diagnóstico de Tráfego', quando: min(60 * 24 * 3), concluiu: true }],
+  },
+  'demo-2': {
+    leadId: null, nome: 'Dra. Fernanda Souza', email: null, origem: null,
+    conversasAgente: [], quizzes: [{ titulo: 'Quiz Clínicas', quando: min(60 * 24), concluiu: false }],
+  },
+  'demo-3': {
+    leadId: 'demo', nome: 'Marcão Distribuidora', email: 'compras@marcao.com.br', origem: null,
+    conversasAgente: [{ agente: 'Clayton', situacao: 'scheduled', quando: min(45) }], quizzes: [],
+  },
+  'demo-4': { leadId: null, nome: 'Ana Beatriz', email: null, origem: null, conversasAgente: [], quizzes: [] },
+  'demo-5': { leadId: null, nome: null, email: null, origem: null, conversasAgente: [], quizzes: [] },
+}
+
+const DEMO_TEMPLATES = [
+  { name: 'retomar_conversa', language: 'pt_BR', corpo: 'Olá {{1}}! Passando para saber se ainda posso te ajudar com a proposta. Podemos falar?' },
+  { name: 'lembrete_reuniao', language: 'pt_BR', corpo: 'Oi {{1}}! Lembrete da nossa reunião {{2}}. Até já!' },
+]
+
 export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const [conversas, setConversas] = useState<WaConversaResumo[]>([])
   const [filtroStatus, setFiltroStatus] = useState<'aberta' | 'resolvida'>('aberta')
@@ -98,21 +167,29 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const [fPhone, setFPhone] = useState(''); const [fToken, setFToken] = useState('')
   const [fAgente, setFAgente] = useState('')
   const [salvandoConta, setSalvandoConta] = useState(false)
+  // 🧪 Demonstração: o inbox inteiro com dados de exemplo, SÓ na tela —
+  // nenhuma action é chamada, nada toca o banco.
+  const [demo, setDemo] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const ativaRef = useRef<string | null>(null)
   useEffect(() => { ativaRef.current = ativa?.id ?? null }, [ativa?.id])
 
   const recarregarLista = useCallback(async () => {
+    if (demo) return
     const r = await listarWaConversas({ status: filtroStatus })
     setConversas(r.conversas)
     setCarregouUmaVez(true)
     if (r.error) setErro(r.error)
-  }, [filtroStatus])
+  }, [filtroStatus, demo])
 
   const abrirConversa = useCallback(async (c: WaConversaResumo) => {
     setAtiva(c); setTelaMobile('chat'); setErro(null); setTemplates(null)
     setConversas(cs => cs.map(x => x.id === c.id ? { ...x, naoLidas: 0 } : x))
+    if (c.id.startsWith('demo-')) {
+      setMensagens(demoMensagens[c.id] ?? []); setDossie(demoDossies[c.id] ?? null)
+      return
+    }
     const r = await getWaConversa(c.id)
     if (ativaRef.current !== c.id) return
     setMensagens(r.mensagens); setDossie(r.dossie)
@@ -127,7 +204,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     return () => { clearTimeout(primeiro); clearInterval(t) }
   }, [recarregarLista])
   useEffect(() => {
-    if (!ativa?.id) return
+    if (!ativa?.id || ativa.id.startsWith('demo-')) return
     const id = ativa.id
     const t = setInterval(() => {
       void (async () => {
@@ -149,6 +226,15 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const enviar = async () => {
     if (!ativa || !texto.trim() || enviando) return
     const corpo = texto.trim()
+    if (demo) {
+      setTexto('')
+      setMensagens(m => [...m, {
+        id: `demo-local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
+        tipo: 'texto', corpo, templateName: null, statusEntrega: 'read', createdAt: new Date().toISOString(),
+      }])
+      setAtiva(a => a ? { ...a, modo: 'humano' } : a)
+      return
+    }
     setEnviando(true); setErro(null); setTexto('')
     // Otimista
     setMensagens(m => [...m, {
@@ -169,6 +255,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
   const carregarTemplates = async () => {
     if (!ativa) return
+    if (demo) { setTemplates(DEMO_TEMPLATES); return }
     const r = await listarWaTemplates(ativa.id)
     setTemplates(r.templates)
     if (r.error) setErro(r.error)
@@ -176,6 +263,15 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
   const mandarTemplate = async (nome: string, idioma: string) => {
     if (!ativa) return
+    if (demo) {
+      setTemplates(null)
+      setMensagens(m => [...m, {
+        id: `demo-local-${Date.now()}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
+        tipo: 'template', corpo: `[template: ${nome}]`, templateName: nome, statusEntrega: 'sent', createdAt: new Date().toISOString(),
+      }])
+      setAtiva(a => a ? { ...a, janelaAte: new Date(Date.now() + 24 * 3600_000).toISOString() } : a)
+      return
+    }
     setEnviando(true); setErro(null)
     const r = await enviarWaTemplate(ativa.id, nome, idioma)
     setEnviando(false)
@@ -188,6 +284,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     if (!ativa) return
     const novo = ativa.modo !== 'ia'
     setAtiva(a => a ? { ...a, modo: novo ? 'ia' : 'humano' } : a)
+    if (demo) return
     const r = await setWaModoIa(ativa.id, novo)
     if ('error' in r) setErro(r.error)
   }
@@ -195,6 +292,11 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const resolver = async () => {
     if (!ativa) return
     const novo = ativa.status === 'aberta' ? 'resolvida' as const : 'aberta' as const
+    if (demo) {
+      setAtiva(a => a ? { ...a, status: novo } : a)
+      setConversas(cs => cs.map(x => x.id === ativa.id ? { ...x, status: novo } : x))
+      return
+    }
     await setWaStatus(ativa.id, novo)
     setAtiva(a => a ? { ...a, status: novo } : a)
     void recarregarLista()
@@ -204,6 +306,11 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     if (!ativa || vendendoValor === null) return
     const lido = lerValorDigitado(vendendoValor)
     if (!lido.ok) { setErro(lido.erro); return }
+    if (demo) {
+      setVendendoValor(null)
+      setAtiva(a => a ? { ...a, vendidoCents: lido.cents, tags: lido.cents ? [...new Set([...a.tags, 'vendido'])] : a.tags.filter(t => t !== 'vendido') } : a)
+      return
+    }
     const r = await marcarWaVendido(ativa.id, lido.cents)
     if ('error' in r) { setErro(r.error); return }
     setVendendoValor(null)
@@ -217,12 +324,14 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     if (!t) return
     const novas = [...new Set([...ativa.tags, t])]
     setAtiva(a => a ? { ...a, tags: novas } : a)
+    if (demo) return
     await setWaTags(ativa.id, novas)
   }
   const rmTag = async (tag: string) => {
     if (!ativa) return
     const novas = ativa.tags.filter(t => t !== tag)
     setAtiva(a => a ? { ...a, tags: novas } : a)
+    if (demo) return
     await setWaTags(ativa.id, novas)
   }
 
@@ -281,6 +390,19 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
               className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 py-3 text-sm font-semibold text-white shadow-lg transition hover:opacity-90 disabled:opacity-50">
               {salvandoConta ? 'Conectando…' : '🚀 Conectar número'}
             </button>
+            <button
+              onClick={() => {
+                // Test drive: povoar a tela com os exemplos e abrir o inbox.
+                setDemo(true); setConectando(false)
+                setConversas(demoConversas()); setCarregouUmaVez(true)
+                setRespostas([
+                  { id: 'demo-r1', atalho: 'preço', texto: 'Nosso plano completo fica R$ 1.890/mês, com setup grátis fechando este mês 😊' },
+                  { id: 'demo-r2', atalho: 'pix', texto: 'Segue nossa chave PIX: contato@suaempresa.com.br — me avisa quando cair que eu já libero!' },
+                ])
+              }}
+              className="w-full rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
+              👀 Ver demonstração (sem conectar nada)
+            </button>
             {contas.length > 0 && (
               <button onClick={() => setConectando(false)} className="w-full text-xs text-slate-400 hover:text-slate-600">← voltar ao inbox</button>
             )}
@@ -292,7 +414,17 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
   // ── Inbox ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-[calc(100dvh)] overflow-hidden bg-slate-100 md:h-full">
+    <div className="relative flex h-[calc(100dvh)] flex-col overflow-hidden bg-slate-100 md:h-full">
+      {demo && (
+        <div className="flex shrink-0 items-center justify-center gap-3 bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-1.5 text-xs font-medium text-white">
+          🧪 Demonstração — nada aqui é real e nada é salvo. Explore à vontade!
+          <button onClick={() => { setDemo(false); setAtiva(null); setConversas([]); setConectando(true) }}
+            className="rounded-full bg-white/20 px-3 py-0.5 font-semibold hover:bg-white/30">
+            Sair e conectar meu número
+          </button>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* ── Coluna 1: conversas ── */}
       <aside className={`${telaMobile === 'lista' ? 'flex' : 'hidden'} w-full flex-col border-r border-slate-200 bg-white md:flex md:w-80 md:shrink-0`}>
         <div className="border-b border-slate-100 p-3">
@@ -586,6 +718,8 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
           </div>
         </aside>
       )}
+
+      </div>
 
       {/* ── Respostas rápidas (modal) ── */}
       {gerindoRespostas && (

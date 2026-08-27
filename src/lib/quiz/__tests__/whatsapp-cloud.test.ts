@@ -133,6 +133,13 @@ const tests: Record<string, () => void> = {
     }
     assert.ok(ler('src/components/layout/sidebar.tsx').includes("'/whatsapp'"))
   },
+  'modo demonstração: dá para ver o inbox sem conectar a Meta, sem tocar o banco': () => {
+    const ui = ler('src/app/(dashboard)/whatsapp/whatsapp-client.tsx')
+    assert.ok(ui.includes('Ver demonstração'), 'sem o botão, o dono só vê a ferramenta depois da burocracia da Meta')
+    assert.ok(ui.includes('nada aqui é real e nada é salvo'), 'a faixa precisa avisar que é demonstração')
+    assert.ok(/if \(demo\) return/.test(ui), 'ações em demo não podem chamar o servidor')
+    assert.ok(/startsWith\('demo-'\)/.test(ui), 'conversa de demonstração não pode ir ao banco')
+  },
 }
 
 // ─── Execução ───────────────────────────────────────────────────────────────
