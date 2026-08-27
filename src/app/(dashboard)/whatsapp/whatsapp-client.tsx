@@ -19,7 +19,11 @@ import {
   enviarWaMensagem, enviarWaTemplate, getWaConversa, listarWaConversas,
   listarWaRespostasRapidas, listarWaTemplates, marcarWaVendido, salvarWaConta,
   salvarWaRespostaRapida, excluirWaRespostaRapida, setWaModoIa, setWaStatus, setWaTags,
+  listarWaEquipe, salvarWaDepartamento, excluirWaDepartamento, salvarWaAtendente,
+  removerWaAtendente, atribuirWaConversa, transferirWaDepartamento,
+  listarFunisPublicados, enviarParaAutomacao, setWaContaDepartamento,
   type DossieLead, type WaConta, type WaConversaResumo, type WaMensagem,
+  type WaDepartamento, type WaAtendente,
 } from '@/app/actions/wa-inbox'
 import { lerValorDigitado } from '@/lib/quiz/valor-venda'
 import { dentroDaJanela } from '@/lib/whatsapp-cloud/webhook-parser'
@@ -80,11 +84,11 @@ const min = (n: number) => new Date(agora() - n * 60_000).toISOString()
 
 function demoConversas(): WaConversaResumo[] {
   return [
-    { id: 'demo-1', nome: 'Lucas Lima', telefone: '5521980120036', ultimaMsg: 'Fechado! Pode emitir o boleto 🙌', ultimaMsgAt: min(4), naoLidas: 2, status: 'aberta', modo: 'humano', tags: ['vendido', 'orçamento'], vendidoCents: 189000, janelaAte: new Date(agora() + 5 * 3600_000).toISOString(), contaNome: 'Comercial' },
-    { id: 'demo-2', nome: 'Dra. Fernanda Souza', telefone: '5511998765432', ultimaMsg: 'Qual o valor do plano trimestral?', ultimaMsgAt: min(12), naoLidas: 1, status: 'aberta', modo: 'ia', tags: ['clínica'], vendidoCents: null, janelaAte: new Date(agora() + 21 * 3600_000).toISOString(), contaNome: 'Comercial' },
-    { id: 'demo-3', nome: 'Marcão Distribuidora', telefone: '5587999112233', ultimaMsg: '🤖 Perfeito! Agendei quinta às 10h com o Luís ✅', ultimaMsgAt: min(45), naoLidas: 0, status: 'aberta', modo: 'ia', tags: ['reunião'], vendidoCents: null, janelaAte: new Date(agora() + 15 * 3600_000).toISOString(), contaNome: 'Comercial' },
-    { id: 'demo-4', nome: 'Ana Beatriz', telefone: '5531984551200', ultimaMsg: 'vou pensar e te falo, obrigada', ultimaMsgAt: min(60 * 26), naoLidas: 0, status: 'aberta', modo: 'humano', tags: ['follow-up'], vendidoCents: null, janelaAte: min(60 * 2), contaNome: 'Comercial' },
-    { id: 'demo-5', nome: null, telefone: '5541987223344', ultimaMsg: '[🎙 áudio]', ultimaMsgAt: min(60 * 49), naoLidas: 0, status: 'resolvida', modo: 'humano', tags: [], vendidoCents: null, janelaAte: min(60 * 25), contaNome: 'Comercial' },
+    { id: 'demo-1', nome: 'Lucas Lima', telefone: '5521980120036', ultimaMsg: 'Fechado! Pode emitir o boleto 🙌', ultimaMsgAt: min(4), naoLidas: 2, status: 'aberta', modo: 'humano', tags: ['vendido', 'orçamento'], vendidoCents: 189000, janelaAte: new Date(agora() + 5 * 3600_000).toISOString(), contaNome: 'Comercial', departamentoId: 'demo-dep-vendas', atendenteId: 'demo-at-1' },
+    { id: 'demo-2', nome: 'Dra. Fernanda Souza', telefone: '5511998765432', ultimaMsg: 'Qual o valor do plano trimestral?', ultimaMsgAt: min(12), naoLidas: 1, status: 'aberta', modo: 'ia', tags: ['clínica'], vendidoCents: null, janelaAte: new Date(agora() + 21 * 3600_000).toISOString(), contaNome: 'Comercial', departamentoId: 'demo-dep-vendas', atendenteId: 'demo-at-1' },
+    { id: 'demo-3', nome: 'Marcão Distribuidora', telefone: '5587999112233', ultimaMsg: '🤖 Perfeito! Agendei quinta às 10h com o Luís ✅', ultimaMsgAt: min(45), naoLidas: 0, status: 'aberta', modo: 'ia', tags: ['reunião'], vendidoCents: null, janelaAte: new Date(agora() + 15 * 3600_000).toISOString(), contaNome: 'Comercial', departamentoId: 'demo-dep-vendas', atendenteId: 'demo-at-1' },
+    { id: 'demo-4', nome: 'Ana Beatriz', telefone: '5531984551200', ultimaMsg: 'vou pensar e te falo, obrigada', ultimaMsgAt: min(60 * 26), naoLidas: 0, status: 'aberta', modo: 'humano', tags: ['follow-up'], vendidoCents: null, janelaAte: min(60 * 2), contaNome: 'Comercial', departamentoId: 'demo-dep-vendas', atendenteId: 'demo-at-1' },
+    { id: 'demo-5', nome: null, telefone: '5541987223344', ultimaMsg: '[🎙 áudio]', ultimaMsgAt: min(60 * 49), naoLidas: 0, status: 'resolvida', modo: 'humano', tags: [], vendidoCents: null, janelaAte: min(60 * 25), contaNome: 'Comercial', departamentoId: 'demo-dep-vendas', atendenteId: 'demo-at-1' },
   ]
 }
 
@@ -170,6 +174,24 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   // 🧪 Demonstração: o inbox inteiro com dados de exemplo, SÓ na tela —
   // nenhuma action é chamada, nada toca o banco.
   const [demo, setDemo] = useState(false)
+  // Equipe: departamentos + atendentes; "quem sou eu" fica no navegador
+  // (mesmo desenho sem-login do portal — o gestor vê tudo, o atendente só a
+  // fila dele + as conversas sem dono do departamento dele).
+  const [departamentos, setDepartamentos] = useState<WaDepartamento[]>([])
+  const [atendentes, setAtendentes] = useState<WaAtendente[]>([])
+  const [euSou, setEuSou] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    try { return localStorage.getItem('fp_wa_eu') ?? '' } catch { return '' }
+  })
+  const [filtroDepto, setFiltroDepto] = useState<string>('')
+  const [equipeAberta, setEquipeAberta] = useState(false)
+  const [novoDepto, setNovoDepto] = useState(''); const [novoDeptoModo, setNovoDeptoModo] = useState('menos_ocupado')
+  const [novoAtNome, setNovoAtNome] = useState(''); const [novoAtDepto, setNovoAtDepto] = useState('')
+  const [novoAtPapel, setNovoAtPapel] = useState('atendente')
+  const [erroEquipe, setErroEquipe] = useState<string | null>(null)
+  const [automacaoAberta, setAutomacaoAberta] = useState(false)
+  const [funis, setFunis] = useState<{ id: string; nome: string }[]>([])
+  const [avisoTopo, setAvisoTopo] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const ativaRef = useRef<string | null>(null)
@@ -219,6 +241,16 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [mensagens.length, ativa?.id])
   useEffect(() => { void listarWaRespostasRapidas().then(r => setRespostas(r.respostas)) }, [gerindoRespostas])
+  useEffect(() => {
+    if (demo) return
+    void listarWaEquipe().then(r => { setDepartamentos(r.departamentos); setAtendentes(r.atendentes) })
+  }, [equipeAberta, demo])
+  useEffect(() => { try { localStorage.setItem('fp_wa_eu', euSou) } catch { /* opcional */ } }, [euSou])
+
+  const eu = atendentes.find(a => a.id === euSou) ?? null
+  const souGestor = !eu || eu.papel === 'gestor'
+  const recarregarEquipe = () =>
+    listarWaEquipe().then(r => { setDepartamentos(r.departamentos); setAtendentes(r.atendentes); if (r.error) setErroEquipe(r.error) })
 
   const janelaAberta = ativa ? dentroDaJanela(ativa.janelaAte, new Date()) : false
   const restante = ativa ? restanteJanela(ativa.janelaAte) : null
@@ -292,6 +324,11 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const resolver = async () => {
     if (!ativa) return
     const novo = ativa.status === 'aberta' ? 'resolvida' as const : 'aberta' as const
+    // Trava de classificação: fechar sem tag deixa o relatório furado.
+    if (novo === 'resolvida' && ativa.tags.length === 0) {
+      setErro('Coloque ao menos uma tag no lead antes de resolver — é ela que classifica o desfecho.')
+      return
+    }
     if (demo) {
       setAtiva(a => a ? { ...a, status: novo } : a)
       setConversas(cs => cs.map(x => x.id === ativa.id ? { ...x, status: novo } : x))
@@ -395,6 +432,15 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                 // Test drive: povoar a tela com os exemplos e abrir o inbox.
                 setDemo(true); setConectando(false)
                 setConversas(demoConversas()); setCarregouUmaVez(true)
+                setDepartamentos([
+                  { id: 'demo-dep-vendas', nome: 'Vendas', emoji: '💰', distribuicao: 'menos_ocupado' },
+                  { id: 'demo-dep-suporte', nome: 'Suporte', emoji: '🛟', distribuicao: 'rodizio' },
+                ])
+                setAtendentes([
+                  { id: 'demo-at-1', nome: 'Luís (você)', papel: 'gestor', departamentoId: 'demo-dep-vendas', ativo: true },
+                  { id: 'demo-at-2', nome: 'Camila', papel: 'atendente', departamentoId: 'demo-dep-vendas', ativo: true },
+                  { id: 'demo-at-3', nome: 'Rafael', papel: 'atendente', departamentoId: 'demo-dep-suporte', ativo: true },
+                ])
                 setRespostas([
                   { id: 'demo-r1', atalho: 'preço', texto: 'Nosso plano completo fica R$ 1.890/mês, com setup grátis fechando este mês 😊' },
                   { id: 'demo-r2', atalho: 'pix', texto: 'Segue nossa chave PIX: contato@suaempresa.com.br — me avisa quando cair que eu já libero!' },
@@ -424,6 +470,12 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
           </button>
         </div>
       )}
+      {avisoTopo && (
+        <div className="flex shrink-0 items-center justify-between bg-indigo-50 px-4 py-1.5 text-xs text-indigo-800">
+          {avisoTopo}
+          <button onClick={() => setAvisoTopo(null)} className="text-indigo-400">✕</button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* ── Coluna 1: conversas ── */}
       <aside className={`${telaMobile === 'lista' ? 'flex' : 'hidden'} w-full flex-col border-r border-slate-200 bg-white md:flex md:w-80 md:shrink-0`}>
@@ -434,6 +486,8 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
               WhatsApp
             </h1>
             <div className="flex items-center gap-1">
+              <button onClick={() => setEquipeAberta(true)} title="Equipe e departamentos"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">👥</button>
               <button onClick={() => setGerindoRespostas(true)} title="Respostas rápidas"
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">⚡</button>
               <button onClick={() => setConectando(true)} title="Contas conectadas"
@@ -450,12 +504,43 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
               </button>
             ))}
           </div>
+          {atendentes.length > 0 && (
+            <select value={euSou} onChange={e => setEuSou(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 focus:outline-none">
+              <option value="">👑 Gestor · vendo tudo</option>
+              {atendentes.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.papel === 'gestor' ? '👑' : '🙋'} {a.nome} — {a.papel === 'gestor' ? 'vê tudo' : 'só minha fila'}
+                </option>
+              ))}
+            </select>
+          )}
+          {departamentos.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              <button onClick={() => setFiltroDepto('')}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${filtroDepto === '' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                Todos
+              </button>
+              {departamentos.map(d => (
+                <button key={d.id} onClick={() => setFiltroDepto(d.id)}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${filtroDepto === d.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  {d.emoji} {d.nome}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto">
           {conversas
             .filter(c => !busca.trim()
               || (c.nome ?? '').toLowerCase().includes(busca.toLowerCase())
               || c.telefone.includes(busca))
+            .filter(c => !filtroDepto || c.departamentoId === filtroDepto)
+            // Atendente vê a PRÓPRIA fila + as sem dono do departamento dele;
+            // gestor vê tudo.
+            .filter(c => souGestor
+              || c.atendenteId === euSou
+              || (!c.atendenteId && (!eu?.departamentoId || c.departamentoId === eu.departamentoId)))
             .map(c => (
             <button key={c.id} onClick={() => void abrirConversa(c)}
               className={`flex w-full items-center gap-3 border-b border-slate-50 px-3 py-3 text-left transition hover:bg-slate-50 ${ativa?.id === c.id ? 'bg-emerald-50/60' : ''}`}>
@@ -470,6 +555,15 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                 </span>
                 <span className="mt-0.5 flex items-center gap-1.5">
                   {c.modo === 'ia' && <span title="IA atendendo" className="shrink-0 text-xs">🤖</span>}
+                  {c.atendenteId && (() => {
+                    const at = atendentes.find(a => a.id === c.atendenteId)
+                    return at ? (
+                      <span title={`Atendente: ${at.nome}`}
+                        className="shrink-0 rounded bg-indigo-100 px-1 text-[9px] font-bold text-indigo-600">
+                        {at.nome.split(' ')[0]}
+                      </span>
+                    ) : null
+                  })()}
                   {(c.vendidoCents ?? 0) > 0 && <span className="shrink-0 rounded bg-emerald-100 px-1 text-[9px] font-bold text-emerald-700">💰</span>}
                   <span className="truncate text-xs text-slate-500">{c.ultimaMsg ?? '…'}</span>
                   {c.naoLidas > 0 && (
@@ -517,6 +611,46 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
+                {souGestor && atendentes.length > 0 && (
+                  <select value={ativa.atendenteId ?? ''}
+                    onChange={e => {
+                      const novo = e.target.value || null
+                      setAtiva(a => a ? { ...a, atendenteId: novo } : a)
+                      setConversas(cs => cs.map(x => x.id === ativa.id ? { ...x, atendenteId: novo } : x))
+                      if (!demo) void atribuirWaConversa(ativa.id, novo).then(r => { if ('error' in r) setErro(r.error) })
+                    }}
+                    title="Atribuir a um atendente (gestor)"
+                    className="max-w-[8rem] rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600 focus:outline-none">
+                    <option value="">— fila —</option>
+                    {atendentes
+                      .filter(a => !ativa.departamentoId || !a.departamentoId || a.departamentoId === ativa.departamentoId)
+                      .map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                  </select>
+                )}
+                {souGestor && departamentos.length > 0 && (
+                  <select value={ativa.departamentoId ?? ''}
+                    onChange={e => {
+                      const novo = e.target.value || null
+                      setAtiva(a => a ? { ...a, departamentoId: novo, atendenteId: null } : a)
+                      setConversas(cs => cs.map(x => x.id === ativa.id ? { ...x, departamentoId: novo, atendenteId: null } : x))
+                      if (!demo) void transferirWaDepartamento(ativa.id, novo).then(r => { if ('error' in r) setErro(r.error) })
+                    }}
+                    title="Transferir para outro departamento (volta para a fila de lá)"
+                    className="max-w-[7rem] rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600 focus:outline-none">
+                    <option value="">— depto —</option>
+                    {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
+                  </select>
+                )}
+                <button
+                  onClick={() => {
+                    setAutomacaoAberta(true)
+                    if (!demo) void listarFunisPublicados().then(r => setFunis(r.funis))
+                    else setFunis([{ id: 'demo-f1', nome: 'Remarketing 7 dias' }, { id: 'demo-f2', nome: 'Nutrição pós-venda' }])
+                  }}
+                  title="Jogar este lead numa automação (remarketing, nutrição…)"
+                  className="rounded-xl bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200">
+                  ⚡
+                </button>
                 <button onClick={() => void alternarIa()}
                   title={ativa.modo === 'ia' ? 'IA atendendo — clique para assumir' : 'Entregar para a IA de plantão'}
                   className={`rounded-xl px-2.5 py-1.5 text-xs font-semibold transition ${
@@ -536,7 +670,14 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                   </button>
                 )}
                 <button onClick={() => void resolver()}
-                  className="rounded-xl bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200">
+                  title={ativa.status === 'aberta' && ativa.tags.length === 0
+                    ? 'Coloque ao menos uma tag antes de resolver — é ela que classifica o desfecho'
+                    : undefined}
+                  className={`rounded-xl px-2.5 py-1.5 text-xs font-semibold ${
+                    ativa.status === 'aberta' && ativa.tags.length === 0
+                      ? 'cursor-not-allowed bg-slate-50 text-slate-300'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}>
                   {ativa.status === 'aberta' ? '✓ Resolver' : '↩ Reabrir'}
                 </button>
                 <button onClick={() => setDossieAberto(v => !v)} title="Dossiê do lead"
@@ -720,6 +861,151 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
       )}
 
       </div>
+
+
+      {/* ── Automação: jogar o lead num funil ── */}
+      {automacaoAberta && ativa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAutomacaoAberta(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-slate-900">⚡ Jogar em automação</h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              O lead <b>{ativa.nome ?? ativa.telefone}</b> entra no funil escolhido
+              (remarketing, nutrição…) pelo motor de automações.
+            </p>
+            <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto">
+              {funis.map(f => (
+                <button key={f.id}
+                  onClick={() => {
+                    setAutomacaoAberta(false)
+                    if (demo) { setAvisoTopo(`⚡ (demo) ${ativa.nome ?? ativa.telefone} entraria no funil "${f.nome}"`); return }
+                    void enviarParaAutomacao(ativa.id, f.id).then(r => {
+                      setAvisoTopo('error' in r ? r.error : `⚡ Lead enviado para "${f.nome}"`)
+                    })
+                  }}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50">
+                  {f.nome}
+                </button>
+              ))}
+              {funis.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Nenhum funil criado ainda.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Equipe: departamentos, atendentes e distribuição ── */}
+      {equipeAberta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEquipeAberta(false)}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">👥 Equipe e departamentos</h3>
+                <p className="text-xs text-slate-500">
+                  Conversa nova cai no departamento padrão da conta e é distribuída
+                  sozinha — com afinidade: o lead volta para quem já o atendeu.
+                </p>
+              </div>
+              <button onClick={() => setEquipeAberta(false)} className="text-slate-400">✕</button>
+            </div>
+
+            {/* departamentos */}
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Departamentos</p>
+            <div className="mt-1.5 space-y-1.5">
+              {departamentos.map(d => (
+                <div key={d.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                  <span className="text-sm">{d.emoji}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{d.nome}</span>
+                  <select value={d.distribuicao}
+                    onChange={e => void salvarWaDepartamento({ id: d.id, nome: d.nome, emoji: d.emoji, distribuicao: e.target.value }).then(() => void recarregarEquipe())}
+                    className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
+                    <option value="menos_ocupado">🧠 menos ocupado</option>
+                    <option value="rodizio">🔁 rodízio</option>
+                    <option value="manual">✋ manual</option>
+                  </select>
+                  <button onClick={() => void excluirWaDepartamento(d.id).then(() => void recarregarEquipe())}
+                    className="text-slate-300 hover:text-red-500">✕</button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input value={novoDepto} onChange={e => setNovoDepto(e.target.value)} placeholder="Vendas, Suporte, Financeiro…"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none" />
+                <select value={novoDeptoModo} onChange={e => setNovoDeptoModo(e.target.value)}
+                  className="rounded-xl border border-slate-300 px-2 py-2 text-[10px] text-slate-500 focus:outline-none">
+                  <option value="menos_ocupado">🧠 menos ocupado</option>
+                  <option value="rodizio">🔁 rodízio</option>
+                  <option value="manual">✋ manual</option>
+                </select>
+                <button
+                  onClick={() => void salvarWaDepartamento({ nome: novoDepto, distribuicao: novoDeptoModo })
+                    .then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoDepto(''); void recarregarEquipe() } })}
+                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">＋</button>
+              </div>
+            </div>
+
+            {/* atendentes */}
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-400">Atendentes</p>
+            <div className="mt-1.5 space-y-1.5">
+              {atendentes.map(a => (
+                <div key={a.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                  <span className="text-sm">{a.papel === 'gestor' ? '👑' : '🙋'}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{a.nome}</span>
+                  <select value={a.departamentoId ?? ''}
+                    onChange={e => void salvarWaAtendente({ id: a.id, nome: a.nome, papel: a.papel, departamentoId: e.target.value || null }).then(() => void recarregarEquipe())}
+                    className="max-w-[7rem] rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
+                    <option value="">sem depto</option>
+                    {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
+                  </select>
+                  <select value={a.papel}
+                    onChange={e => void salvarWaAtendente({ id: a.id, nome: a.nome, papel: e.target.value, departamentoId: a.departamentoId }).then(() => void recarregarEquipe())}
+                    className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
+                    <option value="atendente">atendente</option>
+                    <option value="gestor">gestor</option>
+                  </select>
+                  <button onClick={() => void removerWaAtendente(a.id).then(() => void recarregarEquipe())}
+                    className="text-slate-300 hover:text-red-500">✕</button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input value={novoAtNome} onChange={e => setNovoAtNome(e.target.value)} placeholder="Nome do atendente"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-xs focus:outline-none" />
+                <select value={novoAtDepto} onChange={e => setNovoAtDepto(e.target.value)}
+                  className="rounded-xl border border-slate-300 px-2 py-2 text-[10px] text-slate-500 focus:outline-none">
+                  <option value="">sem depto</option>
+                  {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
+                </select>
+                <select value={novoAtPapel} onChange={e => setNovoAtPapel(e.target.value)}
+                  className="rounded-xl border border-slate-300 px-2 py-2 text-[10px] text-slate-500 focus:outline-none">
+                  <option value="atendente">atendente</option>
+                  <option value="gestor">gestor</option>
+                </select>
+                <button
+                  onClick={() => void salvarWaAtendente({ nome: novoAtNome, papel: novoAtPapel, departamentoId: novoAtDepto || null })
+                    .then(r => { if ('error' in r) setErroEquipe(r.error); else { setNovoAtNome(''); void recarregarEquipe() } })}
+                  className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">＋</button>
+              </div>
+            </div>
+
+            {/* departamento padrão por conta */}
+            {contas.length > 0 && departamentos.length > 0 && (
+              <div className="mt-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Onde caem as conversas novas</p>
+                {contas.map(c => (
+                  <div key={c.id} className="mt-1.5 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate text-sm text-slate-700">💬 {c.nome}</span>
+                    <select defaultValue=""
+                      onChange={e => void setWaContaDepartamento(c.id, e.target.value || null).then(r => { if ('error' in r) setErroEquipe(r.error) })}
+                      className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-500 focus:outline-none">
+                      <option value="">sem departamento</option>
+                      {departamentos.map(d => <option key={d.id} value={d.id}>{d.emoji} {d.nome}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {erroEquipe && <p className="mt-3 rounded-xl bg-red-50 p-2 text-xs text-red-700">{erroEquipe}</p>}
+          </div>
+        </div>
+      )}
 
       {/* ── Respostas rápidas (modal) ── */}
       {gerindoRespostas && (
