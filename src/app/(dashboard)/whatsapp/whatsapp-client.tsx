@@ -509,7 +509,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   // ── Tela de conexão (sem conta) ───────────────────────────────────────────
   if (conectando) {
     return (
-      <div className="flex min-h-full items-center justify-center bg-gradient-to-br from-slate-50 via-emerald-50/40 to-slate-50 p-6">
+      <div className="-mx-4 -mb-4 flex min-h-[calc(100dvh-68px)] items-center justify-center bg-gradient-to-br from-slate-50 via-emerald-50/40 to-slate-50 p-6 md:-m-6 md:min-h-screen">
         <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-2xl text-white shadow-lg">💬</div>
@@ -577,7 +577,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
 
   // ── Inbox ─────────────────────────────────────────────────────────────────
   return (
-    <div className="relative flex h-[calc(100dvh)] flex-col overflow-hidden bg-slate-100 md:h-full">
+    <div className="relative -mx-4 -mb-4 flex h-[calc(100dvh-68px)] flex-col overflow-hidden bg-slate-100 md:-m-6 md:h-screen">
       {demo && (
         <div className="flex shrink-0 items-center justify-center gap-3 bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-1.5 text-xs font-medium text-white">
           🧪 Demonstração — nada aqui é real e nada é salvo. Explore à vontade!
@@ -723,7 +723,7 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
         ) : (
           <>
             {/* header */}
-            <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-4 py-2.5">
               <button onClick={() => setTelaMobile('lista')} className="text-slate-400 hover:text-slate-600 md:hidden">←</button>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                 style={{ background: corAvatar(ativa.nome ?? ativa.telefone) }}>
