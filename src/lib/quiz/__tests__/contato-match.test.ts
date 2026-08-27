@@ -85,8 +85,8 @@ const tests: Record<string, () => void> = {
   },
 
   // ── Invariantes de integração ─────────────────────────────────────────────
-  'o webhook decide pelo código, não pelo LIKE cru': () => {
-    const src = ler('src/app/api/webhooks/mercos/[tenantId]/route.ts')
+  'o fechamento decide pelo código, não pelo LIKE cru': () => {
+    const src = ler('src/lib/sales/fechar-lead.ts')
     assert.ok(src.includes('ehOMesmoContato'), 'a decisão final precisa passar pela regra testada')
     assert.ok(src.includes('casar_quiz_leads_por_contato'), 'o filtro grosso é do banco')
     assert.ok(src.includes('casar_leads_por_contato'))

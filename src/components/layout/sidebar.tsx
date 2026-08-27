@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/app/actions/auth'
-import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, LayoutTemplate, Globe, Shield, Bot, Camera, Network, Sparkles, TrendingUp } from 'lucide-react'
+import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, LayoutTemplate, Globe, Shield, Bot, Camera, Network, Sparkles, TrendingUp, MessageCircle } from 'lucide-react'
 
 const NAV = [
   { href: '/funnels',       label: 'Funis',              Icon: LayoutGrid },
@@ -15,6 +15,7 @@ const NAV = [
   { href: '/mindmaps',      label: 'Mapa Mental',         Icon: Network },
   { href: '/agents',        label: 'Agentes IA',          Icon: Bot },
   { href: '/instagram',     label: 'Instagram',           Icon: Camera },
+  { href: '/whatsapp',      label: 'WhatsApp',            Icon: MessageCircle },
   { href: '/metrics',       label: 'Métricas',            Icon: BarChart2 },
   { href: '/trafego',       label: 'Tráfego',             Icon: TrendingUp },
   { href: '/settings',      label: 'Configurações',       Icon: Settings },

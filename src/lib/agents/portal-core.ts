@@ -69,6 +69,7 @@ export function atingiuObjetivo(
 export function canalRotulo(channel: string | null | undefined): string {
   switch (channel) {
     case 'whatsapp': return 'WhatsApp'
+    case 'cloud': return 'WhatsApp Oficial'
     case 'web': return 'Site'
     case 'instagram': return 'Instagram'
     default: return channel ? channel : '—'
