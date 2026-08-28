@@ -30,6 +30,7 @@ import {
 } from '@/app/actions/wa-inbox'
 import { lerValorDigitado } from '@/lib/quiz/valor-venda'
 import { dentroDaJanela } from '@/lib/whatsapp-cloud/webhook-parser'
+import { webmParaOgg } from '@/lib/whatsapp-cloud/webm-para-ogg'
 
 const brl = (cents: number) =>
   `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -207,6 +208,14 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
   const [erroProduto, setErroProduto] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const fileProdutoRef = useRef<HTMLInputElement>(null)
+  // 🎤 Gravador de voz (estilo WhatsApp)
+  const [gravando, setGravando] = useState(false)
+  const [segundosGravacao, setSegundosGravacao] = useState(0)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
+  const cancelarRef = useRef(false)
+  const timerGravacaoRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [funis, setFunis] = useState<{ id: string; nome: string }[]>([])
   const [avisoTopo, setAvisoTopo] = useState<string | null>(null)
 
@@ -339,6 +348,77 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
     }
     setAtiva(a => a ? { ...a, modo: 'humano' } : a)
     setConversas(cs => cs.map(x => x.id === ativa.id ? { ...x, modo: 'humano', ultimaMsg: corpo } : x))
+  }
+
+  /** 🎤 grava do microfone. O Chrome entrega WebM/Opus — a Meta não aceita
+   *  WebM, mas o codec é o mesmo do OGG: reempacotamos sem perda
+   *  (webmParaOgg) e o áudio sai como mensagem de voz de verdade. */
+  const iniciarGravacao = async () => {
+    setErro(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const mime = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/mp4']
+        .find(m => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) ?? ''
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      chunksRef.current = []
+      cancelarRef.current = false
+      rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+        if (!cancelarRef.current) void finalizarGravacao(rec.mimeType || mime)
+      }
+      recorderRef.current = rec
+      rec.start(250)
+      setGravando(true); setSegundosGravacao(0)
+      timerGravacaoRef.current = setInterval(() => setSegundosGravacao(v => v + 1), 1000)
+    } catch {
+      setErro('Não consegui acessar o microfone — libere a permissão no navegador.')
+    }
+  }
+
+  const pararGravacao = (cancelar: boolean) => {
+    cancelarRef.current = cancelar
+    if (timerGravacaoRef.current) { clearInterval(timerGravacaoRef.current); timerGravacaoRef.current = null }
+    setGravando(false)
+    recorderRef.current?.stop()
+    recorderRef.current = null
+  }
+
+  const finalizarGravacao = async (mime: string) => {
+    if (!ativa) return
+    const blob = new Blob(chunksRef.current, { type: mime || 'audio/webm' })
+    if (blob.size < 200) { setErro('Áudio curto demais — segure e fale.'); return }
+    setEnviandoMidia(true); setErro(null)
+    try {
+      if (demo) {
+        setMensagens(m => [...m, {
+          id: `demo-local-audio-${m.length}`, direcao: 'saida', autor: 'atendente', autorNome: 'Você',
+          tipo: 'audio', corpo: '🎙 mensagem de voz', templateName: null,
+          mediaUrl: URL.createObjectURL(blob), statusEntrega: 'sent', createdAt: new Date().toISOString(),
+        }])
+        return
+      }
+      let arquivo: File
+      if (mime.includes('ogg')) {
+        arquivo = new File([blob], 'voz.ogg', { type: 'audio/ogg' })
+      } else if (mime.includes('webm')) {
+        const ogg = webmParaOgg(new Uint8Array(await blob.arrayBuffer()))
+        if (!ogg) { setErro('Não consegui converter a gravação — envie o áudio como arquivo pelo 📎.'); return }
+        arquivo = new File([new Blob([new Uint8Array(ogg)])], 'voz.ogg', { type: 'audio/ogg' })
+      } else {
+        arquivo = new File([blob], 'voz.m4a', { type: 'audio/mp4' })
+      }
+      const fd = new FormData(); fd.set('file', arquivo)
+      const up = await uploadWaMidia(fd)
+      if ('error' in up) { setErro(up.error); return }
+      const r = await enviarWaMidiaMsg(ativa.id, 'audio', up.url)
+      if ('error' in r) { setErro(r.error); if (r.foraDaJanela) void carregarTemplates(); return }
+      void abrirConversa(ativa)
+    } finally {
+      setEnviandoMidia(false)
+    }
   }
 
   /** 📎 do composer: sobe o arquivo e envia na conversa (legenda = texto digitado). */
@@ -1007,14 +1087,40 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                     className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg text-slate-500 transition hover:bg-slate-200">
                     📦
                   </button>
-                  <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void enviar() } }}
-                    placeholder={ativa.modo === 'ia' ? 'Responder assume a conversa da IA…' : 'Mensagem  ·  "/" para respostas rápidas'}
-                    className="max-h-32 min-h-[42px] flex-1 resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
-                  <button onClick={() => void enviar()} disabled={enviando || !texto.trim()}
-                    className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg transition hover:opacity-90 disabled:opacity-40">
-                    ➤
-                  </button>
+                  {gravando ? (
+                    <div className="flex h-[42px] flex-1 items-center gap-3 rounded-2xl bg-red-50 px-4">
+                      <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
+                      <span className="text-sm font-semibold tabular-nums text-red-600">
+                        {Math.floor(segundosGravacao / 60)}:{String(segundosGravacao % 60).padStart(2, '0')}
+                      </span>
+                      <span className="hidden text-xs text-red-400 sm:block">gravando… solte a voz 🎙</span>
+                      <button onClick={() => pararGravacao(true)} title="Descartar"
+                        className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-red-400 transition hover:bg-red-100">🗑</button>
+                    </div>
+                  ) : (
+                    <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void enviar() } }}
+                      placeholder={ativa.modo === 'ia' ? 'Responder assume a conversa da IA…' : 'Mensagem  ·  "/" para respostas rápidas'}
+                      className="max-h-32 min-h-[42px] flex-1 resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:border-emerald-500 focus:bg-white focus:outline-none" />
+                  )}
+                  {gravando ? (
+                    <button onClick={() => pararGravacao(false)} title="Parar e enviar"
+                      className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg transition hover:opacity-90">
+                      ➤
+                    </button>
+                  ) : texto.trim() ? (
+                    <button onClick={() => void enviar()} disabled={enviando}
+                      className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg transition hover:opacity-90 disabled:opacity-40">
+                      ➤
+                    </button>
+                  ) : (
+                    // Sem texto, o botão é o MICROFONE — igual ao WhatsApp.
+                    <button onClick={() => void iniciarGravacao()} disabled={enviandoMidia}
+                      title="Gravar mensagem de voz"
+                      className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-lg text-white shadow-lg transition hover:opacity-90 disabled:opacity-40">
+                      🎤
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
