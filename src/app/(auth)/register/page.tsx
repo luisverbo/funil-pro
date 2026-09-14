@@ -2,17 +2,21 @@ import Link from 'next/link'
 import { RegisterForm } from './register-form'
 
 interface Props {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; plano?: string }>
 }
 
 export default async function RegisterPage({ searchParams }: Props) {
-  const { error } = await searchParams
+  const { error, plano } = await searchParams
+  // Link de venda do quiz avulso: /register?plano=quiz
+  const planoQuiz = plano === 'quiz'
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Criar conta</h1>
-        <p className="mt-1 text-sm text-gray-500">Comece gratuitamente, sem cartão</p>
+        <h1 className="text-2xl font-bold text-gray-900">{planoQuiz ? 'Criar sua conta do Quiz' : 'Criar conta'}</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          {planoQuiz ? 'Seu painel vem pronto só com o Quiz — direto ao ponto.' : 'Comece gratuitamente, sem cartão'}
+        </p>
       </div>
 
       {error && (
@@ -21,7 +25,7 @@ export default async function RegisterPage({ searchParams }: Props) {
         </div>
       )}
 
-      <RegisterForm />
+      <RegisterForm plano={planoQuiz ? 'quiz' : undefined} />
 
       <p className="text-center text-sm text-gray-500">
         Já tem conta?{' '}

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/app/actions/auth'
 import { LayoutGrid, Plug, Users, BarChart2, Settings, LogOut, User, LayoutTemplate, Globe, Shield, Bot, Camera, Network, Sparkles, TrendingUp, MessageCircle } from 'lucide-react'
+import { rotaPermitida } from '@/lib/planos/acesso'
 
 const NAV = [
   { href: '/funnels',       label: 'Funis',              Icon: LayoutGrid },
@@ -33,6 +34,8 @@ interface Props {
   isAdmin?: boolean
   /** Decidido no servidor (layout) via canShowContentStudioNav. */
   showContentStudio?: boolean
+  /** Plano do tenant: o menu só mostra o que o plano enxerga. */
+  plan?: string
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -46,8 +49,10 @@ function FunnelLogo({ size = 24 }: { size?: number }) {
   )
 }
 
-export default function Sidebar({ displayName, isAdmin, showContentStudio = false, mobileOpen = false, onMobileClose }: Props) {
+export default function Sidebar({ displayName, isAdmin, showContentStudio = false, plan = 'starter', mobileOpen = false, onMobileClose }: Props) {
   const pathname = usePathname()
+  // Plano 'quiz' vê Páginas e Configurações; os demais veem tudo.
+  const navVisivel = NAV.filter(item => rotaPermitida(plan, item.href))
   const [collapsed, setCollapsed] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -144,7 +149,7 @@ export default function Sidebar({ displayName, isAdmin, showContentStudio = fals
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {(showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV).map(({ href, label, Icon }) => {
+          {(showContentStudio ? [...navVisivel, CONTENT_STUDIO_ITEM] : navVisivel).map(({ href, label, Icon }) => {
             const active = pathname === href || pathname.startsWith(href + '/')
             return (
               <Link

@@ -478,7 +478,7 @@ test('a página só entra no menu sob autorização do servidor', () => {
   // A partir do Quick Create: o item existe, mas SOMENTE atrás da prop
   // showContentStudio decidida no servidor (nav.test.ts cobre o helper).
   const sidebar = readFileSync(join(RAIZ, 'src/components/layout/sidebar.tsx'), 'utf8')
-  assert.ok(sidebar.includes('showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV'),
+  assert.ok(/showContentStudio \? \[\.\.\.(NAV|navVisivel), CONTENT_STUDIO_ITEM\] : \1/.test(sidebar),
     'o item deve ser condicional à prop do servidor')
 })
 

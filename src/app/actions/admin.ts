@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { planoValido } from '@/lib/planos/acesso'
 
 async function verifyAdmin() {
   const supabase = await createClient()
@@ -36,6 +37,7 @@ export async function saveAdminSettings(formData: FormData) {
 
 export async function changeTenantPlan(tenantId: string, plan: string) {
   await verifyAdmin()
+  if (!planoValido(plan)) throw new Error(`Plano inválido: ${plan}`)
   const admin = createAdminClient()
 
   await admin.from('tenants').update({ plan }).eq('id', tenantId)

@@ -27,11 +27,14 @@ export default async function PagesPage() {
   const { data: userTenant } = await supabase.from('users_tenants').select('tenant_id').eq('user_id', user.id).single()
   if (!userTenant) redirect('/login')
 
-  const { data: pages } = await supabase
-    .from('pages')
-    .select('*')
-    .eq('tenant_id', userTenant.tenant_id)
-    .order('created_at', { ascending: false })
+  const [{ data: pages }, { data: tenant }] = await Promise.all([
+    supabase
+      .from('pages')
+      .select('*')
+      .eq('tenant_id', userTenant.tenant_id)
+      .order('created_at', { ascending: false }),
+    supabase.from('tenants').select('plan').eq('id', userTenant.tenant_id).single(),
+  ])
 
-  return <PagesClient pages={pages ?? []} tenantId={userTenant.tenant_id} />
+  return <PagesClient pages={pages ?? []} tenantId={userTenant.tenant_id} plan={(tenant?.plan as string) ?? 'starter'} />
 }

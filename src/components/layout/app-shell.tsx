@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from './sidebar'
+import { rotaPermitida, homeDoPlano } from '@/lib/planos/acesso'
 
 interface Props {
   children: React.ReactNode
@@ -9,14 +11,25 @@ interface Props {
   isAdmin: boolean
   /** Decidido no SERVIDOR (layout) — visibilidade do item Content Studio. */
   showContentStudio?: boolean
+  /** Plano do tenant (servidor): recorta menu e rotas — plano 'quiz' vê só o quiz. */
+  plan?: string
 }
 
 const EXPANDED_W = 240
 const COLLAPSED_W = 64
 
-export default function AppShell({ children, displayName, isAdmin, showContentStudio = false }: Props) {
+export default function AppShell({ children, displayName, isAdmin, showContentStudio = false, plan = 'starter' }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const pathname = usePathname()
+  const router = useRouter()
+
+  // Gate do plano: rota fora do plano volta para a home do plano. O menu já
+  // esconde o que não pode; isto cobre link direto e o redirect pós-login.
+  const permitida = rotaPermitida(plan, pathname)
+  useEffect(() => {
+    if (!permitida) router.replace(homeDoPlano(plan))
+  }, [permitida, plan, router])
 
   useEffect(() => {
     try {
@@ -58,6 +71,7 @@ export default function AppShell({ children, displayName, isAdmin, showContentSt
         displayName={displayName}
         isAdmin={isAdmin}
         showContentStudio={showContentStudio}
+        plan={plan}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
@@ -68,7 +82,11 @@ export default function AppShell({ children, displayName, isAdmin, showContentSt
           style={{ width: collapsed ? COLLAPSED_W : EXPANDED_W, transition: 'width 200ms ease' }}
         />
         <main className="flex-1 min-w-0 min-h-screen p-4 md:p-6 pt-[68px] md:pt-6 animate-page-in">
-          {children}
+          {permitida ? children : (
+            <div className="flex min-h-[60vh] items-center justify-center">
+              <p className="text-sm text-gray-400">Levando você para o seu painel…</p>
+            </div>
+          )}
         </main>
       </div>
     </div>

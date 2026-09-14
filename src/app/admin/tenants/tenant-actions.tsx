@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { changeTenantPlan } from '@/app/actions/admin'
 
-const PLANS = ['starter', 'pro', 'scale'] as const
+const PLANS = ['starter', 'pro', 'scale', 'quiz'] as const
 
 interface Props {
   tenantId: string

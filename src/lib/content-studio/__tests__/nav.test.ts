@@ -101,7 +101,7 @@ test('sidebar rende /content-studio SOMENTE sob a prop', () => {
   assert.ok(fonte.includes('Sparkles'), 'ícone lucide esperado')
   // O item é condicional (prop) e compartilha o MESMO caminho de render do NAV
   // (logo herda expandido/recolhido/mobile e estado ativo por startsWith).
-  assert.ok(fonte.includes('showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV'),
+  assert.ok(/showContentStudio \? \[\.\.\.(NAV|navVisivel), CONTENT_STUDIO_ITEM\] : \1/.test(fonte),
     'item deve entrar apenas quando showContentStudio=true')
   // O NAV fixo NÃO contém o item — sem prop, nada de Content Studio no HTML.
   const navFixo = fonte.slice(fonte.indexOf('const NAV = ['), fonte.indexOf(']', fonte.indexOf('const NAV = [')))
