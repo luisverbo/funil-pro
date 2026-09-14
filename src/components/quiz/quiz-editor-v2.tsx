@@ -1109,7 +1109,21 @@ function RightPanelEmpty({ settings, onUpdateSettings }: {
             </div>
           </div>
 
+          <div>
+            <label className={labelCls}>Estilo das opções de resposta</label>
+            <div className="flex gap-2">
+              {(['cards','letters','pills'] as const).map(o => (
+                <button key={o} onClick={() => setTheme({ option_style: o })}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(theme.option_style ?? 'cards') === o ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>
+                  {o === 'cards' ? 'Cards' : o === 'letters' ? 'A · B · C' : 'Pílulas'}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] text-gray-400">Cards: emoji ou letra num quadradinho. A·B·C: sempre letra (estilo prova). Pílulas: opções lado a lado.</p>
+          </div>
+
           <Toggle on={!!theme.dark_mode} onToggle={() => setTheme({ dark_mode: !theme.dark_mode })} label="Modo escuro (texto claro)" />
+          <Toggle on={!!theme.decor} onToggle={() => setTheme({ decor: !theme.decor })} label="Fundo decorado (orbes suaves da cor principal)" />
 
           {/* Cores personalizadas — controle fino como na Inlead */}
           <div className="border-t border-gray-100 pt-3">

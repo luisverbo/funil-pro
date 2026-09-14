@@ -7,6 +7,10 @@ export const THEME_PRESETS: Record<string, QuizTheme & { label: string }> = {
   minimal:  { label: 'Minimal',  preset: 'minimal',  font: 'inter',      bg_type: 'color',    bg_value: '#ffffff', card_style: 'flat',   button_radius: 'none', dark_mode: false },
   bold:     { label: 'Bold',     preset: 'bold',     font: 'montserrat', bg_type: 'gradient', bg_value: 'linear-gradient(160deg, #111827 0%, #1f2937 60%, #6366f1 140%)', card_style: 'shadow', button_radius: 'full', dark_mode: true },
   whatsapp: { label: 'WhatsApp', preset: 'whatsapp', font: 'inter',      bg_type: 'color',    bg_value: '#efeae2', card_style: 'shadow', button_radius: 'full', dark_mode: false },
+  // Presets premium: fundo decorado com orbes da cor primária, cards em vidro
+  aurora:   { label: 'Aurora',   preset: 'aurora',   font: 'poppins',    bg_type: 'color',    bg_value: '#f5f3ff', card_style: 'glass',  button_radius: 'full', dark_mode: false, decor: true, option_style: 'letters' },
+  midnight: { label: 'Midnight', preset: 'midnight', font: 'inter',      bg_type: 'gradient', bg_value: 'linear-gradient(180deg, #0b1020 0%, #111a33 100%)', card_style: 'glass', button_radius: 'md', dark_mode: true, decor: true, option_style: 'letters' },
+  sunset:   { label: 'Sunset',   preset: 'sunset',   font: 'montserrat', bg_type: 'gradient', bg_value: 'linear-gradient(160deg, #fff7ed 0%, #ffe4e6 100%)', card_style: 'shadow', button_radius: 'full', dark_mode: false, decor: true, option_style: 'cards' },
 }
 
 export const FONT_STACKS: Record<string, string> = {
@@ -41,6 +45,12 @@ export interface ResolvedTheme {
   surfaceBg: string
   surfaceBorder: string
   buttonRadius: string
+  /** Orbes decorativos atrás do conteúdo (false = fundo liso). */
+  decor: boolean
+  /** card_style 'flat': conteúdo direto no fundo, sem card envolvente. */
+  cardStyleFlat: boolean
+  /** Aparência das opções de resposta. */
+  optionStyle: 'cards' | 'letters' | 'pills'
   // Campos usados pelo chat do agente (ChatLanding) — cor de destaque e balões
   accent: string          // botões, cabeçalho, envio
   userBubbleBg: string    // balão do lead
@@ -107,6 +117,10 @@ export function resolveTheme(theme?: QuizTheme | null): ResolvedTheme {
     surfaceBg: isDark ? '#1e293b' : '#ffffff',
     surfaceBorder: isDark ? '1px solid #334155' : '1px solid #e5e7eb',
     buttonRadius,
+    // Decoração ligada por padrão nos presets premium; nos antigos, só se pedida.
+    decor: merged.decor ?? false,
+    cardStyleFlat: cardStyle === 'flat',
+    optionStyle: merged.option_style ?? 'cards',
     accent,
     userBubbleBg,
     userBubbleText,
