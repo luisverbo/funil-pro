@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { planoDoLinkDeVenda, homeDoPlano } from '@/lib/planos/acesso'
 
 function slugify(name: string): string {
   return name
@@ -28,12 +29,14 @@ export async function createTenant(formData: FormData) {
   }
 
   const baseSlug = slugify(businessName)
+  // Quem veio pelo link de venda do quiz nasce no plano 'quiz'.
+  const plan = planoDoLinkDeVenda(user!.user_metadata?.plano_desejado) ?? 'starter'
 
   // Try clean slug first, then add random suffix on collision
   let slug = baseSlug
   let { data: tenant, error: tenantError } = await admin
     .from('tenants')
-    .insert({ name: businessName, slug, plan: 'starter' })
+    .insert({ name: businessName, slug, plan })
     .select('id')
     .single()
 
@@ -42,7 +45,7 @@ export async function createTenant(formData: FormData) {
     slug = `${baseSlug}-${Math.random().toString(36).slice(2, 7)}`
     const retry = await admin
       .from('tenants')
-      .insert({ name: businessName, slug, plan: 'starter' })
+      .insert({ name: businessName, slug, plan })
       .select('id')
       .single()
     tenant = retry.data
@@ -63,5 +66,5 @@ export async function createTenant(formData: FormData) {
 
   await supabase.auth.updateUser({ data: { full_name: ownerName } })
 
-  redirect('/funnels')
+  redirect(homeDoPlano(plan))
 }

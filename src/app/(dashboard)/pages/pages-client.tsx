@@ -4,6 +4,7 @@ import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPage, deletePage, duplicatePage, savePageSettings } from '@/app/actions/pages'
 import { PAGE_TEMPLATES } from '@/lib/page-templates'
+import { tiposDePaginaDoPlano } from '@/lib/planos/acesso'
 
 const TEMPLATE_JSON: Record<string, object> = Object.fromEntries(
   PAGE_TEMPLATES.map(t => [t.id, t.craft_json])
@@ -46,8 +47,12 @@ function generateSlug(name: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantId: string }) {
+export default function PagesClient({ pages, tenantId, plan = 'starter' }: { pages: any[]; tenantId: string; plan?: string }) {
   const router = useRouter()
+  // Plano 'quiz' só cria (e filtra) quiz — o resto do catálogo nem aparece.
+  const tiposPermitidos = tiposDePaginaDoPlano(plan)
+  const tiposVisiveis = tiposPermitidos ? PAGE_TYPES.filter(t => tiposPermitidos.includes(t.type)) : PAGE_TYPES
+  const soQuiz = tiposPermitidos?.length === 1 && tiposPermitidos[0] === 'interactive'
   const [filter, setFilter] = useState<string>('all')
   const [showModal, setShowModal] = useState(false)
   const [step, setStep] = useState(1)
@@ -64,7 +69,8 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
   const isQuiz = selectedType === 'interactive' || selectedType === 'biolink'
 
   function handleOpen() {
-    setStep(1); setSelectedType('capture'); setSelectedTemplate('blank'); setPageName(''); setShowModal(true)
+    // No plano quiz o tipo já é o quiz: pula a escolha e vai direto ao nome.
+    setStep(soQuiz ? 2 : 1); setSelectedType(soQuiz ? 'interactive' : 'capture'); setSelectedTemplate('blank'); setPageName(''); setShowModal(true)
   }
 
   function handleCreate() {
@@ -139,7 +145,7 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
 
       {/* Filters */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {['all', 'capture', 'vsl', 'delivery', 'thankyou', 'sales', 'interactive'].map((f) => (
+        {(soQuiz ? [] : ['all', 'capture', 'vsl', 'delivery', 'thankyou', 'sales', 'interactive']).map((f) => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
               filter === f ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
@@ -259,7 +265,7 @@ export default function PagesClient({ pages, tenantId }: { pages: any[]; tenantI
               <div className="p-6">
                 <p className="text-sm font-medium text-gray-700 mb-4">Qual tipo de página você quer criar?</p>
                 <div className="grid grid-cols-2 gap-3">
-                  {PAGE_TYPES.map(({ type, label, icon, description }) => (
+                  {tiposVisiveis.map(({ type, label, icon, description }) => (
                     <button key={type} onClick={() => setSelectedType(type)}
                       className={`p-4 rounded-xl border-2 text-left transition-all ${
                         selectedType === type ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'

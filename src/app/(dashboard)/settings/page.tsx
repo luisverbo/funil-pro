@@ -38,6 +38,8 @@ export default async function SettingsPage() {
     starter: { wa: 1, email: 1000 },
     pro: { wa: 1, email: 10000 },
     scale: { wa: 3, email: 50000 },
+    // Só o quiz: sem instância de WhatsApp nem e-mail — o produto é o formulário.
+    quiz: { wa: 0, email: 0 },
   }
 
   const plan = (tenant?.plan ?? 'starter') as string

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { register } from '@/app/actions/auth'
 
-export function RegisterForm() {
+export function RegisterForm({ plano }: { plano?: string }) {
   const [clientError, setClientError] = useState<string | null>(null)
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -25,6 +25,7 @@ export function RegisterForm() {
 
   return (
     <form action={register} onSubmit={handleSubmit} className="space-y-4">
+      {plano && <input type="hidden" name="plano" value={plano} />}
       {clientError && (
         <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
           {clientError}

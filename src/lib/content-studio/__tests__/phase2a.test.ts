@@ -932,7 +932,7 @@ test('27) nenhum endpoint público foi criado', () => {
 
   // A página só entra no menu sob a prop decidida no servidor (nav.test.ts).
   const sidebar = ler('src/components/layout/sidebar.tsx')
-  assert.ok(sidebar.includes('showContentStudio ? [...NAV, CONTENT_STUDIO_ITEM] : NAV'),
+  assert.ok(/showContentStudio \? \[\.\.\.(NAV|navVisivel), CONTENT_STUDIO_ITEM\] : \1/.test(sidebar),
     'o item do menu deve ser condicional à autorização do servidor')
 })
 
