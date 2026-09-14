@@ -483,7 +483,35 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-08-25 — Agente: gate/contato, portal de agentes, origem, comando /, atendimento ao vivo
+**Última atualização:** 2026-09-14 — Quiz premium + plano QUIZ avulso; multiatendimento WhatsApp oficial completo
+
+**O que foi feito (2026-09-14, PRs #101–#102):**
+- **Quiz design premium** (PR #101): `src/lib/quiz/cores.ts` deriva a família
+  da cor primária (gradiente, sombra colorida, brilho de foco, contraste WCAG,
+  orbes); renderer com fundo decorado, cabeçalho "3 / 7" + progresso em
+  gradiente, card de conteúdo, opções A/B/C em cascata, imagens 4:3 com
+  legenda, botões em gradiente, resultado com anel animado; presets Aurora/
+  Midnight/Sunset; `theme.decor` e `theme.option_style` na aba Design
+- **Plano QUIZ** (PR #102): `src/lib/planos/acesso.ts` (rotaPermitida,
+  homeDoPlano, tiposDePaginaDoPlano, planoDoLinkDeVenda); migration
+  `20260915000000_plano_quiz.sql` APLICADA; gate no AppShell + menu filtrado;
+  login/onboarding pela home do plano; **link de venda `/register?plano=quiz`**
+  cria o tenant já no plano; Admin aceita 'quiz'; Páginas só cria Quiz
+
+**O que foi feito (2026-08-26 a 09-13, PRs #87–#100) — WhatsApp oficial:**
+- Plano em `PLANO-WHATSAPP-MULTIATENDIMENTO.md`; inbox `/whatsapp` (Cloud API):
+  webhook `/api/webhooks/meta-wa`, janela 24h como UX (templates), IA de
+  plantão (canal 'cloud'), 💰 Vendido → kanban (`src/lib/sales/fechar-lead.ts`,
+  compartilhado com Mercos), demo sem conectar a Meta, departamentos +
+  distribuição inteligente (afinidade → menos ocupado/rodízio), trava de tag
+  ao resolver, gestor atribui/transfere, ⚡ automação (enrollLeadsInFunnel),
+  mídia (📎), catálogo de produtos (📦), fila ⏳ Esperando, 🔥 Quentes
+  (quiz+agente → chat), gravador de voz com WebM→OGG puro
+  (`src/lib/whatsapp-cloud/webm-para-ogg.ts`); Mercos webhook + recorte por
+  funil; valor manual da venda no portal; casamento por telefone com DDD
+- Bateria: **800/800**
+
+**Atualização anterior:** 2026-08-25 — Agente: gate/contato, portal de agentes, origem, comando /, atendimento ao vivo
 
 **O que foi feito (2026-08-25, PRs #80–#86):**
 - **Agente pede contato só com lead quente** (PR #80): `src/lib/agents/gate.ts`
