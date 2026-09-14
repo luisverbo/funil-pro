@@ -5,6 +5,7 @@ import { linkWhatsAppDoBotao } from '@/lib/quiz/portal'
 import type { QuizData, QuizBlock, BlockOption, BlockConfig, CarouselItem, ChartDatum } from '@/app/actions/quiz-v2'
 import { resolveTheme } from '@/lib/quiz/theme'
 import { capturarOrigem } from '@/lib/tracking/params'
+import { gradientePrimario, sombraColorida, brilhoFoco, comAlpha, decoracaoFundo, textoContraste } from '@/lib/quiz/cores'
 
 interface Props {
   data: QuizData
@@ -742,8 +743,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           <div>
             {config.question && (
               <div className="mb-6" style={{ textAlign: config.question_align ?? 'center' }}>
-                <h2 className="text-2xl md:text-3xl font-bold" style={{ color: theme.textColor }}>{resolveVars(config.question)}</h2>
-                {config.subtitle && <p className="mt-1" style={{ color: theme.mutedColor }}>{resolveVars(config.subtitle)}</p>}
+                <h2 className="text-2xl md:text-[2.125rem] font-extrabold tracking-tight leading-[1.15]" style={{ color: theme.textColor }}>{resolveVars(config.question)}</h2>
+                {config.subtitle && <p className="mt-2 text-base md:text-lg" style={{ color: theme.mutedColor }}>{resolveVars(config.subtitle)}</p>}
               </div>
             )}
             {(() => {
@@ -768,22 +769,36 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
               if (hasImages) {
                 return (
-                  <div className="grid grid-cols-2 gap-3">
-                    {opts.map((opt: BlockOption) => {
+                  <div className="grid grid-cols-2 gap-3 md:gap-4">
+                    {opts.map((opt: BlockOption, i) => {
                       const isSelected = block.type === 'multi_choice'
                         ? Array.isArray(val) && (val as string[]).includes(opt.label)
                         : val === opt.label
                       return (
                         <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
-                          className={`rounded-2xl border-2 overflow-hidden text-left transition-all duration-150 shadow-sm ${isSelected ? 'scale-[0.98]' : 'hover:scale-[1.02]'}`}
-                          style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.surfaceBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.surfaceBorder }) }}>
-                          {opt.image_url
-                            ? <img src={opt.image_url} alt="" className="w-full h-28 object-cover" />
-                            : <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-4xl">{opt.emoji || '🎯'}</div>}
-                          <div className="px-3 py-2.5 flex items-center gap-2">
-                            {opt.emoji && opt.image_url && <span className="text-lg shrink-0">{opt.emoji}</span>}
-                            <span className="text-sm font-medium flex-1" style={{ color: theme.textColor }}>{opt.label}</span>
-                            {isSelected && <span style={{ color: primaryColor }}>✓</span>}
+                          className={`group relative overflow-hidden rounded-2xl border-2 text-left transition-all duration-200 ${isSelected ? 'scale-[0.985]' : 'hover:-translate-y-0.5 hover:shadow-xl'}`}
+                          style={{
+                            animation: 'fadeInUp 420ms cubic-bezier(0.4,0,0.2,1) both', animationDelay: `${i * 60}ms`,
+                            borderColor: isSelected ? primaryColor : (config.border_color || 'transparent'),
+                            background: config.bg_color || theme.surfaceBg,
+                            boxShadow: isSelected ? `${brilhoFoco(primaryColor)}, ${sombraColorida(primaryColor)}` : theme.cardShadow,
+                          }}>
+                          <div className="relative aspect-[4/3] w-full overflow-hidden">
+                            {opt.image_url
+                              ? <img src={opt.image_url} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                              : <div className="flex h-full w-full items-center justify-center text-5xl" style={{ background: comAlpha(primaryColor, theme.isDark ? 0.25 : 0.1) }}>{opt.emoji || '🎯'}</div>}
+                            {/* legenda sobre gradiente — lê bem em qualquer foto */}
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent px-3 pb-2.5 pt-8">
+                              <span className="block text-sm font-semibold leading-snug text-white drop-shadow">
+                                {opt.emoji && opt.image_url ? `${opt.emoji} ` : ''}{opt.label}
+                              </span>
+                            </div>
+                            {isSelected && (
+                              <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-white shadow-lg"
+                                style={{ background: primaryColor, animation: 'popIn 260ms cubic-bezier(0.34,1.56,0.64,1) both' }}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-4 w-4"><polyline points="20 6 9 17 4 12"/></svg>
+                              </span>
+                            )}
                           </div>
                         </button>
                       )
@@ -793,26 +808,46 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               }
 
               return (
-                <div className="space-y-3">
-                  {opts.map((opt: BlockOption) => {
+                <div className={theme.optionStyle === 'pills' ? 'flex flex-wrap justify-center gap-2.5' : 'space-y-3'}>
+                  {opts.map((opt: BlockOption, i) => {
                     const isSelected = block.type === 'multi_choice'
                       ? Array.isArray(val) && (val as string[]).includes(opt.label)
                       : val === opt.label
+                    const letra = String.fromCharCode(65 + (i % 26))
+                    const pill = theme.optionStyle === 'pills'
+                    // Badge da esquerda: letra (A, B, C…) no estilo 'letters', emoji
+                    // quando houver, senão a letra — nunca um espaço vazio.
+                    const badge = theme.optionStyle === 'letters' || !opt.emoji ? letra : opt.emoji
                     return (
                       <button key={opt.id} onClick={() => selectOption(opt, isSelected)}
-                        className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 text-left transition-all duration-150 shadow-sm ${
-                          isSelected ? 'scale-[0.99]' : 'hover:scale-[1.01]'
-                        }`}
-                        style={isSelected ? { borderColor: primaryColor, backgroundColor: primaryColor + '10' } : { background: config.bg_color || theme.surfaceBg, borderColor: config.border_color || undefined, ...(config.border_color ? {} : { border: theme.surfaceBorder }) }}
+                        className={`group relative flex items-center text-left transition-all duration-200 ${
+                          pill ? 'gap-2 rounded-full px-5 py-3' : 'w-full gap-4 rounded-2xl px-4 py-3.5 md:px-5 md:py-4'
+                        } ${isSelected ? 'scale-[0.99]' : 'hover:-translate-y-0.5'}`}
+                        style={{
+                          animation: 'fadeInUp 420ms cubic-bezier(0.4,0,0.2,1) both', animationDelay: `${i * 60}ms`,
+                          background: isSelected ? comAlpha(primaryColor, theme.isDark ? 0.22 : 0.08) : (config.bg_color || theme.surfaceBg),
+                          border: `2px solid ${isSelected ? primaryColor : (config.border_color || (theme.isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'))}`,
+                          boxShadow: isSelected ? `${brilhoFoco(primaryColor)}, ${sombraColorida(primaryColor)}` : theme.cardShadow,
+                        }}
                       >
-                        {block.type === 'multi_choice' && (
-                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition ${isSelected ? 'text-white' : 'border-gray-300'}`}
-                            style={isSelected ? { background: primaryColor, borderColor: primaryColor } : undefined}>
-                            {isSelected && <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>}
-                          </div>
+                        {!pill && (
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base font-bold transition-colors ${opt.emoji && theme.optionStyle !== 'letters' ? 'text-2xl' : ''}`}
+                            style={isSelected
+                              ? { background: primaryColor, color: textoContraste(primaryColor) }
+                              : { background: comAlpha(primaryColor, theme.isDark ? 0.18 : 0.1), color: theme.isDark ? '#e2e8f0' : primaryColor }}>
+                            {badge}
+                          </span>
                         )}
-                        {opt.emoji && <span className="text-3xl shrink-0">{opt.emoji}</span>}
-                        <span className="text-base font-medium flex-1" style={{ color: theme.textColor }}>{opt.label}</span>
+                        {pill && opt.emoji && <span className="text-lg">{opt.emoji}</span>}
+                        <span className={`flex-1 font-semibold leading-snug ${pill ? 'text-sm' : 'text-base md:text-[1.05rem]'}`} style={{ color: theme.textColor }}>{opt.label}</span>
+                        {!pill && (
+                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all ${isSelected ? 'text-white' : 'opacity-60'}`}
+                            style={isSelected
+                              ? { background: primaryColor, borderColor: primaryColor, animation: 'popIn 260ms cubic-bezier(0.34,1.56,0.64,1) both' }
+                              : { borderColor: theme.isDark ? 'rgba(255,255,255,0.25)' : '#d1d5db' }}>
+                            {isSelected && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-3.5 w-3.5"><polyline points="20 6 9 17 4 12"/></svg>}
+                          </span>
+                        )}
                       </button>
                     )
                   })}
@@ -821,9 +856,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             })()}
             {block.type === 'multi_choice' && (
               <button onClick={handleNext} disabled={!Array.isArray(val) || (val as string[]).length === 0}
-                style={{ background: config.button_color || primaryColor }}
-                className="w-full mt-4 py-4 text-white text-base font-semibold rounded-2xl shadow transition disabled:opacity-40 hover:opacity-90">
-                {config.next_button_text || 'Próximo →'}
+                style={{ background: gradientePrimario(config.button_color || primaryColor), boxShadow: sombraColorida(config.button_color || primaryColor), color: textoContraste(config.button_color || primaryColor), borderRadius: theme.buttonRadius === '9999px' ? '9999px' : '1rem' }}
+                className="mt-5 flex w-full items-center justify-center gap-2 py-4 text-base font-bold transition-all hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0">
+                {config.next_button_text || 'Próximo'}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-5 w-5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
             )}
           </div>
@@ -846,8 +882,10 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                 const v = min + i
                 return (
                   <button key={v} onClick={() => setAnswer(block.id, v, page.id, 'choice_selected')}
-                    className={`w-14 h-14 rounded-xl text-lg font-bold border-2 transition-all ${val === v ? 'text-white scale-110' : 'bg-white border-gray-200 text-gray-700 hover:scale-105'}`}
-                    style={val === v ? { background: primaryColor, borderColor: primaryColor } : undefined}>
+                    className={`h-14 w-14 rounded-2xl text-lg font-bold transition-all duration-200 ${val === v ? 'scale-110' : 'hover:-translate-y-0.5'}`}
+                    style={val === v
+                      ? { background: gradientePrimario(primaryColor), color: textoContraste(primaryColor), boxShadow: sombraColorida(primaryColor), animation: 'popIn 260ms cubic-bezier(0.34,1.56,0.64,1) both' }
+                      : { background: theme.surfaceBg, border: theme.surfaceBorder, color: theme.textColor, boxShadow: theme.cardShadow, animation: 'fadeInUp 400ms both', animationDelay: `${i * 40}ms` }}>
                     {v}
                   </button>
                 )
@@ -865,14 +903,15 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
               value={(val as string) ?? ''}
               onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
               placeholder={config.placeholder}
-              className="w-full px-5 py-4 text-lg border-2 rounded-2xl focus:outline-none transition"
+              className="w-full px-5 py-4 text-lg border-2 rounded-2xl focus:outline-none transition-all duration-200"
               style={{
                 borderColor: err ? '#ef4444' : (theme.isDark ? '#334155' : '#e5e7eb'),
                 background: theme.isDark ? '#1e293b' : '#ffffff',
                 color: theme.textColor,
+                boxShadow: theme.cardShadow,
               }}
-              onFocus={e => e.target.style.borderColor = primaryColor}
-              onBlur={e => e.target.style.borderColor = err ? '#ef4444' : (theme.isDark ? '#334155' : '#e5e7eb')}
+              onFocus={e => { e.target.style.borderColor = primaryColor; e.target.style.boxShadow = brilhoFoco(primaryColor) }}
+              onBlur={e => { e.target.style.borderColor = err ? '#ef4444' : (theme.isDark ? '#334155' : '#e5e7eb'); e.target.style.boxShadow = theme.cardShadow }}
             />
           </div>
         )}
@@ -951,8 +990,14 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
             ? 'px-10 py-5 text-lg w-full'
             : 'px-8 py-4 text-base'
           const align = `flex ${config.button_align === 'left' ? 'justify-start' : config.button_align === 'right' ? 'justify-end' : 'justify-center'}`
-          const cls = `font-semibold text-white rounded-2xl shadow transition hover:opacity-90 ${btnSize}`
-          const st = { background: config.button_color || primaryColor, ...(config.button_pulse ? { animation: 'pulseCta 1.2s ease-in-out infinite' } : {}) }
+          const corBtn = config.button_color || primaryColor
+          const cls = `font-bold transition-all hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 ${btnSize}`
+          const st = {
+            background: gradientePrimario(corBtn), color: textoContraste(corBtn),
+            boxShadow: sombraColorida(corBtn, config.button_size === 'lg'),
+            borderRadius: theme.buttonRadius === '9999px' ? '9999px' : '1rem',
+            ...(config.button_pulse ? { animation: 'pulseCta 1.2s ease-in-out infinite' } : {}),
+          }
           // WhatsApp: o link é montado do número + mensagem que o dono digitou.
           // `resolveVars` na mensagem faz {{nome}} virar o nome respondido —
           // a conversa já abre personalizada, que é o ponto do recurso.
@@ -1413,7 +1458,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
     const ctaUrl = cfg.cta_url
 
     return (
-      <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col items-center justify-center px-4 py-8"
+      <div className="relative min-h-screen w-full max-w-full overflow-x-hidden flex flex-col items-center justify-center px-4 py-8"
         style={{
           background: theme.background,
           backgroundImage: theme.backgroundImage ? `url(${theme.backgroundImage})` : undefined,
@@ -1421,17 +1466,30 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           fontFamily: theme.fontFamily,
         }}>
         {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
-        <style>{`@keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } } @keyframes confettiFall { 0%{transform:translateY(-20px) rotate(0deg);opacity:1} 100%{transform:translateY(200px) rotate(720deg);opacity:0} }`}</style>
-        <div className="w-full max-w-xl text-center" style={{ animation: 'fadeInUp 500ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
-          <div className="relative flex justify-center mb-6" aria-hidden>
-            {[primaryColor,'#10b981','#f59e0b','#ef4444','#a855f7'].map((c, i) => (
-              <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: c, margin: '0 4px', animation: `confettiFall ${1 + i * 0.15}s ${i * 0.1}s ease-in forwards` }} />
+        <style>{`@keyframes fadeInUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } } @keyframes confettiFall { 0%{transform:translateY(-20px) rotate(0deg);opacity:1} 100%{transform:translateY(220px) rotate(720deg);opacity:0} } @keyframes popIn { from { opacity:0; transform:scale(0.4); } to { opacity:1; transform:scale(1); } } @keyframes ringDraw { from { stroke-dashoffset: 176; } to { stroke-dashoffset: 0; } }`}</style>
+        {theme.decor && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: decoracaoFundo(primaryColor, theme.isDark) }} />}
+        <div className="relative w-full max-w-xl text-center" style={{ animation: 'fadeInUp 500ms cubic-bezier(0.4,0,0.2,1) forwards' }}>
+          <div className="pointer-events-none absolute inset-x-0 -top-6 flex justify-center gap-3" aria-hidden>
+            {[primaryColor,'#10b981','#f59e0b','#ef4444','#a855f7','#06b6d4'].map((c, i) => (
+              <div key={i} style={{ width: 8 + (i % 3) * 3, height: 8 + (i % 3) * 3, borderRadius: i % 2 ? '50%' : '2px', background: c, animation: `confettiFall ${1.1 + i * 0.12}s ${i * 0.08}s ease-in forwards` }} />
             ))}
           </div>
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl md:text-4xl font-bold mb-4" style={{ color: theme.textColor }}>{cfg.title || 'Parabéns!'}</h2>
+          <div className="rounded-3xl px-6 py-10 md:px-10 md:py-12"
+            style={theme.cardStyleFlat ? undefined : { background: theme.cardBg, border: theme.cardBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined }}>
+          {/* anel que se desenha em volta do check — o "fechou" visual */}
+          <div className="relative mx-auto mb-6 h-24 w-24" style={{ animation: 'popIn 500ms cubic-bezier(0.34,1.56,0.64,1) both' }}>
+            <svg viewBox="0 0 64 64" className="absolute inset-0 h-full w-full -rotate-90">
+              <circle cx="32" cy="32" r="28" fill="none" stroke={comAlpha(primaryColor, 0.18)} strokeWidth="4" />
+              <circle cx="32" cy="32" r="28" fill="none" stroke={primaryColor} strokeWidth="4" strokeLinecap="round"
+                strokeDasharray="176" style={{ animation: 'ringDraw 900ms 150ms cubic-bezier(0.4,0,0.2,1) both' }} />
+            </svg>
+            <div className="absolute inset-3 flex items-center justify-center rounded-full text-4xl" style={{ background: gradientePrimario(primaryColor), boxShadow: sombraColorida(primaryColor, true) }}>
+              <span style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.25))' }}>🎉</span>
+            </div>
+          </div>
+          <h2 className="mb-3 text-3xl font-extrabold tracking-tight md:text-4xl" style={{ color: theme.textColor }}>{cfg.title || 'Parabéns!'}</h2>
           {scoreText && (
-            <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-2xl font-semibold text-lg" style={{ background: primaryColor + '20', color: primaryColor }}>
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full px-5 py-2 text-lg font-bold" style={{ background: comAlpha(primaryColor, 0.14), color: theme.isDark ? '#ffffff' : primaryColor }}>
               🏆 {scoreText}
             </div>
           )}
@@ -1444,25 +1502,30 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           )}
           {phase === 'done' && cfg.cta_text && (
             <a href={ctaUrl || '#'} target={ctaUrl ? '_blank' : undefined} rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-8 py-4 text-white text-lg font-semibold rounded-2xl shadow-lg hover:opacity-90 transition"
-              style={{ background: primaryColor }}>
+              className="inline-flex items-center gap-2 px-9 py-4 text-lg font-bold transition-all hover:-translate-y-0.5 hover:brightness-105"
+              style={{ background: gradientePrimario(primaryColor), color: textoContraste(primaryColor), boxShadow: sombraColorida(primaryColor, true), borderRadius: theme.buttonRadius === '9999px' ? '9999px' : '1rem' }}>
               {cfg.cta_text}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-5 w-5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </a>
           )}
           {phase === 'done' && !cfg.cta_text && (
-            <div className="flex items-center justify-center gap-2 font-medium" style={{ color: primaryColor }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><polyline points="20 6 9 17 4 12"/></svg>
+            <div className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-2 font-semibold" style={{ background: comAlpha(primaryColor, 0.12), color: theme.isDark ? '#ffffff' : primaryColor }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-5 w-5"><polyline points="20 6 9 17 4 12"/></svg>
               Tudo certo! Aguarde o contato.
             </div>
           )}
+          </div>
         </div>
       </div>
     )
   }
 
+  const corProgresso = data.settings.progress_color || primaryColor
+  const podeVoltar = pageIdx > 0 && data.settings.show_back !== false
+  const usaCard = !theme.cardStyleFlat
+
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col"
+    <div className="relative min-h-screen w-full max-w-full overflow-x-hidden flex flex-col"
       style={{
         background: theme.background,
         backgroundImage: theme.backgroundImage ? `url(${theme.backgroundImage})` : undefined,
@@ -1470,36 +1533,49 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         fontFamily: theme.fontFamily,
       }}>
       {theme.fontUrl && <link rel="stylesheet" href={theme.fontUrl} />}
-      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(32px); } to { opacity:1; transform:translateX(0); } } @keyframes fadeInUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } } @keyframes pulseCta { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }`}</style>
+      <style>{`@keyframes slideIn { from { opacity:0; transform:translateX(28px); } to { opacity:1; transform:translateX(0); } } @keyframes fadeInUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } } @keyframes popIn { from { opacity:0; transform:scale(0.4); } to { opacity:1; transform:scale(1); } } @keyframes pulseCta { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } } @keyframes floatOrb { 0%,100% { transform: translate3d(0,0,0); } 50% { transform: translate3d(0,-14px,0); } }`}</style>
 
-      {logoUrl && (
-        <div className="flex justify-center pt-6 shrink-0">
-          <img src={logoUrl} alt="" className="h-10 object-contain" />
+      {/* Fundo com profundidade: orbes da cor primária flutuando devagar. */}
+      {theme.decor && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0" style={{ backgroundImage: decoracaoFundo(primaryColor, theme.isDark), animation: 'floatOrb 9s ease-in-out infinite' }} />
         </div>
       )}
 
-      {showProgress && (
-        <div className="h-1.5 shrink-0" style={{ background: (data.settings.progress_color || primaryColor) + '30' }}>
-          <div className="h-full transition-all duration-500" style={{ width: `${progressPct}%`, background: data.settings.progress_color || primaryColor }} />
+      {/* Cabeçalho: voltar · logo · contador — e a barra de progresso em gradiente */}
+      <header className="relative z-10 mx-auto w-full max-w-xl shrink-0 px-4 pt-5">
+        <div className="flex min-h-[40px] items-center justify-between gap-3">
+          {podeVoltar ? (
+            <button onClick={() => { setPageIdx(i => i - 1); setTransitionKey(k => k + 1) }}
+              className="flex h-9 w-9 items-center justify-center rounded-full transition hover:scale-105"
+              style={{ background: theme.surfaceBg, border: theme.surfaceBorder, color: theme.mutedColor, boxShadow: theme.cardShadow }}
+              aria-label="Voltar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+          ) : <span className="h-9 w-9" />}
+          {logoUrl ? <img src={logoUrl} alt="" className="h-9 max-w-[45%] object-contain" /> : <span />}
+          {showProgress && totalPages > 1 ? (
+            <span className="rounded-full px-3 py-1 text-xs font-bold tabular-nums"
+              style={{ background: comAlpha(corProgresso, theme.isDark ? 0.25 : 0.12), color: theme.isDark ? '#ffffff' : corProgresso }}>
+              {pageIdx + 1} / {totalPages}
+            </span>
+          ) : <span className="h-9 w-9" />}
         </div>
-      )}
-
-      {pageIdx > 0 && data.settings.show_back !== false && (
-        <div className="px-6 pt-4 shrink-0">
-          <button onClick={() => { setPageIdx(i => i - 1); setTransitionKey(k => k + 1) }}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            Voltar
-          </button>
-        </div>
-      )}
+        {showProgress && (
+          <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: comAlpha(corProgresso, theme.isDark ? 0.2 : 0.14) }}>
+            <div className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${progressPct}%`, background: gradientePrimario(corProgresso), boxShadow: sombraColorida(corProgresso) }} />
+          </div>
+        )}
+      </header>
 
       {/* `overflowAnchor: none`: sem isto o navegador SEGURA a posição visual
           quando o conteúdo acima muda de altura — e desfaz a subida ao topo. */}
       <div ref={topoRef} key={transitionKey}
-        className={`flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-8 ${currentPage?.blocks[0]?.type === 'image' ? 'pt-0' : 'pt-6'}`}
+        className={`relative z-10 flex-1 flex items-start justify-center w-full max-w-full overflow-x-hidden px-4 pb-10 ${currentPage?.blocks[0]?.type === 'image' && !usaCard ? 'pt-0' : 'pt-6'}`}
         style={{ animation: 'slideIn 350ms cubic-bezier(0.4,0,0.2,1) forwards', overflowAnchor: 'none' }}>
-        <div className="w-full max-w-xl min-w-0">
+        <div className={`w-full max-w-xl min-w-0 ${usaCard ? 'rounded-3xl px-5 py-6 md:px-8 md:py-8' : ''}`}
+          style={usaCard ? { background: theme.cardBg, border: theme.cardBorder, boxShadow: theme.cardShadow, backdropFilter: theme.cardBackdrop ?? undefined } : undefined}>
           {currentPage?.blocks.map(renderBlock)}
 
           {shouldShowNextButton && !hasExplicitButton && (
@@ -1514,10 +1590,11 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
                 }
                 handleNext()
               }}
-              style={{ background: primaryColor }}
-              className="w-full py-4 text-white text-base font-semibold rounded-2xl shadow transition hover:opacity-90"
+              style={{ background: gradientePrimario(primaryColor), color: textoContraste(primaryColor), boxShadow: sombraColorida(primaryColor, true), borderRadius: theme.buttonRadius === '9999px' ? '9999px' : '1rem' }}
+              className="mt-2 flex w-full items-center justify-center gap-2 py-4 text-base font-bold transition-all hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0"
             >
-              {hasFinalCapture ? (currentPage.blocks.find(b => b.type === 'final_capture')?.config.submit_text || 'Ver meu resultado →') : (autoNextText || 'Próximo →')}
+              {hasFinalCapture ? (currentPage.blocks.find(b => b.type === 'final_capture')?.config.submit_text || 'Ver meu resultado') : (autoNextText || 'Próximo')}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-5 w-5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </button>
           )}
 

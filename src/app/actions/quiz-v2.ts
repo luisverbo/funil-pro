@@ -305,13 +305,17 @@ export interface QuizPage {
 }
 
 export interface QuizTheme {
-  preset?: 'clean' | 'dark' | 'gradient' | 'minimal' | 'bold' | 'whatsapp'
+  preset?: 'clean' | 'dark' | 'gradient' | 'minimal' | 'bold' | 'whatsapp' | 'aurora' | 'midnight' | 'sunset'
   font?: 'inter' | 'poppins' | 'playfair' | 'montserrat'
   bg_type?: 'color' | 'gradient' | 'image'
   bg_value?: string
   card_style?: 'flat' | 'shadow' | 'glass'
   button_radius?: 'none' | 'md' | 'full'
   dark_mode?: boolean
+  // Fundo decorado: orbes suaves da cor primária atrás do conteúdo (profundidade)
+  decor?: boolean
+  // Aparência das opções de resposta: cards (padrão) | letras A/B/C | pílulas
+  option_style?: 'cards' | 'letters' | 'pills'
   // overrides de cor (vazio = derivado do tema/modo escuro)
   text_color?: string     // cor do texto principal
   muted_color?: string    // cor secundária (subtítulos, textos apagados)
