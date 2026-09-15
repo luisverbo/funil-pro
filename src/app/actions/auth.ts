@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { planoDoLinkDeVenda, homeDoPlano } from '@/lib/planos/acesso'
+import { idDeSessaoValido } from '@/lib/billing/stripe'
 
 export async function login(formData: FormData) {
   const supabase = await createClient()
@@ -39,11 +40,21 @@ export async function register(formData: FormData) {
   // Plano pedido no link de venda viaja no metadata do usuário até o onboarding
   // criar o tenant. Só 'quiz' é aceito — ninguém vira Scale por URL.
   const planoDesejado = planoDoLinkDeVenda(formData.get('plano'))
+  // Sessão de checkout da Stripe (compra do quiz) — o onboarding a confere e
+  // liga a compra ao tenant recém-criado.
+  const csBruto = formData.get('cs')
+  const checkoutSession = idDeSessaoValido(csBruto) ? csBruto : null
 
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: name, ...(planoDesejado ? { plano_desejado: planoDesejado } : {}) } },
+    options: {
+      data: {
+        full_name: name,
+        ...(planoDesejado ? { plano_desejado: planoDesejado } : {}),
+        ...(checkoutSession ? { checkout_session_id: checkoutSession } : {}),
+      },
+    },
   })
   if (error) {
     redirect(`/register?error=${encodeURIComponent(error.message)}`)
