@@ -483,7 +483,29 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-09-14 — Quiz premium + plano QUIZ avulso; multiatendimento WhatsApp oficial completo
+**Última atualização:** 2026-09-15 — Landing de venda /quiz + pagamento Stripe só do Quiz
+
+**O que foi feito (2026-09-15, PR #104):**
+- **Landing pública `/quiz`** (`src/app/quiz/{page,quiz-landing}.tsx`): hero
+  com demo viva do quiz no celular, recursos, portal do cliente (exemplo
+  rotulado), comparação, preço único vindo do admin, FAQ, CTA. Sem segredo
+  no cliente, sem depoimento inventado
+- **Stripe só do Quiz, SEM env nova**: chaves em `platform_settings`
+  (seção em /admin/settings: secret key, webhook secret, price id, preço
+  exibido, exigir pagamento). `src/lib/billing/stripe.ts` (fetch + HMAC),
+  `src/lib/billing/quiz-venda.ts` (régua pura), `compra.ts` (liga compra ao
+  tenant), `POST /api/checkout/quiz`, `POST /api/webhooks/stripe`.
+  Cadastro `?plano=quiz&cs=…` só passa sessão PAGA quando o dono exige.
+  Proxy: `/quiz` e checkout públicos por rota EXATA (não prefixo)
+- Migration `20260916000000_venda_quiz_stripe.sql` APLICADA
+- **Pendência do dono**: em dashboard.stripe.com criar produto "Quiz"
+  (preço recorrente), webhook → `/api/webhooks/stripe` (eventos
+  checkout.session.completed, invoice.paid, customer.subscription.deleted),
+  colar as chaves em /admin/settings; ligar "exigir pagamento" quando
+  quiser fechar o link gratuito
+- Bateria: **818/818**
+
+**Atualização anterior:** 2026-09-14 — Quiz premium + plano QUIZ avulso; multiatendimento WhatsApp oficial completo
 
 **O que foi feito (2026-09-14, PRs #101–#102):**
 - **Quiz design premium** (PR #101): `src/lib/quiz/cores.ts` deriva a família
