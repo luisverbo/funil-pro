@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding'])
+// '/quiz' (landing de venda) e o checkout são EXATOS de propósito: um prefixo
+// '/quiz' deixaria '/quiz-editor/…' público.
+const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding', '/quiz', '/api/checkout/quiz'])
 const PUBLIC_PREFIXES = [
   '/api/webhooks',
   '/api/funnels',

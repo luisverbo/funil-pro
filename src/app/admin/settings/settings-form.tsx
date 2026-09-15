@@ -123,6 +123,40 @@ export default function SettingsForm({ settings }: Props) {
         </form>
       </Section>
 
+      {/* Stripe — venda do Quiz */}
+      <Section title="Stripe — venda do Quiz avulso">
+        <p className="text-sm text-gray-500 mb-4">
+          Em <strong>dashboard.stripe.com</strong>: crie o produto &quot;Quiz&quot; com preço recorrente e copie o <strong>ID do preço</strong> (price_…).
+          Em Desenvolvedores → Webhooks, aponte para <code className="text-xs bg-gray-100 px-1 rounded">/api/webhooks/stripe</code> com os eventos
+          <em> checkout.session.completed, invoice.paid, customer.subscription.deleted</em> e copie o segredo (whsec_…).
+          A landing pública fica em <code className="text-xs bg-gray-100 px-1 rounded">/quiz</code>.
+        </p>
+        <form onSubmit={handleSave(['stripe_secret_key', 'stripe_webhook_secret', 'stripe_quiz_price_id', 'quiz_preco_exibido', 'quiz_exigir_pagamento'])}>
+          <Field label="Chave secreta (sk_live_… ou sk_test_…)" name="stripe_secret_key" value={settings.stripe_secret_key ?? ''} type="password" placeholder="sk_••••••••" />
+          <Field label="Segredo do webhook (whsec_…)" name="stripe_webhook_secret" value={settings.stripe_webhook_secret ?? ''} type="password" placeholder="whsec_••••••••" />
+          <Field label="ID do preço do Quiz (price_…)" name="stripe_quiz_price_id" value={settings.stripe_quiz_price_id ?? ''} placeholder="price_1Abc…" />
+          <Field label="Preço exibido na landing (R$/mês)" name="quiz_preco_exibido" value={settings.quiz_preco_exibido ?? ''} placeholder="97" />
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Exigir pagamento para criar conta no plano Quiz</label>
+            <select
+              name="quiz_exigir_pagamento"
+              defaultValue={settings.quiz_exigir_pagamento === 'true' ? 'true' : 'false'}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="false">Não — /register?plano=quiz continua aberto (teste/lançamento)</option>
+              <option value="true">Sim — só entra quem pagou na Stripe</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            Salvar
+          </button>
+        </form>
+      </Section>
+
       {/* Resend */}
       <Section title="Resend (E-mail)">
         <form onSubmit={handleSave(['resend_api_key', 'resend_domain'])}>

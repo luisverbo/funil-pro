@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { register } from '@/app/actions/auth'
 
-export function RegisterForm({ plano }: { plano?: string }) {
+export function RegisterForm({ plano, cs, emailInicial }: { plano?: string; cs?: string; emailInicial?: string }) {
   const [clientError, setClientError] = useState<string | null>(null)
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -26,6 +26,7 @@ export function RegisterForm({ plano }: { plano?: string }) {
   return (
     <form action={register} onSubmit={handleSubmit} className="space-y-4">
       {plano && <input type="hidden" name="plano" value={plano} />}
+      {cs && <input type="hidden" name="cs" value={cs} />}
       {clientError && (
         <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
           {clientError}
@@ -54,6 +55,7 @@ export function RegisterForm({ plano }: { plano?: string }) {
           type="email"
           required
           autoComplete="email"
+          defaultValue={emailInicial}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           placeholder="seu@email.com"
         />

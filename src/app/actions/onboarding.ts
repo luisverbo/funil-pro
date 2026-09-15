@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { planoDoLinkDeVenda, homeDoPlano } from '@/lib/planos/acesso'
+import { ligarCompraAoTenant } from '@/lib/billing/compra'
 
 function slugify(name: string): string {
   return name
@@ -65,6 +66,15 @@ export async function createTenant(formData: FormData) {
   }
 
   await supabase.auth.updateUser({ data: { full_name: ownerName } })
+
+  // Quem pagou o quiz na Stripe: a compra passa a apontar para este tenant e
+  // o tenant ganha customer/assinatura + vencimento do período.
+  if (plan === 'quiz') {
+    await ligarCompraAoTenant(admin, tenant!.id, {
+      checkoutSessionId: user!.user_metadata?.checkout_session_id,
+      email: user!.email,
+    })
+  }
 
   redirect(homeDoPlano(plan))
 }
