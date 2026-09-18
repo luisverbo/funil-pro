@@ -374,8 +374,19 @@ export async function getAnswerBreakdown(quizId: string): Promise<{ breakdown: R
   } catch { return { breakdown: {} } }
 }
 
+/**
+ * Zerar os dados do quiz — o "apagar o teste" antes de medir de verdade.
+ *
+ * O QUE ESTAVA FURADO: o reset apagava só `quiz_leads`. Os EVENTOS órfãos
+ * (`quiz_lead_events` é quem sustenta "entraram", "onde as pessoas param" e
+ * "chegaram ao final" no portal do cliente) e os contadores da própria página
+ * ficavam de pé — então o teste do dono virava número falso no painel do
+ * cliente. Agora o reset limpa tudo o que alimenta esses números, e o
+ * investimento lançado é opcional (pode ser gasto real que ele quer manter).
+ */
 export async function resetQuizLeads(
-  quizId: string
+  quizId: string,
+  opcoes?: { investimento?: boolean },
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
@@ -384,6 +395,8 @@ export async function resetQuizLeads(
 
     const admin = createAdminClient()
 
+    // 1. Leads — leva junto, por CASCADE, eventos e o desfecho marcado pelo
+    //    cliente no portal (portal_lead_status).
     const { error } = await admin
       .from('quiz_leads')
       .delete()
@@ -391,6 +404,33 @@ export async function resetQuizLeads(
       .eq('tenant_id', tenantId)
 
     if (error) return { success: false, error: error.message }
+
+    // 2. Eventos por quiz_id: o CASCADE só alcança evento com lead vivo. Quem
+    //    sobrou de uma limpeza anterior continuaria contando "entraram".
+    const { error: evErr } = await admin
+      .from('quiz_lead_events')
+      .delete()
+      .eq('quiz_id', quizId)
+      .eq('tenant_id', tenantId)
+    if (evErr) return { success: false, error: evErr.message }
+
+    // 3. Contadores da página (visitas e conversões do teste).
+    await admin
+      .from('pages')
+      .update({ views_count: 0, conversions_count: 0 })
+      .eq('id', quizId)
+      .eq('tenant_id', tenantId)
+
+    // 4. Investimento lançado — só quando o dono pede: pode ser gasto de
+    //    verdade que ele não quer perder.
+    if (opcoes?.investimento) {
+      const { error: spendErr } = await admin
+        .from('quiz_spend_entries')
+        .delete()
+        .eq('page_id', quizId)
+        .eq('tenant_id', tenantId)
+      if (spendErr) return { success: false, error: spendErr.message }
+    }
 
     return { success: true }
   } catch (err) {

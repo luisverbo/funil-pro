@@ -290,6 +290,9 @@ test('15) CAUSA RAIZ: eventos são lidos em PÁGINAS (o corte de 1000 sumia com 
   assert.ok(consultas.length >= 4, 'consultas de evento não encontradas')
   for (const trecho of consultas) {
     const cabeca = trecho.slice(0, 400)
+    // DELETE não lê linha nenhuma — o teto de 1000 do PostgREST não se aplica
+    // (o reset apaga os eventos do quiz de uma vez). A regra vale para LEITURA.
+    if (/\.delete\(\)/.test(cabeca)) continue
     assert.ok(/\.range\(/.test(cabeca),
       `consulta de eventos sem paginação: ${cabeca.split('\n')[1]?.trim()}`)
   }

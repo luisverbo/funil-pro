@@ -396,7 +396,7 @@ function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; p
 // página a página — onde as pessoas param. Os dados vêm de getQuizMetricas
 // (o MESMO cálculo do painel compartilhado, para os dois nunca divergirem).
 
-function StatsBar({ quizId }: { quizId: string }) {
+function StatsBar({ quizId, refreshKey }: { quizId: string; refreshKey: number }) {
   const [m, setM] = useState<QuizMetricas | null>(null)
   // Custos no painel do DONO — antes só o cliente via, no portal.
   const [custosBase, setCustosBase] = useState<{ lancamentos: LancamentoDia[]; leads: LeadCusto[] } | null>(null)
@@ -410,7 +410,10 @@ function StatsBar({ quizId }: { quizId: string }) {
     getCustosDoQuiz(quizId).then(r => {
       if ('lancamentos' in r) setCustosBase(r)
     })
-  }, [quizId])
+    // refreshKey: depois de "Resetar dados" os cartões precisam recarregar —
+    // antes eles congelavam no número velho (o painel mostrava 15 leads com a
+    // lista vazia) e o dono achava que o reset não tinha funcionado.
+  }, [quizId, refreshKey])
 
   const custos = custosBase && custosBase.lancamentos.length > 0
     ? calcularCustos(custosBase.lancamentos, custosBase.leads,
@@ -984,6 +987,10 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState<QuizLeadWithEvents | null>(null)
   const [resetting, setResetting] = useState(false)
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetInvestimento, setResetInvestimento] = useState(false)
+  const [resetErro, setResetErro] = useState<string | null>(null)
+  const [resetKey, setResetKey] = useState(0)
   const [exporting, setExporting] = useState(false)
   // Seleção de exportação: quais páginas, se inclui os dados do lead, e erro.
   const [exportOpen, setExportOpen] = useState(false)
@@ -1096,11 +1103,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     }
   }
 
-  async function handleReset() {
-    if (!confirm('Tem certeza? Todos os dados de leads deste quiz serão apagados permanentemente.')) return
+  async function confirmarReset() {
     setResetting(true)
-    await resetQuizLeads(quizId)
+    setResetErro(null)
+    const r = await resetQuizLeads(quizId, { investimento: resetInvestimento })
     setResetting(false)
+    if (r && 'success' in r && !r.success) { setResetErro(r.error ?? 'Não consegui apagar'); return }
+    setResetOpen(false)
+    setResetInvestimento(false)
+    setResetKey(k => k + 1)   // força os cartões e o funil a recarregarem
     load()
   }
 
@@ -1210,7 +1221,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
           </button>
 
           {/* Reset */}
-          <button onClick={handleReset} disabled={resetting}
+          <button onClick={() => { setResetOpen(true); setResetErro(null) }} disabled={resetting}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition disabled:opacity-50">
             {resetting ? 'Resetando…' : 'Resetar dados'}
           </button>
@@ -1220,7 +1231,7 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       {/* Body */}
       <div className="flex-1 overflow-auto p-6">
         {/* Stats */}
-        <StatsBar quizId={quizId} />
+        <StatsBar quizId={quizId} refreshKey={resetKey} />
 
         {/* Resumo agregado de respostas */}
         <AnswerBreakdown quizId={quizId} pages={pages} refreshKey={total} />
@@ -1575,6 +1586,60 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       {/* Detail panel */}
       {shareOpen && <ShareModal quizId={quizId} onClose={() => setShareOpen(false)} />}
       {spendOpen && <SpendModal quizId={quizId} onClose={() => setSpendOpen(false)} />}
+
+      {/* Resetar dados — o "apagar o teste" antes de medir de verdade.
+          O confirm() do navegador não dizia O QUE sumia nem deixava escolher;
+          e o número de "entraram" do portal continuava de pé depois. */}
+      {resetOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !resetting && setResetOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">🧹 Resetar dados do quiz</h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Para testar à vontade e começar a medir do zero. Não dá para desfazer.
+                </p>
+              </div>
+              <button onClick={() => !resetting && setResetOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+
+            {resetErro && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{resetErro}</p>}
+
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Vai apagar</p>
+              <ul className="mt-2 space-y-1.5 text-sm text-gray-700">
+                <li className="flex gap-2"><span className="text-red-500">✕</span> Todos os leads e as respostas deles</li>
+                <li className="flex gap-2"><span className="text-red-500">✕</span> Quem <b>entrou</b>, onde parou e quem chegou ao final</li>
+                <li className="flex gap-2"><span className="text-red-500">✕</span> O que o seu cliente marcou no portal (contactado, fechado…)</li>
+                <li className="flex gap-2"><span className="text-red-500">✕</span> Visitas e conversões contadas na página</li>
+              </ul>
+              <p className="mt-3 text-xs text-gray-500">
+                O quiz, as páginas e o link continuam intactos.
+              </p>
+            </div>
+
+            <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-xl border border-gray-200 p-3 hover:border-indigo-300">
+              <input type="checkbox" checked={resetInvestimento} onChange={e => setResetInvestimento(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-indigo-600" />
+              <span className="text-sm text-gray-700">
+                Apagar também o <b>investimento lançado</b>
+                <span className="block text-xs text-gray-500">Desmarcado, o gasto em anúncios continua salvo — só os leads zeram.</span>
+              </span>
+            </label>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setResetOpen(false)} disabled={resetting}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => void confirmarReset()} disabled={resetting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {resetting ? 'Apagando…' : 'Apagar e zerar tudo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedLead && (
         <>
