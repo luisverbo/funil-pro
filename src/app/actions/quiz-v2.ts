@@ -495,3 +495,37 @@ export async function publishQuizV2(
     return { success: false, error: String(err) }
   }
 }
+
+/**
+ * Renomear o quiz de dentro do editor.
+ *
+ * Por que existe: depois de duplicar, a cópia nasce "Cópia de …" e o editor
+ * mostrava o nome como TEXTO — não havia onde trocar sem voltar para a lista.
+ * O ENDEREÇO (slug) não muda de propósito: link já divulgado ou dentro de um
+ * portal de cliente não pode morrer porque alguém corrigiu o título.
+ */
+export async function renomearQuiz(
+  pageId: string,
+  titulo: string
+): Promise<{ success: boolean; title?: string; error?: string }> {
+  try {
+    const nome = (titulo ?? '').trim().slice(0, 120)
+    if (!nome) return { success: false, error: 'O nome não pode ficar vazio' }
+
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+
+    const { error } = await supabase
+      .from('pages')
+      .update({ title: nome })
+      .eq('id', pageId)
+      .eq('tenant_id', tenantId)
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/pages')
+    return { success: true, title: nome }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}

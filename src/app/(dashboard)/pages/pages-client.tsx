@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createPage, deletePage, duplicatePage, savePageSettings } from '@/app/actions/pages'
 import { PAGE_TEMPLATES } from '@/lib/page-templates'
 import { tiposDePaginaDoPlano } from '@/lib/planos/acesso'
+import { caminhoDoEditor } from '@/lib/pages/editor-path'
 
 const TEMPLATE_JSON: Record<string, object> = Object.fromEntries(
   PAGE_TEMPLATES.map(t => [t.id, t.craft_json])
@@ -115,17 +116,20 @@ export default function PagesClient({ pages, tenantId, plan = 'starter' }: { pag
     startTransition(() => router.refresh())
   }
 
+  /**
+   * Duplicar levava SEMPRE para /page-editor — a cópia de um quiz abria no
+   * editor errado, onde não há nome para trocar. Agora o destino sai da mesma
+   * regra do botão Editar.
+   */
   function handleDuplicate(id: string) {
     startTransition(async () => {
       const copy = await duplicatePage(id)
-      router.push(`/page-editor/${copy.id}`)
+      router.push(caminhoDoEditor(copy.page_type as string, copy.id as string))
     })
   }
 
   function getEditorPath(page: { id: string; page_type: string }) {
-    if (page.page_type === 'interactive') return `/quiz-editor/${page.id}`
-    if (page.page_type === 'biolink') return `/bio-editor/${page.id}`
-    return `/page-editor/${page.id}`
+    return caminhoDoEditor(page.page_type, page.id)
   }
 
   return (
