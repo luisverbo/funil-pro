@@ -21,6 +21,7 @@ import {
   type QuizTheme, type TestimonialItem, type FeatureItem, type FaqItem,
 } from '@/app/actions/quiz-v2'
 import { THEME_PRESETS } from '@/lib/quiz/theme'
+import { TAMANHOS_TITULO, ROTULOS_TAMANHO, PADRAO_TITULO, tamanhoNoPreview, type TamanhoTitulo } from '@/lib/quiz/tipografia'
 import ImageUploadField from '@/components/quiz/image-upload-field'
 import RichTextField from '@/components/quiz/rich-text-field'
 import type { PricingItem, ChecklistItem, CarouselItem, MetricItem, ChartDatum, NotificationItem } from '@/app/actions/quiz-v2'
@@ -455,7 +456,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
     const alinhamento = config.question_align ?? 'center'
     summary = (
       <div>
-        <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2" style={{ textAlign: alinhamento }}>
+        <p className="font-semibold text-gray-800 leading-snug line-clamp-2" style={{ textAlign: alinhamento, fontSize: tamanhoNoPreview(config.title_size) }}>
           {config.question || <span className="text-gray-400 italic">Pergunta sem texto</span>}
         </p>
         {config.subtitle && <p className="text-xs text-gray-500 mt-0.5" style={{ textAlign: alinhamento }}>{config.subtitle}</p>}
@@ -493,7 +494,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
   } else if (['field_text','field_email','field_phone','field_number','field_textarea'].includes(block.type)) {
     summary = (
       <div>
-        <p className="text-xs text-gray-500 font-medium">{config.label || 'Campo'}</p>
+        <p className="text-gray-500 font-medium" style={{ fontSize: tamanhoNoPreview(config.title_size ?? 'pequeno') }}>{config.label || 'Campo'}</p>
         <div className={`mt-1.5 w-full border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 bg-gray-50 ${block.type === 'field_textarea' ? 'h-12' : ''}`}>
           {config.placeholder || 'Digite aqui...'}
         </div>
@@ -632,7 +633,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
   } else if (['field_date','field_height','field_weight'].includes(block.type)) {
     summary = (
       <div>
-        <p className="text-xs text-gray-500 font-medium">{config.label || meta.label}</p>
+        <p className="text-gray-500 font-medium" style={{ fontSize: tamanhoNoPreview(config.title_size ?? 'pequeno') }}>{config.label || meta.label}</p>
         <div className="mt-1.5 w-full border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-400 bg-gray-50">
           {block.type === 'field_date' ? 'dd/mm/aaaa' : config.placeholder || (block.type === 'field_height' ? '170 cm' : '70 kg')}
         </div>
@@ -642,7 +643,7 @@ function BlockPreview({ block, pages }: { block: QuizBlock; pages: QuizPage[] })
     summary = (
       <div>
         <div className="w-full h-12 bg-gray-900 rounded flex items-center justify-center mb-1.5"><span className="text-white">🎬</span></div>
-        <p className="text-sm font-semibold text-gray-800 line-clamp-1">{config.question || 'Vídeo + opções'}</p>
+        <p className="font-semibold text-gray-800 line-clamp-1" style={{ fontSize: tamanhoNoPreview(config.title_size) }}>{config.question || 'Vídeo + opções'}</p>
       </div>
     )
   } else if (block.type === 'audio') {
@@ -938,6 +939,33 @@ function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; la
       </div>
       <span className="text-xs text-gray-600">{label}</span>
     </label>
+  )
+}
+
+/**
+ * Tamanho do título — o mesmo controle para pergunta e rótulo de campo.
+ * Numa página que mistura os dois, é assim que o dono deixa a tipografia
+ * proporcional (ou destaca a pergunta de propósito).
+ */
+function SeletorTamanhoTitulo({ valor, padrao, onChange }: {
+  valor: TamanhoTitulo | undefined
+  padrao: TamanhoTitulo
+  onChange: (t: TamanhoTitulo) => void
+}) {
+  const atual = valor ?? padrao
+  return (
+    <div>
+      <label className={labelCls}>Tamanho do título</label>
+      <div className="flex gap-1.5">
+        {TAMANHOS_TITULO.map(t => (
+          <button key={t} onClick={() => onChange(t)}
+            className={`flex-1 py-1.5 text-xs rounded-lg border transition ${atual === t ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600 hover:border-indigo-200'}`}>
+            {ROTULOS_TAMANHO[t]}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-gray-400">Use o mesmo tamanho nos campos e nas perguntas para a página ficar proporcional.</p>
+    </div>
   )
 }
 
@@ -1273,6 +1301,7 @@ function BlockEditor({
               ))}
             </div>
           </div>
+          <SeletorTamanhoTitulo valor={config.title_size} padrao={PADRAO_TITULO} onChange={t => setConfigKey('title_size', t)} />
           <OptionList options={config.options ?? []} pages={pages} onChange={opts => setConfigKey('options', opts)} />
           {block.type === 'multi_choice' && (
             <div className={sectionCls}>
@@ -1306,6 +1335,7 @@ function BlockEditor({
               ))}
             </div>
           </div>
+          <SeletorTamanhoTitulo valor={config.title_size} padrao={PADRAO_TITULO} onChange={t => setConfigKey('title_size', t)} />
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Mínimo</label>
@@ -1358,6 +1388,7 @@ function BlockEditor({
             <label className={labelCls}>Label</label>
             <input value={config.label ?? ''} onChange={e => setConfigKey('label', e.target.value)} className={inputCls} placeholder="Texto da pergunta" />
           </div>
+          <SeletorTamanhoTitulo valor={config.title_size} padrao="pequeno" onChange={t => setConfigKey('title_size', t)} />
           {block.type !== 'field_date' && (
             <div>
               <label className={labelCls}>Placeholder</label>
@@ -1404,6 +1435,7 @@ function BlockEditor({
             <label className={labelCls}>Pergunta</label>
             <textarea value={config.question ?? ''} onChange={e => setConfigKey('question', e.target.value)} rows={2} className={inputCls + ' resize-none'} placeholder="Assista e escolha" />
           </div>
+          <SeletorTamanhoTitulo valor={config.title_size} padrao={PADRAO_TITULO} onChange={t => setConfigKey('title_size', t)} />
           <div>
             <label className={labelCls}>URL do vídeo (YouTube/Vimeo)</label>
             <input value={config.video_answer_url ?? ''} onChange={e => setConfigKey('video_answer_url', e.target.value)} className={inputCls} placeholder="https://youtube.com/..." />
