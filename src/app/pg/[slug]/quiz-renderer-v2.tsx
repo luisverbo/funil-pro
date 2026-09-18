@@ -6,6 +6,7 @@ import type { QuizData, QuizBlock, BlockOption, BlockConfig, CarouselItem, Chart
 import { resolveTheme } from '@/lib/quiz/theme'
 import { capturarOrigem } from '@/lib/tracking/params'
 import { gradientePrimario, sombraColorida, brilhoFoco, comAlpha, decoracaoFundo, textoContraste } from '@/lib/quiz/cores'
+import { estiloDoTitulo, estiloDoSubtitulo } from '@/lib/quiz/tipografia'
 
 interface Props {
   data: QuizData
@@ -743,8 +744,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           <div>
             {config.question && (
               <div className="mb-6" style={{ textAlign: config.question_align ?? 'center' }}>
-                <h2 className="text-2xl md:text-[2.125rem] font-extrabold tracking-tight leading-[1.15]" style={{ color: theme.textColor }}>{resolveVars(config.question)}</h2>
-                {config.subtitle && <p className="mt-2 text-base md:text-lg" style={{ color: theme.mutedColor }}>{resolveVars(config.subtitle)}</p>}
+                <h2 style={{ color: theme.textColor, ...estiloDoTitulo(config.title_size) }}>{resolveVars(config.question)}</h2>
+                {config.subtitle && <p className="mt-2" style={{ color: theme.mutedColor, ...estiloDoSubtitulo(config.title_size) }}>{resolveVars(config.subtitle)}</p>}
               </div>
             )}
             {(() => {
@@ -868,8 +869,8 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         {block.type === 'scale' && (
           <div className="text-center">
             {config.question && (
-              <h2 className="text-2xl font-bold mb-6"
-                style={{ color: theme.textColor, textAlign: config.question_align ?? 'center' }}>
+              <h2 className="mb-6"
+                style={{ color: theme.textColor, textAlign: config.question_align ?? 'center', ...estiloDoTitulo(config.title_size) }}>
                 {config.question}
               </h2>
             )}
@@ -897,7 +898,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {['field_text','field_email','field_phone','field_number'].includes(block.type) && (
           <div>
-            {config.label && <label className="block text-lg font-semibold mb-3" style={{ color: theme.textColor }}>{config.label}</label>}
+            {config.label && <label className="block mb-3" style={{ color: theme.textColor, ...estiloDoTitulo(config.title_size ?? 'pequeno') }}>{config.label}</label>}
             <input
               type={block.type === 'field_email' ? 'email' : block.type === 'field_phone' ? 'tel' : block.type === 'field_number' ? 'number' : 'text'}
               value={(val as string) ?? ''}
@@ -918,7 +919,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
 
         {block.type === 'field_textarea' && (
           <div>
-            {config.label && <label className="block text-lg font-semibold mb-3" style={{ color: theme.textColor }}>{config.label}</label>}
+            {config.label && <label className="block mb-3" style={{ color: theme.textColor, ...estiloDoTitulo(config.title_size ?? 'pequeno') }}>{config.label}</label>}
             <textarea
               value={(val as string) ?? ''}
               onChange={e => setAnswer(block.id, e.target.value, page.id, 'text_entered')}
@@ -1173,7 +1174,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
         {/* Date / Height / Weight fields */}
         {['field_date','field_height','field_weight'].includes(block.type) && (
           <div>
-            {config.label && <label className="block text-lg font-semibold mb-3" style={{ color: theme.textColor }}>{config.label}</label>}
+            {config.label && <label className="block mb-3" style={{ color: theme.textColor, ...estiloDoTitulo(config.title_size ?? 'pequeno') }}>{config.label}</label>}
             <div className="relative">
               <input
                 type={block.type === 'field_date' ? 'date' : 'number'}
@@ -1195,7 +1196,7 @@ export default function QuizRendererV2({ data, pageId, tenantId }: Props) {
           const embed = config.video_answer_url ? getYoutubeEmbed(config.video_answer_url) : null
           return (
             <div>
-              {config.question && <h2 className="text-2xl font-bold mb-4" style={{ color: theme.textColor, textAlign: config.question_align ?? 'center' }}>{config.question}</h2>}
+              {config.question && <h2 className="mb-4" style={{ color: theme.textColor, textAlign: config.question_align ?? 'center', ...estiloDoTitulo(config.title_size) }}>{config.question}</h2>}
               {embed && <div className="aspect-video rounded-xl overflow-hidden bg-black mb-4"><iframe src={embed} className="w-full h-full" allowFullScreen /></div>}
               <div className="space-y-3">
                 {(config.options ?? []).map((opt: BlockOption) => {

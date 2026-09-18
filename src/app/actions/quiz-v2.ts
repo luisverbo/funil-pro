@@ -111,6 +111,8 @@ export interface BlockConfig {
    * comportamento fixo no código: quizzes já publicados não mudam de aparência.
    */
   question_align?: 'left' | 'center' | 'right'
+  /** Tamanho do título da pergunta / rótulo do campo (src/lib/quiz/tipografia.ts). */
+  title_size?: 'pequeno' | 'medio' | 'grande' | 'gigante'
   options?: BlockOption[]
   scale_min?: number
   scale_max?: number
