@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { nomeDaCopia } from '@/lib/pages/editor-path'
 import { camposHerdados, remapearPerguntasV1, type PerguntaV1 } from '@/lib/pages/duplicate'
 
 async function getSupabase() {
@@ -197,7 +198,7 @@ export async function duplicatePage(id: string) {
     .insert({
       ...camposHerdados(original),
       tenant_id,
-      title: `Cópia de ${original.title}`,
+      title: nomeDaCopia(original.title as string),
       slug: generateSlug(`copia-${original.title}`),
       published: false,
     })

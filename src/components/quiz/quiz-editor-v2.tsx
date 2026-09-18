@@ -15,7 +15,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 // Salvar/publicar via HTTP — a mesma cura da carga do editor (server action
 // embute id de build na página e falha mascarado após deploy).
-import { saveQuizV2, publishQuizV2 } from '@/lib/quiz/painel-client'
+import { saveQuizV2, publishQuizV2, renomearQuiz } from '@/lib/quiz/painel-client'
 import {
   type QuizData, type QuizPage, type QuizBlock, type BlockType, type BlockConfig, type BlockOption,
   type QuizTheme, type TestimonialItem, type FeatureItem, type FaqItem,
@@ -2430,6 +2430,12 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
   const [selectedPageId, setSelectedPageId] = useState<string>(() => initialData?.pages[0]?.id ?? '')
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  // Nome do quiz editável aqui dentro: a cópia nasce "Cópia de …" e antes só
+  // dava para trocar voltando à lista (e, duplicando, nem se chegava lá).
+  const [titulo, setTitulo] = useState(page.title)
+  const [renomeando, setRenomeando] = useState(false)
+  const [rascunhoNome, setRascunhoNome] = useState(page.title)
+  const [erroNome, setErroNome] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveSeq = useRef(0)          // #12: ignora respostas de saves obsoletos
@@ -2685,6 +2691,21 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
 
   const activePage = data.pages.find(p => p.id === selectedPageId) ?? null
 
+  async function confirmarNome() {
+    const nome = rascunhoNome.trim()
+    setRenomeando(false)
+    if (!nome || nome === titulo) { setRascunhoNome(titulo); setErroNome(null); return }
+    setErroNome(null)
+    try {
+      const r = await renomearQuiz(page.id, nome)
+      if (r?.success) { setTitulo(r.title ?? nome); router.refresh() }
+      else { setErroNome(r?.error ?? 'Não consegui renomear'); setRascunhoNome(titulo) }
+    } catch (e) {
+      setErroNome(e instanceof Error ? e.message : 'Não consegui renomear')
+      setRascunhoNome(titulo)
+    }
+  }
+
   const saveLabel = saveStatus === 'saving' ? 'Salvando…' : saveStatus === 'saved' ? '✓ Salvo!' : saveStatus === 'error' ? 'Erro' : 'Salvar'
 
   return (
@@ -2695,7 +2716,31 @@ export default function QuizEditorV2({ page, initialData, funnels }: Props) {
           <button onClick={() => router.push('/pages')} className="text-gray-500 hover:text-gray-700 shrink-0">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <h1 className="hidden sm:block text-sm font-semibold text-gray-900 truncate max-w-[180px]">{page.title}</h1>
+          {renomeando ? (
+            <input
+              autoFocus
+              value={rascunhoNome}
+              onChange={e => setRascunhoNome(e.target.value)}
+              onBlur={() => void confirmarNome()}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void confirmarNome()
+                if (e.key === 'Escape') { setRascunhoNome(titulo); setRenomeando(false); setErroNome(null) }
+              }}
+              placeholder="Nome do quiz"
+              className="w-[160px] sm:w-[220px] shrink-0 rounded-lg border border-indigo-400 px-2 py-1 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+          ) : (
+            <button
+              onClick={() => { setRascunhoNome(titulo); setRenomeando(true); setErroNome(null) }}
+              title={erroNome ?? 'Clique para renomear o quiz'}
+              className="group flex min-w-0 shrink items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-gray-50"
+            >
+              <span className={`truncate max-w-[110px] sm:max-w-[200px] text-sm font-semibold ${erroNome ? 'text-red-600' : 'text-gray-900'}`}>{titulo}</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0 text-gray-300 transition-colors group-hover:text-indigo-600">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"/>
+              </svg>
+            </button>
+          )}
 
           {/* Tabs */}
           <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium shrink-0">
