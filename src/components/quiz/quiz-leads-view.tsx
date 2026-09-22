@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from '
 import { abrirPdf, baixarCsv } from '@/components/quiz/export-files'
 // Funções via HTTP (imune ao id de build das server actions); tipos da action.
 import {
-  getQuizLeads, getQuizMetricas, resetQuizLeads, getAnswerBreakdown,
+  getQuizLeads, getQuizMetricas, resetQuizLeads, excluirLeadsDoQuiz, getAnswerBreakdown,
   getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
   listarInvestimentos, salvarInvestimento, excluirInvestimento, getCustosDoQuiz,
   getExportStructure, exportLeadsTable,
@@ -298,7 +298,9 @@ function AnswerBreakdown({ quizId, pages, refreshKey }: { quizId: string; pages:
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
-function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; pages: QuizPage[]; onClose: () => void }) {
+function LeadDetailPanel({ lead, pages, onClose, onExcluir }: {
+  lead: QuizLeadWithEvents; pages: QuizPage[]; onClose: () => void; onExcluir: () => void
+}) {
   const pageMap = new Map(pages.map((p, i) => [p.id, { title: p.title, index: i }]))
 
   return (
@@ -309,7 +311,17 @@ function LeadDetailPanel({ lead, pages, onClose }: { lead: QuizLeadWithEvents; p
           <p className="text-sm font-bold text-gray-900">Lead #{shortId(lead.id)}</p>
           <p className="text-xs text-gray-400">{fmtDate(lead.started_at)}</p>
         </div>
-        <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition text-xl leading-none">×</button>
+        <div className="flex items-center gap-1">
+          {/* Excluir SÓ este lead — o caminho mais curto para tirar um teste
+              de mentira sem mexer no resto. */}
+          <button onClick={onExcluir} title="Excluir este lead"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition hover:bg-red-50 hover:text-red-600">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+            </svg>
+          </button>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition text-xl leading-none">×</button>
+        </div>
       </div>
 
       {/* Contact info */}
@@ -991,6 +1003,12 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
   const [resetInvestimento, setResetInvestimento] = useState(false)
   const [resetErro, setResetErro] = useState<string | null>(null)
   const [resetKey, setResetKey] = useState(0)
+  // Exclusão ESCOLHIDA: o teste de mentira sai sem levar junto o lead de
+  // verdade que o cliente já viu no portal.
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [excluirOpen, setExcluirOpen] = useState(false)
+  const [excluindo, setExcluindo] = useState(false)
+  const [excluirErro, setExcluirErro] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   // Seleção de exportação: quais páginas, se inclui os dados do lead, e erro.
   const [exportOpen, setExportOpen] = useState(false)
@@ -1101,6 +1119,38 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
     } finally {
       setExporting(false)
     }
+  }
+
+  function alternarSelecao(id: string) {
+    setSelecionados(prev => {
+      const proximo = new Set(prev)
+      if (proximo.has(id)) proximo.delete(id)
+      else proximo.add(id)
+      return proximo
+    })
+  }
+
+  /** Marca/desmarca TODOS os leads da lista atual — respeita busca e período. */
+  function alternarTodosVisiveis() {
+    setSelecionados(prev => {
+      const visiveis = leads.map(l => l.id)
+      const todosMarcados = visiveis.length > 0 && visiveis.every(id => prev.has(id))
+      const proximo = new Set(prev)
+      for (const id of visiveis) { if (todosMarcados) proximo.delete(id); else proximo.add(id) }
+      return proximo
+    })
+  }
+
+  async function confirmarExclusao() {
+    setExcluindo(true)
+    setExcluirErro(null)
+    const r = await excluirLeadsDoQuiz(quizId, [...selecionados])
+    setExcluindo(false)
+    if (r && 'success' in r && !r.success) { setExcluirErro(r.error ?? 'Não consegui excluir'); return }
+    setExcluirOpen(false)
+    setSelecionados(new Set())
+    setResetKey(k => k + 1)   // cartões e funil recontam sem os excluídos
+    load()
   }
 
   async function confirmarReset() {
@@ -1236,6 +1286,22 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
         {/* Resumo agregado de respostas */}
         <AnswerBreakdown quizId={quizId} pages={pages} refreshKey={total} />
 
+        {/* Selecionados: barra de ação */}
+        {selecionados.size > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5">
+            <span className="text-sm font-semibold text-indigo-800">
+              {selecionados.size} {selecionados.size === 1 ? 'lead selecionado' : 'leads selecionados'}
+            </span>
+            <button onClick={() => setSelecionados(new Set())}
+              className="text-xs font-medium text-indigo-600 hover:underline">Limpar seleção</button>
+            <div className="flex-1" />
+            <button onClick={() => { setExcluirOpen(true); setExcluirErro(null) }}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+              Excluir selecionados
+            </button>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {loading ? (
@@ -1255,6 +1321,16 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="px-3 py-3 w-9">
+                      <input
+                        type="checkbox"
+                        aria-label="Selecionar todos os leads da lista"
+                        title="Selecionar todos os leads desta lista"
+                        checked={leads.length > 0 && leads.every(l => selecionados.has(l.id))}
+                        onChange={alternarTodosVisiveis}
+                        className="h-3.5 w-3.5 accent-indigo-600 cursor-pointer"
+                      />
+                    </th>
                     <th className="text-left px-4 py-3 font-semibold text-gray-500 whitespace-nowrap sticky left-0 bg-gray-50 z-10 w-28">
                       Lead / Data
                     </th>
@@ -1297,6 +1373,15 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
                       className="hover:bg-indigo-50 cursor-pointer transition-colors"
                       onClick={() => setSelectedLead(lead)}
                     >
+                      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Selecionar lead ${shortId(lead.id)}`}
+                          checked={selecionados.has(lead.id)}
+                          onChange={() => alternarSelecao(lead.id)}
+                          className="h-3.5 w-3.5 accent-indigo-600 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-4 py-3 sticky left-0 bg-white hover:bg-indigo-50 z-10">
                         <p className="font-bold text-gray-800 font-mono">#{shortId(lead.id)}</p>
                         <p className="text-[10px] text-gray-400">{fmtDate(lead.started_at)}</p>
@@ -1587,6 +1672,44 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       {shareOpen && <ShareModal quizId={quizId} onClose={() => setShareOpen(false)} />}
       {spendOpen && <SpendModal quizId={quizId} onClose={() => setSpendOpen(false)} />}
 
+      {/* Excluir os leads escolhidos — some também do portal do cliente. */}
+      {excluirOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !excluindo && setExcluirOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Excluir {selecionados.size} {selecionados.size === 1 ? 'lead' : 'leads'}?
+                </h3>
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Só {selecionados.size === 1 ? 'este' : 'estes'}. O resto dos leads deste quiz fica como está.
+                </p>
+              </div>
+              <button onClick={() => !excluindo && setExcluirOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+
+            {excluirErro && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{excluirErro}</p>}
+
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+              <p className="flex gap-2"><span className="text-red-500">✕</span> As respostas {selecionados.size === 1 ? 'dele' : 'deles'} saem do painel</p>
+              <p className="mt-1.5 flex gap-2"><span className="text-red-500">✕</span> Somem também do <b>portal do seu cliente</b> e das contas de entraram/conversão</p>
+              <p className="mt-3 text-xs text-gray-500">Não dá para desfazer.</p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setExcluirOpen(false)} disabled={excluindo}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => void confirmarExclusao()} disabled={excluindo}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {excluindo ? 'Excluindo…' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Resetar dados — o "apagar o teste" antes de medir de verdade.
           O confirm() do navegador não dizia O QUE sumia nem deixava escolher;
           e o número de "entraram" do portal continuava de pé depois. */}
@@ -1644,7 +1767,17 @@ export default function QuizLeadsView({ quizId, pages }: { quizId: string; pages
       {selectedLead && (
         <>
           <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setSelectedLead(null)} />
-          <LeadDetailPanel lead={selectedLead} pages={pages} onClose={() => setSelectedLead(null)} />
+          <LeadDetailPanel
+            lead={selectedLead}
+            pages={pages}
+            onClose={() => setSelectedLead(null)}
+            onExcluir={() => {
+              setSelecionados(new Set([selectedLead.id]))
+              setSelectedLead(null)
+              setExcluirErro(null)
+              setExcluirOpen(true)
+            }}
+          />
         </>
       )}
     </div>

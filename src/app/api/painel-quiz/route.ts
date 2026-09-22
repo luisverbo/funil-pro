@@ -16,7 +16,7 @@
 
 import { NextResponse } from 'next/server'
 import {
-  getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads,
+  getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads, excluirLeadsDoQuiz,
   getExportStructure, exportLeadsTable, getLeadDetail,
   getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
   getPortalDoAgente, listarAgentesDoTenant,
@@ -29,7 +29,7 @@ export const maxDuration = 60
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // Lista FECHADA: só o que o painel usa. Nome fora daqui = 404.
 const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
-  getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads,
+  getQuizLeads, getQuizMetricas, getAnswerBreakdown, resetQuizLeads, excluirLeadsDoQuiz,
   getExportStructure, exportLeadsTable, getLeadDetail,
   getPortalDoQuiz, ativarPortal, atualizarPortalConfig, desativarPortal, listarQuizzesDoTenant,
   getPortalDoAgente, listarAgentesDoTenant,
