@@ -384,6 +384,67 @@ export async function getAnswerBreakdown(quizId: string): Promise<{ breakdown: R
  * cliente. Agora o reset limpa tudo o que alimenta esses números, e o
  * investimento lançado é opcional (pode ser gasto real que ele quer manter).
  */
+/** Formato de uuid — id fora disso nem chega ao banco. */
+function ehUuid(v: unknown): v is string {
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+}
+
+/**
+ * Excluir leads ESCOLHIDOS — o "apagar só o teste que eu fiz".
+ *
+ * O buraco que isto fecha: só existia o reset, que apaga TUDO. Quem fez dois
+ * testes de mentira num quiz que já tem leads de verdade do cliente ficava
+ * sem saída — ou convivia com o lixo no portal do cliente, ou perdia os dados
+ * reais junto.
+ *
+ * Segurança: o id sozinho não basta. A exclusão é sempre filtrada por
+ * quiz_id + tenant_id, então nem um id válido de outro quiz (ou de outro
+ * cliente) é apagado por aqui. Some do portal do cliente junto, por CASCADE.
+ */
+export async function excluirLeadsDoQuiz(
+  quizId: string,
+  leadIds: string[],
+): Promise<{ success: boolean; removidos?: number; error?: string }> {
+  try {
+    const ids = Array.from(new Set((leadIds ?? []).filter(ehUuid))).slice(0, 500)
+    if (ids.length === 0) return { success: false, error: 'Nenhum lead válido selecionado' }
+
+    const tenantId = await getTenantId()
+    if (!(await verifyTenantOwnsQuiz(quizId, tenantId))) {
+      return { success: false, error: 'Quiz não encontrado ou sem permissão' }
+    }
+
+    const admin = createAdminClient()
+
+    // Só apaga o que é DESTE quiz e DESTE tenant — a lista de ids não manda
+    // sozinha. O retorno diz quantos saíram de verdade.
+    const { data, error } = await admin
+      .from('quiz_leads')
+      .delete()
+      .in('id', ids)
+      .eq('quiz_id', quizId)
+      .eq('tenant_id', tenantId)
+      .select('id')
+
+    if (error) return { success: false, error: error.message }
+
+    const removidos = (data ?? []).map(l => String(l.id))
+    if (removidos.length > 0) {
+      // O CASCADE já leva os eventos; isto varre o que porventura tenha
+      // sobrado (evento órfão continuaria contando em "entraram").
+      await admin
+        .from('quiz_lead_events')
+        .delete()
+        .in('lead_id', removidos)
+        .eq('tenant_id', tenantId)
+    }
+
+    return { success: true, removidos: removidos.length }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
 export async function resetQuizLeads(
   quizId: string,
   opcoes?: { investimento?: boolean },
