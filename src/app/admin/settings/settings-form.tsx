@@ -123,6 +123,26 @@ export default function SettingsForm({ settings }: Props) {
         </form>
       </Section>
 
+      {/* Instagram — token da conta conectada */}
+      <Section title="Instagram — token da conta">
+        <p className="text-sm text-gray-500 mb-4">
+          Token de acesso da Instagram API (dura 60 dias). Gere em <strong>developers.facebook.com</strong> → seu app →
+          caso de uso do Instagram → &quot;Gerar tokens de acesso&quot;. Colado aqui, vale na hora — sem redeploy. O cron dos
+          conteúdos renova sozinho a cada 24h enquanto o token estiver válido; vencido, só gerando outro.
+          {settings.ig_token_renovado_em && <span className="block mt-1 text-xs text-gray-400">Última renovação automática: {new Date(settings.ig_token_renovado_em).toLocaleString('pt-BR')}</span>}
+        </p>
+        <form onSubmit={handleSave(['ig_access_token'])}>
+          <Field label="Token de acesso (IGAA…)" name="ig_access_token" value={settings.ig_access_token ?? ''} type="password" placeholder="IGAA••••••••" />
+          <button
+            type="submit"
+            disabled={isPending}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            Salvar
+          </button>
+        </form>
+      </Section>
+
       {/* Stripe — venda do Quiz */}
       <Section title="Stripe — venda do Quiz avulso">
         <p className="text-sm text-gray-500 mb-4">

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { planoValido } from '@/lib/planos/acesso'
+import { limparCacheDoToken } from '@/lib/instagram/token'
 
 async function verifyAdmin() {
   const supabase = await createClient()
@@ -30,6 +31,12 @@ export async function saveAdminSettings(formData: FormData) {
       .from('platform_settings')
       .update({ value: value as string, updated_at: new Date().toISOString() })
       .eq('key', key)
+    // Token novo do Instagram: o carimbo de renovação recomeça e o cache cai,
+    // senão a tela continuaria mostrando o token velho por até 1 minuto.
+    if (key === 'ig_access_token') {
+      await admin.from('platform_settings').update({ value: null }).eq('key', 'ig_token_renovado_em')
+      limparCacheDoToken()
+    }
   }
 
   revalidatePath('/admin/settings')

@@ -18,6 +18,7 @@ import {
 } from '@/lib/conteudos-ig/regras'
 import { publicarConteudo } from '@/lib/conteudos-ig/publicador'
 import { getConnectedAccount } from '@/lib/instagram'
+import { obterTokenInstagram } from '@/lib/instagram/token'
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -196,7 +197,7 @@ export async function publicarAgora(id: string): Promise<{ success: boolean; per
     if (!item) return { success: false, error: 'Conteúdo não encontrado' }
     if (!podeFazer(item.status, 'publicar_agora')) return { success: false, error: `Não dá para publicar um item ${item.status}` }
 
-    const token = process.env.IG_ACCESS_TOKEN
+    const token = await obterTokenInstagram()
     if (!token) return { success: false, error: 'Instagram não conectado (token ausente na plataforma)' }
 
     const admin = createAdminClient()

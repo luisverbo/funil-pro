@@ -3,17 +3,17 @@
 
 const GRAPH = 'https://graph.instagram.com'
 
-function token(): string {
-  const t = process.env.IG_ACCESS_TOKEN
-  if (!t) throw new Error('IG_ACCESS_TOKEN ausente')
-  return t
-}
+import { exigirTokenInstagram, obterTokenInstagram } from './token'
+
+// Token: banco (platform_settings.ig_access_token) primeiro, ambiente como
+// reserva, renovado pelo cron — vide ./token.ts.
+const token = exigirTokenInstagram
 
 /** Envia uma DM para um usuário do Instagram (recipientId = IGSID do lead) */
 export async function sendInstagramDM(recipientId: string, text: string): Promise<void> {
   const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
   })
   if (!res.ok) {
@@ -26,7 +26,7 @@ export async function sendInstagramDM(recipientId: string, text: string): Promis
 export async function replyToComment(commentId: string, text: string): Promise<void> {
   const res = await fetch(`${GRAPH}/v21.0/${commentId}/replies`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({ message: text }),
   })
   if (!res.ok) {
@@ -39,7 +39,7 @@ export async function replyToComment(commentId: string, text: string): Promise<v
 export async function sendPrivateReplyToComment(commentId: string, text: string): Promise<void> {
   const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({ recipient: { comment_id: commentId }, message: { text } }),
   })
   if (!res.ok) {
@@ -62,7 +62,7 @@ export interface IgMedia {
 export async function listRecentMedia(limit = 24): Promise<IgMedia[]> {
   const res = await fetch(
     `${GRAPH}/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp&limit=${limit}`,
-    { headers: { Authorization: `Bearer ${token()}` } }
+    { headers: { Authorization: `Bearer ${await token()}` } }
   )
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -74,7 +74,7 @@ export async function listRecentMedia(limit = 24): Promise<IgMedia[]> {
 
 /** Verifica a conexão: retorna o @ da conta se o token estiver válido */
 export async function getConnectedAccount(): Promise<{ connected: boolean; username?: string; accountId?: string; error?: string }> {
-  const t = process.env.IG_ACCESS_TOKEN
+  const t = await obterTokenInstagram()
   if (!t) return { connected: false, error: 'token_missing' }
   try {
     const res = await fetch(`${GRAPH}/v21.0/me?fields=user_id,username`, {
@@ -98,7 +98,7 @@ export async function sendInstagramActionButtons(recipientId: string, text: stri
   if (valid.length === 0) return sendInstagramDM(recipientId, text)
   const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({
       recipient: { id: recipientId },
       message: {
@@ -133,7 +133,7 @@ export async function sendInstagramButtons(recipientId: string, text: string, bu
   if (valid.length === 0) return sendInstagramDM(recipientId, text)
   const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({
       recipient: { id: recipientId },
       message: {
@@ -162,7 +162,7 @@ export async function sendInstagramQuickReplies(recipientId: string, text: strin
   if (valid.length === 0) return sendInstagramDM(recipientId, text)
   const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({
       recipient: { id: recipientId },
       message: {
@@ -184,7 +184,7 @@ export async function getIgUserProfile(igsid: string): Promise<{
 }> {
   try {
     const res = await fetch(`${GRAPH}/v21.0/${igsid}?fields=name,username,profile_pic,follower_count,is_user_follow_business`, {
-      headers: { Authorization: `Bearer ${token()}` },
+      headers: { Authorization: `Bearer ${await token()}` },
     })
     const json = await res.json().catch(() => null) as {
       name?: string; username?: string; profile_pic?: string; follower_count?: number; is_user_follow_business?: boolean
@@ -201,7 +201,7 @@ export async function getIgUserProfile(igsid: string): Promise<{
 export async function sendInstagramMedia(recipientId: string, mediaUrl: string, type: 'image' | 'video' | 'audio'): Promise<void> {
   const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
     body: JSON.stringify({
       recipient: { id: recipientId },
       message: { attachment: { type, payload: { url: mediaUrl } } },
