@@ -19,6 +19,7 @@ import {
   CORTE_VISIVEL, MAX_LEGENDA, HORA_DO_SLOT, acoesPermitidas, montarLegenda,
   type Conteudo, type StatusConteudo, type TipoConteudo,
 } from '@/lib/conteudos-ig/regras'
+import { explicarErroDeToken } from '@/lib/instagram/token'
 
 type Aba = 'pendente' | 'agendado' | 'publicado' | 'erro'
 const ABAS: { id: Aba; rotulo: string; status: StatusConteudo[] }[] = [
@@ -113,7 +114,8 @@ export default function ConteudosClient({ itensIniciais, erroInicial, contagemIn
 
       {!conexao.connected && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Sem conexão com o Instagram, nada será publicado. Conecte em <a href="/instagram" className="font-semibold underline">Instagram</a>.
+          Sem conexão com o Instagram, nada será publicado.{' '}
+          {explicarErroDeToken(conexao.error) ?? <>Conecte em <a href="/instagram" className="font-semibold underline">Instagram</a>.</>}
           {conexao.error && conexao.error !== 'token_missing' && <span className="block text-xs opacity-80">{conexao.error.slice(0, 140)}</span>}
         </div>
       )}

@@ -1,5 +1,7 @@
 'use client'
 
+import { explicarErroDeToken } from '@/lib/instagram/token'
+
 import React, { useState } from 'react'
 import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, type IgAutomation, type IgAutomationContact, type IgAutomationInput } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
@@ -223,11 +225,16 @@ export default function InstagramClient({ initialAutomations, connection, funnel
         </div>
       ) : (
         <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4">
-          <p className="text-sm font-semibold text-amber-800 mb-2">⚠️ Instagram ainda não conectado</p>
+          <p className="text-sm font-semibold text-amber-800 mb-2">
+            {connection?.error && connection.error !== 'token_missing' ? '⚠️ Instagram desconectado — o token venceu ou foi recusado' : '⚠️ Instagram ainda não conectado'}
+          </p>
+          {explicarErroDeToken(connection?.error) && (
+            <p className="mb-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900">{explicarErroDeToken(connection?.error)}</p>
+          )}
           <ol className="text-sm text-amber-800/90 flex flex-col gap-1.5 list-decimal list-inside">
             <li>No painel da Meta (developers.facebook.com → seu app → caso de uso do Instagram), vá no passo <strong>&quot;2. Gerar tokens de acesso&quot;</strong>, conecte sua conta profissional e clique em <strong>Gerar token</strong>.</li>
-            <li>Na <strong>Vercel</strong> → projeto funil-pro → Settings → Environment Variables, adicione: <code className="bg-amber-100 px-1 rounded">IG_ACCESS_TOKEN</code> (o token gerado) e <code className="bg-amber-100 px-1 rounded">IG_APP_SECRET</code> (chave secreta do app do Instagram).</li>
-            <li>Faça <strong>Redeploy</strong> na Vercel e recarregue esta página — o status fica verde com o seu @.</li>
+            <li>Cole o token em <a href="/admin/settings" className="font-semibold underline">Admin → Configurações → Instagram</a> e salve. Vale na hora, sem redeploy.</li>
+            <li>Recarregue esta página — o status fica verde com o seu @. A partir daí o FunilPro renova o token sozinho a cada 24h (ele vale 60 dias).</li>
           </ol>
           {connection?.error && connection.error !== 'token_missing' && (
             <p className="text-xs text-amber-600 mt-2">Detalhe técnico: {connection.error.slice(0, 140)}</p>
