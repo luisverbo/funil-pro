@@ -10,6 +10,8 @@ const PUBLIC_PREFIXES = [
   '/api/queue/process',
   // Cron do Gestor de Tráfego: chamado sem sessão, protegido por CRON_SECRET.
   '/api/trafego/sync',
+  // Cron dos Conteúdos Instagram: sem sessão, protegido por CRON_SECRET.
+  '/api/cron/publicar-instagram',
   '/api/agents/meetings/remind',
   '/privacidade',
   '/api/track',
