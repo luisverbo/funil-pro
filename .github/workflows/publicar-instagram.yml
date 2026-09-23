@@ -1,0 +1,46 @@
+# ============================================================================
+# Cron dos Conteúdos Instagram — publica o que está agendado e venceu
+# ----------------------------------------------------------------------------
+# Por que aqui: a Vercel no plano Hobby só permite um cron por dia. O GitHub
+# Actions roda a cada 10 minutos sem custo e já é o padrão do tráfego.
+#
+# Nenhum `uses:` e nenhum segredo novo: CRON_SECRET já existe no repositório.
+# A rota reserva os itens de forma atômica no banco, então mesmo que duas
+# rodadas se encontrem, ninguém publica duas vezes.
+# ============================================================================
+name: Publicar conteudos no Instagram
+
+on:
+  schedule:
+    # A cada 10 minutos, no minuto 3 — fora do minuto cheio, onde a fila do
+    # GitHub atrasa. Os slots são 06:00 e 15:00 (Brasília), então o post sai
+    # em até ~10 min depois do horário.
+    - cron: '3,13,23,33,43,53 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: publicar-instagram
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar o endpoint de publicacao
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_URL: https://funil-pro.vercel.app/api/cron/publicar-instagram
+        run: |
+          set -uo pipefail
+          codigo=$(curl -s -o /tmp/resp.json -w '%{http_code}' \
+            --max-time 300 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${CRON_URL}")
+          echo "HTTP ${codigo}"
+          # O corpo nunca contém token: a rota devolve só contagens e ids.
+          cat /tmp/resp.json || true
+          echo
+          if [ "${codigo}" != "200" ]; then
+            echo "::error::a publicacao respondeu ${codigo}"
+            exit 1
+          fi
