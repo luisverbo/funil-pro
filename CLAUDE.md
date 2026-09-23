@@ -483,7 +483,34 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-09-15 — Landing de venda /quiz + pagamento Stripe só do Quiz
+**Última atualização:** 2026-09-23 — Módulo Conteúdos Instagram (aprovação + publicação automática)
+
+**O que foi feito (2026-09-18 a 23, PRs #106–#110):**
+- **Renomear quiz no editor + cópia no editor certo** (#106):
+  `src/lib/pages/editor-path.ts` (caminhoDoEditor, nomeDaCopia); `renomearQuiz`
+  pelo despachante
+- **Tamanho do título por bloco** (#107): `src/lib/quiz/tipografia.ts`
+  (pequeno/médio/grande/gigante em clamp(); padrão = tamanho de hoje; campo
+  herda 'pequeno'); `BlockConfig.title_size`
+- **Resetar dados completo** (#108): apaga eventos (fonte de "entraram"),
+  zera views/conversions, investimento opcional; StatsBar recarrega; modal
+- **Excluir leads escolhidos** (#109): `excluirLeadsDoQuiz` filtrado por
+  quiz+tenant; caixas na tabela, "selecionar todos" sobre a lista filtrada,
+  lixeira no drawer
+- **Conteúdos Instagram** (#110): tabela `conteudos_instagram` (tenant_id,
+  RLS), bucket `conteudos-instagram`, RPCs `proxima_data_livre` (reel 06:00 /
+  carrossel 15:00 Brasília, ignora descartado), `puxar_fila`,
+  `reservar_conteudos_para_publicar` (SKIP LOCKED); painel `/conteudos`
+  (abas, calendário semanal, card com preview, 125 chars, aprovar/descartar/
+  editar/tentar de novo/publicar agora); `src/lib/instagram/publicar.ts`
+  (REELS + CAROUSEL, alt_text com fallback); cron
+  `/api/cron/publicar-instagram` + workflow `publicar-instagram.yml` (10 min,
+  CRON_SECRET); contrato `docs/contrato-skills-conteudo.md`. Migration
+  `20260923000000_conteudos_instagram.sql` APLICADA. Conta única (token da
+  plataforma); conta_instagram_id preenchido pelo publicador via /me
+- Bateria: **876/876**
+
+**Atualização anterior:** 2026-09-15 — Landing de venda /quiz + pagamento Stripe só do Quiz
 
 **O que foi feito (2026-09-15, PR #104):**
 - **Landing pública `/quiz`** (`src/app/quiz/{page,quiz-landing}.tsx`): hero
