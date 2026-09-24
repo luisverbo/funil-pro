@@ -202,7 +202,7 @@ export async function publicarAgora(id: string): Promise<{ success: boolean; per
 
     const admin = createAdminClient()
     const { data: reservado, error } = await admin.from('conteudos_instagram')
-      .update({ status: 'publicando', erro: null })
+      .update({ status: 'publicando', erro: null, publicando_desde: new Date().toISOString() })
       .eq('id', id).eq('tenant_id', tenantId).in('status', ['pendente', 'agendado', 'erro'])
       .select(COLS).maybeSingle()
     if (error) return { success: false, error: error.message }
