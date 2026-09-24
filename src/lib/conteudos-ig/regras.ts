@@ -236,3 +236,76 @@ export function validarParaPublicar(c: Pick<Conteudo, 'tipo' | 'midia_urls' | 'd
   if (c.tipo === 'carrossel' && (urls.length < 2 || urls.length > 10)) return 'carrossel precisa de 2 a 10 imagens'
   return null
 }
+
+// ── Calendário do mês ───────────────────────────────────────────────────────
+
+export const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'] as const
+export const DIAS_SEMANA_CURTO = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'] as const
+
+export interface DiaDoMes {
+  dia: string          // 'YYYY-MM-DD'
+  numero: number       // 1..31
+  doMes: boolean       // false = dia do mês vizinho (preenchimento da grade)
+}
+
+/**
+ * Grade de 6 semanas (42 dias) começando na segunda-feira, como todo
+ * calendário de agendamento. Sempre 42 células: a altura não pula de um mês
+ * para o outro.
+ */
+export function gradeDoMes(ano: number, mes: number): DiaDoMes[] {
+  const primeiro = new Date(Date.UTC(ano, mes - 1, 1))
+  const recuo = (primeiro.getUTCDay() + 6) % 7          // segunda = 0
+  const inicio = primeiro.getTime() - recuo * 86_400_000
+  const dias: DiaDoMes[] = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(inicio + i * 86_400_000)
+    dias.push({
+      dia: d.toISOString().slice(0, 10),
+      numero: d.getUTCDate(),
+      doMes: d.getUTCMonth() === mes - 1,
+    })
+  }
+  return dias
+}
+
+/** Mês anterior/seguinte, virando o ano. */
+export function somarMeses(ano: number, mes: number, n: number): { ano: number; mes: number } {
+  const total = ano * 12 + (mes - 1) + n
+  return { ano: Math.floor(total / 12), mes: (total % 12) + 1 }
+}
+
+/**
+ * Itens por dia de Brasília, ordenados pelo horário. Descartados ficam de
+ * fora do calendário (não ocupam vaga), a menos que o filtro peça.
+ */
+export function itensPorDia(itens: readonly Conteudo[], incluirDescartados = false): Map<string, Conteudo[]> {
+  const mapa = new Map<string, Conteudo[]>()
+  for (const c of itens) {
+    if (c.status === 'descartado' && !incluirDescartados) continue
+    const dia = diaEmBrasilia(c.data_agendada)
+    const lista = mapa.get(dia) ?? []
+    lista.push(c)
+    mapa.set(dia, lista)
+  }
+  for (const lista of mapa.values()) lista.sort((a, b) => a.data_agendada.localeCompare(b.data_agendada))
+  return mapa
+}
+
+/** 'HH:MM' em Brasília. */
+export function horaEmBrasilia(iso: string): string {
+  const p = partesEmBrasilia(iso)
+  return `${String(p.hora).padStart(2, '0')}:${String(p.minuto).padStart(2, '0')}`
+}
+
+/** Tipos cuja vaga do dia está livre (para o "+ 06:00 livre" do calendário). */
+export function vagasLivres(itensDoDia: readonly Conteudo[] | undefined): TipoConteudo[] {
+  const ocupados = new Set((itensDoDia ?? []).filter(c => c.status !== 'descartado').map(c => c.tipo))
+  return TIPOS.filter(t => !ocupados.has(t))
+}
+
+/** Miniatura: capa do reel, 1ª imagem do carrossel; reel sem capa = null (usa o vídeo). */
+export function miniaturaDe(c: Pick<Conteudo, 'tipo' | 'capa_url' | 'midia_urls'>): string | null {
+  if (c.tipo === 'carrossel') return c.midia_urls[0] ?? null
+  return c.capa_url ?? null
+}
