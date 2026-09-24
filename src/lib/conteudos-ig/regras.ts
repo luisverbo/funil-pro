@@ -59,6 +59,7 @@ export interface Conteudo {
   created_at: string
   aprovado_em: string | null
   publicado_em: string | null
+  publicando_desde?: string | null
 }
 
 // ── Transições ──────────────────────────────────────────────────────────────

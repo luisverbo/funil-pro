@@ -60,13 +60,14 @@ export async function publicarConteudo(
       ig_permalink: r.permalink,
       publicado_em: agora,
       erro: null,
+      publicando_desde: null,
     }).eq('id', item.id)
 
     return { id: item.id, ok: true, status: 'publicado', mediaId: r.mediaId, permalink: r.permalink }
   } catch (err) {
     const erro = resumirErro(err)
     const { status, tentativas } = statusAposFalha(item.tentativas ?? 0)
-    await admin.from('conteudos_instagram').update({ status, tentativas, erro }).eq('id', item.id)
+    await admin.from('conteudos_instagram').update({ status, tentativas, erro, publicando_desde: null }).eq('id', item.id)
     return { id: item.id, ok: false, status, erro }
   }
 }

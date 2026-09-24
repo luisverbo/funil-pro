@@ -1,13 +1,16 @@
 // ============================================================================
 // Cron — publica os conteúdos agendados cujo horário chegou
 // ----------------------------------------------------------------------------
-// Chamado pelo GitHub Actions a cada 10 minutos (workflow
-// publicar-instagram.yml) com `Authorization: Bearer CRON_SECRET`, validado
-// por `evaluateCronAuth` — o mesmo mecanismo do tráfego e da fila.
+// Agendador PRINCIPAL: pg_cron do Supabase a cada 5 minutos (migration
+// 20260924000000), com o header x-funilpro-cron. RESERVA: GitHub Actions
+// (publicar-instagram.yml) com `Authorization: Bearer CRON_SECRET`, validado
+// por `evaluateCronAuth`. O GitHub atrasa e descarta crons agendados — foi
+// assim que o reel de 24/09 06:00 ficou sem sair.
 //
 // A reserva é atômica no banco (`reservar_conteudos_para_publicar`, FOR
 // UPDATE SKIP LOCKED): duas rodadas em paralelo nunca publicam o mesmo item.
 // ============================================================================
+import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CRON_UNAUTHORIZED_BODY, evaluateCronAuth, logCronAuth } from '@/lib/security/cron-auth'
@@ -18,13 +21,32 @@ export const dynamic = 'force-dynamic'
 // Vídeo pode levar minutos para a Meta processar.
 export const maxDuration = 300
 
+/**
+ * O pg_cron do Supabase chama com `x-funilpro-cron: <segredo>`, segredo gerado
+ * pelo próprio banco (platform_settings.conteudos_cron_secret). Assim o
+ * agendador principal não depende de variável de ambiente nem do modo de
+ * compatibilidade do CRON_SECRET.
+ */
+async function segredoDoBancoConfere(request: Request): Promise<boolean> {
+  const recebido = request.headers.get('x-funilpro-cron')
+  if (!recebido) return false
+  const { data } = await createAdminClient()
+    .from('platform_settings').select('value').eq('key', 'conteudos_cron_secret').maybeSingle()
+  const esperado = data?.value ?? ''
+  if (!esperado || esperado.length !== recebido.length) return false
+  return timingSafeEqual(Buffer.from(esperado), Buffer.from(recebido))
+}
+
 async function executar(request: Request) {
-  const auth = evaluateCronAuth(request)
-  if (!auth.allowed) {
-    logCronAuth(auth, request, 401)
-    return NextResponse.json(CRON_UNAUTHORIZED_BODY, { status: 401 })
+  const doBanco = await segredoDoBancoConfere(request)
+  if (!doBanco) {
+    const auth = evaluateCronAuth(request)
+    if (!auth.allowed) {
+      logCronAuth(auth, request, 401)
+      return NextResponse.json(CRON_UNAUTHORIZED_BODY, { status: 401 })
+    }
+    logCronAuth(auth, request, 200)
   }
-  logCronAuth(auth, request, 200)
 
   // Renovação do token de 60 dias: a cada rodada o módulo decide se já
   // passaram 24h desde a última — foi a falta disto que derrubou a conexão
