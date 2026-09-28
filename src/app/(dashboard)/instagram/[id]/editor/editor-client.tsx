@@ -321,6 +321,9 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   const [followGateMsg, setFollowGateMsg] = useState(automation.follow_gate_message ?? '')
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>(automation.canvas ?? {})
   const [selected, setSelected] = useState<string>('trigger')
+  // Celular: o painel vira uma folha por cima do canvas, aberta ao tocar num
+  // bloco. No computador (md+) continua a coluna fixa à direita.
+  const [painelAberto, setPainelAberto] = useState(false)
   const [posts, setPosts] = useState<IgMedia[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -487,23 +490,23 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   }
 
   return (
-    <div className="fixed inset-0 md:left-0 flex flex-col bg-gray-50" style={{ zIndex: 30 }}>
+    <div className="fixed inset-0 md:left-0 flex flex-col bg-gray-50" style={{ zIndex: 45 }}>
       {/* Topbar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b shrink-0">
-        <button onClick={() => router.push('/instagram')} className="text-sm text-indigo-600 hover:underline">← Automações</button>
-        <input value={name} onChange={e => setName(e.target.value)} className="font-semibold text-gray-900 outline-none bg-transparent border-b border-transparent focus:border-indigo-300 max-w-[200px]" />
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 md:gap-3 md:px-4 md:py-2.5 bg-white border-b shrink-0" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+        <button onClick={() => router.push('/instagram')} className="text-sm text-indigo-600 hover:underline">←<span className="hidden sm:inline"> Automações</span></button>
+        <input value={name} onChange={e => setName(e.target.value)} className="min-w-0 flex-1 md:flex-none font-semibold text-gray-900 outline-none bg-transparent border-b border-transparent focus:border-indigo-300 md:max-w-[200px]" />
         <button onClick={() => setStatus(s => s === 'active' ? 'paused' : 'active')}
           className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${status === 'active' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-600'}`}>
           {status === 'active' ? 'LIVE' : 'PAUSADA'}
         </button>
-        <div className="ml-auto flex items-center gap-3">
-          {savedAt && <span className="text-xs text-gray-400">✓ Salvo</span>}
+        <div className="ml-auto flex items-center gap-2 md:gap-3">
+          {savedAt && <span className="hidden sm:inline text-xs text-gray-400">✓ Salvo</span>}
           <button onClick={() => setShowMetrics(m => !m)}
             className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${showMetrics ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-            📊 Métricas
+            📊<span className="hidden sm:inline"> Métricas</span>
           </button>
           <button onClick={addLoose}
-            className="px-3 py-1.5 text-sm border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">+ Mensagem</button>
+            className="px-3 py-1.5 text-sm border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">+<span className="hidden sm:inline"> Mensagem</span> 💬</button>
           <button onClick={save} disabled={saving}
             className="px-4 py-1.5 text-sm font-semibold text-white rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 disabled:opacity-60">
             {saving ? 'Salvando…' : 'Salvar'}
@@ -514,20 +517,25 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
       <div className="flex-1 flex min-h-0">
         {/* Canvas */}
         <div className="flex-1 relative">
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 text-[11px] text-gray-500 bg-white/90 border border-gray-200 rounded-full px-3 py-1 shadow-sm pointer-events-none">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 hidden md:block text-[11px] text-gray-500 bg-white/90 border border-gray-200 rounded-full px-3 py-1 shadow-sm pointer-events-none">
             💡 Mensagem nova nasce <b>solta</b> — arraste da bolinha (SIM/NÃO ou 🟣 embaixo) até ela pra ligar
+          </div>
+          <div className="absolute top-2 inset-x-2 z-10 md:hidden text-[11px] leading-snug text-gray-600 bg-white/95 border border-gray-200 rounded-xl px-3 py-1.5 shadow-sm pointer-events-none">
+            👆 Toque num bloco pra editar. Pra ligar: toque na bolinha e depois no bloco de destino.
           </div>
           <ReactFlow
             nodes={rfNodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            onNodeClick={(_, n) => setSelected(n.id)}
+            onNodeClick={(_, n) => { setSelected(n.id); setPainelAberto(true) }}
             onNodesChange={onRfNodesChange}
             onConnect={onConnect}
             onNodeDragStop={(_, n) => setPositions(p => ({ ...p, [n.id]: { x: Math.round(n.position.x), y: Math.round(n.position.y) } }))}
             fitView
             nodesDraggable
             nodesConnectable
+            connectOnClick
+            minZoom={0.2}
             proOptions={{ hideAttribution: true }}
           >
             <Background gap={18} size={1.5} color="#e2e8f0" />
@@ -536,7 +544,13 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         </div>
 
         {/* Painel de edição */}
-        <div className="w-[340px] shrink-0 bg-white border-l overflow-y-auto p-4 flex flex-col gap-4">
+        {painelAberto && <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setPainelAberto(false)} />}
+        <div className={`${painelAberto ? 'flex' : 'hidden'} md:flex fixed md:static inset-x-0 bottom-0 z-50 md:z-auto max-h-[82vh] md:max-h-none w-full md:w-[340px] shrink-0 bg-white md:border-l rounded-t-3xl md:rounded-none shadow-2xl md:shadow-none overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] flex-col gap-4`}>
+          <div className="md:hidden sticky -top-4 -mx-4 -mt-4 mb-1 flex items-center justify-between bg-white/95 backdrop-blur px-4 pt-3 pb-2 border-b z-10">
+            <span className="mx-auto absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-gray-300" />
+            <span className="text-sm font-semibold text-gray-800">Editar bloco</span>
+            <button onClick={() => setPainelAberto(false)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700">Ver canvas</button>
+          </div>
           {selected === 'trigger' && (
             <>
               <h3 className="font-semibold text-gray-900">✨ Gatilho</h3>
@@ -719,7 +733,7 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
                   </div>
                 )}
                 {selStep.buttons.some(b => b.kind === 'reply') && (
-                  <p className="text-[11px] text-emerald-600/80">💡 No canvas, arraste da bolinha verde 👉 do botão até uma mensagem pra ligar o fluxo dele. Ou clique em “Criar fluxo” aqui.</p>
+                  <p className="text-[11px] text-emerald-600/80">💡 No canvas, ligue a bolinha verde 👉 do botão a uma mensagem: arrastando, ou tocando na bolinha e depois na mensagem. Ou use “Criar fluxo” aqui.</p>
                 )}
               </div>
 
