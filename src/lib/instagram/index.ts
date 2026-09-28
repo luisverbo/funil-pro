@@ -73,16 +73,39 @@ export async function listRecentMedia(limit = 24): Promise<IgMedia[]> {
 }
 
 /** Verifica a conexão: retorna o @ da conta se o token estiver válido */
-export async function getConnectedAccount(): Promise<{ connected: boolean; username?: string; accountId?: string; error?: string }> {
+export interface ContaConectada {
+  connected: boolean
+  username?: string
+  accountId?: string
+  /** Nome de exibição do perfil (ex.: "Luís Carlos | Marketing"). */
+  name?: string
+  profilePic?: string
+  followers?: number
+  posts?: number
+  error?: string
+}
+
+/** Verifica a conexão e traz o perfil (nome, foto, seguidores, posts). */
+export async function getConnectedAccount(): Promise<ContaConectada> {
   const t = await obterTokenInstagram()
   if (!t) return { connected: false, error: 'token_missing' }
+  type Me = { user_id?: string; id?: string; username?: string; name?: string; profile_picture_url?: string; followers_count?: number; media_count?: number; error?: { message?: string } }
+  const pedir = async (campos: string) => {
+    const res = await fetch(`${GRAPH}/v21.0/me?fields=${campos}`, { headers: { Authorization: `Bearer ${t}` } })
+    const json = await res.json().catch(() => null) as Me | null
+    return { ok: res.ok && !!json && !json.error, json, status: res.status }
+  }
   try {
-    const res = await fetch(`${GRAPH}/v21.0/me?fields=user_id,username`, {
-      headers: { Authorization: `Bearer ${t}` },
-    })
-    const json = await res.json().catch(() => null) as { user_id?: string; id?: string; username?: string; error?: { message?: string } } | null
-    if (!res.ok || !json || json.error) return { connected: false, error: json?.error?.message ?? `status ${res.status}` }
-    return { connected: true, username: json.username, accountId: json.user_id ?? json.id }
+    // Perfil completo; se a Meta recusar algum campo, cai no mínimo de antes.
+    let r = await pedir('user_id,username,name,profile_picture_url,followers_count,media_count')
+    if (!r.ok) r = await pedir('user_id,username')
+    if (!r.ok || !r.json) return { connected: false, error: r.json?.error?.message ?? `status ${r.status}` }
+    const j = r.json
+    return {
+      connected: true, username: j.username, accountId: j.user_id ?? j.id,
+      name: j.name || undefined, profilePic: j.profile_picture_url || undefined,
+      followers: j.followers_count, posts: j.media_count,
+    }
   } catch (err) {
     return { connected: false, error: String(err) }
   }
