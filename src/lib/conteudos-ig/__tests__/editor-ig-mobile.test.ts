@@ -26,6 +26,19 @@ const tests: Record<string, () => void> = {
     assert.ok(ed.includes('connectOnClick'))
     assert.ok(ed.includes('toque na bolinha e depois no bloco de destino'))
   },
+  'editor vai para o <body> por portal — o transform do <main> prendia o fixed atrás do cabeçalho': () => {
+    assert.ok(ed.includes("import { createPortal } from 'react-dom'"))
+    assert.ok(ed.includes('return createPortal('))
+    assert.ok(ed.includes(', document.body)'))
+    assert.ok(ed.includes('if (!noCliente) return null'), 'portal só no navegador')
+    const shell = readFileSync(join(process.cwd(), 'src/components/layout/app-shell.tsx'), 'utf8')
+    assert.ok(shell.includes('animate-page-in'), 'se a animação sair do <main>, o portal continua valendo, mas este teste avisa')
+  },
+  'Salvar também dentro do painel do celular': () => {
+    const i = ed.indexOf('Salvar sem precisar fechar o painel')
+    assert.ok(i > 0)
+    assert.ok(ed.slice(i, i + 500).includes('onClick={save}'))
+  },
   'barra superior cabe no celular': () => {
     assert.ok(ed.includes('flex flex-wrap items-center gap-2'))
     assert.ok(ed.includes('env(safe-area-inset-top)'))
