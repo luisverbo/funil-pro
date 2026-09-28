@@ -73,7 +73,52 @@ function dbToSteps(a: IgAutomation): UiStep[] {
   })
 }
 
-interface Connection { connected: boolean; username?: string; accountId?: string; error?: string }
+interface Connection { connected: boolean; username?: string; accountId?: string; name?: string; profilePic?: string; followers?: number; posts?: number; error?: string }
+
+/** 12.4 mil, 1,2 mi — número curto como o Instagram mostra. */
+function numeroCurto(n: number | undefined): string {
+  if (n === undefined || n === null) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace('.0', '').replace('.', ',')} mi`
+  if (n >= 10_000) return `${Math.round(n / 1000)} mil`
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.0', '').replace('.', ',')} mil`
+  return String(n)
+}
+
+const IG_GRADIENTE = 'linear-gradient(135deg,#feda75 0%,#fa7e1e 25%,#d62976 50%,#962fbf 75%,#4f5bd5 100%)'
+
+/** Foto com anel do Instagram; se a URL do CDN expirar, mostra a inicial. */
+function AvatarIg({ src, nome, tamanho = 64 }: { src?: string; nome?: string; tamanho?: number }) {
+  const [falhou, setFalhou] = useState(false)
+  const inicial = (nome ?? '?').trim().charAt(0).toUpperCase()
+  return (
+    <span className="relative inline-flex shrink-0 rounded-full p-[3px]" style={{ background: IG_GRADIENTE, width: tamanho, height: tamanho }}>
+      <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white p-[2px]">
+        {src && !falhou
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={src} alt="" onError={() => setFalhou(true)} ref={el => { if (el && el.complete && el.naturalWidth === 0) setFalhou(true) }} className="h-full w-full rounded-full object-cover" />
+          : <span className="flex h-full w-full items-center justify-center rounded-full text-lg font-bold text-white" style={{ background: IG_GRADIENTE }}>{inicial}</span>}
+      </span>
+    </span>
+  )
+}
+
+/** Capa do card: miniatura do post (se ainda válida) ou degradê com o ícone do gatilho. */
+function CapaAutomacao({ thumb, icone }: { thumb: string | null; icone: string }) {
+  const [falhou, setFalhou] = useState(false)
+  return (
+    <div className="absolute inset-0">
+      {thumb && !falhou
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={thumb} alt="" onError={() => setFalhou(true)} ref={el => { if (el && el.complete && el.naturalWidth === 0) setFalhou(true) }} className="h-full w-full object-cover" />
+        : (
+          <div className="relative h-full w-full" style={{ background: IG_GRADIENTE }}>
+            <span className="absolute bottom-3 right-4 text-4xl opacity-90 drop-shadow-lg">{icone}</span>
+          </div>
+        )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/30" />
+    </div>
+  )
+}
 
 /** '29/09 · 06:00' no horário de Brasília. */
 function quandoEmBrasilia(iso: string): string {
@@ -208,39 +253,68 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto">
       {/* Cabeçalho */}
-      <div className="flex items-start justify-between mb-5 flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 via-fuchsia-500 to-purple-600 flex items-center justify-center text-white text-xl shadow-lg shadow-pink-200/60">📸</div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Instagram</h1>
-            <p className="text-sm text-gray-500">Comentário ou DM com a palavra-chave → responde e conversa sozinho.</p>
-          </div>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-500">Automações</p>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-gray-900">Instagram</h1>
+          <p className="mt-1 text-sm text-gray-500">Comentou ou mandou a palavra-chave, o FunilPro responde e conversa sozinho.</p>
         </div>
         <div className="flex gap-2">
           <a href="/instagram/inbox"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all">
-            📥 Inbox
+            className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:border-gray-300 hover:shadow">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+            Inbox
           </a>
           <button onClick={openModal}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200 transition-all hover:-translate-y-0.5">
-            + Nova automação
+            className="inline-flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-500/25 transition-all hover:-translate-y-0.5 hover:shadow-xl"
+            style={{ background: 'linear-gradient(135deg,#d62976,#962fbf 60%,#4f5bd5)' }}>
+            <span className="text-base leading-none">＋</span> Nova automação
           </button>
         </div>
       </div>
 
-      {/* Status da conexão */}
-      {connection?.connected ? (
-        <div className="mb-6 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/70 px-4 py-3">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-          </span>
-          <p className="text-sm text-emerald-800">
-            Conectado como <strong>@{connection.username}</strong>
-            {connection.accountId ? <span className="text-emerald-600/60"> · ID {connection.accountId}</span> : null}
-          </p>
-        </div>
-      ) : (
+      {/* Conta conectada */}
+      {connection?.connected ? (() => {
+        const ativas = automations.filter(a => a.status === 'active').length
+        const disparos = automations.reduce((soma, a) => soma + (a.triggers_count ?? 0), 0)
+        return (
+          <div className="mb-8 rounded-[28px] p-[1.5px] shadow-sm" style={{ background: IG_GRADIENTE }}>
+            <div className="flex flex-col gap-5 rounded-[27px] bg-white p-5 sm:flex-row sm:items-center sm:p-6">
+              <div className="flex min-w-0 items-center gap-4">
+                <AvatarIg src={connection.profilePic} nome={connection.name ?? connection.username} tamanho={68} />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate text-lg font-bold text-gray-900">{connection.name || `@${connection.username}`}</h2>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      </span>
+                      Conectado
+                    </span>
+                  </div>
+                  <a href={`https://instagram.com/${connection.username}`} target="_blank" rel="noopener noreferrer"
+                    title={connection.accountId ? `ID ${connection.accountId}` : undefined}
+                    className="text-sm font-medium text-fuchsia-600 hover:underline">@{connection.username}</a>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:ml-auto sm:grid-cols-4 sm:gap-3">
+                {[
+                  { n: numeroCurto(connection.followers), r: 'seguidores' },
+                  { n: numeroCurto(connection.posts), r: 'posts' },
+                  { n: String(ativas), r: ativas === 1 ? 'ativa' : 'ativas' },
+                  { n: numeroCurto(disparos), r: 'disparos' },
+                ].map(k => (
+                  <div key={k.r} className="min-w-0 rounded-2xl bg-gray-50 px-1.5 py-2.5 text-center sm:min-w-[84px] sm:px-3">
+                    <p className="whitespace-nowrap text-base font-extrabold leading-none text-gray-900 sm:text-lg">{k.n}</p>
+                    <p className="mt-1 truncate text-[10px] font-medium text-gray-500 sm:text-[11px]">{k.r}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })() : (
         <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-200 px-5 py-4">
           <p className="text-sm font-semibold text-amber-800 mb-2">
             {connection?.error && connection.error !== 'token_missing' ? '⚠️ Instagram desconectado — o token venceu ou foi recusado' : '⚠️ Instagram ainda não conectado'}
@@ -267,7 +341,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
           <button onClick={openModal} className="mt-5 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:opacity-90 shadow-md shadow-pink-200">+ Criar primeira automação</button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
           {automations.map(a => {
             const seqN = a.dm_steps?.length ?? (a.dm_message ? 1 : 0)
             const trigger = a.trigger_type === 'dm' ? { icon: '📩', label: 'DM com palavra-chave' }
@@ -279,77 +353,90 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                   })()
                 : { icon: '💬', label: a.media_id ? 'Comentário em post' : 'Comentário em qualquer post' }
             const active = a.status === 'active'
+            const first = a.dm_steps?.[0]?.text ?? a.dm_message
+            const etapas = [
+              a.comment_replies.length > 0 && { i: '💬', t: 'Responde' },
+              a.follow_gate && { i: '🔒', t: 'Pede follow' },
+              seqN > 0 && { i: '📨', t: `${seqN} DM${seqN > 1 ? 's' : ''}` },
+              a.dm_use_agent && { i: '🤖', t: 'IA assume' },
+              a.funnel_id && { i: '🔀', t: 'Funil' },
+            ].filter(Boolean) as { i: string; t: string }[]
             return (
-            <div key={a.id} className="group relative rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-gray-200/60 hover:-translate-y-1 transition-all duration-200 flex flex-col overflow-hidden">
-              {/* faixa superior */}
-              <div className="h-1.5 bg-gradient-to-r from-pink-500 via-fuchsia-500 to-purple-600" />
-              <div className="p-5 flex flex-col gap-4 flex-1">
-                {/* topo: thumb + nome + status */}
-                <div className="flex items-start gap-3">
-                  {a.media_thumb
-                    ? <img src={a.media_thumb} alt="" className="w-12 h-12 rounded-2xl object-cover ring-1 ring-gray-100 shrink-0" />
-                    : <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center text-xl shrink-0">{trigger.icon}</div>}
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-gray-900 truncate leading-tight">{a.name}</h3>
-                    <p className="text-xs text-gray-400 truncate mt-0.5">{trigger.icon} {trigger.label}</p>
-                  </div>
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${active ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200' : 'bg-gray-100 text-gray-500'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                    {active ? 'Ativa' : 'Pausada'}
+            <article key={a.id} className={`group flex flex-col overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-gray-100 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-fuchsia-500/10 ${active ? '' : 'opacity-90'}`}>
+              {/* Capa */}
+              <div className="relative h-36 overflow-hidden">
+                <CapaAutomacao thumb={a.media_thumb} icone={trigger.icon} />
+                <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
+                  <span className="max-w-[70%] truncate rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold text-white ring-1 ring-white/30 backdrop-blur-md">
+                    {trigger.icon} {trigger.label}
                   </span>
+                  {/* Liga/desliga */}
+                  <button onClick={() => toggle(a)} title={active ? 'Pausar' : 'Ativar'}
+                    className={`relative h-7 w-12 shrink-0 rounded-full ring-1 ring-white/40 backdrop-blur-md transition-colors ${active ? 'bg-emerald-500' : 'bg-white/25'}`}>
+                    <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${active ? 'left-6' : 'left-1'}`} />
+                  </button>
                 </div>
+                <div className="absolute inset-x-0 bottom-0 p-4">
+                  <h3 className="truncate text-lg font-bold text-white drop-shadow">{a.name}</h3>
+                  <p className="text-[11px] font-medium text-white/80">{active ? '● No ar' : '❚❚ Pausada'}</p>
+                </div>
+              </div>
 
-                {/* palavras-chave */}
+              <div className="flex flex-1 flex-col gap-4 p-5">
+                {/* Palavras-chave */}
                 <div className="flex flex-wrap gap-1.5">
                   {a.keywords.length > 0
-                    ? a.keywords.slice(0, 4).map(k => <span key={k} className="text-[11px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-medium">{k}</span>)
-                    : <span className="text-[11px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">qualquer comentário</span>}
-                  {a.keywords.length > 4 && <span className="text-[11px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-400">+{a.keywords.length - 4}</span>}
+                    ? a.keywords.slice(0, 4).map(k => (
+                        <span key={k} className="rounded-full bg-gradient-to-r from-fuchsia-50 to-violet-50 px-2.5 py-1 text-[11px] font-semibold text-fuchsia-700 ring-1 ring-fuchsia-100">&ldquo;{k}&rdquo;</span>
+                      ))
+                    : <span className="rounded-full bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-500 ring-1 ring-gray-100">Qualquer comentário</span>}
+                  {a.keywords.length > 4 && <span className="rounded-full bg-gray-50 px-2.5 py-1 text-[11px] text-gray-400">+{a.keywords.length - 4}</span>}
                 </div>
 
-                {/* o que faz — badges organizadas */}
-                <div className="flex flex-wrap gap-1.5">
-                  {a.comment_replies.length > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-pink-50 text-pink-600 font-medium">💬 Responde comentário</span>
-                  )}
-                  {seqN > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-purple-50 text-purple-600 font-medium">📨 {seqN} mensagem{seqN > 1 ? 's' : ''} na DM</span>
-                  )}
-                  {a.dm_use_agent && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-violet-50 text-violet-600 font-medium">🤖 IA assume</span>
-                  )}
-                  {a.funnel_id && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-sky-50 text-sky-600 font-medium">🔀 Funil</span>
-                  )}
-                  {a.lead_tag && (
-                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-600 font-medium">🏷 {a.lead_tag}</span>
-                  )}
+                {/* O que acontece, em ordem */}
+                {etapas.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 text-[11px] font-medium text-gray-600">
+                    {etapas.map((e, i) => (
+                      <React.Fragment key={e.t}>
+                        {i > 0 && <span className="text-gray-300">›</span>}
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-gray-50 px-2 py-1">{e.i} {e.t}</span>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                )}
+
+                {/* Prévia da 1ª DM, como balão do Direct */}
+                {first && (
+                  <div className="flex items-end gap-2">
+                    <AvatarIg src={connection?.profilePic} nome={connection?.name ?? connection?.username} tamanho={26} />
+                    <p className="line-clamp-3 rounded-2xl rounded-bl-md bg-gray-100 px-3.5 py-2.5 text-[13px] leading-snug text-gray-700">{first}</p>
+                  </div>
+                )}
+
+                {a.lead_tag && (
+                  <p className="text-[11px] text-gray-400">🏷 marca o lead como <span className="font-semibold text-gray-600">{a.lead_tag}</span></p>
+                )}
+
+                {/* Rodapé */}
+                <div className="mt-auto flex items-center gap-2 border-t border-gray-100 pt-4">
+                  <button onClick={() => openContacts(a)} className="group/stat mr-auto min-w-0 text-left">
+                    <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+                      <span className="text-xl font-extrabold leading-none text-gray-900 group-hover/stat:text-fuchsia-600">{a.triggers_count}</span>
+                      <span className="text-xs font-medium text-gray-500">disparo{a.triggers_count === 1 ? '' : 's'}</span>
+                    </span>
+                    <span className="block whitespace-nowrap text-[11px] font-semibold text-fuchsia-600/80 group-hover/stat:text-fuchsia-600">👥 ver contatos</span>
+                  </button>
+                  <button onClick={() => remove(a.id)} title="Excluir"
+                    className="grid h-10 w-10 place-items-center rounded-xl text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /></svg>
+                  </button>
+                  <a href={`/instagram/${a.id}/editor`}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl bg-gray-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-black">
+                    Editar <span aria-hidden>→</span>
+                  </a>
                 </div>
-
-                {/* prévia da 1ª mensagem */}
-                {(() => {
-                  const first = a.dm_steps?.[0]?.text ?? a.dm_message
-                  return first ? (
-                    <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2 line-clamp-2 leading-relaxed">“{first.slice(0, 90)}{first.length > 90 ? '…' : ''}”</p>
-                  ) : null
-                })()}
-
-                {/* stat: disparos + contatos */}
-                <button onClick={() => openContacts(a)} className="mt-auto flex items-center gap-2 text-xs text-gray-500 hover:text-indigo-600 transition-colors self-start group/stat">
-                  <span className="inline-flex items-center justify-center min-w-[26px] h-6 px-2 rounded-lg bg-gray-100 text-gray-700 font-bold group-hover/stat:bg-indigo-50 group-hover/stat:text-indigo-600 transition-colors">{a.triggers_count}</span>
-                  disparo{a.triggers_count === 1 ? '' : 's'} · 👥 ver contatos
-                </button>
               </div>
-
-              {/* barra de ações */}
-              <div className="flex items-stretch border-t border-gray-100 divide-x divide-gray-100 text-xs font-semibold">
-                <a href={`/instagram/${a.id}/editor`} className="flex-1 py-3 text-center text-indigo-600 hover:bg-indigo-50 transition-colors">🎨 Editor</a>
-                <button onClick={() => toggle(a)} className={`flex-1 py-3 text-center transition-colors ${active ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}>
-                  {active ? '⏸ Pausar' : '▶ Ativar'}
-                </button>
-                <button onClick={() => remove(a.id)} className="px-4 py-3 text-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">🗑</button>
-              </div>
-            </div>
+            </article>
           )})}
         </div>
       )}

@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { listRecentMedia, getConnectedAccount, type IgMedia } from '@/lib/instagram'
+import { listRecentMedia, getConnectedAccount, type IgMedia, type ContaConectada } from '@/lib/instagram'
 import type { DmStep } from '@/lib/instagram/sequence'
 
 export interface IgAutomation {
@@ -147,7 +147,7 @@ export async function deleteIgAutomation(id: string): Promise<{ success: boolean
 }
 
 /** Status da conexão com o Instagram (token configurado e válido?) */
-export async function getIgConnection(): Promise<{ connected: boolean; username?: string; accountId?: string; error?: string }> {
+export async function getIgConnection(): Promise<ContaConectada> {
   try {
     await getTenantId()
     return await getConnectedAccount()
