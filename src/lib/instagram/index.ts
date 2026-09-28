@@ -93,6 +93,59 @@ export interface IgButton { title: string; url: string }
 /** Botões full-width no balão (como o "Acessar"): link (web_url) OU resposta (postback).
  *  Botão sem url vira postback — visualmente idêntico ao de link, e ao tocar
  *  manda um evento pro webhook (renova a janela de 24h, avança a sequência). */
+/**
+ * Texto de reserva quando o Instagram recusa o template de botões: os links
+ * vão no corpo e os botões de resposta viram "responda X" — a pessoa ainda
+ * consegue avançar digitando a palavra (o webhook casa texto = título).
+ */
+export function textoComBotoesEmTexto(text: string, buttons: { title: string; url?: string }[]): string {
+  const links = buttons.filter(b => b.title && b.url).map(b => `${b.title}: ${b.url}`)
+  const respostas = buttons.filter(b => b.title && !b.url).map(b => b.title)
+  let out = (text || '').trim()
+  if (links.length > 0) out += `\n\n${links.join('\n')}`
+  if (respostas.length > 0) out += `\n\n👉 Responda: ${respostas.join(' ou ')}`
+  return out.trim().slice(0, 1000)
+}
+
+/**
+ * 1ª mensagem com BOTÕES para quem só comentou.
+ *
+ * CAUSA RAIZ do "comentou e não chegou nada no direct" (28/09): com botão no
+ * 1º passo, a mensagem ia para o IGSID (recipient.id). O Instagram só deixa
+ * falar com quem nunca te chamou pela RESPOSTA PRIVADA AO COMENTÁRIO
+ * (recipient.comment_id) — o envio direto era recusado e só virava log.
+ * Aqui o template vai pela resposta privada; se o Instagram recusar o
+ * template, manda o texto com os botões escritos (ainda pela resposta
+ * privada, que só conta quando dá certo).
+ */
+export async function sendPrivateReplyWithButtons(commentId: string, text: string, buttons: { title: string; url?: string }[]): Promise<void> {
+  const valid = buttons.filter(b => b.title).slice(0, 3)
+  if (valid.length === 0) return sendPrivateReplyToComment(commentId, text)
+  const res = await fetch(`${GRAPH}/v21.0/me/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await token()}` },
+    body: JSON.stringify({
+      recipient: { comment_id: commentId },
+      message: {
+        attachment: {
+          type: 'template',
+          payload: {
+            template_type: 'button',
+            text: (text || 'Toca no botão 👇').slice(0, 640),
+            buttons: valid.map(b => b.url
+              ? { type: 'web_url', url: b.url, title: b.title.slice(0, 20) }
+              : { type: 'postback', title: b.title.slice(0, 20), payload: b.title.slice(0, 20) }),
+          },
+        },
+      },
+    }),
+  })
+  if (res.ok) return
+  const body = await res.text().catch(() => '')
+  console.error(`IG privateReply botões ${res.status}: ${body}`)
+  await sendPrivateReplyToComment(commentId, textoComBotoesEmTexto(text, valid))
+}
+
 export async function sendInstagramActionButtons(recipientId: string, text: string, buttons: { title: string; url?: string }[]): Promise<void> {
   const valid = buttons.filter(b => b.title).slice(0, 3)
   if (valid.length === 0) return sendInstagramDM(recipientId, text)
