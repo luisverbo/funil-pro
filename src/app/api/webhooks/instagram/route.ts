@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
 import { sendPrivateReplyWithButtons, sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
-import { resolveSteps, startSequence, type DmStep } from '@/lib/instagram/sequence'
+import { chaveDoBotao, temBotaoDeResposta, resolveSteps, startSequence, type DmStep } from '@/lib/instagram/sequence'
 import { logInbound, logOutbound } from '@/lib/instagram/inbox'
 import { comandoDoDono, MARCA_ASSUMIDA } from '@/lib/agents/comando'
 
@@ -117,6 +117,12 @@ async function recordAutomationContact(admin: ReturnType<typeof createAdminClien
   } catch (e) { console.error('[ig] recordContact', String(e)) }
 }
 
+/** A automação tem um botão de resposta com esse texto? */
+async function automacaoTemBotao(admin: ReturnType<typeof createAdminClient>, automationId: string, texto: string): Promise<boolean> {
+  const { data } = await admin.from('ig_automations').select('dm_steps, status').eq('id', automationId).maybeSingle()
+  return !!data && data.status === 'active' && temBotaoDeResposta(data.dm_steps, texto)
+}
+
 async function dispatchToAgent(agentId: string, leadId: string | null, text: string): Promise<string[]> {
   const result = await processAgentMessage(agentId, text, { leadId: leadId ?? undefined, channel: 'instagram' })
   return result.parts?.length ? result.parts : (result.reply ? [result.reply] : [])
@@ -226,6 +232,7 @@ export async function POST(request: NextRequest) {
                 tenantId: auto.tenant_id, automationId: gated[0].automation_id,
                 igUserId: senderId, commentId: null, steps: resolveSteps(auto), admin,
               }).catch(e => console.error('[ig] gate release', String(e)))
+              await recordAutomationContact(admin, auto.tenant_id, gated[0].automation_id, senderId)
             }
             console.log('[ig] follow gate liberado — sequência iniciada')
           } else {
@@ -249,12 +256,37 @@ export async function POST(request: NextRequest) {
         // Descobre em qual automação o lead está — MESMO sem passo pendente
         // (ex.: tocou no SIM/NÃO da última mensagem, cujo próximo passo é o
         //  próprio ramo, que só dispara ao tocar). Sem isso, o toque travava.
+        //
+        // CAUSA RAIZ do "cliquei em EU QUERO e não veio nada" (28/09): olhava só
+        // a ÚLTIMA automação registrada para a pessoa. Quem entrou pelo
+        // porteiro "segue o perfil?" nunca era registrado, então caía numa
+        // automação antiga (pausada) do mesmo perfil e o clique morria. Agora
+        // percorre as automações ATIVAS por onde ela passou e fica com a que
+        // tem esse botão.
         let curAutoId: string | undefined = pendingJobs?.[0]?.automation_id
         if (!curAutoId) {
-          const { data: contact } = await admin.from('ig_automation_contacts')
+          const { data: contatos } = await admin.from('ig_automation_contacts')
             .select('automation_id').eq('ig_user_id', senderId)
-            .order('last_at', { ascending: false }).limit(1).maybeSingle()
-          curAutoId = contact?.automation_id ?? undefined
+            .order('last_at', { ascending: false }).limit(10)
+          const ids = [...new Set((contatos ?? []).map(c => c.automation_id as string))]
+          if (ids.length > 0) {
+            const { data: cands } = await admin.from('ig_automations')
+              .select('id, dm_steps, status').in('id', ids)
+            const ativas = ids
+              .map(id => (cands ?? []).find(a => a.id === id))
+              .filter((a): a is NonNullable<typeof a> => !!a && a.status === 'active')
+            curAutoId = (ativas.find(a => temBotaoDeResposta(a.dm_steps, text)) ?? ativas[0])?.id
+          }
+        }
+        if (!curAutoId || !(await automacaoTemBotao(admin, curAutoId, text))) {
+          // Último recurso: nenhuma automação da pessoa tem esse botão (ex.:
+          // ela entrou antes desta correção). Procura entre as ATIVAS a mais
+          // recente que tenha um botão de resposta com esse texto.
+          const { data: todas } = await admin.from('ig_automations')
+            .select('id, dm_steps').eq('status', 'active')
+            .order('created_at', { ascending: false }).limit(50)
+          const achou = (todas ?? []).find(a => temBotaoDeResposta(a.dm_steps, text))
+          if (achou) curAutoId = achou.id as string
         }
 
         if (curAutoId) {
@@ -263,12 +295,12 @@ export async function POST(request: NextRequest) {
           if (auto && auto.status === 'active') {
             type Btn = { title?: string; url?: string; branch?: DmStep[] }
             type St = { id?: string; buttons?: Btn[] }
-            const norm = text.toLowerCase().trim()
+            const norm = chaveDoBotao(text)
             // Acha o botão tocado na árvore inteira + o bloco dono (pra métrica de clique)
             const findBtn = (chain: St[]): { btn: Btn; ownerId?: string } | null => {
               for (const s of chain ?? []) {
                 for (const b of s.buttons ?? []) {
-                  if (!b.url && b.title && b.title.toLowerCase().trim() === norm) return { btn: b, ownerId: s.id }
+                  if (!b.url && b.title && chaveDoBotao(b.title) === norm) return { btn: b, ownerId: s.id }
                   if (b.branch) { const r = findBtn(b.branch as St[]); if (r) return r }
                 }
               }
@@ -431,6 +463,9 @@ export async function POST(request: NextRequest) {
                 comment_id: commentId, step_index: -1, scheduled_for: new Date().toISOString(), status: 'gated',
               })
               await admin.rpc('increment_ig_automation_triggers', { p_id: auto.id }).then(() => {}, () => {})
+              // Registra já: o clique no botão depois de seguir precisa saber
+              // de que automação ela veio.
+              await recordAutomationContact(admin, auto.tenant_id, auto.id, fromId)
               continue
             }
           }

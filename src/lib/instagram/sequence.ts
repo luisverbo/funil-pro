@@ -139,3 +139,29 @@ export async function processIgSequenceJobs(): Promise<{ sent: number }> {
   }
   return { sent }
 }
+
+
+/**
+ * Título do botão como o Instagram devolve no clique: o payload do postback é
+ * cortado em 20 caracteres. Comparar sem cortar fazia botão de título longo
+ * nunca "casar" com o próprio clique.
+ */
+export function chaveDoBotao(t: string | null | undefined): string {
+  return (t ?? '').toLowerCase().trim().slice(0, 20).trim()
+}
+
+/** A árvore de passos tem um botão de RESPOSTA com esse texto? (clique ou digitado) */
+export function temBotaoDeResposta(dmSteps: unknown, texto: string): boolean {
+  const alvo = chaveDoBotao(texto)
+  if (!alvo) return false
+  const andar = (chain: unknown): boolean => {
+    for (const s of (Array.isArray(chain) ? chain : []) as DmStep[]) {
+      for (const b of s?.buttons ?? []) {
+        if (!b.url && chaveDoBotao(b.title) === alvo) return true
+        if (b.branch && andar(b.branch)) return true
+      }
+    }
+    return false
+  }
+  return andar(dmSteps)
+}
