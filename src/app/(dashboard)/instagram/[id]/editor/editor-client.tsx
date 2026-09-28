@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react'
+import React, { useMemo, useState, useEffect, useCallback, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import {
   ReactFlow, Background, Controls, Handle, Position, useNodesState,
@@ -324,6 +325,8 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
   // Celular: o painel vira uma folha por cima do canvas, aberta ao tocar num
   // bloco. No computador (md+) continua a coluna fixa à direita.
   const [painelAberto, setPainelAberto] = useState(false)
+  // Só no navegador existe document.body (o portal não roda no servidor).
+  const noCliente = useSyncExternalStore(() => () => {}, () => true, () => false)
   const [posts, setPosts] = useState<IgMedia[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -489,7 +492,13 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
     setSelected(n.id)
   }
 
-  return (
+  // O editor vai para o <body> por portal. CAUSA RAIZ do "não aparece o botão
+  // Salvar" no celular: o <main> do app tem a animação page-in, que deixa um
+  // transform aplicado — e todo elemento `fixed` dentro de um ancestral com
+  // transform fica preso nele (posição e camada). O cabeçalho do app (z 40)
+  // cobria a barra do editor, onde fica o Salvar, qualquer que fosse o z.
+  if (!noCliente) return null
+  return createPortal(
     <div className="fixed inset-0 md:left-0 flex flex-col bg-gray-50" style={{ zIndex: 45 }}>
       {/* Topbar */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 md:gap-3 md:px-4 md:py-2.5 bg-white border-b shrink-0" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
@@ -549,7 +558,15 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
           <div className="md:hidden sticky -top-4 -mx-4 -mt-4 mb-1 flex items-center justify-between bg-white/95 backdrop-blur px-4 pt-3 pb-2 border-b z-10">
             <span className="mx-auto absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-gray-300" />
             <span className="text-sm font-semibold text-gray-800">Editar bloco</span>
-            <button onClick={() => setPainelAberto(false)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700">Ver canvas</button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPainelAberto(false)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700">Ver canvas</button>
+              {/* Salvar sem precisar fechar o painel — com ele aberto, o Salvar
+                  da barra fica atrás do escurecido. */}
+              <button onClick={save} disabled={saving}
+                className="rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
+                {saving ? 'Salvando…' : savedAt ? '✓ Salvo' : 'Salvar'}
+              </button>
+            </div>
           </div>
           {selected === 'trigger' && (
             <>
@@ -744,5 +761,5 @@ export default function IgFlowEditor({ automation, funnels }: { automation: IgAu
         </div>
       </div>
     </div>
-  )
+  , document.body)
 }
