@@ -373,10 +373,14 @@ export async function POST(request: NextRequest) {
         // O tenant vem da própria automação (a conta conectada é única por instalação).
         const { data: autos } = await admin
           .from('ig_automations')
-          .select('id, tenant_id, media_id, keywords, comment_replies, dm_message, dm_steps, dm_use_agent, funnel_id, lead_tag, follow_gate, follow_gate_message')
+          .select('id, tenant_id, media_id, conteudo_id, keywords, comment_replies, dm_message, dm_steps, dm_use_agent, funnel_id, lead_tag, follow_gate, follow_gate_message')
           .eq('status', 'active')
         const lower = text.toLowerCase()
         const matches = (autos ?? []).filter(a => {
+          // Esperando um post AGENDADO (conteudo_id sem media_id): ainda não
+          // existe post para responder. Sem esta linha ela viraria "qualquer
+          // post" e responderia comentários do perfil inteiro.
+          if (a.conteudo_id && !a.media_id) return false
           if (a.media_id && a.media_id !== mediaId) return false
           const kws: string[] = a.keywords ?? []
           if (kws.length === 0) return true
