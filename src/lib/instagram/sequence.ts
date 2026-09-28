@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment, sendInstagramMedia } from '@/lib/instagram'
+import { sendInstagramDM, sendInstagramActionButtons, sendPrivateReplyToComment, sendPrivateReplyWithButtons, sendInstagramMedia } from '@/lib/instagram'
 import { logOutbound } from '@/lib/instagram/inbox'
 
 export interface DmButton {
@@ -73,6 +73,13 @@ async function sendStep(igUserId: string, commentId: string | null, step: DmStep
   const btns = (step.buttons ?? []).filter(b => b.title).map(b => ({ title: b.title, url: b.url }))
 
   // Mídia primeiro (imagem/vídeo/áudio), depois o texto/botões
+  if (step.media_url && step.media_type && commentId) {
+    // Quem só comentou: a conversa precisa abrir pela resposta privada ao
+    // comentário (texto + botões). A mídia vai depois, como melhor esforço.
+    await sendPrivateReplyWithButtons(commentId, text || '👇', btns)
+    await sendInstagramMedia(igUserId, step.media_url, step.media_type).catch(e => console.error('[ig-seq] media', String(e)))
+    return
+  }
   if (step.media_url && step.media_type) {
     await sendInstagramMedia(igUserId, step.media_url, step.media_type).catch(e => console.error('[ig-seq] media', String(e)))
     if (text) await sendInstagramDM(igUserId, text).catch(() => {})
@@ -80,7 +87,11 @@ async function sendStep(igUserId: string, commentId: string | null, step: DmStep
     return
   }
 
-  if (btns.length > 0) {
+  if (btns.length > 0 && commentId) {
+    // 1ª mensagem de quem só COMENTOU: tem que ir pela resposta privada ao
+    // comentário — DM direta para o IGSID é recusada pelo Instagram.
+    await sendPrivateReplyWithButtons(commentId, text || 'Toca no botão 👇', btns)
+  } else if (btns.length > 0) {
     // Botões full-width (link e/ou resposta) — todos com o MESMO visual do "Acessar"
     await sendInstagramActionButtons(igUserId, text || 'Toca no botão 👇', btns)
   } else if (commentId) {

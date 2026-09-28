@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processAgentMessage, enrollInFunnel } from '@/lib/agents/chat'
-import { sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
+import { sendPrivateReplyWithButtons, sendInstagramDM, replyToComment, sendPrivateReplyToComment, sendInstagramActionButtons, getIgUserProfile } from '@/lib/instagram'
 import { resolveSteps, startSequence, type DmStep } from '@/lib/instagram/sequence'
 import { logInbound, logOutbound } from '@/lib/instagram/inbox'
 import { comandoDoDono, MARCA_ASSUMIDA } from '@/lib/agents/comando'
@@ -420,9 +420,11 @@ export async function POST(request: NextRequest) {
             if (profile.follows === false) {
               const gateMsg = auto.follow_gate_message?.trim() ||
                 'Opa! 🔒 Esse conteúdo é exclusivo pra quem me segue. Me segue lá no perfil e toca no botão abaixo que eu libero na hora 👇'
-              await sendPrivateReplyToComment(commentId, gateMsg).catch(e => console.error('[ig] gate privateReply', String(e)))
+              // UMA mensagem só, pela resposta privada, já com o botão: a 2ª
+              // mensagem direta (só o botão) era recusada — quem não seguia
+              // nunca recebia o [JÁ SIGO ✅].
+              await sendPrivateReplyWithButtons(commentId, gateMsg, [{ title: 'JÁ SIGO ✅' }]).catch(e => console.error('[ig] gate privateReply', String(e)))
               await logOutbound(admin, auto.tenant_id, fromId, gateMsg, 'gate').catch(() => {})
-              await sendInstagramActionButtons(fromId, 'Quando seguir, me avisa 👇', [{ title: 'JÁ SIGO ✅' }]).catch(() => {})
               // marcador: quando a pessoa responder e estiver seguindo, a sequência libera
               await admin.from('ig_sequence_jobs').insert({
                 tenant_id: auto.tenant_id, automation_id: auto.id, ig_user_id: fromId,
