@@ -2,8 +2,8 @@
 
 import { explicarErroDeToken } from '@/lib/instagram/token'
 
-import React, { useState } from 'react'
-import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, type IgAutomation, type IgAutomationContact, type IgAutomationInput } from '@/app/actions/ig-automations'
+import React, { useEffect, useState } from 'react'
+import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, listConteudosParaAutomacao, type ConteudoAgendavel, type IgAutomation, type IgAutomationContact, type IgAutomationInput } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
 import EmojiPicker from '@/components/ui/emoji-picker'
 import { uploadIgMedia } from '@/app/actions/upload'
@@ -75,6 +75,12 @@ function dbToSteps(a: IgAutomation): UiStep[] {
 
 interface Connection { connected: boolean; username?: string; accountId?: string; error?: string }
 
+/** '29/09 · 06:00' no horário de Brasília. */
+function quandoEmBrasilia(iso: string): string {
+  const f = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return f.format(new Date(iso)).replace(', ', ' · ')
+}
+
 export default function InstagramClient({ initialAutomations, connection, funnels = [] }: { initialAutomations: IgAutomation[]; connection?: Connection; funnels?: { id: string; name: string }[] }) {
   const [automations, setAutomations] = useState(initialAutomations)
   const [modalOpen, setModalOpen] = useState(false)
@@ -85,6 +91,13 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   const [posts, setPosts] = useState<IgMedia[] | null>(null)
   const [postsError, setPostsError] = useState<string | null>(null)
   const [selectedPost, setSelectedPost] = useState<IgMedia | 'all' | null>(null)
+  // Post AGENDADO no /conteudos (estilo ManyChat): a automação fica pronta e
+  // passa a valer sozinha quando o post for publicado.
+  const [agendados, setAgendados] = useState<ConteudoAgendavel[]>([])
+  const [selectedAgendado, setSelectedAgendado] = useState<ConteudoAgendavel | null>(null)
+  useEffect(() => {
+    listConteudosParaAutomacao().then(r => setAgendados(r.itens)).catch(() => {})
+  }, [])
   const [keywordInput, setKeywordInput] = useState('')
   const [keywords, setKeywords] = useState<string[]>([])
   const [commentReplies, setCommentReplies] = useState('')
@@ -112,7 +125,7 @@ export default function InstagramClient({ initialAutomations, connection, funnel
 
   async function openModal() {
     setModalOpen(true); setEditingId(null)
-    setName(''); setSelectedPost(null); setKeywords([]); setKeywordInput('')
+    setName(''); setSelectedPost(null); setSelectedAgendado(null); setKeywords([]); setKeywordInput('')
     setCommentReplies(''); setDmSteps([emptyStep()]); setTriggerType('comment'); setDmUseAgent(true); setFunnelId(''); setLeadTag(''); setSaveError(null)
     await loadPosts()
   }
@@ -120,7 +133,9 @@ export default function InstagramClient({ initialAutomations, connection, funnel
   async function openEdit(a: IgAutomation) {
     setModalOpen(true); setEditingId(a.id)
     setName(a.name)
-    setSelectedPost(a.media_id ? { id: a.media_id, caption: a.media_caption ?? undefined, thumbnail_url: a.media_thumb ?? undefined } : 'all')
+    const esperando = a.conteudo_id && !a.media_id ? agendados.find(c => c.id === a.conteudo_id) ?? null : null
+    setSelectedAgendado(esperando)
+    setSelectedPost(esperando ? null : a.media_id ? { id: a.media_id, caption: a.media_caption ?? undefined, thumbnail_url: a.media_thumb ?? undefined } : 'all')
     setKeywords(a.keywords ?? []); setKeywordInput('')
     setCommentReplies((a.comment_replies ?? []).join('\n'))
     setDmSteps(dbToSteps(a))
@@ -142,11 +157,13 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     if (triggerType !== 'comment' && finalKeywords.length === 0 && triggerType === 'dm') { setSaveError('No gatilho de DM, defina ao menos uma palavra-chave'); return }
     setSaving(true); setSaveError(null)
     const media = selectedPost && selectedPost !== 'all' ? selectedPost : null
+    const agendado = triggerType === 'comment' && !media ? selectedAgendado : null
     const payload = {
       name: name || 'Automação',
       media_id: media?.id ?? null,
-      media_caption: media?.caption?.slice(0, 120) ?? null,
-      media_thumb: media?.thumbnail_url ?? media?.media_url ?? null,
+      conteudo_id: agendado?.id ?? null,
+      media_caption: (agendado ? agendado.descricao : media?.caption)?.slice(0, 120) ?? null,
+      media_thumb: agendado ? agendado.thumb : (media?.thumbnail_url ?? media?.media_url ?? null),
       keywords: finalKeywords,
       comment_replies: commentReplies.split('\n').map(s => s.trim()).filter(Boolean),
       dm_message: steps[0]?.text || null,
@@ -255,7 +272,12 @@ export default function InstagramClient({ initialAutomations, connection, funnel
             const seqN = a.dm_steps?.length ?? (a.dm_message ? 1 : 0)
             const trigger = a.trigger_type === 'dm' ? { icon: '📩', label: 'DM com palavra-chave' }
               : a.trigger_type === 'story_reply' ? { icon: '📱', label: 'Resposta a Story' }
-              : { icon: '💬', label: a.media_id ? 'Comentário em post' : 'Comentário em qualquer post' }
+              : a.conteudo_id && !a.media_id
+                ? (() => {
+                    const c = agendados.find(x => x.id === a.conteudo_id)
+                    return { icon: '📅', label: c ? `Post agendado · ${quandoEmBrasilia(c.data_agendada)} — liga quando publicar` : 'Post agendado — liga quando publicar' }
+                  })()
+                : { icon: '💬', label: a.media_id ? 'Comentário em post' : 'Comentário em qualquer post' }
             const active = a.status === 'active'
             return (
             <div key={a.id} className="group relative rounded-3xl bg-white border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-gray-200/60 hover:-translate-y-1 transition-all duration-200 flex flex-col overflow-hidden">
@@ -368,17 +390,52 @@ export default function InstagramClient({ initialAutomations, connection, funnel
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Em qual post?</label>
                 <div className="flex flex-wrap gap-2 mb-2">
-                  <button type="button" onClick={() => setSelectedPost('all')}
+                  <button type="button" onClick={() => { setSelectedPost('all'); setSelectedAgendado(null) }}
                     className={`text-xs px-3 py-1.5 rounded-full border ${selectedPost === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600'}`}>
                     🌐 Todos os posts
                   </button>
                 </div>
+                {agendados.some(c => c.status !== 'publicado') && (
+                  <div className="mb-3 rounded-xl border border-violet-100 bg-violet-50/50 p-2.5">
+                    <p className="mb-2 text-xs font-semibold text-violet-800">📅 Agendados no Conteúdos <span className="font-normal text-violet-500">— a automação liga sozinha quando o post cair</span></p>
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                      {agendados.filter(c => c.status !== 'publicado').map(c => {
+                        const marcado = selectedAgendado?.id === c.id
+                        return (
+                          <button key={c.id} type="button" title={c.descricao.slice(0, 100)}
+                            onClick={() => { setSelectedAgendado(c); setSelectedPost(null) }}
+                            className={`relative aspect-[4/5] overflow-hidden rounded-xl border-2 ${marcado ? 'border-violet-600 ring-2 ring-violet-200' : 'border-transparent'}`}
+                            style={{ background: 'linear-gradient(160deg,#833ab4,#c13584 50%,#fd1d1d)' }}>
+                            {c.thumb
+                              // eslint-disable-next-line @next/next/no-img-element
+                              ? <img src={c.thumb} alt="" className="h-full w-full object-cover" />
+                              : c.video
+                                ? <video src={`${c.video}#t=0.5`} muted playsInline preload="metadata" className="pointer-events-none h-full w-full object-cover" />
+                                : null}
+                            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-1 pb-1 pt-3 text-[9px] font-semibold leading-tight text-white">
+                              {quandoEmBrasilia(c.data_agendada)}
+                              {c.status === 'pendente' && <span className="block font-normal text-amber-200">pendente</span>}
+                            </span>
+                            <span className="absolute left-1 top-1 rounded bg-black/50 px-1 text-[9px] text-white">{c.tipo === 'reel' ? '🎬' : '🖼️'}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {selectedAgendado && (
+                      <p className="mt-2 text-[11px] text-violet-700">
+                        ✓ Pronta para o post de <b>{quandoEmBrasilia(selectedAgendado.data_agendada)}</b>. Até ele ser publicado, a automação fica esperando e não responde a outros posts.
+                        {selectedAgendado.status === 'pendente' && <span className="block text-amber-700">Esse post ainda está pendente: aprove em Conteúdos para ele ser publicado.</span>}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <p className="mb-1.5 text-xs font-medium text-gray-500">Já publicados</p>
                 {posts === null && !postsError && <p className="text-xs text-gray-400">Carregando seus posts…</p>}
                 {postsError && <p className="text-xs text-amber-600">Não consegui listar os posts ({postsError.slice(0, 80)}). Você ainda pode usar &quot;Todos os posts&quot;.</p>}
                 {posts && posts.length > 0 && (
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-56 overflow-y-auto">
                     {posts.map(p => (
-                      <button key={p.id} type="button" onClick={() => setSelectedPost(p)}
+                      <button key={p.id} type="button" onClick={() => { setSelectedPost(p); setSelectedAgendado(null) }}
                         className={`relative aspect-square rounded-xl overflow-hidden border-2 ${selectedPost !== 'all' && (selectedPost as IgMedia | null)?.id === p.id ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-transparent'}`}>
                         {(p.thumbnail_url || p.media_url)
                           ? <img src={p.thumbnail_url || p.media_url} alt="" className="w-full h-full object-cover" />

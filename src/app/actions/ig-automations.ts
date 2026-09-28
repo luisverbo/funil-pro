@@ -12,6 +12,8 @@ export interface IgAutomation {
   name: string
   status: string
   media_id: string | null
+  /** Post AGENDADO no /conteudos: o media_id é preenchido quando ele publicar. */
+  conteudo_id: string | null
   media_caption: string | null
   media_thumb: string | null
   keywords: string[]
@@ -32,6 +34,7 @@ export interface IgAutomation {
 export interface IgAutomationInput {
   name: string
   media_id?: string | null
+  conteudo_id?: string | null
   media_caption?: string | null
   media_thumb?: string | null
   keywords?: string[]
@@ -95,6 +98,7 @@ export async function createIgAutomation(input: IgAutomationInput): Promise<{ id
       tenant_id: tenantId,
       name: input.name?.trim() || 'Automação',
       media_id: input.media_id || null,
+      conteudo_id: input.media_id ? null : (input.conteudo_id || null),
       media_caption: input.media_caption || null,
       media_thumb: input.media_thumb || null,
       keywords: (input.keywords ?? []).map(k => k.trim()).filter(Boolean),
@@ -119,7 +123,12 @@ export async function updateIgAutomation(id: string, patch: Partial<IgAutomation
   try {
     const tenantId = await getTenantId()
     const supabase = await getSupabase()
-    const { error } = await supabase.from('ig_automations').update(patch).eq('id', id).eq('tenant_id', tenantId)
+    // Post publicado escolhido → deixa de esperar o agendado. Agendado
+    // escolhido → o post só existe depois; media_id volta a vazio.
+    const final = { ...patch }
+    if (patch.media_id) final.conteudo_id = null
+    else if (patch.conteudo_id) final.media_id = null
+    const { error } = await supabase.from('ig_automations').update(final).eq('id', id).eq('tenant_id', tenantId)
     if (error) return { success: false, error: error.message }
     revalidatePath('/instagram')
     return { success: true }
@@ -183,4 +192,47 @@ export async function listInstagramPosts(): Promise<{ posts: IgMedia[]; error?: 
     const posts = await listRecentMedia(24)
     return { posts }
   } catch (err) { return { posts: [], error: String(err) } }
+}
+
+
+export interface ConteudoAgendavel {
+  id: string
+  tipo: 'reel' | 'carrossel'
+  status: string
+  data_agendada: string
+  descricao: string
+  thumb: string | null
+  video: string | null
+  ig_media_id: string | null
+}
+
+/**
+ * Posts do /conteudos que ainda não foram publicados (pendentes e agendados)
+ * — para a automação ficar pronta ANTES do post cair, como no ManyChat.
+ */
+export async function listConteudosParaAutomacao(): Promise<{ itens: ConteudoAgendavel[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data, error } = await supabase
+      .from('conteudos_instagram')
+      .select('id, tipo, status, data_agendada, descricao, capa_url, midia_urls, ig_media_id')
+      .eq('tenant_id', tenantId)
+      .in('status', ['pendente', 'agendado', 'publicando', 'publicado'])
+      .order('data_agendada', { ascending: true })
+      .range(0, 199)
+    if (error) return { itens: [], error: error.message }
+    return {
+      itens: (data ?? []).map(c => ({
+        id: c.id as string,
+        tipo: c.tipo as 'reel' | 'carrossel',
+        status: c.status as string,
+        data_agendada: c.data_agendada as string,
+        descricao: (c.descricao as string) ?? '',
+        thumb: c.tipo === 'carrossel' ? ((c.midia_urls as string[])?.[0] ?? null) : ((c.capa_url as string | null) ?? null),
+        video: c.tipo === 'reel' ? ((c.midia_urls as string[])?.[0] ?? null) : null,
+        ig_media_id: (c.ig_media_id as string | null) ?? null,
+      })),
+    }
+  } catch (err) { return { itens: [], error: String(err) } }
 }
