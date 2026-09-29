@@ -483,7 +483,30 @@ APP_SECRET=
 
 ## 🐛 Status atual
 
-**Última atualização:** 2026-09-23 — Módulo Conteúdos Instagram (aprovação + publicação automática)
+**Última atualização:** 2026-09-29 — Aba Tráfego: conectar conta pela lista + Mesa de estrategistas
+
+**O que foi feito (2026-09-29):**
+- **Causa raiz da aba Tráfego vazia**: `ad_accounts.external_id` estava salvo
+  como o e-mail do dono e o token vencido desde 25/08 (0 entidades/insights)
+- **Conectar sem digitar ID** (`src/lib/meta/conectar.ts`,
+  `src/app/actions/trafego-conexao.ts`, despachante `/api/trafego` +
+  `src/lib/trafego/client.ts`): cola só o token → `/me/adaccounts` → marca as
+  contas; só conecta ID que o próprio token enxerga; apaga conexão com ID
+  inválido; troca por token de 60 dias se `meta_app_id/meta_app_secret` no
+  Admin; "Ler agora" sincroniza na hora. `saveMetaConfig` recusa ID não numérico
+- **Mesa de estrategistas** (`src/lib/trafego/mesa.ts` puro +
+  `mesa-loader.ts`): Performance (pausar/reduzir: sem resultado, custo por
+  resultado ≥2× mediana do mesmo tipo, ROAS<1), Escala (≤0,7× mediana com 3+
+  resultados ou ROAS≥3, passo +20%), Orçamento (mover verba perdedores →
+  vencedor, estimativa marcada), Criativo (CTR, frequência, CPM), Risco (token
+  vencido/vencendo, rastreamento, reprovado, entrega parada, custo subindo,
+  gasto acelerando, concentração). Resultado = compra > lead > conversa >
+  cadastro pelas actions do pixel. Parecer do estrategista-chefe (IA) só no
+  botão, proibido de inventar número (`mesa-parecer.ts`)
+- Bateria: **963/963**
+- **Pendência do dono**: conectar de novo em /trafego com token `ads_read`
+
+**Atualização anterior:** 2026-09-23 — Módulo Conteúdos Instagram (aprovação + publicação automática)
 
 **O que foi feito (2026-09-18 a 23, PRs #106–#110):**
 - **Renomear quiz no editor + cópia no editor certo** (#106):

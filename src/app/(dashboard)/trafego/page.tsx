@@ -23,7 +23,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calcularRoasReal } from '@/lib/trafego/roas'
 import { intervaloPadrao } from '@/lib/meta/sync-v2'
-import { diagnosticar, type Severidade } from '@/lib/trafego/diagnose'
+import { MesaClient } from './mesa-client'
 import type { NivelAnuncio } from '@/lib/meta/sync-v2'
 
 export const dynamic = 'force-dynamic'
@@ -35,12 +35,6 @@ const NIVEIS: { chave: NivelAnuncio; label: string }[] = [
 ]
 
 const PERIODOS = [7, 14, 30]
-
-const CORES: Record<Severidade, string> = {
-  critico: 'border-red-200 bg-red-50 text-red-900',
-  atencao: 'border-amber-200 bg-amber-50 text-amber-900',
-  info: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-}
 
 function brl(cents: number): string {
   return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -126,10 +120,6 @@ export default async function TrafegoPage({
   const comProblema = contas.filter(c => c.status !== 'active' || c.last_error)
   const vencendo = contas.filter(c => venceEmBreve(c.token_expires_at))
 
-  // O diagnóstico é calculado do MESMO resumo que a tabela mostra — assim o
-  // texto do alerta nunca discorda do número logo abaixo dele.
-  const achados = resumo && !indisponivel ? diagnosticar(resumo) : []
-
   const t = resumo?.totais
   const semAtr = resumo?.semAtribuicao
 
@@ -185,15 +175,8 @@ export default async function TrafegoPage({
         </div>
       )}
 
-      {!migrationPendente && contas.length === 0 && (
-        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
-          <strong className="text-slate-900">Nenhuma conta de anúncio conectada.</strong>
-          <p className="mt-1">
-            Conecte a conta da Meta em <Link href="/integrations" className="text-blue-600 underline">Integrações</Link>.
-            Enquanto não houver conta, não há gasto para comparar com as vendas.
-          </p>
-        </div>
-      )}
+      {/* ─── Contas + Mesa de estrategistas (conectar, alertas, ações) ──── */}
+      {!migrationPendente && <MesaClient dias={dias} />}
 
       {nuncaSincronizou && (
         <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
@@ -227,22 +210,6 @@ export default async function TrafegoPage({
               <li key={c.id}>{c.name ?? `Conta ${c.external_id}`}</li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {/* ─── Diagnóstico ─────────────────────────────────────────────────── */}
-      {resumo && !indisponivel && achados.length > 0 && (
-        <div className="mb-6 space-y-2">
-          <h2 className="text-sm font-semibold text-slate-900">O que precisa da sua atenção</h2>
-          {achados.map((d, i) => (
-            <div key={`${d.regra}-${d.escopoId ?? 'conta'}-${i}`} className={`rounded-xl border p-4 ${CORES[d.severidade]}`}>
-              <p className="text-sm font-semibold">{d.titulo}</p>
-              <p className="mt-1 text-sm opacity-90">{d.corpo}</p>
-            </div>
-          ))}
-          <p className="text-xs text-slate-400">
-            Análise por regras, com os números da própria conta — nenhum valor aqui é estimado.
-          </p>
         </div>
       )}
 

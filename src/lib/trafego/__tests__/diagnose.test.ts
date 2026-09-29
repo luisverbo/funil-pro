@@ -199,8 +199,9 @@ test('12) o analista não chama IA — nem custo, nem número inventado', () => 
   assert.ok(rota.includes('filter(d => d.ok)'), 'analisaria conta que falhou ao sincronizar')
 
   const painel = ler('src/app/(dashboard)/trafego/page.tsx')
-  assert.ok(painel.includes('diagnosticar(resumo)'),
-    'o painel precisa analisar o MESMO resumo que exibe, senão texto e tabela discordam')
+  // 29/09: o painel passou a mostrar a Mesa de estrategistas (mesa.ts), que
+  // também é regra pura, sem IA na decisão. O diagnose segue no cron.
+  assert.ok(painel.includes('<MesaClient dias={dias} />'), 'o painel mostra a Mesa de estrategistas')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────
