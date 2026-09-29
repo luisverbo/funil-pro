@@ -1,6 +1,7 @@
 'use server'
 
 import { createServerClient } from '@supabase/ssr'
+import { idDeContaValido } from '@/lib/meta/conectar'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
@@ -56,6 +57,11 @@ export async function saveMetaConfig(
     // Auto-remove "act_" prefix — stored without it, URL uses "act_${id}"
     if (meta_ad_account_id?.startsWith('act_')) {
       meta_ad_account_id = meta_ad_account_id.slice(4)
+    }
+    // O ID da conta é só número. Foi assim que o e-mail do dono entrou no lugar
+    // do ID e a aba Tráfego nunca leu nada (29/09).
+    if (meta_ad_account_id && !idDeContaValido(meta_ad_account_id)) {
+      return { success: false, error: 'O ID da conta de anúncio é só números (ex.: 1234567890). Melhor: conecte pela aba Tráfego, escolhendo da lista.' }
     }
 
     const { error } = await admin

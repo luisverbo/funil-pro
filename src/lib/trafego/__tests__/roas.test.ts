@@ -230,7 +230,8 @@ test('13) o painel nunca mostra zero como resposta', () => {
   // Cada estado que produziria uma tela zerada precisa ter texto próprio.
   assert.ok(p.includes('migrationPendente'), 'banco sem as tabelas viraria painel zerado')
   assert.ok(p.includes('nuncaSincronizou'), 'antes da 1ª leitura, zero pareceria "não vendeu"')
-  assert.ok(p.includes('contas.length === 0'), 'sem conta conectada não é o mesmo que sem venda')
+  const m = ler('src/app/(dashboard)/trafego/mesa-client.tsx')
+  assert.ok(m.includes('contas.length === 0') && m.includes('Nenhuma conta de anúncio conectada'), 'sem conta conectada não é o mesmo que sem venda')
   assert.ok(/token_expired/.test(p), 'token caído congelaria o painel em silêncio')
   assert.ok(p.includes('semAtr'), 'venda sem origem sumiria e inflaria o ROAS do resto')
   // ROAS sem gasto não pode virar 0.00x nem Infinity na tela.
