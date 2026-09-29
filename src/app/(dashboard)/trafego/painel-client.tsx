@@ -1,22 +1,33 @@
 'use client'
 // ============================================================================
-// Gestor de Tráfego — painel profissional, uma conta por vez
+// Gestor de Tráfego — painel profissional, uma conta por vez, com ações
 // ----------------------------------------------------------------------------
-// Pedido do dono (29/09): "quero selecionar uma conta de anúncio e ver a
-// métrica daquela conta", com cara de ferramenta oficial. Tudo vem de
-// /api/trafego (painelTrafego), recortado por conta e período. A URL guarda
-// conta/período/nível — F5 e link compartilhado abrem no mesmo lugar.
+// Pedido do dono (29/09): escolher a conta, período livre (hoje, ontem,
+// personalizado) e AGIR dali mesmo — pausar, ativar, mudar orçamento — sem
+// abrir o Gerenciador. Tudo vem de /api/trafego; a URL guarda conta, período
+// e nível (F5 e link compartilhado abrem no mesmo lugar).
+//
+// Layout abaixo do gráfico (o que estava "bagunçado"):
+//   ┌──────────────────────────────┬──────────────┐
+//   │ Plano de ação (cards com     │ Time (saúde, │
+//   │ botão de executar)           │ especialistas│
+//   │                              │ parecer IA)  │
+//   ├──────────────────────────────┴──────────────┤
+//   │ Tabela estilo Gerenciador, com switch e ✎   │
+//   └─────────────────────────────────────────────┘
 // ============================================================================
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import {
   buscarContasDoToken, conectarContas, listarContasConectadas, desconectarConta,
-  sincronizarAgora, painelTrafego, parecerDoChefe,
+  sincronizarAgora, painelTrafego, parecerDoChefe, executarAcao,
 } from '@/lib/trafego/client'
 import type { ContaDisponivel } from '@/lib/meta/conectar'
 import type { ContaConectadaResumo } from '@/app/actions/trafego-conexao'
 import type { SerieDia } from '@/lib/trafego/mesa-loader'
+import { PRESETS, formatarData, hojeBrasilia, type Periodo } from '@/lib/trafego/periodo'
+import { orcamentoEscalado, validarOrcamento } from '@/lib/meta/acoes'
 import {
   brl, resultadoPrincipal, ROTULO_RESULTADO,
   type Especialista, type LinhaMesa, type PlanoMesa, type Recomendacao, type TipoResultado,
@@ -24,32 +35,35 @@ import {
 import type { NivelAnuncio } from '@/lib/meta/sync-v2'
 
 type Painel = Awaited<ReturnType<typeof painelTrafego>>
+type QueryPeriodo = { p?: string; de?: string; ate?: string }
 
-const PERIODOS = [7, 14, 30]
 const NIVEIS: { chave: NivelAnuncio; label: string }[] = [
   { chave: 'campaign', label: 'Campanhas' }, { chave: 'adset', label: 'Conjuntos' }, { chave: 'ad', label: 'Anúncios' },
 ]
 const TIME: { chave: Especialista; nome: string; icone: string; papel: string; cor: string }[] = [
-  { chave: 'performance', nome: 'Performance', icone: '💸', papel: 'Onde o dinheiro está indo embora', cor: 'text-red-600' },
-  { chave: 'escala', nome: 'Escala', icone: '🚀', papel: 'Onde colocar mais dinheiro', cor: 'text-emerald-600' },
+  { chave: 'performance', nome: 'Performance', icone: '💸', papel: 'Onde o dinheiro vai embora', cor: 'text-red-600' },
+  { chave: 'escala', nome: 'Escala', icone: '🚀', papel: 'Onde colocar mais', cor: 'text-emerald-600' },
   { chave: 'orcamento', nome: 'Orçamento', icone: '💰', papel: 'De onde tirar, para onde mover', cor: 'text-indigo-600' },
-  { chave: 'criativo', nome: 'Criativo', icone: '🎨', papel: 'Anúncio fraco e público cansado', cor: 'text-fuchsia-600' },
-  { chave: 'risco', nome: 'Risco', icone: '🛡️', papel: 'O que pode quebrar a operação', cor: 'text-amber-600' },
+  { chave: 'criativo', nome: 'Criativo', icone: '🎨', papel: 'Anúncio fraco, público cansado', cor: 'text-fuchsia-600' },
+  { chave: 'risco', nome: 'Risco', icone: '🛡️', papel: 'O que pode quebrar', cor: 'text-amber-600' },
 ]
 const ACAO: Record<Recomendacao['acao'], { rotulo: string; cor: string }> = {
-  pausar: { rotulo: 'Pausar', cor: 'bg-red-50 text-red-700 ring-red-200' },
-  reduzir: { rotulo: 'Reduzir', cor: 'bg-orange-50 text-orange-700 ring-orange-200' },
-  escalar: { rotulo: 'Escalar', cor: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  mover_verba: { rotulo: 'Mover verba', cor: 'bg-indigo-50 text-indigo-700 ring-indigo-200' },
-  trocar_criativo: { rotulo: 'Trocar criativo', cor: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200' },
-  ampliar_publico: { rotulo: 'Ampliar público', cor: 'bg-sky-50 text-sky-700 ring-sky-200' },
-  corrigir_rastreamento: { rotulo: 'Corrigir rastreamento', cor: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  reconectar: { rotulo: 'Reconectar', cor: 'bg-red-50 text-red-700 ring-red-200' },
-  revisar: { rotulo: 'Revisar', cor: 'bg-slate-100 text-slate-700 ring-slate-200' },
-  observar: { rotulo: 'Observar', cor: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  pausar: { rotulo: 'Pausar', cor: 'bg-red-600 text-white' },
+  reduzir: { rotulo: 'Reduzir', cor: 'bg-orange-500 text-white' },
+  escalar: { rotulo: 'Escalar', cor: 'bg-emerald-600 text-white' },
+  mover_verba: { rotulo: 'Mover verba', cor: 'bg-indigo-600 text-white' },
+  trocar_criativo: { rotulo: 'Trocar criativo', cor: 'bg-fuchsia-600 text-white' },
+  ampliar_publico: { rotulo: 'Ampliar público', cor: 'bg-sky-600 text-white' },
+  corrigir_rastreamento: { rotulo: 'Corrigir rastreamento', cor: 'bg-amber-500 text-white' },
+  reconectar: { rotulo: 'Reconectar', cor: 'bg-red-600 text-white' },
+  revisar: { rotulo: 'Revisar', cor: 'bg-slate-700 text-white' },
+  observar: { rotulo: 'Observar', cor: 'bg-slate-400 text-white' },
 }
-const URG = { alta: 'bg-red-500', media: 'bg-amber-400', baixa: 'bg-slate-300' }
-
+const URG: Record<Recomendacao['urgencia'], { rotulo: string; cor: string }> = {
+  alta: { rotulo: 'Urgente', cor: 'text-red-600 bg-red-50 ring-red-200' },
+  media: { rotulo: 'Esta semana', cor: 'text-amber-700 bg-amber-50 ring-amber-200' },
+  baixa: { rotulo: 'Quando puder', cor: 'text-slate-600 bg-slate-100 ring-slate-200' },
+}
 const STATUS: Record<string, { rotulo: string; cor: string }> = {
   ACTIVE: { rotulo: 'Ativa', cor: 'bg-emerald-500' },
   PAUSED: { rotulo: 'Pausada', cor: 'bg-slate-300' },
@@ -71,6 +85,16 @@ const curto = (cents: number) => {
   return brl(cents)
 }
 const somaRes = (r: Record<TipoResultado, number>) => r.compra + r.lead + r.conversa + r.cadastro
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
+const ativa = (l: LinhaMesa) => (l.status ?? '').toUpperCase() === 'ACTIVE'
+const linkGerenciador = (l: LinhaMesa, contaExternal?: string | null) => {
+  const base = 'https://adsmanager.facebook.com/adsmanager/manage'
+  const seg = l.nivel === 'campaign' ? 'campaigns' : l.nivel === 'adset' ? 'adsets' : 'ads'
+  const q = new URLSearchParams()
+  if (contaExternal) q.set('act', contaExternal)
+  q.set(l.nivel === 'campaign' ? 'selected_campaign_ids' : l.nivel === 'adset' ? 'selected_adset_ids' : 'selected_ad_ids', l.id)
+  return `${base}/${seg}?${q.toString()}`
+}
 
 function totaisDe(linhas: LinhaMesa[]) {
   const t = { gasto: 0, imp: 0, cli: 0, vendas: 0, receita: 0, res: { compra: 0, lead: 0, conversa: 0, cadastro: 0 } as Record<TipoResultado, number> }
@@ -81,23 +105,29 @@ function totaisDe(linhas: LinhaMesa[]) {
   return t
 }
 
-export function PainelTrafego({ contaInicial, dias, nivel }: { contaInicial: string | null; dias: number; nivel: NivelAnuncio }) {
+type Toast = { tipo: 'ok' | 'erro'; texto: string }
+
+export function PainelTrafego({ contaInicial, periodoInicial, nivel }: { contaInicial: string | null; periodoInicial: QueryPeriodo; nivel: NivelAnuncio }) {
   const router = useRouter()
   const [contas, setContas] = useState<ContaConectadaResumo[] | null>(null)
   const [conta, setConta] = useState<string | null>(contaInicial)
+  const [q, setQ] = useState<QueryPeriodo>(periodoInicial)
   const [dados, setDados] = useState<Painel | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [versao, setVersao] = useState(0)
   const [modal, setModal] = useState(false)
   const [gerenciar, setGerenciar] = useState(false)
   const [sync, setSync] = useState<string | null>(null)
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [filtroMesa, setFiltroMesa] = useState<Especialista | 'todas'>('todas')
 
-  const irPara = (p: { conta?: string | null; dias?: number; nivel?: NivelAnuncio }) => {
-    const q = new URLSearchParams()
+  const irPara = (p: { conta?: string | null; q?: QueryPeriodo; nivel?: NivelAnuncio }) => {
+    const qs = new URLSearchParams()
     const c = p.conta !== undefined ? p.conta : conta
-    if (c) q.set('conta', c)
-    q.set('dias', String(p.dias ?? dias)); q.set('nivel', p.nivel ?? nivel)
-    router.replace(`/trafego?${q.toString()}`, { scroll: false })
+    if (c) qs.set('conta', c)
+    for (const [k, v] of Object.entries(p.q ?? q)) if (v) qs.set(k, v)
+    qs.set('nivel', p.nivel ?? nivel)
+    router.replace(`/trafego?${qs.toString()}`, { scroll: false })
   }
 
   useEffect(() => {
@@ -108,29 +138,52 @@ export function PainelTrafego({ contaInicial, dias, nivel }: { contaInicial: str
 
   useEffect(() => {
     let vivo = true
-    painelTrafego(conta, dias).then(r => { if (vivo) { setDados(r); setCarregando(false) } })
+    painelTrafego(conta, q).then(r => { if (vivo) { setDados(r); setCarregando(false) } })
       .catch(() => { if (vivo) setCarregando(false) })
     return () => { vivo = false }
-  }, [conta, dias, versao])
+  }, [conta, q, versao])
 
-  function escolherConta(id: string | null) {
-    setCarregando(true); setConta(id); irPara({ conta: id })
-  }
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 4500)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  function escolherConta(id: string | null) { setCarregando(true); setConta(id); irPara({ conta: id }) }
+  function escolherPeriodo(nq: QueryPeriodo) { setCarregando(true); setQ(nq); irPara({ q: nq }) }
 
   async function lerAgora() {
     setSync('Lendo a Meta…')
-    const r = await sincronizarAgora(conta)
+    const r = await sincronizarAgora(conta, dados ? { desde: dados.periodo.desde, ate: dados.periodo.ate } : null)
     setSync(r.error ?? (r.falhas > 0 ? `Falhou: ${r.erros.join(' · ')}` : `Atualizado agora · ${r.ok} conta(s)`))
     setCarregando(true); setVersao(v => v + 1)
+  }
+
+  /** Aplica a ação na Meta e reflete na tela sem esperar nova leitura. */
+  async function agir(l: LinhaMesa, acao: { tipo: 'status'; status: 'ACTIVE' | 'PAUSED' } | { tipo: 'orcamento'; novoCents: number }) {
+    const r = await executarAcao(l.nivel, l.id, acao)
+    if (!r.ok) { setToast({ tipo: 'erro', texto: r.error ?? 'Não deu.' }); return false }
+    setDados(d => d ? {
+      ...d,
+      linhas: d.linhas.map(x => x.nivel === l.nivel && x.id === l.id
+        ? { ...x, ...(acao.tipo === 'status' ? { status: acao.status } : { orcamentoDiarioCents: acao.novoCents }) }
+        : x),
+    } : d)
+    setToast({ tipo: 'ok', texto: acao.tipo === 'status'
+      ? `${acao.status === 'PAUSED' ? 'Pausado' : 'Ativado'}: ${l.nome}`
+      : `Orçamento de "${l.nome}" agora é ${brl(acao.novoCents)}/dia` })
+    return true
   }
 
   const contaAtual = contas?.find(c => c.id === conta) ?? null
   const semConta = contas !== null && contas.length === 0
   const linhasNivel = useMemo(() => (dados?.linhas ?? []).filter(l => l.nivel === nivel), [dados, nivel])
   const campanhas = useMemo(() => (dados?.linhas ?? []).filter(l => l.nivel === 'campaign'), [dados])
+  const porChave = useMemo(() => new Map((dados?.linhas ?? []).map(l => [`${l.nivel}:${l.id}`, l])), [dados])
   const t = totaisDe(campanhas)
   const tipo = resultadoPrincipal(t.res)
   const ultimaLeitura = (contaAtual ? [contaAtual] : contas ?? []).map(c => c.ultimaSync).filter(Boolean).sort().pop() ?? null
+  const periodo = dados?.periodo
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -140,18 +193,17 @@ export function PainelTrafego({ contaInicial, dias, nivel }: { contaInicial: str
           <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">Meta Ads</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Gestor de Tráfego</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {dados ? `${fmtData(dados.periodo.desde)} – ${fmtData(dados.periodo.ate)}` : ' '}
-            {ultimaLeitura && <> · atualizado {desde(ultimaLeitura)}</>}
-            {sync && <> · <span className="text-slate-700">{sync}</span></>}
+            {periodo?.rotulo ?? ' '}
+            {ultimaLeitura && <> · dados lidos {desde(ultimaLeitura)}</>}
+            {sync && <> · <span className="font-medium text-slate-700">{sync}</span></>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Segmento opcoes={PERIODOS.map(d => ({ v: d, l: `${d} dias` }))} valor={dias}
-            onChange={d => { setCarregando(true); irPara({ dias: d }) }} />
+          <SeletorPeriodo periodo={periodo ?? null} onChange={escolherPeriodo} />
           {!semConta && (
             <button onClick={lerAgora} disabled={sync === 'Lendo a Meta…'}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">
-              <span className={sync === 'Lendo a Meta…' ? 'animate-spin' : ''}>↻</span> Atualizar
+              <span className={sync === 'Lendo a Meta…' ? 'inline-block animate-spin' : ''}>↻</span> Atualizar
             </button>
           )}
           <button onClick={() => setModal(true)}
@@ -215,10 +267,8 @@ export function PainelTrafego({ contaInicial, dias, nivel }: { contaInicial: str
           <div className={carregando ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}>
             {/* ─── KPIs ─────────────────────────────────────────────── */}
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <Kpi rotulo="Investido" valor={curto(t.gasto)} />
-              <Kpi rotulo={tipo ? ROTULO_RESULTADO[tipo].varios[0].toUpperCase() + ROTULO_RESULTADO[tipo].varios.slice(1) : 'Resultados'}
-                valor={num(tipo ? t.res[tipo] : 0)}
-                nota={resumoOutros(t.res, tipo)} />
+              <Kpi rotulo="Investido" valor={curto(t.gasto)} nota={periodo && periodo.dias > 1 ? `${brl(Math.round(t.gasto / periodo.dias))}/dia` : undefined} />
+              <Kpi rotulo={tipo ? cap(ROTULO_RESULTADO[tipo].varios) : 'Resultados'} valor={num(tipo ? t.res[tipo] : 0)} nota={resumoOutros(t.res, tipo)} />
               <Kpi rotulo={tipo ? `Custo por ${ROTULO_RESULTADO[tipo].um}` : 'Custo por resultado'}
                 valor={tipo && t.res[tipo] > 0 ? brl(Math.round(t.gasto / t.res[tipo])) : '—'} />
               <Kpi rotulo="CTR" valor={t.imp > 0 ? `${((t.cli / t.imp) * 100).toFixed(2)}%` : '—'} nota={`${num(t.cli)} cliques`} />
@@ -234,26 +284,43 @@ export function PainelTrafego({ contaInicial, dias, nivel }: { contaInicial: str
               </div>
             )}
 
-            {/* ─── Gráfico diário ──────────────────────────────────── */}
-            {dados && dados.serie.length > 0 && <Grafico serie={dados.serie} rotuloRes={tipo ? ROTULO_RESULTADO[tipo].varios : 'resultados'} />}
+            {/* ─── Gráfico ─────────────────────────────────────────── */}
+            {dados && dados.serie.length > 1 && <Grafico serie={dados.serie} rotuloRes={tipo ? ROTULO_RESULTADO[tipo].varios : 'resultados'} />}
+            {dados && dados.serie.length === 1 && t.gasto === 0 && (
+              <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Ainda não há gasto lido para {periodo?.preset === 'hoje' ? 'hoje' : 'este dia'}. Clique em <strong>Atualizar</strong> para buscar na Meta agora.
+              </p>
+            )}
 
-            {/* ─── Mesa de estrategistas ───────────────────────────── */}
-            {dados?.plano && <Mesa plano={dados.plano} dias={dias} conta={conta} />}
+            {/* ─── Plano de ação + Time ────────────────────────────── */}
+            {dados?.plano && (
+              <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                <div className="min-w-0 lg:col-span-2">
+                  <PlanoDeAcao plano={dados.plano} filtro={filtroMesa} onFiltro={setFiltroMesa} porChave={porChave} agir={agir} contaExternal={contaAtual?.externalId ?? null} />
+                </div>
+                <div className="min-w-0">
+                  <Time plano={dados.plano} filtro={filtroMesa} onFiltro={setFiltroMesa} q={q} conta={conta} />
+                </div>
+              </div>
+            )}
 
             {/* ─── Tabela ──────────────────────────────────────────── */}
-            <Tabela linhas={linhasNivel} nivel={nivel} onNivel={n => irPara({ nivel: n })} carregando={carregando && !dados} />
+            <Tabela linhas={linhasNivel} nivel={nivel} onNivel={n => irPara({ nivel: n })} carregando={carregando && !dados} agir={agir} contaExternal={contaAtual?.externalId ?? null} />
           </div>
         </>
       )}
 
       {modal && <ModalConectar onFechar={() => setModal(false)} onConectou={async () => { setModal(false); setVersao(v => v + 1); await lerAgora() }} />}
+      {toast && createPortal(
+        <div className={`fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${toast.tipo === 'ok' ? 'bg-slate-900 text-white' : 'bg-red-600 text-white'}`}>
+          {toast.texto}
+        </div>, document.body)}
     </div>
   )
 }
 
 // ── Peças ──────────────────────────────────────────────────────────────────
 
-function fmtData(iso: string) { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}` }
 function desde(iso: string) {
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
   if (min < 2) return 'agora'
@@ -264,6 +331,46 @@ function desde(iso: string) {
 function resumoOutros(r: Record<TipoResultado, number>, principal: TipoResultado | null) {
   const o = (Object.keys(r) as TipoResultado[]).filter(k => k !== principal && r[k] > 0).map(k => `${num(r[k])} ${ROTULO_RESULTADO[k].varios}`)
   return o.length ? `+ ${o.join(' · ')}` : undefined
+}
+
+function SeletorPeriodo({ periodo, onChange }: { periodo: Periodo | null; onChange: (q: QueryPeriodo) => void }) {
+  const [aberto, setAberto] = useState(false)
+  const [de, setDe] = useState(periodo?.desde ?? '')
+  const [ate, setAte] = useState(periodo?.ate ?? '')
+  const preset = periodo?.preset ?? '7'
+  const hoje = hojeBrasilia()
+  return (
+    <div className="relative max-w-full">
+      <div className="flex h-9 max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+        {PRESETS.map(p => (
+          <button key={p.chave}
+            onClick={() => { if (p.chave === 'custom') { setDe(periodo?.desde ?? ''); setAte(periodo?.ate ?? ''); setAberto(a => !a) } else { setAberto(false); onChange({ p: p.chave }) } }}
+            className={`shrink-0 whitespace-nowrap rounded-md px-2.5 text-sm font-medium transition sm:px-3 ${preset === p.chave ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'}`}>
+            {p.chave === 'custom' ? '📅' : p.rotulo}
+          </button>
+        ))}
+      </div>
+      {aberto && (
+        <div className="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Período personalizado</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <label className="text-xs text-slate-500">De
+              <input type="date" value={de} max={hoje} onChange={e => setDe(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900" />
+            </label>
+            <label className="text-xs text-slate-500">Até
+              <input type="date" value={ate} max={hoje} onChange={e => setAte(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900" />
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <button onClick={() => setAberto(false)} className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
+            <button disabled={!de || !ate} onClick={() => { setAberto(false); onChange({ p: 'custom', de, ate }) }}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">Aplicar</button>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-400">Até 92 dias. Dias fora da leitura atual são buscados no &quot;Atualizar&quot;.</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function Segmento<T extends string | number>({ opcoes, valor, onChange }: { opcoes: { v: T; l: string }[]; valor: T; onChange: (v: T) => void }) {
@@ -297,7 +404,7 @@ function Kpi({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?: st
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{rotulo}</p>
-      <p className="mt-1.5 text-xl sm:text-2xl font-bold tabular-nums whitespace-nowrap tracking-tight text-slate-900">{valor}</p>
+      <p className="mt-1.5 whitespace-nowrap text-xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-2xl">{valor}</p>
       <p className="mt-0.5 truncate text-xs text-slate-500">{nota ?? ' '}</p>
     </div>
   )
@@ -310,6 +417,7 @@ function Grafico({ serie, rotuloRes }: { serie: SerieDia[]; rotuloRes: string })
   const W = 100 / serie.length
   const pontos = serie.map((s, i) => `${(i + 0.5) * W},${100 - (s.resultados / maxR) * 88}`).join(' ')
   const f = foco !== null ? serie[foco] : null
+  const passo = Math.max(1, Math.ceil(serie.length / 8))
   return (
     <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -320,15 +428,14 @@ function Grafico({ serie, rotuloRes }: { serie: SerieDia[]; rotuloRes: string })
         </div>
       </div>
       <p className="mt-1 h-5 text-xs text-slate-600">
-        {f ? <><strong>{fmtData(f.date)}</strong> · {brl(f.gastoCents)} · {num(f.resultados)} {rotuloRes}{f.resultados > 0 ? ` · ${brl(Math.round(f.gastoCents / f.resultados))} cada` : ''}</> : 'Passe o dedo ou o mouse sobre o dia.'}
+        {f ? <><strong>{formatarData(f.date)}</strong> · {brl(f.gastoCents)} · {num(f.resultados)} {rotuloRes}{f.resultados > 0 ? ` · ${brl(Math.round(f.gastoCents / f.resultados))} cada` : ''}</> : 'Passe o mouse ou toque num dia.'}
       </p>
-      <div className="relative mt-2 h-40" onMouseLeave={() => setFoco(null)}>
+      <div className="relative mt-2 h-44" onMouseLeave={() => setFoco(null)}>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
           {[25, 50, 75].map(y => <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="#e2e8f0" strokeWidth="0.3" vectorEffect="non-scaling-stroke" />)}
           {serie.map((s, i) => {
             const h = (s.gastoCents / max) * 88
-            return <rect key={s.date} x={i * W + W * 0.18} width={W * 0.64} y={100 - h} height={h} rx="0.6"
-              fill={foco === i ? '#2563eb' : '#93c5fd'} />
+            return <rect key={s.date} x={i * W + W * 0.18} width={W * 0.64} y={100 - h} height={h} rx="0.6" fill={foco === i ? '#2563eb' : '#93c5fd'} />
           })}
           <polyline points={pontos} fill="none" stroke="#10b981" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
         </svg>
@@ -336,132 +443,246 @@ function Grafico({ serie, rotuloRes }: { serie: SerieDia[]; rotuloRes: string })
           {serie.map((s, i) => <div key={s.date} className="h-full flex-1" onMouseEnter={() => setFoco(i)} onClick={() => setFoco(i)} />)}
         </div>
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
-        <span>{fmtData(serie[0].date).slice(0, 5)}</span><span>{fmtData(serie[serie.length - 1].date).slice(0, 5)}</span>
+      <div className="mt-1 flex text-[10px] text-slate-400">
+        {serie.map((s, i) => <span key={s.date} className="flex-1 text-center">{i % passo === 0 || i === serie.length - 1 ? formatarData(s.date).slice(0, 5) : ''}</span>)}
       </div>
     </section>
   )
 }
 
-function Mesa({ plano, dias, conta }: { plano: PlanoMesa; dias: number; conta: string | null }) {
-  const [aba, setAba] = useState<Especialista | 'todas'>('todas')
-  const [parecer, setParecer] = useState<{ texto?: string; error?: string; carregando?: boolean }>({})
-  const [todas, setTodas] = useState(false)
-  const r = plano.resumo
-  const lista = aba === 'todas' ? plano.recomendacoes : plano.porEspecialista[aba]
-  const visiveis = todas ? lista : lista.slice(0, 6)
+// ── Plano de ação ──────────────────────────────────────────────────────────
 
-  async function pedirParecer() {
-    setParecer({ carregando: true })
-    setParecer(await parecerDoChefe(dias, conta))
+type Agir = (l: LinhaMesa, acao: { tipo: 'status'; status: 'ACTIVE' | 'PAUSED' } | { tipo: 'orcamento'; novoCents: number }) => Promise<boolean>
+
+function PlanoDeAcao({ plano, filtro, onFiltro, porChave, agir, contaExternal }: {
+  plano: PlanoMesa; filtro: Especialista | 'todas'; onFiltro: (f: Especialista | 'todas') => void
+  porChave: Map<string, LinhaMesa>; agir: Agir; contaExternal: string | null
+}) {
+  const [todas, setTodas] = useState(false)
+  const [confirmar, setConfirmar] = useState<{ l: LinhaMesa; acao: Parameters<Agir>[1]; titulo: string; detalhe: string } | null>(null)
+  const [ocupado, setOcupado] = useState<string | null>(null)
+  const lista = filtro === 'todas' ? plano.recomendacoes : plano.porEspecialista[filtro]
+  const visiveis = todas ? lista : lista.slice(0, 5)
+  const nomeFiltro = filtro === 'todas' ? null : TIME.find(t => t.chave === filtro)!
+
+  async function executar(l: LinhaMesa, acao: Parameters<Agir>[1]) {
+    setOcupado(`${l.nivel}:${l.id}`)
+    await agir(l, acao)
+    setOcupado(null); setConfirmar(null)
   }
 
   return (
-    <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+    <section className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Mesa de estrategistas</h2>
-          <p className="text-xs text-slate-500">Cinco especialistas analisando cada campanha, conjunto e anúncio desta seleção.</p>
-        </div>
-        <div className="flex items-center gap-5">
-          <div className="text-right">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Dinheiro em risco</p>
-            <p className={`text-lg font-bold tabular-nums ${r.dinheiroEmRiscoCents > 0 ? 'text-red-600' : 'text-slate-900'}`}>{brl(r.dinheiroEmRiscoCents)}</p>
-          </div>
-          <Saude valor={r.saude} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-3 lg:grid-cols-5">
-        {TIME.map(t => {
-          const n = plano.porEspecialista[t.chave].length
-          const ativo = aba === t.chave
-          return (
-            <button key={t.chave} onClick={() => { setAba(ativo ? 'todas' : t.chave); setTodas(false) }}
-              className={`bg-white px-4 py-3 text-left transition hover:bg-slate-50 ${ativo ? 'shadow-[inset_0_-2px_0_0_#2563eb]' : ''}`}>
-              <p className="text-xs text-slate-500">{t.icone} {t.nome}</p>
-              <p className={`mt-0.5 text-xl font-bold tabular-nums ${n > 0 ? t.cor : 'text-slate-300'}`}>{n}</p>
-              <p className="truncate text-[11px] text-slate-400">{t.papel}</p>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="p-4 sm:p-5">
-        {lista.length === 0 ? (
-          <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {aba === 'todas' ? '✓ Nada fora da régua neste período. Siga rodando e reavalie em 3 dias.' : '✓ Este especialista não viu nada para mexer agora.'}
+          <h2 className="text-base font-semibold text-slate-900">Plano de ação</h2>
+          <p className="text-xs text-slate-500">
+            {nomeFiltro ? <>{nomeFiltro.icone} {nomeFiltro.nome} · {nomeFiltro.papel} · <button onClick={() => onFiltro('todas')} className="text-blue-600 hover:underline">ver tudo</button></>
+              : `${plano.recomendacoes.length} recomendação(ões), da mais urgente para a menos.`}
           </p>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {visiveis.map(x => {
-              const t = TIME.find(tt => tt.chave === x.especialista)!
-              return (
-                <li key={x.chave} className="flex gap-3 py-3.5 first:pt-0 last:pb-0">
-                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${URG[x.urgencia]}`} title={`Urgência ${x.urgencia}`} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-semibold text-slate-900">{x.titulo}</p>
-                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${ACAO[x.acao].cor}`}>{ACAO[x.acao].rotulo}</span>
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">{t.icone} {t.nome} · <span className="font-medium text-slate-600">{x.alvo.nome}</span></p>
-                    <p className="mt-1.5 text-sm text-slate-600">{x.porque}</p>
-                    {x.impacto && <p className="mt-1 text-sm font-medium text-slate-900">→ {x.impacto}</p>}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        {lista.length > 6 && (
-          <button onClick={() => setTodas(v => !v)} className="mt-3 text-sm font-medium text-blue-600 hover:underline">
-            {todas ? 'Mostrar menos' : `Ver todas as ${lista.length} recomendações`}
-          </button>
-        )}
-
-        <div className="mt-5 rounded-xl bg-gradient-to-br from-slate-900 to-indigo-950 p-4 text-white">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">🧠 Parecer do estrategista-chefe</p>
-              <p className="text-xs text-indigo-200">Junta tudo num plano: o que fazer hoje e nesta semana.</p>
-            </div>
-            <button onClick={pedirParecer} disabled={parecer.carregando}
-              className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-indigo-50 disabled:opacity-60">
-              {parecer.carregando ? 'Escrevendo…' : parecer.texto ? 'Gerar de novo' : 'Gerar parecer'}
-            </button>
-          </div>
-          {parecer.error && <p className="mt-3 text-sm text-red-300">{parecer.error}</p>}
-          {parecer.texto && <div className="mt-3 whitespace-pre-wrap border-t border-white/10 pt-3 text-sm leading-relaxed text-slate-100">{parecer.texto}</div>}
         </div>
       </div>
+
+      {lista.length === 0 ? (
+        <div className="p-8 text-center">
+          <p className="text-3xl">✅</p>
+          <p className="mt-2 text-sm font-medium text-slate-900">{nomeFiltro ? 'Este especialista não viu nada para mexer agora.' : 'Nada fora da régua neste período.'}</p>
+          <p className="text-xs text-slate-500">Siga rodando e reavalie em 3 dias.</p>
+        </div>
+      ) : (
+        <ol className="divide-y divide-slate-100">
+          {visiveis.map((x, i) => {
+            const t = TIME.find(tt => tt.chave === x.especialista)!
+            const l = x.alvo.nivel !== 'account' && x.alvo.id ? porChave.get(`${x.alvo.nivel}:${x.alvo.id}`) ?? null : null
+            const chave = l ? `${l.nivel}:${l.id}` : null
+            const novo = l?.orcamentoDiarioCents ? orcamentoEscalado(l.orcamentoDiarioCents, 20) : null
+            const podeOrcamento = l && l.nivel !== 'ad' && !!l.orcamentoDiarioCents
+            return (
+              <li key={x.chave} className="p-4 sm:px-5">
+                <div className="flex gap-3">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${ACAO[x.acao].cor}`}>{ACAO[x.acao].rotulo}</span>
+                      <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${URG[x.urgencia].cor}`}>{URG[x.urgencia].rotulo}</span>
+                      <span className="text-xs text-slate-500">{t.icone} {t.nome}</span>
+                    </div>
+                    <p className="mt-1.5 font-semibold text-slate-900">{x.titulo}</p>
+                    <p className="truncate text-xs text-slate-500" title={x.alvo.nome}>{x.alvo.nivel === 'account' ? x.alvo.nome : `${x.alvo.nivel === 'campaign' ? 'Campanha' : x.alvo.nivel === 'adset' ? 'Conjunto' : 'Anúncio'}: ${x.alvo.nome}`}</p>
+                    <p className="mt-2 text-sm text-slate-600">{x.porque}</p>
+                    {x.impacto && <p className="mt-1 text-sm text-slate-800"><span className="font-medium">Efeito:</span> {x.impacto}</p>}
+
+                    {l && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(x.acao === 'pausar' || x.acao === 'reduzir') && ativa(l) && (
+                          <BotaoAcao cor="red" ocupado={ocupado === chave}
+                            onClick={() => setConfirmar({ l, acao: { tipo: 'status', status: 'PAUSED' }, titulo: `Pausar "${l.nome}"?`, detalhe: `Para de entregar na hora. Você pode ativar de novo a qualquer momento.` })}>
+                            ⏸ Pausar agora
+                          </BotaoAcao>
+                        )}
+                        {x.acao === 'reduzir' && podeOrcamento && (
+                          <BotaoAcao cor="slate" ocupado={ocupado === chave}
+                            onClick={() => { const n = Math.max(100, Math.round((l.orcamentoDiarioCents! * 0.7) / 100) * 100); setConfirmar({ l, acao: { tipo: 'orcamento', novoCents: n }, titulo: `Reduzir orçamento em 30%?`, detalhe: `De ${brl(l.orcamentoDiarioCents!)} para ${brl(n)} por dia.` }) }}>
+                            −30% orçamento
+                          </BotaoAcao>
+                        )}
+                        {(x.acao === 'escalar' || x.acao === 'mover_verba') && podeOrcamento && novo && (
+                          <BotaoAcao cor="emerald" ocupado={ocupado === chave}
+                            onClick={() => setConfirmar({ l, acao: { tipo: 'orcamento', novoCents: novo }, titulo: `Subir orçamento em 20%?`, detalhe: `De ${brl(l.orcamentoDiarioCents!)} para ${brl(novo)} por dia. Reavalie em 3 dias.` })}>
+                            ↑ Aplicar +20% ({brl(novo)}/dia)
+                          </BotaoAcao>
+                        )}
+                        {!ativa(l) && (x.acao === 'escalar' || x.acao === 'revisar') && (
+                          <BotaoAcao cor="emerald" ocupado={ocupado === chave}
+                            onClick={() => setConfirmar({ l, acao: { tipo: 'status', status: 'ACTIVE' }, titulo: `Ativar "${l.nome}"?`, detalhe: 'Volta a entregar com o orçamento atual.' })}>
+                            ▶ Ativar
+                          </BotaoAcao>
+                        )}
+                        <a href={linkGerenciador(l, contaExternal)} target="_blank" rel="noreferrer"
+                          className="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+                          Abrir no Gerenciador ↗
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+      {lista.length > 5 && (
+        <button onClick={() => setTodas(v => !v)} className="w-full border-t border-slate-100 py-3 text-sm font-medium text-blue-600 hover:bg-slate-50">
+          {todas ? 'Mostrar menos' : `Ver todas as ${lista.length} recomendações`}
+        </button>
+      )}
+
+      {confirmar && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center" onClick={() => setConfirmar(null)}>
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-slate-900">{confirmar.titulo}</h3>
+            <p className="mt-1 text-sm text-slate-600">{confirmar.detalhe}</p>
+            <p className="mt-2 text-xs text-slate-400">A mudança vai direto para a Meta, como se fosse no Gerenciador.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setConfirmar(null)} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
+              <button disabled={!!ocupado} onClick={() => executar(confirmar.l, confirmar.acao)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+                {ocupado ? 'Aplicando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>, document.body)}
     </section>
   )
 }
 
-function Saude({ valor }: { valor: number | null }) {
-  const v = valor ?? 0
-  const cor = valor === null ? '#cbd5e1' : v >= 80 ? '#10b981' : v >= 60 ? '#f59e0b' : '#ef4444'
+function BotaoAcao({ cor, ocupado, onClick, children }: { cor: 'red' | 'emerald' | 'slate'; ocupado: boolean; onClick: () => void; children: React.ReactNode }) {
+  const cores = {
+    red: 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
+    slate: 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+  }
   return (
-    <div className="flex items-center gap-2">
-      <div className="relative h-11 w-11">
-        <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
-          <circle cx="18" cy="18" r="15.5" fill="none" stroke="#f1f5f9" strokeWidth="4" />
-          <circle cx="18" cy="18" r="15.5" fill="none" stroke={cor} strokeWidth="4" strokeLinecap="round" strokeDasharray={`${(v / 100) * 97.4} 97.4`} />
-        </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-900">{valor ?? '—'}</span>
-      </div>
-      <p className="text-[11px] font-semibold uppercase leading-tight tracking-wider text-slate-500">Saúde<br />da conta</p>
+    <button onClick={onClick} disabled={ocupado} className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold disabled:opacity-50 ${cores[cor]}`}>
+      {children}
+    </button>
+  )
+}
+
+// ── Time (barra lateral) ───────────────────────────────────────────────────
+
+function Time({ plano, filtro, onFiltro, q, conta }: { plano: PlanoMesa; filtro: Especialista | 'todas'; onFiltro: (f: Especialista | 'todas') => void; q: QueryPeriodo; conta: string | null }) {
+  const [parecer, setParecer] = useState<{ texto?: string; error?: string; carregando?: boolean }>({})
+  const r = plano.resumo
+  async function pedirParecer() { setParecer({ carregando: true }); setParecer(await parecerDoChefe(q, conta)) }
+  return (
+    <div className="space-y-4 lg:sticky lg:top-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Saúde da conta</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">{r.saude ?? '—'}<span className="text-base font-medium text-slate-400">/100</span></p>
+          </div>
+          <Anel valor={r.saude} />
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Em risco</p>
+            <p className={`mt-0.5 text-lg font-bold tabular-nums ${r.dinheiroEmRiscoCents > 0 ? 'text-red-600' : 'text-slate-900'}`}>{brl(r.dinheiroEmRiscoCents)}</p>
+            <p className="text-[11px] text-slate-400">gasto em itens a pausar/reduzir</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Em vencedores</p>
+            <p className="mt-0.5 text-lg font-bold tabular-nums text-emerald-600">{brl(r.gastoVencedoresCents)}</p>
+            <p className="text-[11px] text-slate-400">gasto em itens a escalar</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-3">
+          <h3 className="text-sm font-semibold text-slate-900">Time de estrategistas</h3>
+          <p className="text-xs text-slate-500">Toque num especialista para filtrar o plano.</p>
+        </div>
+        <ul className="divide-y divide-slate-100">
+          {TIME.map(t => {
+            const n = plano.porEspecialista[t.chave].length
+            const at = filtro === t.chave
+            return (
+              <li key={t.chave}>
+                <button onClick={() => onFiltro(at ? 'todas' : t.chave)}
+                  className={`flex w-full items-center gap-3 px-5 py-3 text-left transition hover:bg-slate-50 ${at ? 'bg-blue-50/60' : ''}`}>
+                  <span className="text-lg">{t.icone}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-900">{t.nome}</span>
+                    <span className="block truncate text-[11px] text-slate-500">{t.papel}</span>
+                  </span>
+                  <span className={`min-w-[2rem] rounded-full px-2 py-0.5 text-center text-xs font-bold tabular-nums ${n > 0 ? `${t.cor} bg-slate-100` : 'text-slate-300'}`}>{n}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+
+      <section className="rounded-xl bg-gradient-to-br from-slate-900 to-indigo-950 p-5 text-white shadow-sm">
+        <p className="text-sm font-semibold">🧠 Parecer do estrategista-chefe</p>
+        <p className="mt-0.5 text-xs text-indigo-200">Um plano escrito: o que fazer hoje e nesta semana, com os números acima.</p>
+        <button onClick={pedirParecer} disabled={parecer.carregando}
+          className="mt-3 w-full rounded-lg bg-white py-2 text-sm font-semibold text-slate-900 hover:bg-indigo-50 disabled:opacity-60">
+          {parecer.carregando ? 'Escrevendo…' : parecer.texto ? 'Gerar de novo' : 'Gerar parecer'}
+        </button>
+        {parecer.error && <p className="mt-3 text-sm text-red-300">{parecer.error}</p>}
+        {parecer.texto && <div className="mt-3 whitespace-pre-wrap border-t border-white/10 pt-3 text-sm leading-relaxed text-slate-100">{parecer.texto}</div>}
+      </section>
     </div>
   )
 }
 
+function Anel({ valor }: { valor: number | null }) {
+  const v = valor ?? 0
+  const cor = valor === null ? '#cbd5e1' : v >= 80 ? '#10b981' : v >= 60 ? '#f59e0b' : '#ef4444'
+  return (
+    <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
+      <circle cx="18" cy="18" r="15.5" fill="none" stroke="#f1f5f9" strokeWidth="3.5" />
+      <circle cx="18" cy="18" r="15.5" fill="none" stroke={cor} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={`${(v / 100) * 97.4} 97.4`} />
+    </svg>
+  )
+}
+
+// ── Tabela ─────────────────────────────────────────────────────────────────
+
 type Ordem = 'gasto' | 'res' | 'cpr' | 'ctr' | 'cpm' | 'freq' | 'roas'
 
-function Tabela({ linhas, nivel, onNivel, carregando }: { linhas: LinhaMesa[]; nivel: NivelAnuncio; onNivel: (n: NivelAnuncio) => void; carregando: boolean }) {
+function Tabela({ linhas, nivel, onNivel, carregando, agir, contaExternal }: {
+  linhas: LinhaMesa[]; nivel: NivelAnuncio; onNivel: (n: NivelAnuncio) => void; carregando: boolean; agir: Agir; contaExternal: string | null
+}) {
   const [busca, setBusca] = useState('')
   const [ordem, setOrdem] = useState<Ordem>('gasto')
   const [soAtivas, setSoAtivas] = useState(false)
   const [limite, setLimite] = useState(25)
+  const [editando, setEditando] = useState<LinhaMesa | null>(null)
+  const [ocupado, setOcupado] = useState<string | null>(null)
 
   const valor = (l: LinhaMesa, o: Ordem): number => {
     const tp = resultadoPrincipal(l.resultados); const n = tp ? l.resultados[tp] : 0
@@ -477,9 +698,16 @@ function Tabela({ linhas, nivel, onNivel, carregando }: { linhas: LinhaMesa[]; n
   }
   const filtradas = linhas
     .filter(l => l.gastoCents > 0 || somaRes(l.resultados) > 0)
-    .filter(l => !soAtivas || (l.status ?? '').toUpperCase() === 'ACTIVE')
+    .filter(l => !soAtivas || ativa(l))
     .filter(l => !busca.trim() || l.nome.toLowerCase().includes(busca.trim().toLowerCase()) || l.id.includes(busca.trim()))
     .sort((a, b) => valor(b, ordem) - valor(a, ordem))
+
+  async function alternar(l: LinhaMesa) {
+    const k = `${l.nivel}:${l.id}`
+    if (ativa(l) && !confirm(`Pausar "${l.nome}"? Para de entregar na hora.`)) return
+    setOcupado(k); await agir(l, { tipo: 'status', status: ativa(l) ? 'PAUSED' : 'ACTIVE' }); setOcupado(null)
+  }
+
   return (
     <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
@@ -495,12 +723,19 @@ function Tabela({ linhas, nivel, onNivel, carregando }: { linhas: LinhaMesa[]; n
         <p className="p-6 text-sm text-slate-500">Nenhum item com gasto neste período.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1080px] text-sm">
             <thead className="bg-slate-50 text-[11px] font-semibold tracking-wider text-slate-500">
               <tr>
-                <th className="px-4 py-2.5 text-left uppercase">{NIVEIS.find(n => n.chave === nivel)!.label}</th>
-                <Cabecalho o="gasto" ordem={ordem} onOrdem={setOrdem}>Investido</Cabecalho><Cabecalho o="res" ordem={ordem} onOrdem={setOrdem}>Resultados</Cabecalho><Cabecalho o="cpr" ordem={ordem} onOrdem={setOrdem}>Custo/res.</Cabecalho>
-                <Cabecalho o="ctr" ordem={ordem} onOrdem={setOrdem}>CTR</Cabecalho><Cabecalho o="cpm" ordem={ordem} onOrdem={setOrdem}>CPM</Cabecalho><Cabecalho o="freq" ordem={ordem} onOrdem={setOrdem}>Freq.</Cabecalho><Cabecalho o="roas" ordem={ordem} onOrdem={setOrdem}>ROAS</Cabecalho>
+                <th className="w-16 px-4 py-2.5 text-left uppercase">Ligada</th>
+                <th className="px-3 py-2.5 text-left uppercase">{NIVEIS.find(n => n.chave === nivel)!.label}</th>
+                <th className="px-3 py-2.5 text-right uppercase">Orçamento</th>
+                <Cabecalho o="gasto" ordem={ordem} onOrdem={setOrdem}>Investido</Cabecalho>
+                <Cabecalho o="res" ordem={ordem} onOrdem={setOrdem}>Resultados</Cabecalho>
+                <Cabecalho o="cpr" ordem={ordem} onOrdem={setOrdem}>Custo/res.</Cabecalho>
+                <Cabecalho o="ctr" ordem={ordem} onOrdem={setOrdem}>CTR</Cabecalho>
+                <Cabecalho o="cpm" ordem={ordem} onOrdem={setOrdem}>CPM</Cabecalho>
+                <Cabecalho o="freq" ordem={ordem} onOrdem={setOrdem}>Freq.</Cabecalho>
+                <Cabecalho o="roas" ordem={ordem} onOrdem={setOrdem}>ROAS</Cabecalho>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -509,22 +744,35 @@ function Tabela({ linhas, nivel, onNivel, carregando }: { linhas: LinhaMesa[]; n
                 const n = tp ? l.resultados[tp] : 0
                 const st = STATUS[(l.status ?? '').toUpperCase()] ?? { rotulo: l.status ?? '—', cor: 'bg-slate-300' }
                 const roas = l.receitaRealCents > 0 && l.gastoCents > 0 ? l.receitaRealCents / l.gastoCents : null
+                const k = `${l.nivel}:${l.id}`
                 return (
-                  <tr key={`${l.nivel}:${l.id}`} className="hover:bg-slate-50/70">
-                    <td className="max-w-[380px] px-4 py-3">
+                  <tr key={k} className="hover:bg-slate-50/70">
+                    <td className="px-4 py-3">
+                      <Switch ligado={ativa(l)} ocupado={ocupado === k} onClick={() => alternar(l)} rotulo={ativa(l) ? 'Pausar' : 'Ativar'} />
+                    </td>
+                    <td className="max-w-[300px] px-3 py-3">
                       <p className="truncate font-medium text-slate-900" title={l.nome}>{l.nome}</p>
                       <p className="flex items-center gap-1.5 text-xs text-slate-500">
                         <span className={`h-1.5 w-1.5 rounded-full ${st.cor}`} />{st.rotulo}
-                        {l.orcamentoDiarioCents ? <> · {brl(l.orcamentoDiarioCents)}/dia</> : null}
+                        <span className="text-slate-300">·</span>
+                        <a href={linkGerenciador(l, contaExternal)} target="_blank" rel="noreferrer" className="hover:text-blue-600 hover:underline">Gerenciador ↗</a>
                       </p>
                     </td>
-                    <td className="px-3 py-3 text-right font-medium tabular-nums text-slate-900">{brl(l.gastoCents)}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">
+                    <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
+                      {l.orcamentoDiarioCents && l.nivel !== 'ad' ? (
+                        <button onClick={() => setEditando(l)} className="group inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-slate-100" title="Mudar orçamento diário">
+                          <span>{brl(l.orcamentoDiarioCents)}<span className="text-xs text-slate-400">/dia</span></span>
+                          <span className="text-xs text-slate-300 group-hover:text-slate-600">✎</span>
+                        </button>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right font-medium tabular-nums text-slate-900">{brl(l.gastoCents)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
                       {n > 0 ? <>{num(n)} <span className="text-xs text-slate-500">{ROTULO_RESULTADO[tp!].varios}</span></> : <span className="text-slate-400">0</span>}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums">{n > 0 ? brl(Math.round(l.gastoCents / n)) : <span className="text-slate-400">—</span>}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">{n > 0 ? brl(Math.round(l.gastoCents / n)) : <span className="text-slate-400">—</span>}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{l.ctr !== null ? `${l.ctr.toFixed(2)}%` : '—'}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{l.cpmCents !== null ? brl(l.cpmCents) : '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">{l.cpmCents !== null ? brl(l.cpmCents) : '—'}</td>
                     <td className={`px-3 py-3 text-right tabular-nums ${l.frequencia !== null && l.frequencia >= 3 ? 'font-semibold text-amber-600' : ''}`}>{l.frequencia !== null ? l.frequencia.toFixed(1) : '—'}</td>
                     <td className="px-3 py-3 text-right">
                       {roas === null ? <span className="text-slate-400">—</span> : (
@@ -544,8 +792,10 @@ function Tabela({ linhas, nivel, onNivel, carregando }: { linhas: LinhaMesa[]; n
         </button>
       )}
       <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-400">
-        ROAS só aparece com venda confirmada no FunilPro. Campanha de conversa ou lead é julgada pelo custo por resultado.
+        O interruptor pausa/ativa direto na Meta. ROAS só aparece com venda confirmada no FunilPro; campanha de conversa ou lead é julgada pelo custo por resultado.
       </p>
+
+      {editando && <ModalOrcamento l={editando} onFechar={() => setEditando(null)} onSalvar={async n => { const ok = await agir(editando, { tipo: 'orcamento', novoCents: n }); if (ok) setEditando(null); return ok }} />}
     </section>
   )
 }
@@ -559,6 +809,61 @@ function Cabecalho({ o, ordem, onOrdem, children }: { o: Ordem; ordem: Ordem; on
     </th>
   )
 }
+
+function Switch({ ligado, ocupado, onClick, rotulo }: { ligado: boolean; ocupado: boolean; onClick: () => void; rotulo: string }) {
+  return (
+    <button onClick={onClick} disabled={ocupado} title={rotulo} aria-label={rotulo} role="switch" aria-checked={ligado}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50 ${ligado ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${ligado ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  )
+}
+
+function ModalOrcamento({ l, onFechar, onSalvar }: { l: LinhaMesa; onFechar: () => void; onSalvar: (novoCents: number) => Promise<boolean> }) {
+  const atual = l.orcamentoDiarioCents ?? 0
+  const [reais, setReais] = useState((atual / 100).toFixed(2).replace('.', ','))
+  const [ocupado, setOcupado] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const novo = Math.round(Number(reais.replace(/\./g, '').replace(',', '.')) * 100)
+  const valido = Number.isFinite(novo) ? validarOrcamento(novo, atual) : { ok: false as const, motivo: 'Digite um valor.' }
+  const delta = atual > 0 && Number.isFinite(novo) ? Math.round(((novo - atual) / atual) * 100) : null
+  const atalho = (pct: number) => setReais((Math.max(100, Math.round((atual * (1 + pct / 100)) / 100) * 100) / 100).toFixed(2).replace('.', ','))
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 backdrop-blur-sm sm:items-center" onClick={onFechar}>
+      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-900">Orçamento diário</h3>
+        <p className="mt-0.5 truncate text-sm text-slate-500" title={l.nome}>{l.nome}</p>
+        <div className="mt-4 flex items-center gap-2">
+          <span className="text-lg font-medium text-slate-500">R$</span>
+          <input autoFocus value={reais} onChange={e => setReais(e.target.value)} inputMode="decimal"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-2xl font-bold tabular-nums text-slate-900 focus:border-blue-500 focus:outline-none" />
+          <span className="text-sm text-slate-500">/dia</span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[-30, -20, 20, 50].map(p => (
+            <button key={p} onClick={() => atalho(p)} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">{p > 0 ? `+${p}%` : `${p}%`}</button>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-slate-600">
+          Hoje: <strong>{brl(atual)}</strong>{delta !== null && novo !== atual && <> → <strong>{brl(novo)}</strong> <span className={delta > 0 ? 'text-emerald-600' : 'text-red-600'}>({delta > 0 ? '+' : ''}{delta}%)</span></>}
+        </p>
+        {!valido.ok && reais && <p className="mt-1 text-xs text-red-600">{valido.motivo}</p>}
+        {delta !== null && delta > 20 && valido.ok && <p className="mt-1 text-xs text-amber-700">Acima de 20% de uma vez a Meta reinicia o aprendizado. Prefira subir em etapas.</p>}
+        {erro && <p className="mt-2 text-sm text-red-600">{erro}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onFechar} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
+          <button disabled={!valido.ok || novo === atual || ocupado}
+            onClick={async () => { setOcupado(true); setErro(null); const ok = await onSalvar(novo); setOcupado(false); if (!ok) setErro('Não foi possível salvar. Veja o aviso no rodapé.') }}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+            {ocupado ? 'Salvando…' : 'Salvar na Meta'}
+          </button>
+        </div>
+      </div>
+    </div>, document.body)
+}
+
+// ── Conectar ───────────────────────────────────────────────────────────────
 
 function ModalConectar({ onFechar, onConectou }: { onFechar: () => void; onConectou: () => void }) {
   const [token, setToken] = useState('')
@@ -596,7 +901,7 @@ function ModalConectar({ onFechar, onConectou }: { onFechar: () => void; onConec
           <>
             <ol className="mt-4 list-decimal space-y-1.5 pl-5 text-sm text-slate-700">
               <li>Abra o <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" className="text-blue-600 underline">Explorador da Graph API</a> logado no Facebook dono dos anúncios.</li>
-              <li>Em <strong>Permissões</strong>, digite e adicione <code className="rounded bg-slate-100 px-1">ads_read</code> (e <code className="rounded bg-slate-100 px-1">business_management</code>).</li>
+              <li>Em <strong>Permissões</strong>, digite e adicione <code className="rounded bg-slate-100 px-1">ads_read</code> e <code className="rounded bg-slate-100 px-1">ads_management</code> (esta libera pausar/ativar/orçamento daqui), mais <code className="rounded bg-slate-100 px-1">business_management</code>.</li>
               <li>Clique em <strong>Generate Access Token</strong>, autorize e copie o token.</li>
               <li>Cole abaixo — a lista de contas aparece sozinha.</li>
             </ol>
@@ -641,3 +946,4 @@ function ModalConectar({ onFechar, onConectou }: { onFechar: () => void; onConec
     document.body,
   )
 }
+

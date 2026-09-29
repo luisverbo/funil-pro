@@ -510,8 +510,17 @@ APP_SECRET=
   tabela ordenável com busca/status/orçamento. Causa raiz dos nomes como ID:
   `ad_entities` lido com limit(5000) → PostgREST corta em 1000; agora paginado.
   Texto com artigo certo ("A campanha")
-- Bateria: **966/966**
-- Contas conectadas e lidas (6 contas, 29/09)
+- **Período livre + ações na Meta** (PR #125): `src/lib/trafego/periodo.ts`
+  (hoje/ontem/7/14/30/mes/custom em Brasília, teto 92 dias, URL `?p=&de=&ate=`);
+  `src/lib/meta/acoes.ts` (POST /{id} status ACTIVE|PAUSED e daily_budget,
+  piso R$ 1 / teto 10×, exige `ads_management`); `executarAcao` resolve a
+  conta pelo item no banco (cliente não manda token), espelha em ad_entities.
+  Tela: Plano de ação numerado com botões Pausar/Ativar/+20%/−30%, sidebar
+  Time (saúde, em risco, em vencedores, filtro por especialista, parecer),
+  tabela com switch + ✎ orçamento (modal com atalhos e aviso >20%)
+- Bateria: **976/976**
+- **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
+  reconectar para as ações funcionarem
 
 **Atualização anterior:** 2026-09-23 — Módulo Conteúdos Instagram (aprovação + publicação automática)
 

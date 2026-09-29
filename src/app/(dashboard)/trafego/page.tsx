@@ -16,12 +16,12 @@ import { PainelTrafego } from './painel-client'
 export const dynamic = 'force-dynamic'
 
 const NIVEIS: NivelAnuncio[] = ['campaign', 'adset', 'ad']
-const PERIODOS = [7, 14, 30]
 
 export default async function TrafegoPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const sp = await searchParams
   const nivel = (NIVEIS.includes(sp.nivel as NivelAnuncio) ? sp.nivel : 'campaign') as NivelAnuncio
-  const dias = PERIODOS.includes(Number(sp.dias)) ? Number(sp.dias) : 7
+  // Período livre: `p` (hoje/ontem/7/14/30/mes/custom) + `de`/`ate`. `dias` antigo vira preset.
+  const periodo = { p: sp.p ?? (sp.dias ? String(sp.dias) : undefined), de: sp.de, ate: sp.ate }
   const conta = /^[0-9a-f-]{36}$/i.test(sp.conta ?? '') ? sp.conta : null
 
   const supabase = await createClient()
@@ -56,7 +56,7 @@ export default async function TrafegoPage({ searchParams }: { searchParams: Prom
           </div>
         </div>
       )}
-      <PainelTrafego contaInicial={conta} dias={dias} nivel={nivel} />
+      <PainelTrafego contaInicial={conta} periodoInicial={periodo} nivel={nivel} />
     </>
   )
 }

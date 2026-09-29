@@ -23,6 +23,7 @@ export interface InsightDia {
 }
 
 export interface EntidadeMesa {
+  ad_account_id?: string | null
   level: NivelAnuncio
   external_id: string
   parent_external_id: string | null
@@ -83,6 +84,7 @@ export function agregarInsights(
       nome: e?.name ?? id,
       campanhaId: pai(e) ?? (nivel === 'campaign' ? id : null),
       status: e?.effective_status ?? null,
+      contaId: e?.ad_account_id ?? null,
       orcamentoDiarioCents: e?.daily_budget_cents ?? null,
       gastoCents: gasto, impressoes: imp, cliques: cli,
       ctr: imp > 0 ? Math.round((cli / imp) * 10_000) / 100 : null,
@@ -120,9 +122,10 @@ export function serieDiaria(insights: InsightDia[], periodo: { desde: string; at
  * `adAccountId` recorta UMA conta (o dono escolhe no seletor).
  */
 export async function carregarEntradaMesa(
-  admin: SupabaseClient, tenantId: string, dias: number, adAccountId: string | null = null,
+  admin: SupabaseClient, tenantId: string, periodoOuDias: number | { desde: string; ate: string }, adAccountId: string | null = null,
 ): Promise<(EntradaMesa & { serie: SerieDia[] }) | null> {
-  const periodo = intervaloPadrao(dias)
+  const periodo = typeof periodoOuDias === 'number' ? intervaloPadrao(periodoOuDias) : periodoOuDias
+  const dias = Math.max(1, Math.round((new Date(`${periodo.ate}T00:00:00Z`).getTime() - new Date(`${periodo.desde}T00:00:00Z`).getTime()) / 86_400_000) + 1)
   let qContas = admin.from('ad_accounts')
     .select('id, name, external_id, status, last_error, token_expires_at')
     .eq('tenant_id', tenantId).eq('provider', 'meta')
@@ -150,7 +153,7 @@ export async function carregarEntradaMesa(
   const ents: EntidadeMesa[] = []
   for (let de = 0; ; de += 1000) {
     let q = admin.from('ad_entities')
-      .select('level, external_id, parent_external_id, name, effective_status, daily_budget_cents')
+      .select('ad_account_id, level, external_id, parent_external_id, name, effective_status, daily_budget_cents')
       .eq('tenant_id', tenantId)
     if (adAccountId) q = q.eq('ad_account_id', adAccountId)
     const { data } = await q.order('id').range(de, de + 999)
