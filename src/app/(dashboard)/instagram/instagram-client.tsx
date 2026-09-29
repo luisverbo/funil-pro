@@ -3,7 +3,7 @@
 import { explicarErroDeToken } from '@/lib/instagram/token'
 
 import React, { useEffect, useState } from 'react'
-import { createIgAutomation, updateIgAutomation, deleteIgAutomation, listInstagramPosts, listAutomationContacts, listConteudosParaAutomacao, type ConteudoAgendavel, type IgAutomation, type IgAutomationContact, type IgAutomationInput } from '@/app/actions/ig-automations'
+import { createIgAutomation, updateIgAutomation, deleteIgAutomation, duplicateIgAutomation, listInstagramPosts, listAutomationContacts, listConteudosParaAutomacao, type ConteudoAgendavel, type IgAutomation, type IgAutomationContact, type IgAutomationInput } from '@/app/actions/ig-automations'
 import type { IgMedia } from '@/lib/instagram'
 import EmojiPicker from '@/components/ui/emoji-picker'
 import { uploadIgMedia } from '@/app/actions/upload'
@@ -244,6 +244,22 @@ export default function InstagramClient({ initialAutomations, connection, funnel
     setAutomations(list => list.map(x => x.id === a.id ? { ...x, status } : x))
   }
 
+  const [duplicando, setDuplicando] = useState<string | null>(null)
+  /** Duplica e já abre a cópia para trocar o post e o que mais precisar. */
+  async function duplicar(a: IgAutomation) {
+    setDuplicando(a.id)
+    const { automation, error } = await duplicateIgAutomation(a.id)
+    setDuplicando(null)
+    if (error || !automation) { alert(error ?? 'Não consegui duplicar'); return }
+    setAutomations(list => {
+      const i = list.findIndex(x => x.id === a.id)
+      const nova = [...list]
+      nova.splice(i + 1, 0, automation)
+      return nova
+    })
+    await openEdit(automation)
+  }
+
   async function remove(id: string) {
     if (!confirm('Excluir esta automação?')) return
     await deleteIgAutomation(id)
@@ -425,6 +441,12 @@ export default function InstagramClient({ initialAutomations, connection, funnel
                       <span className="text-xs font-medium text-gray-500">disparo{a.triggers_count === 1 ? '' : 's'}</span>
                     </span>
                     <span className="block whitespace-nowrap text-[11px] font-semibold text-fuchsia-600/80 group-hover/stat:text-fuchsia-600">👥 ver contatos</span>
+                  </button>
+                  <button onClick={() => duplicar(a)} disabled={duplicando === a.id} title="Duplicar automação"
+                    className="grid h-10 w-10 place-items-center rounded-xl text-gray-400 transition-colors hover:bg-fuchsia-50 hover:text-fuchsia-600 disabled:opacity-40">
+                    {duplicando === a.id
+                      ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-fuchsia-300 border-t-fuchsia-600" />
+                      : <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>}
                   </button>
                   <button onClick={() => remove(a.id)} title="Excluir"
                     className="grid h-10 w-10 place-items-center rounded-xl text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500">
