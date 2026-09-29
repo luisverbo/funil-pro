@@ -503,8 +503,15 @@ APP_SECRET=
   gasto acelerando, concentração). Resultado = compra > lead > conversa >
   cadastro pelas actions do pixel. Parecer do estrategista-chefe (IA) só no
   botão, proibido de inventar número (`mesa-parecer.ts`)
-- Bateria: **963/963**
-- **Pendência do dono**: conectar de novo em /trafego com token `ads_read`
+- **Painel profissional por conta** (PR #124): `painel-client.tsx` com seletor
+  de conta (URL `?conta=&dias=&nivel=`), KPIs pelo resultado principal
+  (custo por conversa/lead), CTR, CPM, ROAS só com venda (— em vez de 0.00x),
+  gráfico diário gasto × resultados, Mesa com cartões por especialista + saúde,
+  tabela ordenável com busca/status/orçamento. Causa raiz dos nomes como ID:
+  `ad_entities` lido com limit(5000) → PostgREST corta em 1000; agora paginado.
+  Texto com artigo certo ("A campanha")
+- Bateria: **966/966**
+- Contas conectadas e lidas (6 contas, 29/09)
 
 **Atualização anterior:** 2026-09-23 — Módulo Conteúdos Instagram (aprovação + publicação automática)
 

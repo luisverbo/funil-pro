@@ -99,11 +99,35 @@ export function agregarInsights(
 }
 
 /** Lê o banco e devolve a entrada da mesa, ou null se não há conta/tabela. */
-export async function carregarEntradaMesa(admin: SupabaseClient, tenantId: string, dias: number): Promise<EntradaMesa | null> {
+export interface SerieDia { date: string; gastoCents: number; resultados: number }
+
+/** Gasto e resultados por dia (nível campanha), para o gráfico (pura). */
+export function serieDiaria(insights: InsightDia[], periodo: { desde: string; ate: string }): SerieDia[] {
+  const mapa = new Map<string, SerieDia>()
+  for (let d = new Date(`${periodo.desde}T00:00:00Z`); d.toISOString().slice(0, 10) <= periodo.ate; d.setUTCDate(d.getUTCDate() + 1)) {
+    const k = d.toISOString().slice(0, 10); mapa.set(k, { date: k, gastoCents: 0, resultados: 0 })
+  }
+  for (const i of insights) {
+    if (i.level !== 'campaign') continue
+    const s = mapa.get(i.date); if (!s) continue
+    s.gastoCents += i.spend_cents; s.resultados += soma(contarResultados(i.actions))
+  }
+  return [...mapa.values()]
+}
+
+/**
+ * Lê o banco e devolve a entrada da mesa, ou null se não há conta/tabela.
+ * `adAccountId` recorta UMA conta (o dono escolhe no seletor).
+ */
+export async function carregarEntradaMesa(
+  admin: SupabaseClient, tenantId: string, dias: number, adAccountId: string | null = null,
+): Promise<(EntradaMesa & { serie: SerieDia[] }) | null> {
   const periodo = intervaloPadrao(dias)
-  const { data: contasRaw, error } = await admin.from('ad_accounts')
-    .select('name, external_id, status, last_error, token_expires_at')
+  let qContas = admin.from('ad_accounts')
+    .select('id, name, external_id, status, last_error, token_expires_at')
     .eq('tenant_id', tenantId).eq('provider', 'meta')
+  if (adAccountId) qContas = qContas.eq('id', adAccountId)
+  const { data: contasRaw, error } = await qContas
   if (error || !contasRaw || contasRaw.length === 0) return null
   const contas: ContaMesa[] = contasRaw.map(c => ({
     nome: c.name ?? `Conta ${c.external_id}`, status: String(c.status),
@@ -112,17 +136,27 @@ export async function carregarEntradaMesa(admin: SupabaseClient, tenantId: strin
 
   const insights: InsightDia[] = []
   for (let de = 0; ; de += 1000) {
-    const { data } = await admin.from('ad_insights')
+    let q = admin.from('ad_insights')
       .select('level, external_id, date, spend_cents, impressions, clicks, frequency, actions')
       .eq('tenant_id', tenantId).is('hour', null)
       .gte('date', periodo.desde).lte('date', periodo.ate)
-      .order('date').range(de, de + 999)
+    if (adAccountId) q = q.eq('ad_account_id', adAccountId)
+    const { data } = await q.order('date').order('id').range(de, de + 999)
     insights.push(...((data ?? []) as InsightDia[]))
     if (!data || data.length < 1000) break
   }
-  const { data: ents } = await admin.from('ad_entities')
-    .select('level, external_id, parent_external_id, name, effective_status, daily_budget_cents')
-    .eq('tenant_id', tenantId).limit(5000)
+  // PAGINADO: o PostgREST corta em 1000 linhas. Conta com 5 mil itens perdia
+  // os nomes das campanhas e o painel mostrava só o número (29/09).
+  const ents: EntidadeMesa[] = []
+  for (let de = 0; ; de += 1000) {
+    let q = admin.from('ad_entities')
+      .select('level, external_id, parent_external_id, name, effective_status, daily_budget_cents')
+      .eq('tenant_id', tenantId)
+    if (adAccountId) q = q.eq('ad_account_id', adAccountId)
+    const { data } = await q.order('id').range(de, de + 999)
+    ents.push(...((data ?? []) as EntidadeMesa[]))
+    if (!data || data.length < 1000) break
+  }
 
   // Venda confirmada por item, nos três níveis — mesma régua da tabela.
   const vendas = new Map<string, { vendas: number; receitaCents: number }>()
@@ -140,6 +174,7 @@ export async function carregarEntradaMesa(admin: SupabaseClient, tenantId: strin
 
   return {
     dias, contas, semAtribuicao, receitaAtribuidaCents: receitaAtribuida,
-    linhas: agregarInsights(insights, (ents ?? []) as EntidadeMesa[], periodo.ate, vendas),
+    linhas: agregarInsights(insights, ents, periodo.ate, vendas),
+    serie: serieDiaria(insights, periodo),
   }
 }

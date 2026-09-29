@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import {
   buscarContasDoToken, conectarContas, listarContasConectadas, desconectarConta,
-  sincronizarAgora, planoDaMesa, parecerDoChefe,
+  sincronizarAgora, painelTrafego, parecerDoChefe,
 } from '@/app/actions/trafego-conexao'
 
 // Sincronizar agora lê a Meta conta por conta.
@@ -15,7 +15,7 @@ export const maxDuration = 300
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   buscarContasDoToken, conectarContas, listarContasConectadas, desconectarConta,
-  sincronizarAgora, planoDaMesa, parecerDoChefe,
+  sincronizarAgora, painelTrafego, parecerDoChefe,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
