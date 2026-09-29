@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { montarMesa, contarResultados, mediana, type LinhaMesa, type EntradaMesa } from '@/lib/trafego/mesa'
-import { agregarInsights } from '@/lib/trafego/mesa-loader'
+import { agregarInsights, serieDiaria } from '@/lib/trafego/mesa-loader'
 import { montarBriefing, gerarParecer, SISTEMA_CHEFE } from '@/lib/trafego/mesa-parecer'
 import { idDeContaValido, paraContasDisponiveis, permissoesFaltando } from '@/lib/meta/conectar'
 
@@ -147,6 +147,27 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.equal(l.diasSemGastoNoFim, 2)
     assert.equal(l.receitaRealCents, 9900)
   },
+  'painel por conta: loader recorta ad_account_id e pagina as entidades (nomes de conta grande)': () => {
+    const l = ler('src/lib/trafego/mesa-loader.ts')
+    assert.ok(l.includes("if (adAccountId) q = q.eq('ad_account_id', adAccountId)"))
+    assert.ok(!l.includes('.limit(5000)'), 'PostgREST corta em 1000: nomes sumiam')
+    assert.ok(l.includes("const { data } = await q.order('id').range(de, de + 999)"))
+    const c = ler('src/app/(dashboard)/trafego/painel-client.tsx')
+    assert.ok(c.includes('painelTrafego(conta, dias)'))
+    assert.ok(c.includes("if (c) q.set('conta', c)"), 'conta escolhida fica na URL')
+  },
+  'texto com artigo certo: "A campanha", não "O campanha"': () => {
+    const p = montarMesa(entrada(conta))
+    assert.ok(p.recomendacoes.every(r => !r.porque.includes('O campanha') && !r.porque.includes('No campanha') && !r.porque.includes('do campanha')))
+    assert.ok(p.recomendacoes.some(r => r.porque.startsWith('A campanha')))
+  },
+  'série diária: um ponto por dia do período, só nível campanha': () => {
+    const s = serieDiaria([
+      { level: 'campaign', external_id: '1', date: '2026-09-28', spend_cents: 500, impressions: 1, clicks: 0, frequency: null, actions: [{ action_type: 'lead', value: 2 }] },
+      { level: 'ad', external_id: '9', date: '2026-09-28', spend_cents: 500, impressions: 1, clicks: 0, frequency: null, actions: [] },
+    ], { desde: '2026-09-27', ate: '2026-09-29' })
+    assert.deepEqual(s.map(x => x.gastoCents), [0, 500, 0]); assert.equal(s[1].resultados, 2)
+  },
   'parecer: IA recebe só os números do time e é proibida de inventar': async () => {
     const p = montarMesa(entrada(conta))
     const b = montarBriefing(p, 7)
@@ -184,8 +205,8 @@ const tests: Record<string, () => void | Promise<void>> = {
   },
   'tela: mesa no topo, modal no body, parecer só no botão': () => {
     const pg = ler('src/app/(dashboard)/trafego/page.tsx')
-    assert.ok(pg.includes('<MesaClient dias={dias} />'))
-    const c = ler('src/app/(dashboard)/trafego/mesa-client.tsx')
+    assert.ok(pg.includes('<PainelTrafego contaInicial={conta} dias={dias} nivel={nivel} />'))
+    const c = ler('src/app/(dashboard)/trafego/painel-client.tsx')
     assert.ok(c.includes('document.body'))
     assert.ok(c.includes('onClick={pedirParecer}'))
     assert.ok(!/useEffect\([^]*?parecerDoChefe/.test(c.split('async function pedirParecer')[0]), 'parecer não pode rodar ao abrir')

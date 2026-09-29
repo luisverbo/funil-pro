@@ -208,6 +208,10 @@ function cpr(l: LinhaMesa, tipo: TipoResultado): number | null {
 }
 
 const ROTULO_NIVEL: Record<NivelAnuncio, string> = { campaign: 'campanha', adset: 'conjunto', ad: 'anúncio' }
+/** Artigo certo: "a campanha", "o conjunto", "o anúncio". */
+const ART: Record<NivelAnuncio, { o: string; no: string }> = {
+  campaign: { o: 'A', no: 'Na' }, adset: { o: 'O', no: 'No' }, ad: { o: 'O', no: 'No' },
+}
 const URG: Record<Urgencia, number> = { alta: 0, media: 1, baixa: 2 }
 
 // ── O time ─────────────────────────────────────────────────────────────────
@@ -240,6 +244,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
     const tipo = resultadoPrincipal(l.resultados)
     const alvo = { nivel: l.nivel, id: l.id, nome: l.nome }
     const quem = `${ROTULO_NIVEL[l.nivel]} "${l.nome}"`
+    const O = ART[l.nivel].o
     const roas = l.receitaRealCents > 0 ? Math.round((l.receitaRealCents / l.gastoCents) * 100) / 100 : null
     const porDia = l.orcamentoDiarioCents ?? Math.round(l.gastoCents / Math.max(1, e.dias))
 
@@ -251,7 +256,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
         add({
           regra: 'sem_resultado', especialista: 'performance', acao: 'pausar', urgencia: 'alta', alvo,
           titulo: `Pausar: ${brl(l.gastoCents)} sem nenhum resultado`,
-          porque: `O ${quem} gastou ${brl(l.gastoCents)} em ${e.dias} dias e não trouxe compra, lead nem conversa.`
+          porque: `${O} ${quem} gastou ${brl(l.gastoCents)} em ${e.dias} dias e não trouxe compra, lead nem conversa.`
             + (cprGeralTipico !== null ? ` Nos outros, um resultado sai por cerca de ${brl(cprGeralTipico)}.` : ''),
           impacto: `Para de gastar cerca de ${brl(porDia)} por dia.`,
           numeros: { gastoCents: l.gastoCents, resultados: 0, cprTipicoCents: cprGeralTipico, porDiaCents: porDia },
@@ -266,7 +271,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
       add({
         regra: 'roas_baixo', especialista: 'performance', acao: 'reduzir', urgencia: 'alta', alvo,
         titulo: `Prejuízo: ROAS ${roas.toFixed(2)}x`,
-        porque: `O ${quem} investiu ${brl(l.gastoCents)} e as vendas somaram ${brl(l.receitaRealCents)}. Cada real volta ${roas.toFixed(2)}.`,
+        porque: `${O} ${quem} investiu ${brl(l.gastoCents)} e as vendas somaram ${brl(l.receitaRealCents)}. Cada real volta ${roas.toFixed(2)}.`,
         impacto: `Reduzir ou pausar evita perder cerca de ${brl(Math.max(0, l.gastoCents - l.receitaRealCents))} a cada ${e.dias} dias.`,
         numeros: { gastoCents: l.gastoCents, receitaCents: l.receitaRealCents, roas },
       })
@@ -284,7 +289,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
           regra: 'cpr_caro', especialista: 'performance', acao: custo >= med * 3 ? 'pausar' : 'reduzir',
           urgencia: custo >= med * 3 ? 'alta' : 'media', alvo,
           titulo: `${r.um[0].toUpperCase() + r.um.slice(1)} caro demais: ${brl(custo)} cada`,
-          porque: `O ${quem} paga ${brl(custo)} por ${r.um}, ${(custo / med).toFixed(1)}× o típico da conta (${brl(med)}).`,
+          porque: `${O} ${quem} paga ${brl(custo)} por ${r.um}, ${(custo / med).toFixed(1)}× o típico da conta (${brl(med)}).`,
           impacto: `Se a verba fosse para quem paga o típico, os mesmos ${brl(l.gastoCents)} trariam cerca de ${Math.floor(l.gastoCents / med)} ${r.varios} em vez de ${l.resultados[tipo]} (estimativa).`,
           numeros: { gastoCents: l.gastoCents, resultados: l.resultados[tipo], cprCents: Math.round(custo), cprTipicoCents: Math.round(med) },
         })
@@ -302,8 +307,8 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
             ? `Escalar: ROAS ${roas!.toFixed(2)}x`
             : `Escalar: ${r.um} a ${brl(custo)}, ${Math.round((1 - custo / med!) * 100)}% abaixo do típico`,
           porque: bomPorRoas
-            ? `O ${quem} transformou ${brl(l.gastoCents)} em ${brl(l.receitaRealCents)} com ${l.vendasReais} vendas.`
-            : `O ${quem} trouxe ${l.resultados[tipo]} ${r.varios} a ${brl(custo)} cada, contra ${brl(med!)} no resto da conta.`,
+            ? `${O} ${quem} transformou ${brl(l.gastoCents)} em ${brl(l.receitaRealCents)} com ${l.vendasReais} vendas.`
+            : `${O} ${quem} trouxe ${l.resultados[tipo]} ${r.varios} a ${brl(custo)} cada, contra ${brl(med!)} no resto da conta.`,
           impacto: `Suba o orçamento em ${lim.passoEscalaPct}% (de ${brl(porDia)} para ${brl(novo)} por dia) e reavalie em 3 dias. Subida brusca reinicia o aprendizado.`,
           numeros: { gastoCents: l.gastoCents, resultados: l.resultados[tipo], cprCents: Math.round(custo), cprTipicoCents: med !== null ? Math.round(med) : null, roas, porDiaCents: porDia, novoPorDiaCents: novo },
         })
@@ -316,7 +321,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
         add({
           regra: 'custo_subindo', especialista: 'risco', acao: 'revisar', urgencia: 'media', alvo,
           titulo: `Custo subindo ${Math.round((cprRec / cprAnt - 1) * 100)}% nos últimos dias`,
-          porque: `O ${quem} passou de ${brl(cprAnt)} para ${brl(cprRec)} por ${r.um}. É o primeiro sinal de criativo cansando ou leilão mais caro.`,
+          porque: `${O} ${quem} passou de ${brl(cprAnt)} para ${brl(cprRec)} por ${r.um}. É o primeiro sinal de criativo cansando ou leilão mais caro.`,
           impacto: 'Prepare um criativo novo antes que o custo dispare.',
           numeros: { cprRecenteCents: Math.round(cprRec), cprAnteriorCents: Math.round(cprAnt) },
         })
@@ -346,11 +351,12 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
   for (const l of comGasto) {
     const alvo = { nivel: l.nivel, id: l.id, nome: l.nome }
     const quem = `${ROTULO_NIVEL[l.nivel]} "${l.nome}"`
+    const O = ART[l.nivel].o, NO = ART[l.nivel].no
     if (l.ctr !== null && medCtr !== null && l.impressoes >= 1000 && l.ctr < medCtr * lim.ctrBaixoMultiplo) {
       add({
         regra: 'ctr_baixo', especialista: 'criativo', acao: 'trocar_criativo', urgencia: 'media', alvo,
         titulo: `Criativo não prende: CTR ${l.ctr.toFixed(2)}%`,
-        porque: `O ${quem} teve ${l.impressoes.toLocaleString('pt-BR')} impressões e CTR de ${l.ctr.toFixed(2)}%, contra ${medCtr.toFixed(2)}% no resto da conta. As pessoas veem e passam.`,
+        porque: `${O} ${quem} teve ${l.impressoes.toLocaleString('pt-BR')} impressões e CTR de ${l.ctr.toFixed(2)}%, contra ${medCtr.toFixed(2)}% no resto da conta. As pessoas veem e passam.`,
         impacto: 'Teste um gancho novo nos 3 primeiros segundos, mantendo a mesma oferta.',
         numeros: { ctr: l.ctr, ctrTipico: medCtr, impressoes: l.impressoes },
       })
@@ -359,7 +365,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
       add({
         regra: 'frequencia_alta', especialista: 'criativo', acao: 'ampliar_publico', urgencia: 'media', alvo,
         titulo: `Público cansado: frequência ${l.frequencia.toFixed(1)}`,
-        porque: `No ${quem}, cada pessoa já viu o anúncio ${l.frequencia.toFixed(1)} vezes em média. Daqui em diante o custo sobe sem trazer gente nova.`,
+        porque: `${NO} ${quem}, cada pessoa já viu o anúncio ${l.frequencia.toFixed(1)} vezes em média. Daqui em diante o custo sobe sem trazer gente nova.`,
         impacto: 'Amplie o público ou troque o criativo.',
         numeros: { frequencia: l.frequencia, impressoes: l.impressoes },
       })
@@ -368,7 +374,7 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
       add({
         regra: 'cpm_caro', especialista: 'criativo', acao: 'ampliar_publico', urgencia: 'baixa', alvo,
         titulo: `Público caro: CPM ${brl(l.cpmCents)}`,
-        porque: `Mil impressões do ${quem} custam ${brl(l.cpmCents)}, ${(l.cpmCents / medCpm).toFixed(1)}× o típico (${brl(medCpm)}). Público pequeno ou disputado demais.`,
+        porque: `Mil impressões ${O === 'A' ? 'da' : 'do'} ${quem} custam ${brl(l.cpmCents)}, ${(l.cpmCents / medCpm).toFixed(1)}× o típico (${brl(medCpm)}). Público pequeno ou disputado demais.`,
         impacto: 'Teste público mais amplo ou Advantage+.',
         numeros: { cpmCents: l.cpmCents, cpmTipicoCents: Math.round(medCpm) },
       })
@@ -413,20 +419,20 @@ export function montarMesa(e: EntradaMesa, lim: LimitesMesa = LIMITES_MESA): Pla
     if (st === 'DISAPPROVED' || st === 'WITH_ISSUES') {
       add({ regra: 'reprovado', especialista: 'risco', acao: 'revisar', urgencia: 'alta', alvo,
         titulo: st === 'DISAPPROVED' ? 'Anúncio reprovado pela Meta' : 'Anúncio com problema na Meta',
-        porque: `O ${ROTULO_NIVEL[l.nivel]} "${l.nome}" está ${st === 'DISAPPROVED' ? 'reprovado' : 'com pendências'}. Reprovações repetidas podem restringir a conta inteira.`,
+        porque: `${ART[l.nivel].o} ${ROTULO_NIVEL[l.nivel]} "${l.nome}" está ${st === 'DISAPPROVED' ? 'reprovado' : 'com pendências'}. Reprovações repetidas podem restringir a conta inteira.`,
         impacto: 'Abra no Gerenciador e corrija ou peça revisão.', numeros: {} })
     }
     if (st === 'ACTIVE' && l.diasSemGastoNoFim >= 2 && l.gastoCents > 0) {
       add({ regra: 'entrega_parou', especialista: 'risco', acao: 'revisar', urgencia: 'media', alvo,
         titulo: `Ativo, mas sem gastar há ${l.diasSemGastoNoFim} dias`,
-        porque: `O ${ROTULO_NIVEL[l.nivel]} "${l.nome}" está ligado e parou de entregar. Pode ser orçamento esgotado, cartão, público ou lance.`,
+        porque: `${ART[l.nivel].o} ${ROTULO_NIVEL[l.nivel]} "${l.nome}" está ligado e parou de entregar. Pode ser orçamento esgotado, cartão, público ou lance.`,
         impacto: null, numeros: { diasSemGasto: l.diasSemGastoNoFim } })
     }
     const g = l.recente.gastoCents; const a = l.anterior.gastoCents
     if (a >= lim.gastoMinimoCents && g >= a * lim.gastoAcelerandoMultiplo && l.recente.resultados <= l.anterior.resultados) {
       add({ regra: 'gasto_acelerando', especialista: 'risco', acao: 'revisar', urgencia: 'media', alvo,
         titulo: `Gasto acelerou ${Math.round((g / a - 1) * 100)}% sem trazer mais resultado`,
-        porque: `O ${ROTULO_NIVEL[l.nivel]} "${l.nome}" gastou ${brl(g)} nos últimos dias contra ${brl(a)} antes, com ${l.recente.resultados} resultado(s) contra ${l.anterior.resultados}.`,
+        porque: `${ART[l.nivel].o} ${ROTULO_NIVEL[l.nivel]} "${l.nome}" gastou ${brl(g)} nos últimos dias contra ${brl(a)} antes, com ${l.recente.resultados} resultado(s) contra ${l.anterior.resultados}.`,
         impacto: 'Confira se alguém subiu o orçamento ou mudou o lance.', numeros: { gastoRecenteCents: g, gastoAnteriorCents: a } })
     }
   }

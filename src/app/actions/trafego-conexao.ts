@@ -20,8 +20,8 @@ import {
 import { MetaApiError, descreverErroMeta } from '@/lib/meta/client'
 import { sincronizarConta, intervaloPadrao } from '@/lib/meta/sync-v2'
 import { listarContasDeAnuncio } from '@/lib/meta/accounts'
-import { montarMesa, type PlanoMesa } from '@/lib/trafego/mesa'
-import { carregarEntradaMesa } from '@/lib/trafego/mesa-loader'
+import { montarMesa, type PlanoMesa, type LinhaMesa } from '@/lib/trafego/mesa'
+import { carregarEntradaMesa, type SerieDia } from '@/lib/trafego/mesa-loader'
 import { gerarParecer } from '@/lib/trafego/mesa-parecer'
 import { callAnthropic } from '@/lib/agents/chat'
 
@@ -159,11 +159,11 @@ export async function desconectarConta(id: string): Promise<{ success: boolean; 
 }
 
 /** Lê agora (sem esperar o cron) as contas ativas do tenant — últimos 30 dias. */
-export async function sincronizarAgora(): Promise<{ ok: number; falhas: number; erros: string[]; error?: string }> {
+export async function sincronizarAgora(contaId: string | null = null): Promise<{ ok: number; falhas: number; erros: string[]; error?: string }> {
   try {
     const tenantId = await getTenantId()
     const admin = createAdminClient()
-    const contas = await listarContasDeAnuncio(admin, tenantId)
+    const contas = (await listarContasDeAnuncio(admin, tenantId)).filter(c => !contaId || c.id === contaId)
     if (contas.length === 0) return { ok: 0, falhas: 0, erros: [], error: 'Nenhuma conta ativa conectada.' }
     const intervalo = intervaloPadrao(30)
     let ok = 0; let falhas = 0; const erros: string[] = []
@@ -179,22 +179,35 @@ export async function sincronizarAgora(): Promise<{ ok: number; falhas: number; 
 
 // ── Mesa de estrategistas ──────────────────────────────────────────────────
 
-/** O que o time recomenda para o período (7, 14 ou 30 dias). */
-export async function planoDaMesa(dias: number): Promise<{ plano: PlanoMesa | null; error?: string }> {
+/** Tudo o que a aba mostra, recortado por conta (null = todas) e período. */
+export async function painelTrafego(contaId: string | null, dias: number): Promise<{
+  plano: PlanoMesa | null
+  linhas: LinhaMesa[]
+  serie: SerieDia[]
+  periodo: { desde: string; ate: string }
+  semAtribuicao: { vendas: number; receitaCents: number }
+  error?: string
+}> {
+  const d = [7, 14, 30].includes(Number(dias)) ? Number(dias) : 7
+  const periodo = intervaloPadrao(d)
+  const vazio = { plano: null, linhas: [], serie: [], periodo, semAtribuicao: { vendas: 0, receitaCents: 0 } }
   try {
     const tenantId = await getTenantId()
-    const d = [7, 14, 30].includes(Number(dias)) ? Number(dias) : 7
-    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, d)
-    return { plano: entrada ? montarMesa(entrada) : null }
-  } catch (err) { return { plano: null, error: String(err) } }
+    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, d, contaId || null)
+    if (!entrada) return vazio
+    return {
+      plano: montarMesa(entrada), linhas: entrada.linhas, serie: entrada.serie, periodo,
+      semAtribuicao: entrada.semAtribuicao,
+    }
+  } catch (err) { return { ...vazio, error: String(err) } }
 }
 
 /** Parecer escrito pelo estrategista-chefe (IA), sob demanda. */
-export async function parecerDoChefe(dias: number): Promise<{ texto?: string; error?: string }> {
+export async function parecerDoChefe(dias: number, contaId: string | null = null): Promise<{ texto?: string; error?: string }> {
   try {
     const tenantId = await getTenantId()
     const d = [7, 14, 30].includes(Number(dias)) ? Number(dias) : 7
-    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, d)
+    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, d, contaId || null)
     if (!entrada) return { error: 'Conecte uma conta de anúncio primeiro.' }
     const plano = montarMesa(entrada)
     if (plano.resumo.gastoCents === 0) return { error: 'Ainda não há gasto lido no período para analisar.' }
