@@ -153,8 +153,8 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(!l.includes('.limit(5000)'), 'PostgREST corta em 1000: nomes sumiam')
     assert.ok(l.includes("const { data } = await q.order('id').range(de, de + 999)"))
     const c = ler('src/app/(dashboard)/trafego/painel-client.tsx')
-    assert.ok(c.includes('painelTrafego(conta, dias)'))
-    assert.ok(c.includes("if (c) q.set('conta', c)"), 'conta escolhida fica na URL')
+    assert.ok(c.includes('painelTrafego(conta, q)'))
+    assert.ok(c.includes("if (c) qs.set('conta', c)"), 'conta escolhida fica na URL')
   },
   'texto com artigo certo: "A campanha", não "O campanha"': () => {
     const p = montarMesa(entrada(conta))
@@ -205,7 +205,7 @@ const tests: Record<string, () => void | Promise<void>> = {
   },
   'tela: mesa no topo, modal no body, parecer só no botão': () => {
     const pg = ler('src/app/(dashboard)/trafego/page.tsx')
-    assert.ok(pg.includes('<PainelTrafego contaInicial={conta} dias={dias} nivel={nivel} />'))
+    assert.ok(pg.includes('<PainelTrafego contaInicial={conta} periodoInicial={periodo} nivel={nivel} />'))
     const c = ler('src/app/(dashboard)/trafego/painel-client.tsx')
     assert.ok(c.includes('document.body'))
     assert.ok(c.includes('onClick={pedirParecer}'))

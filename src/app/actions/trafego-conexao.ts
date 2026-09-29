@@ -22,6 +22,9 @@ import { sincronizarConta, intervaloPadrao } from '@/lib/meta/sync-v2'
 import { listarContasDeAnuncio } from '@/lib/meta/accounts'
 import { montarMesa, type PlanoMesa, type LinhaMesa } from '@/lib/trafego/mesa'
 import { carregarEntradaMesa, type SerieDia } from '@/lib/trafego/mesa-loader'
+import { resolverPeriodo, MAX_DIAS_PERIODO, type Periodo } from '@/lib/trafego/periodo'
+import { alterarStatus, alterarOrcamentoDiario, PERMISSAO_ACOES, type StatusAcao } from '@/lib/meta/acoes'
+import type { NivelAnuncio } from '@/lib/meta/sync-v2'
 import { gerarParecer } from '@/lib/trafego/mesa-parecer'
 import { callAnthropic } from '@/lib/agents/chat'
 
@@ -159,13 +162,21 @@ export async function desconectarConta(id: string): Promise<{ success: boolean; 
 }
 
 /** Lê agora (sem esperar o cron) as contas ativas do tenant — últimos 30 dias. */
-export async function sincronizarAgora(contaId: string | null = null): Promise<{ ok: number; falhas: number; erros: string[]; error?: string }> {
+export async function sincronizarAgora(
+  contaId: string | null = null,
+  periodo: { desde: string; ate: string } | null = null,
+): Promise<{ ok: number; falhas: number; erros: string[]; error?: string }> {
   try {
     const tenantId = await getTenantId()
     const admin = createAdminClient()
     const contas = (await listarContasDeAnuncio(admin, tenantId)).filter(c => !contaId || c.id === contaId)
     if (contas.length === 0) return { ok: 0, falhas: 0, erros: [], error: 'Nenhuma conta ativa conectada.' }
-    const intervalo = intervaloPadrao(30)
+    // Lê pelo menos os últimos 30 dias; período pedido maior amplia a janela (teto MAX_DIAS_PERIODO).
+    const padrao = intervaloPadrao(30)
+    const pedido = periodo ? resolverPeriodo({ p: 'custom', de: periodo.desde, ate: periodo.ate }) : null
+    const intervalo = pedido && pedido.dias <= MAX_DIAS_PERIODO
+      ? { desde: pedido.desde < padrao.desde ? pedido.desde : padrao.desde, ate: padrao.ate }
+      : padrao
     let ok = 0; let falhas = 0; const erros: string[] = []
     for (const c of contas) {
       const r = await sincronizarConta(admin, c, intervalo, {})
@@ -179,21 +190,20 @@ export async function sincronizarAgora(contaId: string | null = null): Promise<{
 
 // ── Mesa de estrategistas ──────────────────────────────────────────────────
 
-/** Tudo o que a aba mostra, recortado por conta (null = todas) e período. */
-export async function painelTrafego(contaId: string | null, dias: number): Promise<{
+/** Tudo o que a aba mostra, recortado por conta (null = todas) e período livre. */
+export async function painelTrafego(contaId: string | null, q: { p?: string; de?: string; ate?: string } | number): Promise<{
   plano: PlanoMesa | null
   linhas: LinhaMesa[]
   serie: SerieDia[]
-  periodo: { desde: string; ate: string }
+  periodo: Periodo
   semAtribuicao: { vendas: number; receitaCents: number }
   error?: string
 }> {
-  const d = [7, 14, 30].includes(Number(dias)) ? Number(dias) : 7
-  const periodo = intervaloPadrao(d)
+  const periodo = resolverPeriodo(typeof q === 'number' ? { p: String(q) } : (q ?? {}))
   const vazio = { plano: null, linhas: [], serie: [], periodo, semAtribuicao: { vendas: 0, receitaCents: 0 } }
   try {
     const tenantId = await getTenantId()
-    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, d, contaId || null)
+    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, periodo, contaId || null)
     if (!entrada) return vazio
     return {
       plano: montarMesa(entrada), linhas: entrada.linhas, serie: entrada.serie, periodo,
@@ -203,11 +213,12 @@ export async function painelTrafego(contaId: string | null, dias: number): Promi
 }
 
 /** Parecer escrito pelo estrategista-chefe (IA), sob demanda. */
-export async function parecerDoChefe(dias: number, contaId: string | null = null): Promise<{ texto?: string; error?: string }> {
+export async function parecerDoChefe(q: { p?: string; de?: string; ate?: string } | number, contaId: string | null = null): Promise<{ texto?: string; error?: string }> {
   try {
     const tenantId = await getTenantId()
-    const d = [7, 14, 30].includes(Number(dias)) ? Number(dias) : 7
-    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, d, contaId || null)
+    const periodo = resolverPeriodo(typeof q === 'number' ? { p: String(q) } : (q ?? {}))
+    const d = periodo.dias
+    const entrada = await carregarEntradaMesa(createAdminClient(), tenantId, periodo, contaId || null)
     if (!entrada) return { error: 'Conecte uma conta de anúncio primeiro.' }
     const plano = montarMesa(entrada)
     if (plano.resumo.gastoCents === 0) return { error: 'Ainda não há gasto lido no período para analisar.' }
@@ -216,4 +227,49 @@ export async function parecerDoChefe(dias: number, contaId: string | null = null
     const m = String(err)
     return { error: m.includes('anthropic_key_missing') ? 'A chave da IA não está configurada no servidor.' : 'Não consegui gerar o parecer agora. Tente de novo.' }
   }
+}
+
+// ── Ações na campanha (sem abrir o Gerenciador) ────────────────────────────
+
+export type AcaoCampanha =
+  | { tipo: 'status'; status: StatusAcao }
+  | { tipo: 'orcamento'; novoCents: number }
+
+/**
+ * Executa uma ação num item da Meta. Acha a conta dona do item no banco (o
+ * cliente NÃO manda token nem escolhe conta), confere a permissão e
+ * espelha o resultado em `ad_entities` para a tela refletir na hora.
+ */
+export async function executarAcao(nivel: NivelAnuncio, externalId: string, acao: AcaoCampanha): Promise<{
+  ok: boolean; error?: string; precisaPermissao?: boolean
+}> {
+  try {
+    const tenantId = await getTenantId()
+    if (!/^\d{5,30}$/.test(externalId)) return { ok: false, error: 'ID inválido.' }
+    const admin = createAdminClient()
+    const { data: ent } = await admin.from('ad_entities')
+      .select('id, ad_account_id, daily_budget_cents, name')
+      .eq('tenant_id', tenantId).eq('level', nivel).eq('external_id', externalId).maybeSingle()
+    if (!ent) return { ok: false, error: 'Item não encontrado nesta conta.' }
+    const { data: conta } = await admin.from('ad_accounts').select('id, access_token, status')
+      .eq('id', ent.ad_account_id).eq('tenant_id', tenantId).maybeSingle()
+    if (!conta?.access_token) return { ok: false, error: 'Conta sem token. Reconecte.' }
+
+    const concedidas = await permissoesDoToken(String(conta.access_token)).catch(() => [] as string[])
+    if (!concedidas.includes(PERMISSAO_ACOES)) {
+      return { ok: false, precisaPermissao: true, error: `Para mexer na campanha o token precisa da permissão ${PERMISSAO_ACOES}. Gere um token novo no Explorador marcando ads_read + ads_management e reconecte a conta.` }
+    }
+
+    const agora = new Date().toISOString()
+    if (acao.tipo === 'status') {
+      await alterarStatus(externalId, acao.status, String(conta.access_token))
+      await admin.from('ad_entities').update({ status: acao.status, effective_status: acao.status, synced_at: agora }).eq('id', ent.id)
+    } else {
+      await alterarOrcamentoDiario(externalId, nivel, acao.novoCents, ent.daily_budget_cents ?? null, String(conta.access_token))
+      await admin.from('ad_entities').update({ daily_budget_cents: acao.novoCents, synced_at: agora }).eq('id', ent.id)
+    }
+    console.info(`[trafego] ação ${acao.tipo} em ${nivel}/${externalId} (${ent.name ?? '-'}) por tenant ${tenantId}`)
+    revalidatePath('/trafego')
+    return { ok: true }
+  } catch (err) { return { ok: false, error: mensagemDeErro(err) } }
 }

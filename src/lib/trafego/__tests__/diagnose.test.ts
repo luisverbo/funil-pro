@@ -201,7 +201,7 @@ test('12) o analista não chama IA — nem custo, nem número inventado', () => 
   const painel = ler('src/app/(dashboard)/trafego/page.tsx')
   // 29/09: o painel passou a mostrar a Mesa de estrategistas (mesa.ts), que
   // também é regra pura, sem IA na decisão. O diagnose segue no cron.
-  assert.ok(painel.includes('<PainelTrafego contaInicial={conta} dias={dias} nivel={nivel} />'), 'o painel mostra a Mesa de estrategistas')
+  assert.ok(painel.includes('<PainelTrafego contaInicial={conta} periodoInicial={periodo} nivel={nivel} />'), 'o painel mostra a Mesa de estrategistas')
 })
 
 // ─── Execução ───────────────────────────────────────────────────────────────

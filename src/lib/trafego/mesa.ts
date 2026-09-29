@@ -78,6 +78,8 @@ export interface LinhaMesa {
   /** Campanha dona (para concentração e contexto). */
   campanhaId: string | null
   status: string | null        // effective_status da Meta
+  /** ad_accounts.id dona do item — para as ações acharem o token certo. */
+  contaId?: string | null
   orcamentoDiarioCents: number | null
   gastoCents: number
   impressoes: number
