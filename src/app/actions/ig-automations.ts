@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { listRecentMedia, getConnectedAccount, type IgMedia, type ContaConectada } from '@/lib/instagram'
 import type { DmStep } from '@/lib/instagram/sequence'
+import { nomeDaCopia } from '@/lib/pages/editor-path'
 
 export interface IgAutomation {
   id: string
@@ -133,6 +134,47 @@ export async function updateIgAutomation(id: string, patch: Partial<IgAutomation
     revalidatePath('/instagram')
     return { success: true }
   } catch (err) { return { success: false, error: String(err) } }
+}
+
+/**
+ * Duplica uma automação inteira (gatilho, palavras-chave, respostas, DMs,
+ * ramificações, porteiro, funil, tag, posições do canvas). A cópia nasce
+ * PAUSADA e com contadores zerados: ativa, ela disputaria os mesmos
+ * comentários da original antes de você trocar o post.
+ */
+export async function duplicateIgAutomation(id: string): Promise<{ automation?: IgAutomation; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const supabase = await getSupabase()
+    const { data: orig, error: e1 } = await supabase
+      .from('ig_automations').select('*').eq('id', id).eq('tenant_id', tenantId).single()
+    if (e1 || !orig) return { error: e1?.message ?? 'Automação não encontrada' }
+    const o = orig as IgAutomation
+    const { data, error } = await supabase.from('ig_automations').insert({
+      tenant_id: tenantId,
+      name: nomeDaCopia(o.name),
+      status: 'paused',
+      trigger_type: o.trigger_type,
+      media_id: o.media_id,
+      conteudo_id: o.conteudo_id,
+      media_caption: o.media_caption,
+      media_thumb: o.media_thumb,
+      keywords: o.keywords ?? [],
+      comment_replies: o.comment_replies ?? [],
+      dm_message: o.dm_message,
+      dm_steps: o.dm_steps,
+      dm_use_agent: o.dm_use_agent,
+      funnel_id: o.funnel_id,
+      lead_tag: o.lead_tag,
+      follow_gate: o.follow_gate,
+      follow_gate_message: o.follow_gate_message,
+      canvas: o.canvas,
+      triggers_count: 0,
+    }).select('*').single()
+    if (error || !data) return { error: error?.message ?? 'Não consegui duplicar' }
+    revalidatePath('/instagram')
+    return { automation: data as IgAutomation }
+  } catch (err) { return { error: String(err) } }
 }
 
 export async function deleteIgAutomation(id: string): Promise<{ success: boolean; error?: string }> {
