@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   listarConteudos, contagemPorStatus, aprovarConteudo, aprovarTodosPendentes, descartarConteudo,
-  voltarParaPendente, editarConteudo, tentarDeNovo, publicarAgora,
+  voltarParaPendente, editarConteudo, tentarDeNovo, publicarAgora, repostarConteudo,
 } from '@/lib/conteudos-ig/client'
 import {
   recorteVisivel, rotuloDataHora, paraInputLocal, gradeDaSemana, inicioDaSemana, somarDias,
@@ -464,6 +464,10 @@ export default function ConteudosClient({ itensIniciais, erroInicial, contagemIn
                   void agir(aberto.id, () => publicarAgora(aberto.id), 'Publicado no Instagram')
                 }}
                 onSalvar={patch => agir(aberto.id, () => editarConteudo(aberto.id, patch), 'Salvo')}
+                onRepostar={dataLocal => {
+                  if (!confirm('Repostar este conteúdo? Ele volta para a agenda e será publicado de novo no horário escolhido. Lembre de apagar o post antigo no Instagram, se ainda estiver lá.')) return
+                  void agir(aberto.id, () => repostarConteudo(aberto.id, dataLocal || undefined), 'Reagendado para repostar')
+                }}
               />
             </div>
           </div>
@@ -548,7 +552,7 @@ function Miniatura({ c, className }: { c: Conteudo; className?: string }) {
 
 // ── Card ────────────────────────────────────────────────────────────────────
 
-function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, onPublicarAgora, onSalvar }: {
+function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, onPublicarAgora, onSalvar, onRepostar }: {
   c: Conteudo
   ocupado: boolean
   onAprovar: () => void
@@ -556,6 +560,7 @@ function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, 
   onVoltar: () => void
   onTentar: () => void
   onPublicarAgora: () => void
+  onRepostar: (dataLocal: string) => void
   onSalvar: (patch: { descricao?: string; alt_text?: string | null; hashtags?: string[]; palavra_chave?: string | null; data_local?: string }) => void
 }) {
   const [editando, setEditando] = useState(false)
@@ -566,6 +571,7 @@ function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, 
   const [dataLocal, setDataLocal] = useState(paraInputLocal(c.data_agendada))
   const [slide, setSlide] = useState(0)
   const [verMais, setVerMais] = useState(false)
+  const [dataRepost, setDataRepost] = useState('')
 
   const acoes = acoesPermitidas(c.status)
   const { visivel, resto } = recorteVisivel(c.descricao)
@@ -707,6 +713,20 @@ function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, 
             )}
             {acoes.includes('voltar_para_pendente') && (
               <button onClick={onVoltar} disabled={ocupado} className="rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">↩ Voltar para pendente</button>
+            )}
+            {acoes.includes('repostar') && (
+              <div className="col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                <p className="text-sm font-semibold text-indigo-950">🔁 Repostar</p>
+                <p className="mt-0.5 text-xs text-indigo-900/70">Apagou o post no Instagram ou saiu na hora errada? Agende de novo.</p>
+                <label className="mt-2 block text-xs text-gray-600">Quando (horário de Brasília) — vazio = próxima vaga livre
+                  <input type="datetime-local" value={dataRepost} onChange={e => setDataRepost(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900" />
+                </label>
+                <button onClick={() => onRepostar(dataRepost)} disabled={ocupado}
+                  className="mt-2 w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                  {ocupado ? '…' : dataRepost ? 'Repostar nesta data' : 'Repostar na próxima vaga'}
+                </button>
+              </div>
             )}
             {acoes.includes('publicar_agora') && (
               <button onClick={onPublicarAgora} disabled={ocupado} className="col-span-2 rounded-xl border border-dashed border-gray-300 py-2 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">

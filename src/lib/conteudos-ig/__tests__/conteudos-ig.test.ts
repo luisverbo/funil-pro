@@ -56,7 +56,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(podeFazer('agendado', 'descartar'))
     assert.ok(podeFazer('erro', 'tentar_de_novo'))
     assert.deepEqual(acoesPermitidas('publicando'), [])
-    assert.deepEqual(acoesPermitidas('publicado'), [])
+    assert.deepEqual(acoesPermitidas('publicado'), ['repostar'])
     assert.deepEqual(acoesPermitidas('descartado'), ['voltar_para_pendente'])
     assert.ok(!podeFazer('agendado', 'aprovar'), 'aprovar duas vezes não existe')
   },

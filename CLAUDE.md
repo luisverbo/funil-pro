@@ -522,6 +522,19 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-05 — Conteúdos: fim das rajadas + Repostar**
+- CAUSA RAIZ dos reels saindo em sequência (04/10 e 05/10 09:20–09:32):
+  `puxar_fila` recuava TODOS os seguintes 1 dia às cegas → item ia para o
+  passado (cron publica vencido na hora) e empilhava vários no mesmo slot
+- Migration `20261005000000_conteudos_fila_sem_rajada.sql` APLICADA:
+  puxar_fila em corrente (cada um herda a data do anterior, vaga no passado
+  não puxa); reserva só publica vencido há ≤60 min (mais velho vira erro com
+  motivo) e no máximo 1 por tipo por rodada
+- Ações: editar recusa data no passado; aprovar/aprovar todos/tentar de novo
+  com data vencida vão para a próxima vaga; **Repostar** (publicado → agendado
+  na data escolhida ou próxima vaga, limpa ig_*)
+- Bateria: **982/982**
+
 **Atualização anterior:** 2026-09-23 — Módulo Conteúdos Instagram (aprovação + publicação automática)
 
 **O que foi feito (2026-09-18 a 23, PRs #106–#110):**

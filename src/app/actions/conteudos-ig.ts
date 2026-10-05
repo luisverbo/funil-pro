@@ -13,6 +13,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  dataNoFuturo, FOLGA_AGENDAMENTO_MS,
   podeFazer, statusValido, tipoValido, deInputLocalParaIso, MAX_LEGENDA, normalizarHashtags,
   type Conteudo, type StatusConteudo, type TipoConteudo,
 } from '@/lib/conteudos-ig/regras'
@@ -87,15 +88,25 @@ async function carregarDoTenant(id: string, tenantId: string): Promise<Conteudo 
   return (data as Conteudo | null) ?? null
 }
 
+/** Próximo slot livre do tipo (mesma RPC das skills). */
+async function proximaVaga(tenantId: string, tipo: TipoConteudo): Promise<string> {
+  const { data, error } = await createAdminClient().rpc('proxima_data_livre', { p_tenant_id: tenantId, p_tipo: tipo })
+  if (error) throw new Error(error.message)
+  return String(data)
+}
+
 export async function aprovarConteudo(id: string): Promise<{ success: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
     const item = await carregarDoTenant(id, tenantId)
     if (!item) return { success: false, error: 'Conteúdo não encontrado' }
     if (!podeFazer(item.status, 'aprovar')) return { success: false, error: `Não dá para aprovar um item ${item.status}` }
+    // Aprovar item com data vencida publicaria NA HORA (foi assim que posts
+    // saíram fora de hora em 04–05/10). Vai para a próxima vaga livre.
+    const upd: Record<string, unknown> = { status: 'agendado', aprovado_em: new Date().toISOString(), erro: null }
+    if (!dataNoFuturo(item.data_agendada)) upd.data_agendada = await proximaVaga(tenantId, item.tipo)
     const { error } = await createAdminClient().from('conteudos_instagram')
-      .update({ status: 'agendado', aprovado_em: new Date().toISOString(), erro: null })
-      .eq('id', id).eq('tenant_id', tenantId)
+      .update(upd).eq('id', id).eq('tenant_id', tenantId)
     return error ? { success: false, error: error.message } : { success: true }
   } catch (err) { return { success: false, error: String(err) } }
 }
@@ -103,11 +114,22 @@ export async function aprovarConteudo(id: string): Promise<{ success: boolean; e
 export async function aprovarTodosPendentes(): Promise<{ success: boolean; aprovados?: number; error?: string }> {
   try {
     const tenantId = await getTenantId()
-    const { data, error } = await createAdminClient().from('conteudos_instagram')
-      .update({ status: 'agendado', aprovado_em: new Date().toISOString(), erro: null })
-      .eq('tenant_id', tenantId).eq('status', 'pendente').select('id')
+    const admin = createAdminClient()
+    const agora = new Date().toISOString()
+    // Futuros: aprova de uma vez. Vencidos: um a um, cada um na próxima vaga.
+    const { data, error } = await admin.from('conteudos_instagram')
+      .update({ status: 'agendado', aprovado_em: agora, erro: null })
+      .eq('tenant_id', tenantId).eq('status', 'pendente')
+      .gt('data_agendada', new Date(Date.now() + FOLGA_AGENDAMENTO_MS).toISOString()).select('id')
     if (error) return { success: false, error: error.message }
-    return { success: true, aprovados: (data ?? []).length }
+    const { data: vencidos } = await admin.from('conteudos_instagram').select('id, tipo')
+      .eq('tenant_id', tenantId).eq('status', 'pendente').order('data_agendada')
+    for (const v of vencidos ?? []) {
+      await admin.from('conteudos_instagram')
+        .update({ status: 'agendado', aprovado_em: agora, erro: null, data_agendada: await proximaVaga(tenantId, v.tipo as TipoConteudo) })
+        .eq('id', v.id).eq('tenant_id', tenantId)
+    }
+    return { success: true, aprovados: (data ?? []).length + (vencidos ?? []).length }
   } catch (err) { return { success: false, error: String(err) } }
 }
 
@@ -163,6 +185,7 @@ export async function editarConteudo(
     if (patch.data_local !== undefined) {
       const iso = deInputLocalParaIso(patch.data_local)
       if (!iso) return { success: false, error: 'Data inválida' }
+      if (!dataNoFuturo(iso)) return { success: false, error: 'Escolha um horário no futuro — data no passado faria o post sair na hora.' }
       upd.data_agendada = iso
     }
     if (Object.keys(upd).length === 0) return { success: true }
@@ -179,9 +202,40 @@ export async function tentarDeNovo(id: string): Promise<{ success: boolean; erro
     const item = await carregarDoTenant(id, tenantId)
     if (!item) return { success: false, error: 'Conteúdo não encontrado' }
     if (!podeFazer(item.status, 'tentar_de_novo')) return { success: false, error: `Não dá para tentar de novo um item ${item.status}` }
+    const upd: Record<string, unknown> = { status: 'agendado', tentativas: 0, erro: null }
+    if (!dataNoFuturo(item.data_agendada)) upd.data_agendada = await proximaVaga(tenantId, item.tipo)
     const { error } = await createAdminClient().from('conteudos_instagram')
-      .update({ status: 'agendado', tentativas: 0, erro: null }).eq('id', id).eq('tenant_id', tenantId)
+      .update(upd).eq('id', id).eq('tenant_id', tenantId)
     return error ? { success: false, error: error.message } : { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
+/**
+ * Repostar um item já publicado (ex.: o post foi apagado no Instagram porque
+ * saiu na hora errada). Limpa os dados da publicação antiga e agenda de novo:
+ * na data escolhida (horário de Brasília) ou na próxima vaga livre do tipo.
+ */
+export async function repostarConteudo(id: string, dataLocal?: string): Promise<{ success: boolean; data_agendada?: string; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const item = await carregarDoTenant(id, tenantId)
+    if (!item) return { success: false, error: 'Conteúdo não encontrado' }
+    if (!podeFazer(item.status, 'repostar')) return { success: false, error: `Só dá para repostar um item publicado (este está ${item.status})` }
+    let data: string
+    if (dataLocal) {
+      const iso = deInputLocalParaIso(dataLocal)
+      if (!iso) return { success: false, error: 'Data inválida' }
+      if (!dataNoFuturo(iso)) return { success: false, error: 'Escolha um horário no futuro.' }
+      data = iso
+    } else {
+      data = await proximaVaga(tenantId, item.tipo)
+    }
+    const { error } = await createAdminClient().from('conteudos_instagram').update({
+      status: 'agendado', data_agendada: data, aprovado_em: new Date().toISOString(),
+      ig_container_id: null, ig_media_id: null, ig_permalink: null, publicado_em: null,
+      erro: null, tentativas: 0, publicando_desde: null,
+    }).eq('id', id).eq('tenant_id', tenantId).eq('status', 'publicado')
+    return error ? { success: false, error: error.message } : { success: true, data_agendada: data }
   } catch (err) { return { success: false, error: String(err) } }
 }
 

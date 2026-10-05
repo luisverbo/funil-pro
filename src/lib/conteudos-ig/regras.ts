@@ -65,7 +65,7 @@ export interface Conteudo {
 // ── Transições ──────────────────────────────────────────────────────────────
 
 /** O que o dono pode fazer com um item em cada status. */
-export type Acao = 'aprovar' | 'descartar' | 'editar' | 'tentar_de_novo' | 'publicar_agora' | 'voltar_para_pendente'
+export type Acao = 'aprovar' | 'descartar' | 'editar' | 'tentar_de_novo' | 'publicar_agora' | 'voltar_para_pendente' | 'repostar'
 
 export function acoesPermitidas(status: StatusConteudo): Acao[] {
   switch (status) {
@@ -73,13 +73,24 @@ export function acoesPermitidas(status: StatusConteudo): Acao[] {
     case 'agendado':   return ['descartar', 'editar', 'publicar_agora', 'voltar_para_pendente']
     case 'erro':       return ['tentar_de_novo', 'descartar', 'editar', 'publicar_agora']
     case 'publicando': return []
-    case 'publicado':  return []
+    // Repostar: o post foi apagado no Instagram (ou saiu na hora errada) e o
+    // dono quer agendar de novo. Volta para a fila numa data livre.
+    case 'publicado':  return ['repostar']
     case 'descartado': return ['voltar_para_pendente']
   }
 }
 
 export function podeFazer(status: StatusConteudo, acao: Acao): boolean {
   return acoesPermitidas(status).includes(acao)
+}
+
+/** Folga mínima para uma data agendada valer: data no passado publicaria na hora. */
+export const FOLGA_AGENDAMENTO_MS = 2 * 60 * 1000
+
+/** A data escolhida ainda está no futuro (com folga)? Puro. */
+export function dataNoFuturo(iso: string, agora: Date = new Date()): boolean {
+  const t = Date.parse(iso)
+  return Number.isFinite(t) && t > agora.getTime() + FOLGA_AGENDAMENTO_MS
 }
 
 // ── Legenda ─────────────────────────────────────────────────────────────────
