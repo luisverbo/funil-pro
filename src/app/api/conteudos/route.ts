@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 import {
   listarConteudos, contagemPorStatus, conexaoInstagram,
   aprovarConteudo, aprovarTodosPendentes, descartarConteudo, voltarParaPendente,
-  editarConteudo, tentarDeNovo, publicarAgora, proximaDataLivre,
+  editarConteudo, tentarDeNovo, publicarAgora, proximaDataLivre, repostarConteudo,
 } from '@/app/actions/conteudos-ig'
 
 // Publicar agora espera a Meta processar vídeo — pode levar minutos.
@@ -19,7 +19,7 @@ export const maxDuration = 300
 const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   listarConteudos, contagemPorStatus, conexaoInstagram,
   aprovarConteudo, aprovarTodosPendentes, descartarConteudo, voltarParaPendente,
-  editarConteudo, tentarDeNovo, publicarAgora, proximaDataLivre,
+  editarConteudo, tentarDeNovo, publicarAgora, proximaDataLivre, repostarConteudo,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
