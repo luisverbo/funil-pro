@@ -328,6 +328,19 @@ export async function POST(request: NextRequest) {
               if (pendingJobs && pendingJobs.length > 0) {
                 await admin.from('ig_sequence_jobs').update({ scheduled_for: new Date().toISOString() }).eq('id', pendingJobs[0].id)
                 console.log(`[ig] quick reply "${text}" — próximo passo adiantado`)
+                continue
+              }
+              // Nada pendente: a sequência parou neste botão esperando o clique.
+              // Continua do passo seguinte ao que tem o botão.
+              const passos = resolveSteps(auto as { dm_steps?: unknown })
+              const k = passos.findIndex(p => p.id && p.id === found?.ownerId)
+              if (k >= 0 && k + 1 < passos.length) {
+                await startSequence({
+                  tenantId: auto.tenant_id, automationId: curAutoId, igUserId: senderId,
+                  commentId: null, steps: passos.slice(k + 1), offset: k + 1, admin,
+                }).catch(e => console.error('[ig] continuação', String(e)))
+                await recordAutomationContact(admin, auto.tenant_id, curAutoId, senderId).catch(() => {})
+                console.log(`[ig] clique "${text}" → sequência continua do passo ${k + 1}`)
               }
               continue
             }

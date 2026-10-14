@@ -41,8 +41,11 @@ export async function startSequence(params: {
   commentId?: string | null
   steps: DmStep[]
   admin: ReturnType<typeof createAdminClient>
+  /** Índice do 1º passo dentro de dm_steps (continuação depois de um clique). */
+  offset?: number
 }): Promise<void> {
   const { tenantId, automationId, igUserId, commentId, steps, admin } = params
+  const offset = params.offset ?? 0
   if (steps.length === 0) return
 
   let cumulativeMin = 0
@@ -55,9 +58,13 @@ export async function startSequence(params: {
       await sendStep(igUserId, commentId ?? null, steps[i]).catch(e => console.error('[ig-seq] passo 0', String(e)))
       await logOutbound(admin, tenantId, igUserId, steps[i].text || (steps[i].media_type ? `[${steps[i].media_type}]` : '(mensagem com botões)'), 'automation').catch(() => {})
       await countSent(admin, automationId, steps[i].id)
-      continue
+    } else {
+      jobs.push({ step_index: offset + i, scheduled_for: new Date(Date.now() + cumulativeMin * 60_000).toISOString() })
     }
-    jobs.push({ step_index: i, scheduled_for: new Date(Date.now() + cumulativeMin * 60_000).toISOString() })
+    // Mensagem com botão de resposta ("Quero o link"): o resto da sequência
+    // ESPERA o clique. Antes saía junto, a Meta recusava ("fora da janela",
+    // a pessoa ainda não tinha respondido) e o clique não tinha o que enviar.
+    if (esperaClique(steps[i])) break
   }
 
   if (jobs.length > 0) {
@@ -147,7 +154,20 @@ export async function processIgSequenceJobs(): Promise<{ sent: number }> {
  * nunca "casar" com o próprio clique.
  */
 export function chaveDoBotao(t: string | null | undefined): string {
-  return (t ?? '').toLowerCase().trim().slice(0, 20).trim()
+  const cortado = (t ?? '').trim().slice(0, 20)
+  // CAUSA RAIZ do "cliquei em Quero o link 👉 e não veio nada" (14/10): o
+  // Instagram devolveu o clique como "Quero o link �" — o emoji chega
+  // quebrado. Compara só letras e números: emoji, pontuação e o caractere
+  // estragado (U+FFFD) saem dos dois lados.
+  const limpo = cortado.normalize('NFKC').toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim()
+  // Botão só de emoji: sem letra nenhuma, mantém a comparação antiga.
+  return limpo || cortado.toLowerCase().trim()
+}
+
+/** O passo tem botão de RESPOSTA (sem link)? A partir dele, a sequência espera o clique. */
+export function esperaClique(step: DmStep | undefined): boolean {
+  return !!step?.buttons?.some(b => b.title && !b.url)
 }
 
 /** A árvore de passos tem um botão de RESPOSTA com esse texto? (clique ou digitado) */
