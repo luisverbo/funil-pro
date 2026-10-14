@@ -522,6 +522,16 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-14 — Instagram: clique em botão com emoji + sequência espera o clique**
+- Automação PLUGUE EDITOR: clique em "Quero o link 👉" chegou como
+  "Quero o link �" (emoji quebrado) → `chaveDoBotao` agora compara só letras e
+  números (NFKC, tira emoji/pontuação/U+FFFD; botão só de emoji mantém o antigo)
+- 2ª mensagem saía junto com a 1ª e a Meta recusava ("outside of allowed
+  window"): `startSequence` PARA no passo com botão de resposta
+  (`esperaClique`); clique sem passo pendente continua do passo seguinte
+  (`offset` no step_index)
+- Bateria: **987/987**
+
 **2026-10-05 — Conteúdos: fim das rajadas + Repostar**
 - CAUSA RAIZ dos reels saindo em sequência (04/10 e 05/10 09:20–09:32):
   `puxar_fila` recuava TODOS os seguintes 1 dia às cegas → item ia para o
