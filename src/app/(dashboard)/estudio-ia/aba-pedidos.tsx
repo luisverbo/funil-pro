@@ -121,6 +121,7 @@ function DetalhePedido({ id, onMudou }: { id: string; onMudou: () => void }) {
           <p className="text-xs text-slate-500">🆔 <span className="font-mono">{id}</span></p>
           <p className="mt-1 text-sm text-slate-700">{String(p.tema_slug ?? '—')} · {p.tipo === 'previa' ? 'prévia (1 pose)' : `${p.pacote_qtd} fotos`} · poses {poses.join(', ') || '—'}</p>
           <p className="text-xs text-slate-500">Idade {String(p.idade ?? '—')} · cabelo {String(p.cabelo ?? '—')} · {String(p.preferencias ?? 'sem preferências')}</p>
+          {p.forma_pagamento === 'hotmart' && p.hotmart_transacao ? <p className="text-xs font-medium text-sky-800">🌎 Pago via Hotmart · transação {String(p.hotmart_transacao)} · {reais(p.valor_pago_cents, p.moeda)}</p> : null}
           <p className="text-xs text-slate-500">Pago {reais(p.valor_pago_cents, p.moeda)} em {hora(p.pago_em)} ({String(p.pago_por ?? '—')}) · motor {p.motor === 'api_gemini' ? '🤖 API (Gemini)' : '💻 ChatGPT site'} · custo IA US$ {Number(p.custo_ia_usd ?? 0).toFixed(3)}</p>
           {Number(p.ajustes_usados ?? 0) > 0 && <p className="mt-1 whitespace-pre-line rounded bg-rose-50 p-2 text-xs text-rose-800">Ajustes ({String(p.ajustes_usados)}): {String(p.observacoes_ajuste ?? '')}</p>}
           {Boolean(p.entrega_erro || p.api_erro) && <p className="mt-1 rounded bg-red-50 p-2 text-xs text-red-700">{String(p.entrega_erro ?? p.api_erro)}</p>}

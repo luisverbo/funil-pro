@@ -522,6 +522,27 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-31 — Estúdio IA, Fase 7 (Hotmart — pagamento internacional em USD)**
+- Migration `20261031000000_estudio_ia_hotmart.sql` (PENDENTE no Studio):
+  `estudio_config.hotmart_hottok` (só service role) + `hotmart_produto_id`
+  (8794754), `estudio_pedidos.hotmart_transacao` UNIQUE, status
+  'reembolsado', 5 linhas `estudio_precos` pais='INT' em USD com o link da
+  oferta (2/3/5/10/15 = 6,90/8,90/11,90/16,90/21,90)
+- Preço por país: BR → BR; fora do Brasil → país, senão 'INT' (antes caía
+  no BRL). Ana: fechamento com link `<oferta>&sck=<pedido_id>` no lugar do
+  Pix (`hotmart_link`), sem comprovante (`hotmart_print`), lembrete/cobrança
+  com o link; `pagaPelaHotmart(dados)`
+- Webhook `POST /api/webhooks/hotmart` (o dos funis segue em `[tenantId]`):
+  `tratarWebhookHotmart` em `src/lib/estudio/hotmart-servidor.ts` — hottok
+  → tenant (401), v2.0.0, pedido por sck → telefone → e-mail já visto,
+  confere produto/oferta/valor USD (`original_offer_price`), repetido nunca
+  conta 2× (estudio_eventos + UNIQUE), `marcarPago(pago_por='hotmart')` →
+  mesma fila/aviso do Pix; estorno → reembolsado/cancelado; sem pedido → aviso
+- Telas: cartões Hotmart (URL do webhook, hottok só de escrita) e Preços
+  (editar BR/INT) em Configurações; Faturamento por moeda + total estimado
+  em R$ no Painel; "Pago via Hotmart · transação" no pedido
+- Bateria: **1112/1112**
+
 **2026-10-30 — Estúdio IA: Ana humanizada + correção das 2 fotos juntas**
 - Migration `20261030000000_estudio_ia_humano.sql` (PENDENTE no Studio):
   `estudio_travar_conversa` (trava por conversa), `estudio_add_foto` (lista

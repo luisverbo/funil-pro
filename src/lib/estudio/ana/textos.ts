@@ -348,6 +348,24 @@ export const TEXTOS: Tabela = {
     es: '{nome}, tu sesión está tardando un poquito más de lo normal porque estamos cuidando cada foto 💖 ¡Te la envío muy pronto!',
     en: "{nome}, your shoot is taking a little longer than usual because we're perfecting every photo 💖 It's coming very soon!",
   },
+  hotmart_link: {
+    'pt-BR': 'Perfeito! 💖 Você pode pagar aqui com segurança (cartão, na sua moeda): {pagar}\nAssim que o pagamento confirmar, seguimos por aqui 😉',
+    'pt-PT': 'Perfeito! 💖 Podes pagar aqui em segurança (cartão, na tua moeda): {pagar}\nAssim que o pagamento for confirmado, continuamos por aqui 😉',
+    es: '¡Perfecto! 💖 Podés pagar acá de forma segura (tarjeta, en tu moneda): {pagar}\nApenas se confirme el pago, seguimos por acá 😉',
+    en: 'Perfect! 💖 You can pay here securely (card, in your currency): {pagar}\nAs soon as the payment is confirmed, we continue right here 😉',
+  },
+  hotmart_print: {
+    'pt-BR': 'Não precisa mandar comprovante 😊 A confirmação chega aqui automaticamente em alguns minutos!',
+    'pt-PT': 'Não precisas de enviar comprovativo 😊 A confirmação chega aqui automaticamente em alguns minutos!',
+    es: 'No hace falta enviar comprobante 😊 ¡La confirmación llega acá automáticamente en unos minutos!',
+    en: "No need to send a receipt 😊 The confirmation arrives here automatically within a few minutes!",
+  },
+  hotmart_lembrete: {
+    'pt-BR': 'Quando quiser, é só pagar por aqui: {pagar} 😉',
+    'pt-PT': 'Quando quiseres, é só pagar por aqui: {pagar} 😉',
+    es: 'Cuando quieras, podés pagar acá: {pagar} 😉',
+    en: 'Whenever you are ready, you can pay here: {pagar} 😉',
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',
