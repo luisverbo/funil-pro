@@ -15,6 +15,11 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { lerPosesJson, normalizarNumero, BUCKET_CATALOGO, caminhoExemplo, type Tema, type Pose } from '@/lib/estudio/catalogo'
 import posesPadrao from '@/lib/estudio/dados/poses.json'
+import {
+  normalizarWhatsApp, statusDoNumero, registrarNumero, appsInscritos, inscreverApp, limparErro,
+  type StatusDoNumero, type AppInscrito,
+} from '@/lib/estudio/whatsapp'
+import { enviarEstudio } from '@/lib/estudio/entrada'
 
 async function getTenantId(): Promise<string> {
   const cookieStore = await cookies()
@@ -162,4 +167,156 @@ export async function subirFotoExemplo(temaSlug: string, numero: string, base64:
     revalidatePath('/estudio/catalogo')
     return { success: true, path }
   } catch (err) { return { success: false, error: String(err) } }
+}
+
+// ── Fase 2: conexão do WhatsApp do estúdio ──────────────────────────────────
+// O TOKEN nunca volta para a tela: só "tem token: sim/não".
+
+export interface ConfigEstudioTela {
+  waba_id: string | null
+  phone_number_id: string | null
+  display_number: string | null
+  whatsapp_avisos: string | null
+  resposta_teste: string | null
+  ativo: boolean
+  temToken: boolean
+  verificado_em: string | null
+}
+
+async function configCompleta(tenantId: string) {
+  const { data, error } = await createAdminClient().from('estudio_config')
+    .select('waba_id, phone_number_id, display_number, whatsapp_avisos, resposta_teste, ativo, access_token, verificado_em')
+    .eq('tenant_id', tenantId).maybeSingle()
+  if (error) throw new Error(avisoDeTabela(error.message).replace('20261023000000_estudio_ia_fase1', '20261024000000_estudio_ia_fase2'))
+  return data
+}
+
+export async function lerConfigEstudio(): Promise<{ config: ConfigEstudioTela | null; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await configCompleta(tenantId)
+    if (!c) return { config: null }
+    const { access_token, ...resto } = c
+    return { config: { ...resto, ativo: !!resto.ativo, temToken: !!access_token } as ConfigEstudioTela }
+  } catch (err) { return { config: null, error: err instanceof Error ? err.message : String(err) } }
+}
+
+export async function salvarConfigEstudio(patch: {
+  waba_id?: string; phone_number_id?: string; display_number?: string; whatsapp_avisos?: string
+  resposta_teste?: string; access_token?: string; ativo?: boolean
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const upd: Record<string, unknown> = { tenant_id: tenantId, atualizado_em: new Date().toISOString() }
+    const digitos = (v?: string) => (v ?? '').replace(/\D/g, '')
+    if (patch.waba_id !== undefined) upd.waba_id = digitos(patch.waba_id) || null
+    if (patch.phone_number_id !== undefined) {
+      const id = digitos(patch.phone_number_id)
+      if (id) {
+        // O número do estúdio não pode estar ao mesmo tempo no inbox normal.
+        const { data: noInbox } = await createAdminClient().from('wa_accounts').select('id').eq('phone_number_id', id).maybeSingle()
+        if (noInbox) return { success: false, error: 'Esse número já está conectado na aba WhatsApp (inbox). Remova de lá antes: o número do estúdio tem que ser exclusivo.' }
+      }
+      upd.phone_number_id = id || null
+    }
+    if (patch.display_number !== undefined) upd.display_number = patch.display_number.trim() || null
+    if (patch.whatsapp_avisos !== undefined) {
+      const n = normalizarWhatsApp(patch.whatsapp_avisos)
+      if (patch.whatsapp_avisos.trim() && !n) return { success: false, error: 'WhatsApp para avisos inválido. Use DDD + número.' }
+      upd.whatsapp_avisos = n
+    }
+    if (patch.resposta_teste !== undefined) upd.resposta_teste = patch.resposta_teste.trim().slice(0, 1000) || null
+    if (patch.access_token !== undefined && patch.access_token.trim()) upd.access_token = patch.access_token.trim()
+    if (patch.ativo !== undefined) upd.ativo = !!patch.ativo
+    const { error } = await createAdminClient().from('estudio_config').upsert(upd, { onConflict: 'tenant_id' })
+    if (error) return { success: false, error: avisoDeTabela(error.message) }
+    revalidatePath('/estudio-ia'); revalidatePath('/estudio/catalogo')
+    return { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
+async function exigirConexao(tenantId: string) {
+  const c = await configCompleta(tenantId)
+  if (!c?.phone_number_id || !c.access_token) throw new Error('Preencha o phone_number_id e cole o token antes.')
+  return c as typeof c & { phone_number_id: string; access_token: string }
+}
+
+/** Pergunta à Meta o estado do número (nome, verificação, registro, qualidade). */
+export async function testarConexaoEstudio(): Promise<{ status?: StatusDoNumero; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    const status = await statusDoNumero(c.phone_number_id, c.access_token)
+    await createAdminClient().from('estudio_config').update({ verificado_em: new Date().toISOString() }).eq('tenant_id', tenantId)
+    return { status }
+  } catch (err) { return { error: err instanceof Error ? err.message : String(err) } }
+}
+
+/** POST /{phone_number_id}/register com o PIN de 6 dígitos escolhido pelo dono. O PIN não é guardado. */
+export async function registrarNumeroEstudio(pin: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    await registrarNumero(c.phone_number_id, c.access_token, String(pin ?? '').trim())
+    return { success: true }
+  } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
+}
+
+export async function appsDaWaba(): Promise<{ apps?: AppInscrito[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    if (!c.waba_id) return { error: 'Preencha o WABA id.' }
+    return { apps: await appsInscritos(c.waba_id, c.access_token) }
+  } catch (err) { return { error: err instanceof Error ? err.message : String(err) } }
+}
+
+export async function inscreverAppNaWaba(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    if (!c.waba_id) return { success: false, error: 'Preencha o WABA id.' }
+    await inscreverApp(c.waba_id, c.access_token)
+    return { success: true }
+  } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
+}
+
+/**
+ * Manda um texto de teste para o WhatsApp dos avisos. Pela regra da Meta só
+ * sai se esse número falou com o estúdio nas últimas 24h.
+ */
+export async function enviarTesteAvisos(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    if (!c.whatsapp_avisos) return { success: false, error: 'Preencha o seu WhatsApp para avisos.' }
+    const r = await enviarEstudio(createAdminClient(), { tenant_id: tenantId, phone_number_id: c.phone_number_id, access_token: c.access_token },
+      null, c.whatsapp_avisos, '✅ Teste do Estúdio IA: os avisos de novo pedido vão chegar aqui.')
+    if (r.ok) return { success: true }
+    const fora = /24|window|re-engage|131047/i.test(r.erro ?? '')
+    return { success: false, error: fora
+      ? 'A Meta só deixa o estúdio te escrever se você mandou mensagem para o número do estúdio nas últimas 24h. Mande um "oi" do seu WhatsApp para o estúdio e tente de novo.'
+      : limparErro(r.erro ?? 'falhou') }
+  } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
+}
+
+export interface ConversaResumo { id: string; wa_id: string; nome: string | null; origem: string; ultima_msg_em: string; janela_ate: string | null; ultima: string | null; direcao: string | null }
+
+/** Últimas conversas do número do estúdio — para conferir o teste da Fase 2. */
+export async function ultimasConversasEstudio(): Promise<{ conversas: ConversaResumo[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: contatos, error } = await admin.from('estudio_contatos')
+      .select('id, wa_id, nome, origem, ultima_msg_em, janela_ate').eq('tenant_id', tenantId)
+      .order('ultima_msg_em', { ascending: false }).limit(20)
+    if (error) return { conversas: [], error: avisoDeTabela(error.message) }
+    const conversas: ConversaResumo[] = []
+    for (const c of contatos ?? []) {
+      const { data: m } = await admin.from('estudio_mensagens').select('texto, direcao')
+        .eq('contato_id', c.id).order('criado_em', { ascending: false }).limit(1).maybeSingle()
+      conversas.push({ ...(c as Omit<ConversaResumo, 'ultima' | 'direcao'>), ultima: m?.texto ?? null, direcao: m?.direcao ?? null })
+    }
+    return { conversas }
+  } catch (err) { return { conversas: [], error: String(err) } }
 }

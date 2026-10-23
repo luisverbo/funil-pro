@@ -522,6 +522,20 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-24 — Estúdio IA, Fase 2 (WhatsApp Cloud API do estúdio)**
+- Migration `20261024000000_estudio_ia_fase2.sql` — **PENDENTE no Studio**:
+  `estudio_config` (token só service role), `estudio_contatos` (wa_id, origem
+  anúncio/orgânico, referral, janela 24h/72h), `estudio_mensagens` (dedupe wamid)
+- Webhook `/api/webhooks/meta-wa` desvia o phone_number_id do estúdio ANTES do
+  inbox (`src/lib/estudio/entrada.ts`); parser ganhou `mediaId` e `referral`
+- `src/lib/estudio/whatsapp.ts`: janela, status do número, register com PIN,
+  subscribed_apps. Subaba Configurações (`aba-config.tsx`) com testar/
+  registrar/inscrever/teste de avisos e últimas conversas; resposta de teste
+  1×/30 min; catálogo público ganha botão wa.me com o número do estúdio
+- Número do estúdio: +55 21 99077-3595, phone_number_id 1418653454665224,
+  WABA 2250778325757289 (Cobrazap, BM LUIS)
+- Bateria: **1010/1010**
+
 **2026-10-23 — Estúdio IA, Fase 1 (catálogo)** — projeto completo enviado pelo dono
 (ensaio fotográfico com IA vendido pelo WhatsApp; 6 fases, seção 11)
 - Migration `20261023000000_estudio_ia_fase1.sql` — **PENDENTE de aplicar no

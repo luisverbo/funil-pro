@@ -15,6 +15,10 @@ export interface MensagemRecebida {
   tipo: string               // text | image | audio | document | button | interactive | outro
   corpo: string              // texto, legenda, ou descrição do que chegou
   timestamp: number          // epoch segundos
+  /** id da mídia na Meta (imagem/áudio/vídeo/documento) — baixa-se com o token. */
+  mediaId?: string | null
+  /** Clique em anúncio "Converse conosco" (Click-to-WhatsApp): source_id, headline, ctwa_clid… */
+  referral?: Record<string, unknown> | null
 }
 
 export interface StatusEntrega {
@@ -86,7 +90,12 @@ export function lerWebhookCloud(payload: unknown): WebhookLido {
         const de = String(m.from ?? '')
         if (!wamid || !de) continue
         const { tipo, corpo } = corpoDaMensagem(m)
+        const bloco = m[String(m.type ?? '')] as Json | undefined
+        const mediaId = bloco && typeof bloco === 'object' && typeof bloco.id === 'string' ? bloco.id : null
+        const referral = (m.referral && typeof m.referral === 'object') ? m.referral as Json : null
         saida.mensagens.push({
+          mediaId,
+          referral,
           phoneNumberId,
           wamid,
           de,

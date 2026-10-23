@@ -39,3 +39,10 @@ export async function temaPublico(slug: string): Promise<{ nome: string; poses: 
       .map(p => ({ numero: p.numero, foto: urlPublicaDoCatalogo(p.foto_exemplo_path, SUPA()) })),
   }
 }
+
+/** Número do estúdio para o botão "Escolher estas no WhatsApp" (só o número, nada de token). */
+export async function numeroDoEstudio(): Promise<string | null> {
+  const { data } = await createAdminClient().from('estudio_config')
+    .select('display_number').eq('ativo', true).not('display_number', 'is', null).limit(1).maybeSingle()
+  return (data?.display_number as string | undefined) ?? null
+}
