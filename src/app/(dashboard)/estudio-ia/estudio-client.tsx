@@ -11,6 +11,10 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { listarCatalogo, importarPoses, salvarTema, salvarPose, subirFotoExemplo } from '@/lib/estudio/client'
 import { urlPublicaDoCatalogo, type Pose, type Tema } from '@/lib/estudio/catalogo'
 import { FotoOuPlaceholder } from '@/lib/estudio/foto'
+import { AbaConfig } from './aba-config'
+
+/** Fase em construção: subabas até ela já funcionam (sem selo). */
+const FASE_ATUAL = 2
 
 type Catalogo = Awaited<ReturnType<typeof listarCatalogo>>
 
@@ -20,7 +24,7 @@ const SUBABAS = [
   { chave: 'catalogo', rotulo: 'Catálogo', fase: 1, texto: '' },
   { chave: 'atendente', rotulo: 'Atendente', fase: 3, texto: 'A Ana, do Estúdio: textos de cada etapa, áudios e cobranças.' },
   { chave: 'midias', rotulo: 'Mídias', fase: 3, texto: 'Áudios A1–A6, imagem do menu, PDFs dos catálogos e foto de perfil.' },
-  { chave: 'config', rotulo: 'Configurações', fase: 2, texto: 'Motor de produção, preços, prazo, ajustes grátis, Asaas, número do WhatsApp e seu WhatsApp para avisos.' },
+  { chave: 'config', rotulo: 'Configurações', fase: 2, texto: 'WhatsApp do estúdio (Fase 2). Motor de produção, preços, prazo, ajustes e Asaas chegam nas fases 4 e 5.' },
 ] as const
 type Subaba = (typeof SUBABAS)[number]['chave']
 
@@ -48,12 +52,12 @@ export default function EstudioClient({ inicial, supabaseUrl }: { inicial: Catal
           <button key={s.chave} onClick={() => router.replace(`/estudio-ia?aba=${s.chave}`, { scroll: false })}
             className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${aba === s.chave ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
             {s.rotulo}
-            {s.fase > 1 && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">Fase {s.fase}</span>}
+            {s.fase > FASE_ATUAL && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">Fase {s.fase}</span>}
           </button>
         ))}
       </nav>
 
-      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : (
+      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <AbaConfig /> : (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
           <p className="text-3xl">🛠️</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">{info.rotulo} chega na Fase {info.fase}</h2>

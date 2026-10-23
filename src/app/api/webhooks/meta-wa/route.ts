@@ -23,6 +23,7 @@ import { enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { processAgentMessage } from '@/lib/agents/chat'
 import { foneChave, foneBate } from '@/lib/webhooks/contato-match'
 import { escolherAtendente, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/distribuicao'
+import { configDoNumero, processarEntradaEstudio, type ConfigEstudio } from '@/lib/estudio/entrada'
 
 export const maxDuration = 60
 
@@ -64,9 +65,19 @@ export async function POST(request: NextRequest) {
   const { mensagens, statuses } = lerWebhookCloud(payload)
   const admin = createAdminClient()
 
+  // ── Estúdio IA: o número do estúdio é desviado ANTES do inbox ───────────
+  // Uma consulta por phone_number_id do lote; o que for do estúdio nunca
+  // entra em wa_conversations (nem se alguém cadastrar o mesmo número lá).
+  const estudioPorNumero = new Map<string, ConfigEstudio | null>()
+  const doEstudio = async (pnid: string) => {
+    if (!estudioPorNumero.has(pnid)) estudioPorNumero.set(pnid, await configDoNumero(admin, pnid))
+    return estudioPorNumero.get(pnid) ?? null
+  }
+
   // ── Status de entrega (✓✓ de verdade) ────────────────────────────────────
   for (const st of statuses) {
-    await admin.from('wa_messages')
+    const tabela = (await doEstudio(st.phoneNumberId)) ? 'estudio_mensagens' : 'wa_messages'
+    await admin.from(tabela)
       .update({ status_entrega: st.erro ? 'failed' : st.status })
       .eq('wamid', st.wamid)
   }
@@ -74,6 +85,12 @@ export async function POST(request: NextRequest) {
   // ── Mensagens recebidas ───────────────────────────────────────────────────
   for (const m of mensagens) {
     try {
+      const estudio = await doEstudio(m.phoneNumberId)
+      if (estudio) {
+        await processarEntradaEstudio(admin, estudio, m)
+        continue
+      }
+
       const { data: conta } = await admin
         .from('wa_accounts')
         .select('id, tenant_id, access_token, phone_number_id, agente_plantao_id, status, departamento_padrao_id')
