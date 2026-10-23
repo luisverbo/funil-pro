@@ -21,7 +21,7 @@ import {
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio, lerHumanizarAna, salvarHumanizarAna,
 } from '@/app/actions/estudio-ana'
 import {
-  lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
+  lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia, lerHotmartConfig, salvarHotmartConfig, listarPrecosEstudio, salvarPrecoEstudio, excluirPrecoEstudio, resumoFaturamento,
 } from '@/app/actions/estudio-pix'
 import {
   lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio,
@@ -43,6 +43,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
   lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
   lerHumanizarAna, salvarHumanizarAna, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio,
+  lerHotmartConfig, salvarHotmartConfig, listarPrecosEstudio, salvarPrecoEstudio, excluirPrecoEstudio, resumoFaturamento,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

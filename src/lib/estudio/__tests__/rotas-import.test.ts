@@ -38,7 +38,7 @@ function pacotesEstaticos(entrada: string): { pacotes: Map<string, string>; arqu
   return { pacotes, arquivos: vistos.size }
 }
 
-const ROTAS = ['src/app/api/estudio/route.ts', 'src/app/api/cron/estudio-producao/route.ts', 'src/app/api/webhooks/meta-wa/route.ts']
+const ROTAS = ['src/app/api/estudio/route.ts', 'src/app/api/cron/estudio-producao/route.ts', 'src/app/api/webhooks/meta-wa/route.ts', 'src/app/api/webhooks/hotmart/route.ts']
 
 const tests: Record<string, () => void | Promise<void>> = {
   'nenhum pacote nativo no carregamento das rotas do estúdio (só por import() dentro da função)': () => {

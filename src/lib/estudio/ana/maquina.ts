@@ -47,6 +47,9 @@ export interface Dados {
   cores?: string | null
   /** Reação (❤️) no lugar de texto: no máximo 1 a cada 10 min. */
   ultima_reacao_em?: string
+  /** Fora do Brasil: link da oferta da Hotmart do pacote e o link já com o pedido (sck). */
+  pagar_link?: string | null
+  hotmart_link?: string | null
   /** Quando a Ana fez a última pergunta (base das cobranças). */
   aguardando_desde?: string
 }
@@ -62,7 +65,7 @@ export interface Entrada {
   prefs?: { maquiagem: boolean | null; decote: boolean | null; cores_acessorios: string | null; idade: number | null; cabelo_mudar: string | null } | null
 }
 
-export interface Preco { pacote_qtd: number; valor_cents: number; moeda: string }
+export interface Preco { pacote_qtd: number; valor_cents: number; moeda: string; link_pagamento?: string | null }
 
 export interface Contexto {
   idioma: IdiomaAna
@@ -96,6 +99,7 @@ export type Acao =
   | { t: 'comprovante' }
   | { t: 'ajuste'; poses: string[]; obs: string }
   | { t: 'upsell' }
+  | { t: 'hotmart' }
 
 export interface Resultado { etapa: Etapa; dados: Dados; acoes: Acao[] }
 
@@ -354,6 +358,7 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       }
       d.pacote_confirmar = undefined
       d.pacote_qtd = p.pacote_qtd; d.valor_cents = p.valor_cents; d.moeda = p.moeda
+      d.pagar_link = p.link_pagamento ?? null; d.hotmart_link = null
       d.poses = []
       // Fotos que ela já mandou antes continuam valendo (não pede de novo).
       d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo
@@ -439,6 +444,11 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     }
 
     case 'aguardando_pagamento':
+      // Hotmart: a confirmação chega sozinha pelo webhook — nada de comprovante.
+      if (pagaPelaHotmart(d)) {
+        if (e.tipo === 'imagem' || e.tipo === 'documento' || (e.tipo === 'texto' && FALA_DE_PAGAMENTO.test(sem(txt)))) return fim('aguardando_pagamento', [{ t: 'texto', chave: 'hotmart_print' }])
+        return fim('aguardando_pagamento', ia('aguardando_pagamento', d, 'a cliente pagar pelo link seguro da Hotmart (cartão, na moeda dela); a confirmação chega sozinha em alguns minutos', ctx))
+      }
       if (e.tipo === 'imagem' || e.tipo === 'documento') return fim('aguardando_pagamento', [{ t: 'comprovante' }])
       if (e.tipo === 'texto' && FALA_DE_PAGAMENTO.test(sem(txt))) return fim('aguardando_pagamento', [{ t: 'texto', chave: ctx.pix ? 'pede_comprovante' : 'aguardando_pagamento' }])
       return fim('aguardando_pagamento', ia('aguardando_pagamento', d, ctx.pix
@@ -486,12 +496,19 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
 const AJUSTE = /\b(ajust|mud[ae]|trocar|troca|refaz|corrig|nao gostei|nao ficou|ficou estranh|nao parece|nao sou eu|change|fix|redo|adjust|cambiar|arreglar|no me gust)/
 const QUER_MAIS = /(\+\s*\d+\s*fotos?|mais \d+ fotos|quero mais|mais fotos|more photos|\d+ more|quiero mas|mas fotos)/
 
+/** Cliente internacional: pacote em outra moeda com link da Hotmart. */
+export function pagaPelaHotmart(d: Dados): boolean {
+  return (d.moeda ?? 'BRL') !== 'BRL' && !!(d.pagar_link || d.hotmart_link)
+}
+
 const FALA_DE_PAGAMENTO = /\b(paguei|ja paguei|pago|pagamento|pix|comprovante|transferi|fiz a transferencia|i paid|paid|pague|ya pague)\b/
 
 function fechar(d: Dados, acoes: Acao[], ctx: Contexto): Resultado {
   const fechamento: Acao[] = [...acoes, { t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'resumo_pedido' }]
   // Brasil: a Ana manda a chave Pix + o valor exato e pede o comprovante.
   if (ctx.pix && (d.moeda ?? 'BRL') === 'BRL') fechamento.push({ t: 'pix' }, { t: 'audio', chave: 'a5' }, { t: 'texto', chave: 'pede_comprovante' })
+  // Fora do Brasil: link da Hotmart com o pedido (sck) no lugar do Pix.
+  else if (pagaPelaHotmart(d)) fechamento.push({ t: 'hotmart' })
   return { etapa: 'aguardando_pagamento', dados: d, acoes: fechamento }
 }
 
@@ -525,7 +542,9 @@ export function lembreteDaEtapa(etapa: Etapa, d: Dados, ctx?: Contexto): Acao[] 
       return oQueFalta(d, qtd, ctx).slice(0, 1)
     }
     case 'idade_prefs': return repetirPergunta(etapa, d)
-    case 'aguardando_pagamento': return ctx?.pix ? [{ t: 'texto', chave: 'pede_comprovante' }] : []
+    case 'aguardando_pagamento':
+      if (pagaPelaHotmart(d)) return [{ t: 'texto', chave: 'hotmart_lembrete' }]
+      return ctx?.pix ? [{ t: 'texto', chave: 'pede_comprovante' }] : []
     default: return []
   }
 }

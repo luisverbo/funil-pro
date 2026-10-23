@@ -43,11 +43,16 @@ export function tabelaDePrecos(precos: Preco[], idioma: IdiomaAna): string {
 
 /** Preços do país; senão os de '*'; senão os do Brasil. */
 export async function precosDoPais(admin: SupabaseClient, tenantId: string, pais: string | null): Promise<Preco[]> {
-  const { data, error } = await admin.from('estudio_precos').select('pais, pacote_qtd, valor_cents, moeda').eq('tenant_id', tenantId)
-  if (error || !data?.length) return PRECOS_PADRAO_BR
-  const de = (p: string) => data.filter(x => x.pais === p).map(x => ({ pacote_qtd: x.pacote_qtd, valor_cents: x.valor_cents, moeda: x.moeda }))
-  const lista = de(pais ?? 'BR')
-  return lista.length ? lista : (de('*').length ? de('*') : (de('BR').length ? de('BR') : PRECOS_PADRAO_BR))
+  type Linha = { pais: string; pacote_qtd: number; valor_cents: number; moeda: string; link_pagamento?: string | null }
+  const { data, error } = await admin.from('estudio_precos').select('pais, pacote_qtd, valor_cents, moeda, link_pagamento').eq('tenant_id', tenantId)
+  const linhas = (data ?? []) as Linha[]
+  if (error || !linhas.length) return PRECOS_PADRAO_BR
+  const de = (p: string) => linhas.filter(x => x.pais === p).map(x => ({ pacote_qtd: x.pacote_qtd, valor_cents: x.valor_cents, moeda: x.moeda, link_pagamento: x.link_pagamento ?? null }))
+  // Brasil: BRL + Pix. Fora do Brasil (DDI ≠ +55): o país, senão 'INT' (Hotmart, USD).
+  const ehBrasil = (pais ?? 'BR') === 'BR'
+  const ordem = ehBrasil ? ['BR', '*'] : [pais ?? '', 'INT', '*', 'BR']
+  for (const p of ordem) { const l = p ? de(p) : []; if (l.length) return l }
+  return PRECOS_PADRAO_BR
 }
 
 export async function sobrescritas(admin: SupabaseClient, tenantId: string): Promise<{ textos: Map<string, string>; audios: Map<string, string> }> {
@@ -206,7 +211,8 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
       valor: vc !== undefined ? dinheiro(Number(vc), dados.moeda ?? precos[0]?.moeda ?? 'BRL', idioma)
         : dados.valor_cents !== undefined ? dinheiro(dados.valor_cents, dados.moeda ?? 'BRL', idioma) : '',
       poses: (dados.poses ?? []).join(', '), tabela: tabelaDePrecos(precos, idioma), prazo: PRAZO_MIN,
-      link: dados.tema ? `${APP_URL()}/estudio/catalogo/${dados.tema}` : `${APP_URL()}/estudio/catalogo`, ...resto,
+      link: dados.tema ? `${APP_URL()}/estudio/catalogo/${dados.tema}` : `${APP_URL()}/estudio/catalogo`,
+      pagar: dados.hotmart_link ?? dados.pagar_link ?? '', ...resto,
     }
   }
 
@@ -354,6 +360,15 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           await enviarTexto(l.chave)   // sozinha numa mensagem: a cliente toca e copia
           break
         }
+        case 'hotmart': {
+          // Link da oferta do pacote + o pedido no sck (a Hotmart devolve no webhook).
+          if (!pedidoId || !dados.pagar_link) break
+          const { linkComPedido } = await import('../hotmart')
+          dados.hotmart_link = linkComPedido(dados.pagar_link, pedidoId)
+          await admin.from('estudio_pedidos').update({ forma_pagamento: 'hotmart', moeda: dados.moeda ?? 'USD' }).eq('id', pedidoId)
+          await enviarTexto(renderTexto('hotmart_link', idioma, vars(), sob.textos), 'hotmart_link')
+          break
+        }
         case 'comprovante': {
           if (!pedidoId || !msg.media_path) { await enviarTexto(renderTexto('pede_comprovante', idioma, vars(), sob.textos)); break }
           const res = await processarComprovante(admin, c, pedidoId, { path: msg.media_path, mime: msg.media_mime ?? 'image/jpeg' })
@@ -455,6 +470,12 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
       tenant_id: c.tenant_id, contato_id: c.id, wamid: s.ok ? s.wamid ?? null : null, direcao: 'saida', autor: 'ana',
       tipo: 'texto', texto: t, status_entrega: s.ok ? 'sent' : 'failed', erro: s.ok ? null : (s.erro ?? '').slice(0, 300),
     })
+    // Hotmart: a cobrança volta com o link de pagamento.
+    if (c.etapa === 'aguardando_pagamento' && d.hotmart_link && s.ok) {
+      const l = renderTexto('hotmart_lembrete', idiomaDaAna(c.idioma), { pagar: d.hotmart_link }, textos)
+      const s2 = await enviarTextoCloud(con, c.wa_id, l)
+      await admin.from('estudio_mensagens').insert({ tenant_id: c.tenant_id, contato_id: c.id, wamid: s2.ok ? s2.wamid ?? null : null, direcao: 'saida', autor: 'ana', tipo: 'texto', texto: l, status_entrega: s2.ok ? 'sent' : 'failed' })
+    }
     if (chave === 'cobranca_2') d.previa_oferecida = true
     await admin.from('estudio_contatos').update({
       cobrancas: chave === 'cobranca_3' ? 3 : c.cobrancas + 1, dados: d, ultima_ana_em: agora.toISOString(), ultima_msg: t.slice(0, 120),

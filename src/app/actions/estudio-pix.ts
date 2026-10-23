@@ -105,7 +105,7 @@ export async function listarPixDoDia(dia: string): Promise<{ pedidos: PedidoPix[
 }
 
 async function pedidoDoTenant(tenantId: string, pedidoId: string) {
-  const { data } = await createAdminClient().from('estudio_pedidos').select('id, contato_id, status, valor_cents, comprovante_dados').eq('id', pedidoId).eq('tenant_id', tenantId).maybeSingle()
+  const { data } = await createAdminClient().from('estudio_pedidos').select('id, contato_id, status, valor_cents, moeda, forma_pagamento, comprovante_dados').eq('id', pedidoId).eq('tenant_id', tenantId).maybeSingle()
   if (!data) throw new Error('Pedido não encontrado.')
   return data
 }
@@ -118,8 +118,11 @@ export async function aprovarPagamentoPix(pedidoId: string): Promise<{ success: 
     if (!['aguardando_conferencia', 'aguardando_pagamento'].includes(p.status)) return { success: false, error: `Pedido está "${p.status}".` }
     const lido = (p.comprovante_dados ?? {}) as { valor_cents?: number | null; e2e_id?: string | null; data_hora?: string | null }
     const e2e = lido.e2e_id?.replace(/\s/g, '').toUpperCase() || null
+    // Pedido da Hotmart que caiu na conferência: continua "hotmart" (sem comprovante de Pix).
+    const hotmart = p.forma_pagamento === 'hotmart'
     const r = await marcarPago(createAdminClient(), pedidoId, {
-      pago_por: 'manual', forma_pagamento: 'pix_comprovante', valor_pago_cents: lido.valor_cents ?? p.valor_cents,
+      pago_por: 'manual', forma_pagamento: hotmart ? 'hotmart' : 'pix_comprovante', valor_pago_cents: hotmart ? p.valor_cents : (lido.valor_cents ?? p.valor_cents),
+      moeda: p.moeda ?? null,
       pago_em: lido.data_hora && !Number.isNaN(new Date(lido.data_hora).getTime()) ? new Date(lido.data_hora).toISOString() : null,
       pix_e2e_id: e2e && e2e.length >= 10 ? e2e : null,
     })
@@ -236,4 +239,102 @@ export async function custoIaDoDia(dia: string): Promise<CustoIa & { error?: str
     if (error) return { total_usd: 0, chamadas: 0, por_modelo: [], error: aviso(error.message) }
     return somar(data ?? [])
   } catch (e) { return { total_usd: 0, chamadas: 0, por_modelo: [], error: String(e) } }
+}
+
+// ── Hotmart (pagamento internacional) ───────────────────────────────────────
+
+export async function lerHotmartConfig(): Promise<{ tem_hottok: boolean; produto_id: string; url_webhook: string; error?: string }> {
+  const url = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://funil-pro.vercel.app').replace(/\/+$/, '')}/api/webhooks/hotmart`
+  try {
+    const tenantId = await getTenantId()
+    const { data, error } = await createAdminClient().from('estudio_config').select('hotmart_hottok, hotmart_produto_id').eq('tenant_id', tenantId).maybeSingle()
+    if (error) return { tem_hottok: false, produto_id: '8794754', url_webhook: url, error: /hotmart/i.test(error.message) ? 'Falta rodar o SQL da Fase 7 (20261031000000_estudio_ia_hotmart.sql) no Supabase.' : error.message }
+    return { tem_hottok: !!data?.hotmart_hottok, produto_id: data?.hotmart_produto_id ?? '8794754', url_webhook: url }
+  } catch (e) { return { tem_hottok: false, produto_id: '8794754', url_webhook: url, error: String(e) } }
+}
+
+/** O hottok é só de escrita: nunca volta para a tela. */
+export async function salvarHotmartConfig(hottok: string | null, produtoId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const linha: Record<string, unknown> = { hotmart_produto_id: String(produtoId ?? '').replace(/\D/g, '').slice(0, 20) || '8794754' }
+    const t = String(hottok ?? '').trim()
+    if (t) linha.hotmart_hottok = t.slice(0, 200)
+    const { error } = await createAdminClient().from('estudio_config').update(linha).eq('tenant_id', tenantId)
+    return error ? { success: false, error: aviso(error.message) } : { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+export interface LinhaPreco { id: string; pais: string; moeda: string; pacote_qtd: number; valor_cents: number; link_pagamento: string | null }
+
+export async function listarPrecosEstudio(): Promise<{ precos: LinhaPreco[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { data, error } = await createAdminClient().from('estudio_precos').select('id, pais, moeda, pacote_qtd, valor_cents, link_pagamento').eq('tenant_id', tenantId).order('pais').order('pacote_qtd')
+    if (error) return { precos: [], error: aviso(error.message) }
+    return { precos: (data ?? []) as LinhaPreco[] }
+  } catch (e) { return { precos: [], error: String(e) } }
+}
+
+export async function salvarPrecoEstudio(l: { id?: string | null; pais: string; moeda: string; pacote_qtd: number; valor_cents: number; link_pagamento?: string | null }): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const pais = String(l.pais ?? '').trim().toUpperCase()
+    const moeda = String(l.moeda ?? '').trim().toUpperCase()
+    const qtd = Math.round(Number(l.pacote_qtd)), valor = Math.round(Number(l.valor_cents))
+    if (!/^([A-Z]{2}|INT|\*)$/.test(pais)) return { success: false, error: 'País: 2 letras (BR, PT, US…), INT (todo país ≠ BR) ou *.' }
+    if (!/^[A-Z]{3}$/.test(moeda)) return { success: false, error: 'Moeda com 3 letras (BRL, USD, EUR).' }
+    if (!(qtd > 0 && qtd <= 100) || !(valor > 0)) return { success: false, error: 'Quantidade e valor precisam ser maiores que zero.' }
+    const link = String(l.link_pagamento ?? '').trim() || null
+    if (link && !/^https:\/\/pay\.hotmart\.com\//.test(link)) return { success: false, error: 'O link de pagamento tem que ser da Hotmart (https://pay.hotmart.com/...).' }
+    const admin = createAdminClient()
+    const linha = { tenant_id: tenantId, pais, moeda, pacote_qtd: qtd, valor_cents: valor, link_pagamento: link }
+    const { error } = l.id
+      ? await admin.from('estudio_precos').update(linha).eq('id', l.id).eq('tenant_id', tenantId)
+      : await admin.from('estudio_precos').upsert(linha, { onConflict: 'tenant_id,pais,pacote_qtd' })
+    return error ? { success: false, error: aviso(error.message) } : { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+export async function excluirPrecoEstudio(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { error } = await createAdminClient().from('estudio_precos').delete().eq('id', id).eq('tenant_id', tenantId)
+    return error ? { success: false, error: aviso(error.message) } : { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+// ── Faturamento por moeda (nunca soma moedas diferentes) ────────────────────
+
+export interface Faturamento { periodo: string; por_moeda: { moeda: string; total_cents: number; vendas: number }[]; total_brl_cents: number; cotacoes: Record<string, number> }
+
+export async function resumoFaturamento(): Promise<{ periodos: Faturamento[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const agora = Date.now()
+    const inicioDia = new Date(`${new Date(agora - 3 * 3600e3).toISOString().slice(0, 10)}T00:00:00-03:00`).getTime()
+    const mes = new Date(agora - 3 * 3600e3).toISOString().slice(0, 7)
+    const janelas: [string, number][] = [['Hoje', inicioDia], ['7 dias', inicioDia - 6 * 86400e3], ['Mês', new Date(`${mes}-01T00:00:00-03:00`).getTime()]]
+    const desde = new Date(Math.min(...janelas.map(j => j[1]))).toISOString()
+    const [{ data, error }, { data: cfg }] = await Promise.all([
+      admin.from('estudio_pedidos').select('valor_pago_cents, moeda, pago_em, status').eq('tenant_id', tenantId).gte('pago_em', desde).not('status', 'in', '(cancelado,reembolsado)').limit(10000),
+      admin.from('estudio_config').select('cotacoes').eq('tenant_id', tenantId).maybeSingle(),
+    ])
+    if (error) return { periodos: [], error: aviso(error.message) }
+    const cot: Record<string, number> = { BRL: 1, USD: 5.5, EUR: 6, ...((cfg?.cotacoes ?? {}) as Record<string, number>) }
+    const periodos = janelas.map(([periodo, ini]) => {
+      const mapa = new Map<string, { moeda: string; total_cents: number; vendas: number }>()
+      for (const p of data ?? []) {
+        if (!p.pago_em || new Date(p.pago_em).getTime() < ini || !p.valor_pago_cents) continue
+        const m = String(p.moeda ?? 'BRL').toUpperCase()
+        const x = mapa.get(m) ?? { moeda: m, total_cents: 0, vendas: 0 }
+        x.total_cents += p.valor_pago_cents; x.vendas++
+        mapa.set(m, x)
+      }
+      const por_moeda = [...mapa.values()].sort((a, b) => a.moeda.localeCompare(b.moeda))
+      return { periodo, por_moeda, total_brl_cents: Math.round(por_moeda.reduce((s, x) => s + x.total_cents * (Number(cot[x.moeda]) || 0), 0)), cotacoes: cot }
+    })
+    return { periodos }
+  } catch (e) { return { periodos: [], error: String(e) } }
 }

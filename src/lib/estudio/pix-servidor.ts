@@ -35,6 +35,9 @@ export interface Pagamento {
   valor_pago_cents: number | null
   pago_em?: string | null
   pix_e2e_id?: string | null
+  /** Hotmart: data.purchase.transaction (UNIQUE — o mesmo evento reenviado não paga 2×). */
+  hotmart_transacao?: string | null
+  moeda?: string | null
 }
 
 /**
@@ -60,7 +63,8 @@ export async function marcarPago(admin: SupabaseClient, pedidoId: string, p: Pag
   const { error } = await admin.from('estudio_pedidos').update({
     status: 'pago', pago_por: p.pago_por, forma_pagamento: p.forma_pagamento,
     valor_pago_cents: p.valor_pago_cents ?? ped.valor_cents, pago_em: p.pago_em ?? new Date().toISOString(),
-    ...(p.pix_e2e_id ? { pix_e2e_id: p.pix_e2e_id } : {}), conferencia_motivo: null,
+    ...(p.pix_e2e_id ? { pix_e2e_id: p.pix_e2e_id } : {}), ...(p.hotmart_transacao ? { hotmart_transacao: p.hotmart_transacao } : {}),
+    ...(p.moeda ? { moeda: p.moeda } : {}), conferencia_motivo: null,
     ...dadosDeVenda(contato ?? {}, (previas ?? 0) > 0), custo_ia_usd: Math.round(custo * 1e6) / 1e6,
   }).eq('id', pedidoId)
   if (error) return /duplicate|unique|23505/i.test(error.message) ? { duplicado: true, error: 'Este comprovante já pagou outro pedido.' } : { error: error.message }
