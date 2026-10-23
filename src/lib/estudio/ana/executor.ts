@@ -5,12 +5,14 @@
 // ============================================================================
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
-import { BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
-import { extensaoDoMime } from '../chat'
-import { avisarAparelhos } from '../push'
-import { proximoPasso, idiomaDaMensagem, cobrancaDevida, type Acao, type Contexto, type Dados, type Etapa, type Preco } from './maquina'
+import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
+import { proximoPasso, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
-import { responderDuvida, conferirFoto, type ItemBase } from './ia'
+import { responderDuvida, classificarFoto, extrairPreferencias, type ItemBase } from './ia'
+import { escolherFotos, resumoDasFotos, caixaDoRecorte, type FotoRecebida } from './fotos'
+import { atrasoDeTexto, atrasoDeAudio, atrasoDeMidia, esperaRestante, marcarLidaDigitando, reagir, enviarVoz, ATRASO_MAX_PADRAO_MS } from '../envio'
+import { Cronometro } from '../tempos'
+import { avisarLuisRegistrado } from '../avisos'
 import { linhasDoPix } from '../pix'
 import { registrarUsoIa, pixDoTenant, processarComprovante } from '../pix-servidor'
 
@@ -27,15 +29,16 @@ export interface Conexao { tenant_id: string; phone_number_id: string; access_to
 interface Contato {
   id: string; tenant_id: string; wa_id: string; nome: string | null; pais: string | null; idioma: string | null
   etapa: string | null; dados: Dados | null; pedido_atual_id: string | null; idioma_fixo?: boolean
-  nao_entendeu?: number; modo?: string
+  nao_entendeu?: number; modo?: string; fotos_recebidas?: FotoRecebida[]
 }
 
 /** Tabela de preços em texto, na moeda do país (5 = 🔥 mais vendido). */
 export function tabelaDePrecos(precos: Preco[], idioma: IdiomaAna): string {
   const fotos = idioma === 'en' ? 'photos' : 'fotos'
   const mais = { 'pt-BR': 'MAIS VENDIDO', 'pt-PT': 'MAIS VENDIDO', es: 'MÁS VENDIDO', en: 'BEST SELLER' }[idioma]
+  void mais
   return [...precos].sort((a, b) => a.pacote_qtd - b.pacote_qtd)
-    .map((p, i) => `${i + 1}️⃣ ${p.pacote_qtd} ${fotos} — ${dinheiro(p.valor_cents, p.moeda, idioma)}${p.pacote_qtd === 5 ? ` 🔥 ${mais}` : ''}`).join('\n')
+    .map((p, i) => `${i + 1}️⃣ ${p.pacote_qtd} ${fotos} — ${dinheiro(p.valor_cents, p.moeda, idioma)}`).join('\n')
 }
 
 /** Preços do país; senão os de '*'; senão os do Brasil. */
@@ -69,16 +72,28 @@ async function registrar(admin: SupabaseClient, c: Contato, r: { ok: boolean; wa
   })
 }
 
-/** Avisa o Luís: WhatsApp pessoal (se a janela permitir) + push no celular. */
-export async function avisarLuis(admin: SupabaseClient, con: Conexao, mensagem: string) {
-  if (con.whatsapp_avisos) {
-    const r = await enviarTextoCloud(con, con.whatsapp_avisos, mensagem)
-    if (!r.ok) console.warn('[estudio] aviso ao Luís pelo WhatsApp não saiu (janela 24h?):', r.erro)
-  }
-  await avisarAparelhos(admin, con.tenant_id)
+/**
+ * Avisa o Luís: WhatsApp de avisos (SEMPRE — mesmo se for o número da cliente
+ * no teste) → se recusar, modelo aprovado "novo_pedido" → e push no celular.
+ * Cada tentativa fica registrada em estudio_avisos (Painel).
+ */
+export async function avisarLuis(admin: SupabaseClient, con: Conexao, mensagem: string, pedidoId?: string | null) {
+  await avisarLuisRegistrado(admin, con, mensagem, pedidoId ?? null)
 }
 
-export interface MensagemDaCliente { tipo: string; texto: string; media_path?: string | null; media_mime?: string | null }
+const dormir = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+export interface MensagemDaCliente {
+  tipo: string; texto: string; media_path?: string | null; media_mime?: string | null
+  /** wamid da mensagem da cliente (marca lida + "digitando…" e recebe a reação). */
+  wamid?: string | null
+  /** Fotos chegadas juntas (2 webhooks quase ao mesmo tempo) — tratadas de uma vez. */
+  fotos?: { path: string; mime: string; wamid?: string | null }[]
+  cronometro?: Cronometro
+}
+
+/** Textos de informação: não repetir em menos de 30 min. */
+const INFO_SEM_REPETIR = new Set(['pedido_pago_duvida', 'pago_ok', 'conferindo', 'previa_na_fila', 'aguardando_pagamento', 'entrega_ajuste'])
 
 /**
  * Roda a Ana para UMA mensagem recebida. Devolve a etapa nova.
@@ -116,17 +131,56 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
 
   let dados: Dados = (c.dados ?? {}) as Dados
   const etapaAtual = ((c.etapa as Etapa) || 'inicio')
+  const crono = msg.cronometro ?? new Cronometro()
 
-  // Foto do rosto: confere ANTES (pessoa real, de frente, adulta, não é print).
-  let foto: 'ok' | 'ruim' | 'recusada' | undefined
-  if (msg.tipo === 'imagem' && ['fotos_poses', 'previa_fotos'].includes(etapaAtual) && !dados.tem_rosto && msg.media_path) {
-    const { data: arq } = await admin.storage.from(BUCKET_CLIENTES).download(msg.media_path)
-    if (arq) {
-      const conf = await conferirFoto(new Uint8Array(await arq.arrayBuffer()), msg.media_mime ?? 'image/jpeg')
-      foto = conf.motivo
-      await usou('foto', conf.uso)
+  // ── Envio humanizado: "digitando…" + atraso que conta da chegada ─────────
+  const { data: cfgH } = await admin.from('estudio_config').select('humanizar, atraso_max_s').eq('tenant_id', c.tenant_id).maybeSingle()
+    .then(r => r, () => ({ data: null }))
+  const humanizar = (cfgH as { humanizar?: boolean } | null)?.humanizar !== false
+  const atrasoMax = Math.max(1.5, Number((cfgH as { atraso_max_s?: number } | null)?.atraso_max_s ?? 6)) * 1000 || ATRASO_MAX_PADRAO_MS
+  let marco = crono.inicio
+  let primeiroEnvio = true
+  const pausar = async (alvoMs: number) => {
+    if (!humanizar) { marco = Date.now(); return }
+    if (!primeiroEnvio && msg.wamid) void marcarLidaDigitando(con, msg.wamid)   // liga o "digitando…" de novo
+    const espera = esperaRestante(alvoMs, Date.now() - marco)
+    if (espera > 0) { crono.somar('espera', espera); await dormir(espera) }
+  }
+  const depoisDeEnviar = () => { marco = Date.now(); primeiroEnvio = false; crono.respondeu() }
+
+  // ── Fotos: guarda TODAS, classifica (Haiku, visão) e escolhe rosto/corpo ─
+  // Cada foto vai para a lista do contato por RPC atômica (nunca sobrescreve
+  // a anterior). A escolha de rosto.jpg/corpo.jpg é feita sobre a lista toda.
+  let fotosLista: FotoRecebida[] = Array.isArray(c.fotos_recebidas) ? c.fotos_recebidas : []
+  let fotosEntrada: Entrada['fotos']
+  // Na espera do comprovante, imagem é comprovante — não entra na lista de fotos do ensaio.
+  const etapaDeComprovante = ['aguardando_pagamento', 'conferindo'].includes(etapaAtual)
+  const novas = etapaDeComprovante ? [] : msg.fotos?.length ? msg.fotos
+    : (msg.tipo === 'imagem' && msg.media_path ? [{ path: msg.media_path, mime: msg.media_mime ?? 'image/jpeg', wamid: msg.wamid ?? null }] : [])
+  if (novas.length) {
+    const classificadas = await Promise.all(novas.map(async f => {
+      const arq = await crono.medir('midia', async () => (await admin.storage.from(BUCKET_CLIENTES).download(f.path)).data)
+      if (!arq) return null
+      const bytes = new Uint8Array(await arq.arrayBuffer())
+      const { classe, uso } = await crono.medir('ia', () => classificarFoto(bytes, f.mime))
+      await usou('foto', uso)
+      const foto: FotoRecebida = { path: f.path, mime: f.mime, wamid: f.wamid ?? null, em: new Date().toISOString(), tipo: classe.tipo, motivo: classe.motivo, recusada: classe.recusada, fracao_corpo: classe.fracao_corpo, rosto_caixa: classe.rosto_caixa, cabelo: classe.cabelo }
+      return foto
+    }))
+    for (const foto of classificadas) {
+      if (!foto) continue
+      const { data: lista, error } = await admin.rpc('estudio_add_foto', { p_contato: c.id, p_foto: foto })
+      if (error) { console.warn('[estudio/ana] estudio_add_foto (SQL pendente?):', error.message); if (!fotosLista.some(x => x.path === foto.path)) fotosLista = [...fotosLista, foto] }
+      else if (Array.isArray(lista)) fotosLista = lista as FotoRecebida[]
+    }
+    const validas = classificadas.filter((x): x is FotoRecebida => !!x)
+    fotosEntrada = {
+      novas: validas.length,
+      recusada: validas.some(x => x.recusada),
+      invalida: validas.length && validas.every(x => x.tipo === 'invalida') ? (validas[0].motivo ?? 'não deu para usar') : null,
     }
   }
+  const ctxFotos = resumoDasFotos(fotosLista)
 
   // Pós-entrega: o que a cliente pode fazer com o pedido entregue (ajuste / +5 fotos).
   let ctxEntrega: Contexto['entrega']
@@ -144,8 +198,29 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
       }
     } catch (err) { console.error('[estudio/ana] pós-entrega:', String(err).slice(0, 300)) }   // sem isso a Ana responde pela IA
   }
-  const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', foto }, {
-    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega,
+
+  const vars = (extra: Record<string, string | number> = {}) => {
+    const { valor_cents: vc, ...resto } = extra
+    return {
+      nome: dados.nome ?? c.nome ?? '', tema: nomeDoTema(dados.tema, idioma), qtd: dados.pacote_qtd ?? '',
+      valor: vc !== undefined ? dinheiro(Number(vc), dados.moeda ?? precos[0]?.moeda ?? 'BRL', idioma)
+        : dados.valor_cents !== undefined ? dinheiro(dados.valor_cents, dados.moeda ?? 'BRL', idioma) : '',
+      poses: (dados.poses ?? []).join(', '), tabela: tabelaDePrecos(precos, idioma), prazo: PRAZO_MIN,
+      link: dados.tema ? `${APP_URL()}/estudio/catalogo/${dados.tema}` : `${APP_URL()}/estudio/catalogo`, ...resto,
+    }
+  }
+
+  // Preferências: a resposta pode trazer várias coisas ("42 loiros sem decote").
+  let prefs: Entrada['prefs'] = null
+  if (etapaAtual === 'idade_prefs' && msg.tipo === 'texto' && msg.texto.trim().split(/\s+/).length >= 2) {
+    const pergunta = proximaPreferencia(dados)
+    const r0 = await crono.medir('ia', () => extrairPreferencias(msg.texto, pergunta ? renderTexto(pergunta, idioma, vars(), sob.textos) : '', undefined))
+    prefs = r0.prefs
+    await usou('preferencias', r0.uso)
+  }
+
+  const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, {
+    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos,
   })
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
@@ -153,16 +228,20 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   let naoEntendeu = Number(c.nao_entendeu ?? 0)
   let entendeu = true
 
-  const vars = (extra: Record<string, string | number> = {}) => ({
-    nome: dados.nome ?? c.nome ?? '', tema: nomeDoTema(dados.tema, idioma), qtd: dados.pacote_qtd ?? '',
-    valor: dados.valor_cents !== undefined ? dinheiro(dados.valor_cents, dados.moeda ?? 'BRL', idioma) : '',
-    poses: (dados.poses ?? []).join(', '), tabela: tabelaDePrecos(precos, idioma), prazo: PRAZO_MIN,
-    link: dados.tema ? `${APP_URL()}/estudio/catalogo/${dados.tema}` : `${APP_URL()}/estudio/catalogo`, ...extra,
-  })
-  const enviarTexto = async (t: string) => {
+  /** Nunca manda o mesmo texto 2× seguidas (60 s; informação: 30 min). */
+  const repetido = async (t: string, chave?: string) => {
+    const janelaMin = chave && INFO_SEM_REPETIR.has(chave) ? 30 : 1
+    const { data } = await admin.from('estudio_mensagens').select('id').eq('contato_id', c.id).eq('direcao', 'saida').eq('texto', t)
+      .gte('criado_em', new Date(Date.now() - janelaMin * 60e3).toISOString()).limit(1)
+    return (data ?? []).length > 0
+  }
+  const enviarTexto = async (t: string, chave?: string) => {
     if (!t.trim()) return
-    const s = await enviarTextoCloud(con, c.wa_id, t)
+    if (await repetido(t, chave)) return
+    await pausar(atrasoDeTexto(t, atrasoMax))
+    const s = await crono.medir('envio', () => enviarTextoCloud(con, c.wa_id, t))
     await registrar(admin, c, s, 'texto', t)
+    depoisDeEnviar()
     falou = true
   }
   const passarParaHumano = async (motivo: string) => {
@@ -178,14 +257,20 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           await admin.from('estudio_contatos').update({ idioma: a.idioma, idioma_fixo: true }).eq('id', c.id)
           break
         case 'texto':
-          await enviarTexto(renderTexto(a.chave, idioma, vars(a.vars), sob.textos))
+          await enviarTexto(renderTexto(a.chave, idioma, vars(a.vars), sob.textos), a.chave)
           break
         case 'audio': {
           const path = sob.audios.get(`${a.chave}|${idioma}`)
           const url = path ? urlPublicaDoCatalogo(path, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '') : null
-          if (url) {
-            const s = await enviarMidiaCloud(con, c.wa_id, 'audio', url)
+          if (path && url) {
+            // Mensagem de VOZ (bolinha de play + onda), não arquivo: media_id em cache + voice:true.
+            await pausar(atrasoDeAudio())
+            const s = await crono.medir('envio', () => enviarVoz(admin, c.tenant_id, con, c.wa_id, {
+              chave: `${BUCKET_CATALOGO}/${path}`, link: url,
+              baixar: async () => { const { data } = await admin.storage.from(BUCKET_CATALOGO).download(path); return data ? { bytes: new Uint8Array(await data.arrayBuffer()), mime: data.type || 'audio/ogg' } : null },
+            }))
             await registrar(admin, c, s, 'audio', `[🎙 ${a.chave.toUpperCase()}]`, { media_mime: 'audio/ogg' })
+            depoisDeEnviar()
             falou = true
           } else {
             await enviarTexto(renderTexto(a.chave, idioma, vars(), sob.textos))   // sem áudio no idioma → só texto
@@ -195,18 +280,22 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
         case 'menu_imagem': {
           const url = urlPublicaDoCatalogo('midias/menu.jpg', process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
           if (url && await existe(url)) {
-            const s = await enviarMidiaCloud(con, c.wa_id, 'image', url)
+            await pausar(atrasoDeMidia())
+            const s = await crono.medir('envio', () => enviarMidiaCloud(con, c.wa_id, 'image', url))
             await registrar(admin, c, s, 'imagem', null, { media_mime: 'image/jpeg' })
+            depoisDeEnviar()
           }
           break
         }
         case 'catalogo': {
-          await enviarTexto(renderTexto('catalogo_link', idioma, vars(), sob.textos))
+          await enviarTexto(renderTexto('catalogo_link', idioma, vars(), sob.textos), 'catalogo_link')
           const pdf = urlPublicaDoCatalogo(`${a.tema}/catalogo-${a.tema}.pdf`, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
           if (pdf && await existe(pdf)) {
             const nome = `Catálogo ${nomeDoTema(a.tema, idioma)}.pdf`
-            const s = await enviarMidiaCloud(con, c.wa_id, 'document', pdf, undefined, nome)
+            await pausar(atrasoDeMidia())
+            const s = await crono.medir('envio', () => enviarMidiaCloud(con, c.wa_id, 'document', pdf, undefined, nome))
             await registrar(admin, c, s, 'documento', null, { media_mime: 'application/pdf', media_nome: nome })
+            depoisDeEnviar()
           }
           break
         }
@@ -219,33 +308,29 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           }).select('id').single()
           if (p) {
             pedidoId = p.id
-            if (previa) { dados.tem_rosto = false; dados.tem_corpo = false; dados.poses = [] }
+            if (previa) dados.poses = []   // as fotos que ela já mandou continuam valendo
             await admin.from('estudio_contatos').update({ pedido_atual_id: p.id }).eq('id', c.id)
             await admin.from('estudio_eventos').insert({ pedido_id: p.id, tipo: 'pedido_criado', detalhe: { tipo: a.tipo, pacote_qtd: previa ? 1 : dados.pacote_qtd } })
           }
           break
         }
-        case 'guardar_foto': {
-          if (!pedidoId || !msg.media_path) break
-          const destinos = caminhosDaCliente(pedidoId)
-          const destino = a.papel === 'rosto' ? destinos.rosto : a.papel === 'corpo' ? destinos.corpo
-            : `${pedidoId}/extra-${Date.now()}.${extensaoDoMime(msg.media_mime)}`
-          await admin.storage.from(BUCKET_CLIENTES).remove([destino]).catch(() => {})
-          const { error } = await admin.storage.from(BUCKET_CLIENTES).copy(msg.media_path, destino)
-          if (error) { console.error('[estudio/ana] copiar foto:', error.message); break }
-          if (a.papel === 'extra') {
-            const { data: p } = await admin.from('estudio_pedidos').select('fotos_extras_paths').eq('id', pedidoId).single()
-            await admin.from('estudio_pedidos').update({ fotos_extras_paths: [...(p?.fotos_extras_paths ?? []), destino] }).eq('id', pedidoId)
-          } else {
-            await admin.from('estudio_pedidos').update(a.papel === 'rosto' ? { foto_rosto_path: destino } : { foto_corpo_path: destino }).eq('id', pedidoId)
-          }
+        case 'fotos_escolher':
+          if (pedidoId) await aplicarEscolhaDeFotos(admin, pedidoId, fotosLista, dados)
           break
-        }
+        case 'reagir':
+          if (msg.wamid) await crono.medir('envio', () => reagir(con, c.wa_id, msg.wamid!, a.emoji))
+          break
         case 'atualizar_pedido':
           if (pedidoId) await admin.from('estudio_pedidos').update({
             poses: dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null,
             preferencias: dados.preferencias ?? null, cliente_nome: dados.nome ?? c.nome, tema_slug: dados.tema ?? null,
-          }).eq('id', pedidoId)
+            maquiagem: dados.maquiagem ?? null, decote: dados.decote ?? null, cores_acessorios: dados.cores ?? null,
+          }).eq('id', pedidoId).then(async res => {
+            // SQL da rodada humanizada pendente: grava ao menos o que já existia.
+            if (res.error && /maquiagem|decote|cores_acessorios|column/i.test(res.error.message)) await admin.from('estudio_pedidos').update({
+              poses: dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null, preferencias: dados.preferencias ?? null,
+            }).eq('id', pedidoId!)
+          })
           break
         case 'fechar_pedido':
           if (!pedidoId) break
@@ -403,4 +488,43 @@ export async function falarComCliente(admin: SupabaseClient, tenantId: string, c
     ...(novaEtapa ? { etapa: novaEtapa } : {}), dados: d, ultima_ana_em: agora, cobrancas: 0, precisa_humano: false, ultima_msg: t.slice(0, 120),
   }).eq('id', c.id)
   return s.ok ? { ok: true } : { ok: false, erro: s.erro }
+}
+
+/**
+ * Copia a melhor foto de rosto e a de corpo (pela classificação, nunca pela
+ * ordem de chegada) para <pedido>/rosto.jpg e corpo.jpg (nomes do producao.py).
+ * Nunca o mesmo arquivo nos dois: só com a de corpo, o rosto é RECORTADO dela
+ * e o pedido fica marcado "rosto recortado — pedir close".
+ */
+export async function aplicarEscolhaDeFotos(admin: SupabaseClient, pedidoId: string, lista: FotoRecebida[], dados?: Dados): Promise<void> {
+  const { data: ped } = await admin.from('estudio_pedidos').select('rosto_origem, corpo_origem').eq('id', pedidoId).maybeSingle()
+  const e = escolherFotos(lista, { rosto: (ped as { rosto_origem?: string } | null)?.rosto_origem ?? null, corpo: (ped as { corpo_origem?: string } | null)?.corpo_origem ?? null })
+  const destinos = caminhosDaCliente(pedidoId)
+  const salvarJpeg = async (origem: string, destino: string, recorte?: FotoRecebida['rosto_caixa'] | 'topo' | null) => {
+    const { data: arq } = await admin.storage.from(BUCKET_CLIENTES).download(origem)
+    if (!arq) return false
+    let bytes: Buffer = Buffer.from(await arq.arrayBuffer())
+    try {
+      const sharp = (await import('sharp')).default
+      let img = sharp(bytes).rotate()
+      if (recorte) {
+        const meta = await img.metadata()
+        const cx = caixaDoRecorte(meta.width ?? 1000, meta.height ?? 1000, recorte)
+        img = sharp(await img.toBuffer()).extract(cx)
+      }
+      bytes = await img.jpeg({ quality: 92 }).toBuffer()
+    } catch (err) { console.warn('[estudio/ana] conversão da foto (segue o original):', String(err).slice(0, 160)) }
+    await admin.storage.from(BUCKET_CLIENTES).upload(destino, bytes, { contentType: 'image/jpeg', upsert: true })
+    return true
+  }
+  const upd: Record<string, unknown> = { fotos_recebidas: lista }
+  if (e.corpo && await salvarJpeg(e.corpo, destinos.corpo)) { upd.foto_corpo_path = destinos.corpo; upd.corpo_origem = e.corpo }
+  if (e.rosto && await salvarJpeg(e.rosto.path, destinos.rosto, e.rosto.recorte)) { upd.foto_rosto_path = destinos.rosto; upd.rosto_origem = e.rosto.path }
+  upd.rosto_recortado = e.rosto_recortado
+  if (e.cabelo) upd.cabelo = e.cabelo
+  if (dados && e.cabelo && !dados.cabelo) dados.cabelo = e.cabelo
+  const { error } = await admin.from('estudio_pedidos').update(upd).eq('id', pedidoId)
+  if (error && /fotos_recebidas|rosto_origem|corpo_origem|rosto_recortado|column/i.test(error.message)) {
+    await admin.from('estudio_pedidos').update({ ...(upd.foto_rosto_path ? { foto_rosto_path: upd.foto_rosto_path } : {}), ...(upd.foto_corpo_path ? { foto_corpo_path: upd.foto_corpo_path } : {}) }).eq('id', pedidoId)
+  }
 }

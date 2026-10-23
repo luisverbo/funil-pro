@@ -146,3 +146,23 @@ export async function testarPushEstudio(): Promise<{ enviados: number; error?: s
     return { enviados: await avisarAparelhos(createAdminClient(), tenantId) }
   } catch (err) { return { enviados: 0, error: String(err) } }
 }
+
+// ── Digitando e atraso humano ───────────────────────────────────────────────
+
+export async function lerHumanizarAna(): Promise<{ humanizar: boolean; atraso_max_s: number; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { data, error } = await createAdminClient().from('estudio_config').select('humanizar, atraso_max_s').eq('tenant_id', tenantId).maybeSingle()
+    if (error) return { humanizar: true, atraso_max_s: 6, error: /humanizar|atraso_max_s|column/i.test(error.message) ? 'Falta rodar o SQL 20261030000000_estudio_ia_humano.sql no Supabase.' : error.message }
+    return { humanizar: data?.humanizar !== false, atraso_max_s: Number(data?.atraso_max_s ?? 6) }
+  } catch (e) { return { humanizar: true, atraso_max_s: 6, error: String(e) } }
+}
+
+export async function salvarHumanizarAna(humanizar: boolean, atrasoMaxS: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const max = Math.max(2, Math.min(15, Math.round(Number(atrasoMaxS) || 6)))
+    const { error } = await createAdminClient().from('estudio_config').update({ humanizar: !!humanizar, atraso_max_s: max }).eq('tenant_id', tenantId)
+    return error ? { success: false, error: error.message } : { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}

@@ -18,13 +18,13 @@ import {
 } from '@/app/actions/estudio-chat'
 import {
   listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna,
-  chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
+  chavePushEstudio, inscreverPushEstudio, testarPushEstudio, lerHumanizarAna, salvarHumanizarAna,
 } from '@/app/actions/estudio-ana'
 import {
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
 } from '@/app/actions/estudio-pix'
 import {
-  lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
+  lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio,
 } from '@/app/actions/estudio-pedidos'
 
 // Envio de várias fotos do pedido pela Meta pode levar alguns segundos.
@@ -42,6 +42,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
   lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
+  lerHumanizarAna, salvarHumanizarAna, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

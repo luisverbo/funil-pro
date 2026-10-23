@@ -17,6 +17,8 @@ import { BUCKET_CLIENTES, BUCKET_ENTREGAS } from '@/lib/estudio/catalogo'
 import { dentroDaJanela, limparErro } from '@/lib/estudio/whatsapp'
 import { caminhoMidiaDaConversa, extensaoDoMime, tipoCloudDoMime, tipoDoHistorico, LIMITE_ENVIO, previaDaMensagem } from '@/lib/estudio/chat'
 import { linkAssinado } from '@/lib/estudio/midia'
+import { enviarVoz } from '@/lib/estudio/envio'
+import { textoDosTempos } from '@/lib/estudio/tempos'
 
 async function getTenantId(): Promise<string> {
   const cookieStore = await cookies()
@@ -97,6 +99,8 @@ export interface MensagemChat {
   id: string; direcao: string; autor: string; tipo: string; texto: string | null
   media_url: string | null; media_mime: string | null; media_nome: string | null
   status_entrega: string | null; erro: string | null; criado_em: string
+  /** Mensagem da cliente: quanto a Ana levou para responder (por parte). */
+  tempos?: string | null
 }
 export interface PedidoChat { id: string; status: string; tema_slug: string | null; pacote_qtd: number | null; valor_cents: number | null; poses: string[]; criado_em: string; entregas: { id: string; pose_numero: string; status: string; url: string | null }[] }
 
@@ -118,6 +122,7 @@ export async function abrirConversaChat(contatoId: string, marcarLida = true): P
         media_url: m.media_path ? await linkAssinado(admin, m.media_path, 600) : null,
         media_mime: m.media_mime ?? null, media_nome: m.media_nome ?? null,
         status_entrega: m.status_entrega ?? null, erro: m.erro ?? null, criado_em: m.criado_em,
+        tempos: m.tempos ? textoDosTempos(m.tempos) : null,
       })
     }
     const { data: peds } = await admin.from('estudio_pedidos')
@@ -214,9 +219,16 @@ export async function enviarMidiaChat(contatoId: string, path: string, mime: str
     const link = await linkAssinado(admin, path, 24 * 3600)
     if (!link) return { success: false, error: 'Arquivo não encontrado no Storage.' }
     const tipo = tipoCloudDoMime(mime)
-    const r = await enviarMidiaCloud(await conexao(tenantId), c.wa_id, tipo, link, legenda?.trim() || undefined, tipo === 'document' ? (nome || 'arquivo') : undefined)
+    const conta = await conexao(tenantId)
+    // Áudio OGG/Opus (gravado no painel) vai como MENSAGEM DE VOZ: media_id + voice:true.
+    const r = tipo === 'audio' && /ogg|opus/i.test(mime)
+      ? await enviarVoz(admin, tenantId, conta, c.wa_id, {
+          chave: `${BUCKET_CLIENTES}/${path}`, link,
+          baixar: async () => { const { data } = await admin.storage.from(BUCKET_CLIENTES).download(path); return data ? { bytes: new Uint8Array(await data.arrayBuffer()), mime: 'audio/ogg' } : null },
+        })
+      : await enviarMidiaCloud(conta, c.wa_id, tipo, link, legenda?.trim() || undefined, tipo === 'document' ? (nome || 'arquivo') : undefined)
     await registrarSaida(tenantId, contatoId, r, { tipo: tipoDoHistorico(tipo), texto: legenda?.trim() || null, media_path: path, media_mime: mime, media_nome: nome ?? null })
-    return r.ok ? { success: true } : { success: false, error: limparErro(r.erro) }
+    return r.ok ? { success: true } : { success: false, error: limparErro(r.erro ?? "falhou") }
   } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
 }
 

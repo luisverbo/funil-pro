@@ -53,8 +53,8 @@ export async function configProducao(admin: SupabaseClient, tenantId: string): P
   }
 }
 
-async function avisar(admin: SupabaseClient, cfg: ConfigProducao, tenantId: string, msg: string) {
-  if (cfg.con) await avisarLuis(admin, cfg.con, msg)
+async function avisar(admin: SupabaseClient, cfg: ConfigProducao, tenantId: string, msg: string, pedidoId?: string) {
+  if (cfg.con) await avisarLuis(admin, cfg.con, msg, pedidoId ?? null)
 }
 
 async function evento(admin: SupabaseClient, pedidoId: string, tipo: string, detalhe: Record<string, unknown> = {}) {
@@ -81,7 +81,7 @@ export async function entrarNaFila(admin: SupabaseClient, pedidoId: string): Pro
     atraso_avisado_em: null, entrega_iniciada_em: null, entrega_erro: null,
   }).eq('id', pedidoId)
   await evento(admin, pedidoId, 'na_fila', { motor: cfg.motor })
-  await avisar(admin, cfg, ped.tenant_id, mensagemNovoPedido(ped, nomeDoTema(ped.tema_slug, 'pt-BR'), cfg.motor))
+  await avisar(admin, cfg, ped.tenant_id, mensagemNovoPedido(ped, nomeDoTema(ped.tema_slug, 'pt-BR'), cfg.motor), pedidoId)
   return { ok: true }
 }
 

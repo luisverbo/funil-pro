@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio,
-  reenviarEntregaEstudio, cancelarPedidoEstudio, lerProducaoConfig, salvarProducaoConfig,
+  reenviarEntregaEstudio, cancelarPedidoEstudio, lerProducaoConfig, salvarProducaoConfig, fotosRecebidasDoPedido, usarFotoComoEstudio,
 } from '@/lib/estudio/client'
 
 type Lista = Awaited<ReturnType<typeof listarPedidosEstudio>>['pedidos']
@@ -137,6 +137,8 @@ function DetalhePedido({ id, onMudou }: { id: string; onMudou: () => void }) {
         ))}
       </div>
 
+      <FotosRecebidas id={id} versao={versao} onMudou={() => { setVersao(v => v + 1); onMudou() }} />
+
       <div>
         <p className="text-xs font-semibold text-slate-700">Fotos geradas {notas.length > 0 && <span className="font-normal text-slate-500">· nota média do rosto {(notas.reduce((a, b) => a + b, 0) / notas.length).toFixed(1)}</span>}</p>
         {d.entregas.length === 0 ? <p className="mt-1 text-xs text-slate-500">Nenhuma ainda.</p> : (
@@ -231,5 +233,46 @@ export function CartaoMotor() {
         {msg && <span className={`text-sm ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.t}</span>}
       </div>
     </section>
+  )
+}
+
+/** Todas as fotos que a cliente mandou; trocar qual é rosto/corpo com um clique. */
+function FotosRecebidas({ id, versao, onMudou }: { id: string; versao: number; onMudou: () => void }) {
+  const [r, setR] = useState<Awaited<ReturnType<typeof fotosRecebidasDoPedido>> | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+  useEffect(() => {
+    let vivo = true
+    fotosRecebidasDoPedido(id).then(x => { if (vivo) setR(x) }).catch(e => setErro(String(e)))
+    return () => { vivo = false }
+  }, [id, versao])
+  if (!r || (r.fotos.length === 0 && !r.error)) return null
+  const usar = async (path: string, papel: 'rosto' | 'corpo') => {
+    setErro(null)
+    const x = await usarFotoComoEstudio(id, path, papel)
+    if (!x.success) setErro(x.error ?? 'falhou'); else onMudou()
+  }
+  const rotulo: Record<string, string> = { rosto: 'rosto', corpo_inteiro: 'corpo inteiro', rosto_e_corpo: 'rosto + corpo', invalida: 'inválida' }
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-700">Fotos recebidas da cliente ({r.fotos.length})</p>
+      {r.rosto_recortado && <p className="mt-1 rounded bg-amber-50 p-1.5 text-[11px] text-amber-800">✂️ Rosto recortado da foto de corpo — pedir um close do rosto.</p>}
+      {(erro || r.error) && <p className="mt-1 text-[11px] text-red-600">{erro ?? r.error}</p>}
+      <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {r.fotos.map(f => (
+          <div key={f.path} className={`overflow-hidden rounded-lg border ${f.papel ? 'border-violet-400 ring-1 ring-violet-400' : 'border-slate-200'}`}>
+            <a href={f.url ?? undefined} target="_blank" rel="noreferrer" className="relative block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {f.url ? <img src={f.url} alt={f.tipo} className="aspect-[4/5] w-full object-cover" /> : <div className="aspect-[4/5] bg-slate-100" />}
+              {f.papel && <span className="absolute left-1 top-1 rounded bg-violet-600 px-1 text-[10px] font-bold text-white">{f.papel === 'rosto' ? 'ROSTO' : 'CORPO'}</span>}
+            </a>
+            <p className="px-1.5 pt-1 text-[10px] text-slate-500" title={f.motivo ?? ''}>{rotulo[f.tipo] ?? f.tipo}{f.motivo ? ` · ${f.motivo}` : ''}</p>
+            <div className="flex gap-1 p-1">
+              <button onClick={() => void usar(f.path, 'rosto')} disabled={f.papel === 'rosto'} className="flex-1 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">usar como rosto</button>
+              <button onClick={() => void usar(f.path, 'corpo')} disabled={f.papel === 'corpo'} className="flex-1 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">usar como corpo</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

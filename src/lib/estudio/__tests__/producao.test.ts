@@ -24,7 +24,7 @@ const ctx: Contexto = { idioma: 'pt-BR', precos: PRECOS, posesDoTema: () => POSE
 const txt = (t: string) => ({ tipo: 'texto', texto: t })
 const chaves = (a: Acao[]) => a.map(x => x.t === 'texto' || x.t === 'audio' ? `${x.t}:${x.chave}` : x.t)
 const PED = { id: 'a1b2c3d4-0000-4000-8000-000000000001', tipo: 'pacote', status: 'pago', cliente_nome: 'Maryana', wa_id: '5521999990000', tema_slug: 'aniversario', pacote_qtd: 3, poses: ['03', '07', '12'], idade: 42, foto_rosto_path: 'x/rosto.jpg', foto_corpo_path: 'x/corpo.jpg' }
-const DADOS_ENTREGUE: Dados = { nome: 'Maryana', tema: 'aniversario', pacote_qtd: 3, valor_cents: 2990, moeda: 'BRL', poses: ['03', '07', '12'], tem_rosto: true, tem_corpo: true, idade: 42, cabelo: 'castanho', upsell_oferecido: true }
+const DADOS_ENTREGUE: Dados = { nome: 'Maryana', tema: 'aniversario', pacote_qtd: 3, valor_cents: 2990, moeda: 'BRL', poses: ['03', '07', '12'], tem_rosto: true, tem_corpo: true, idade: 42, cabelo: 'castanho', upsell_oferecido: true, maquiagem: true, decote: false, cores: 'rosa' }
 
 const tests: Record<string, () => void | Promise<void>> = {
   'fila: pago + 2 fotos + poses + idade entra; o que faltar é dito (prévia não pede idade)': () => {

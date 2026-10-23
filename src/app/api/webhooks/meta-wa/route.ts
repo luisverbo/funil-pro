@@ -16,7 +16,7 @@
 // ============================================================================
 
 import crypto from 'crypto'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { lerWebhookCloud, novaJanela } from '@/lib/whatsapp-cloud/webhook-parser'
 import { enviarTextoCloud } from '@/lib/whatsapp-cloud'
@@ -26,7 +26,10 @@ import { escolherAtendente, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/
 import { configDoNumero, processarEntradaEstudio, type ConfigEstudio } from '@/lib/estudio/entrada'
 import { assinaturaConfere, tokenConfere } from '@/lib/estudio/assinatura'
 
-export const maxDuration = 60
+// Estúdio IA: responde 200 para a Meta NA HORA e a Ana trabalha em segundo
+// plano (after) — "digitando…", espera das fotos juntas (8 s) e o atraso
+// humano entre mensagens cabem aqui sem a Meta reenviar o webhook.
+export const maxDuration = 300
 
 // ── GET: handshake de verificação da Meta ───────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -107,13 +110,15 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Mensagens recebidas ───────────────────────────────────────────────────
+  const recebidaEm = Date.now()
+  const doEstudioAgora: Promise<void>[] = []
   for (const m of mensagens) {
     try {
       const estudio = await doEstudio(m.phoneNumberId)
       if (estudio) {
         // Com App Secret configurado, mensagem do estúdio só vale assinada por ele.
         if (estudio.app_secret && !assinadoPeloEstudio) { console.warn('[estudio] webhook sem assinatura do app do estúdio — ignorado'); continue }
-        await processarEntradaEstudio(admin, estudio, m)
+        doEstudioAgora.push(processarEntradaEstudio(admin, estudio, m, recebidaEm).catch(err => console.error('[estudio] entrada falhou:', String(err).slice(0, 300))))
         continue
       }
 
@@ -255,5 +260,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // As do estúdio seguem depois da resposta (cada foto em paralelo; a fila da
+  // conversa garante que só uma execução responde).
+  if (doEstudioAgora.length) after(() => Promise.all(doEstudioAgora).then(() => {}))
   return NextResponse.json({ received: true })
 }
