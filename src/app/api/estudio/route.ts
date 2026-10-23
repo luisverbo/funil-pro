@@ -16,6 +16,10 @@ import {
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
   enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
 } from '@/app/actions/estudio-chat'
+import {
+  listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna,
+  chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
+} from '@/app/actions/estudio-ana'
 
 // Envio de várias fotos do pedido pela Meta pode levar alguns segundos.
 export const maxDuration = 60
@@ -28,6 +32,8 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   webhookDoNumeroEstudio, apontarWebhookEstudio,
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
   enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
+  listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna,
+  chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

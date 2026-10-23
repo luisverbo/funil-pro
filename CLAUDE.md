@@ -522,6 +522,22 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-27 — Estúdio IA, Fase 3 (a Ana + idiomas + catálogo/PDF + push)**
+- Migration `20261027000000_estudio_ia_ana.sql` (PENDENTE no Studio):
+  `estudio_textos`, `estudio_precos` (BR semeado), `estudio_push`, colunas
+  novas em `estudio_contatos`/`estudio_pedidos`, status
+  'aguardando_conferencia', VAPID em `estudio_config`, pg_cron
+  'estudio-cobrancas' a cada 5 min
+- `src/lib/estudio/ana/maquina.ts` PURO (seção 5): inicio→nome→tema→
+  [idade_sensual]→pacote→fotos_poses→idade_prefs→aguardando_pagamento;
+  prévia grátis; humano; cobranças 10 min/30 min/3 h (máx 3, só na janela).
+  IA só para dúvida livre e conferir a foto (`ana/ia.ts`); `ana/executor.ts`
+  executa (catálogo = link + PDF "Catálogo <Tema>.pdf" se existir)
+- Textos nos 4 idiomas (`ana/textos.ts`), editáveis na subaba **Atendente**;
+  subaba **Mídias** (áudios A1–A6 por idioma, imagem do menu, PDFs)
+- Web Push sem dependência (`src/lib/estudio/push.ts`); botão 🔔 em Conversas
+- Bateria: **1041/1041**
+
 **2026-10-26 — Estúdio IA, Fase 2b (chat do estúdio) + decisões novas do dono**
 - Decisões de 23/10 (valem daqui em diante): **sem Asaas** — Pix da chave do
   Luís conferido pelo COMPROVANTE (IA de visão; valor, recebedor, ≤24h,

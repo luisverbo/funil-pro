@@ -12,6 +12,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
   enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
+  chavePushEstudio, inscreverPushEstudio,
 } from '@/lib/estudio/client'
 import { createClient } from '@/lib/supabase/client'
 import { webmParaOgg } from '@/lib/whatsapp-cloud/webm-para-ogg'
@@ -124,8 +125,11 @@ export function AbaConversas() {
             {([['todas', 'Todas'], ['naolidas', 'Não lidas'], ['humano', 'Comigo']] as const).map(([k, l]) => (
               <button key={k} onClick={() => setFiltro(k)} className={`rounded-full px-3 py-1 text-xs font-medium ${filtro === k ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{l}</button>
             ))}
-            {permissao === 'default' && (
-              <button onClick={async () => setPermissao(await Notification.requestPermission())} className="ml-auto rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-800">🔔 Ativar avisos</button>
+            {permissao !== 'indisponivel' && permissao !== 'denied' && (
+              <button onClick={async () => { const r = await ativarPush(); setPermissao(r.permissao); if (r.erro) setErro(r.erro); else setErro(null) }}
+                className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium ${permissao === 'granted' ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>
+                {permissao === 'granted' ? '🔔 Avisos ligados' : '🔔 Ativar avisos'}
+              </button>
             )}
           </div>
         </div>
@@ -179,6 +183,29 @@ export function AbaConversas() {
       </section>
     </div>
   )
+}
+
+const b64 = (s: string) => { const p = s.replace(/-/g, '+').replace(/_/g, '/'); const r = atob(p + '='.repeat((4 - p.length % 4) % 4)); return Uint8Array.from(r, ch => ch.charCodeAt(0)) }
+
+/**
+ * Liga os avisos com o app FECHADO: permissão + inscrição no Web Push.
+ * No iPhone só funciona com o FunilPro instalado na Tela de Início (iOS 16.4+).
+ */
+async function ativarPush(): Promise<{ permissao: NotificationPermission; erro?: string }> {
+  const permissao = await Notification.requestPermission()
+  if (permissao !== 'granted') return { permissao }
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return { permissao, erro: 'Este navegador não recebe aviso com o app fechado. No iPhone: Safari → Compartilhar → Adicionar à Tela de Início, e abra pelo ícone.' }
+    }
+    const reg = await navigator.serviceWorker.register('/sw-estudio.js')
+    await navigator.serviceWorker.ready
+    const chave = await chavePushEstudio()
+    if (!chave.publica) return { permissao, erro: chave.error ?? 'Sem chave de push.' }
+    const sub = await reg.pushManager.getSubscription() ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(chave.publica) })
+    const r = await inscreverPushEstudio(sub.endpoint, navigator.userAgent.slice(0, 120))
+    return r.success ? { permissao } : { permissao, erro: r.error }
+  } catch (e) { return { permissao, erro: `Não deu para ligar o push: ${e instanceof Error ? e.message : String(e)}` } }
 }
 
 function Selo({ cor, children }: { cor: string; children: React.ReactNode }) {

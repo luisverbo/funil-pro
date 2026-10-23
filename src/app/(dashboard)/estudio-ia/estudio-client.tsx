@@ -13,9 +13,11 @@ import { urlPublicaDoCatalogo, type Pose, type Tema } from '@/lib/estudio/catalo
 import { FotoOuPlaceholder } from '@/lib/estudio/foto'
 import { AbaConfig } from './aba-config'
 import { AbaConversas } from './aba-conversas'
+import { AbaAtendente } from './aba-atendente'
+import { AbaMidias } from './aba-midias'
 
 /** Fase em construção: subabas até ela já funcionam (sem selo). */
-const FASE_ATUAL = 2
+const FASE_ATUAL = 3
 
 type Catalogo = Awaited<ReturnType<typeof listarCatalogo>>
 
@@ -59,7 +61,7 @@ export default function EstudioClient({ inicial, supabaseUrl }: { inicial: Catal
         ))}
       </nav>
 
-      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <AbaConfig /> : aba === 'conversas' ? <AbaConversas /> : (
+      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <AbaConfig /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
           <p className="text-3xl">🛠️</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">{info.rotulo} chega na Fase {info.fase}</h2>
