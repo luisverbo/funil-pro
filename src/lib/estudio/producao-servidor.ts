@@ -8,7 +8,10 @@
 // Daqui: entrarNaFila (aviso ao Luís), gerarPorApi (Gemini), entregarPedido
 // (fotos uma a uma + A6 + ajuste + oferta), registrarAjuste, atrasos.
 // ============================================================================
-import sharp from 'sharp'
+// sharp é nativo: carregado SÓ quando há imagem para tratar. No topo, uma
+// falha do binário no runtime derrubaria no import TODAS as rotas que tocam
+// este módulo (painel /api/estudio e o cron) — foi o 500 de 29/10.
+async function carregarSharp() { return (await import('sharp')).default }
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { BUCKET_CLIENTES, BUCKET_ENTREGAS, preencherPrompt, urlPublicaDoCatalogo } from './catalogo'
@@ -152,6 +155,7 @@ export async function gerarPorApi(admin: SupabaseClient, pedidoId: string, orcam
       if (!tentativas.length) return falhar(`pose ${numero}: ${err instanceof Error ? err.message : String(err)}`)
     }
     const melhor = melhorTentativa(tentativas)
+    const sharp = await carregarSharp()
     const png = await sharp(Buffer.from(melhor.img.bytes)).png().toBuffer()
     const caminho = `${pedidoId}/${numero}.png`
     const { error: eUp } = await admin.storage.from(BUCKET_ENTREGAS).upload(caminho, png, { contentType: 'image/png', upsert: true })
@@ -181,6 +185,7 @@ export async function gerarPorApi(admin: SupabaseClient, pedidoId: string, orcam
 
 /** JPEG para o WhatsApp (≤5 MB); na prévia, com marca d'água. */
 export async function prepararEnvio(png: Buffer, previa: boolean): Promise<Buffer> {
+  const sharp = await carregarSharp()
   let img = sharp(png).rotate().resize({ width: 1600, height: 2000, fit: 'inside', withoutEnlargement: true })
   if (previa) {
     const meta = await img.clone().toBuffer({ resolveWithObject: true })
