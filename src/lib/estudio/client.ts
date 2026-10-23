@@ -1,6 +1,6 @@
 // Cliente HTTP da aba Estúdio IA — mesmas assinaturas das actions (tipo via
 // typeof import), transporte por fetch para /api/estudio.
-type Acoes = typeof import('@/app/actions/estudio') & typeof import('@/app/actions/estudio-chat') & typeof import('@/app/actions/estudio-ana') & typeof import('@/app/actions/estudio-pix')
+type Acoes = typeof import('@/app/actions/estudio') & typeof import('@/app/actions/estudio-chat') & typeof import('@/app/actions/estudio-ana') & typeof import('@/app/actions/estudio-pix') & typeof import('@/app/actions/estudio-pedidos')
 
 async function chamar(op: string, args: unknown[]): Promise<unknown> {
   let resp: Response
@@ -71,3 +71,11 @@ export const salvarConhecimento = op('salvarConhecimento')
 export const excluirConhecimento = op('excluirConhecimento')
 export const custoIaDaConversa = op('custoIaDaConversa')
 export const custoIaDoDia = op('custoIaDoDia')
+export const lerProducaoConfig = op('lerProducaoConfig')
+export const salvarProducaoConfig = op('salvarProducaoConfig')
+export const listarPedidosEstudio = op('listarPedidosEstudio')
+export const abrirPedidoEstudio = op('abrirPedidoEstudio')
+export const gerarPorApiAgora = op('gerarPorApiAgora')
+export const aprovarEntregaEstudio = op('aprovarEntregaEstudio')
+export const refazerPedidoEstudio = op('refazerPedidoEstudio')
+export const reenviarEntregaEstudio = op('reenviarEntregaEstudio')

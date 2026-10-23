@@ -15,7 +15,8 @@ import type { IdiomaAna } from './textos'
 
 export type Etapa =
   | 'inicio' | 'nome' | 'tema' | 'idade_sensual' | 'pacote' | 'fotos_poses'
-  | 'idade_prefs' | 'aguardando_pagamento' | 'conferindo' | 'pago' | 'previa_fotos' | 'humano'
+  | 'idade_prefs' | 'aguardando_pagamento' | 'conferindo' | 'pago' | 'entregue' | 'ajuste_detalhe'
+  | 'previa_fotos' | 'humano'
 
 export interface Dados {
   nome?: string
@@ -32,6 +33,9 @@ export interface Dados {
   previa_oferecida?: boolean
   previa_feita?: boolean
   etapa_antes_previa?: Etapa
+  /** Ajuste: poses já apontadas pela cliente, esperando o que mudar. */
+  ajuste_poses?: string[]
+  upsell_oferecido?: boolean
   /** Quando a Ana fez a última pergunta (base das cobranças). */
   aguardando_desde?: string
 }
@@ -53,6 +57,8 @@ export interface Contexto {
   temasAtivos: string[]
   /** Pix por comprovante disponível (Brasil, chave cadastrada). */
   pix?: boolean
+  /** Pós-entrega do pedido atual (Fase 5). */
+  entrega?: { pode_ajustar: boolean; poses: string[]; upsell_qtd: number; upsell_valor_cents: number; moeda: string }
 }
 
 export type Acao =
@@ -69,6 +75,8 @@ export type Acao =
   | { t: 'idioma'; idioma: IdiomaAna }
   | { t: 'pix' }
   | { t: 'comprovante' }
+  | { t: 'ajuste'; poses: string[]; obs: string }
+  | { t: 'upsell' }
 
 export interface Resultado { etapa: Etapa; dados: Dados; acoes: Acao[] }
 
@@ -219,7 +227,7 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   // Aceitou a prévia oferecida na cobrança.
-  if (d.previa_oferecida && !d.previa_feita && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
+  if (d.previa_oferecida && !d.previa_feita && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
     return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_pede_fotos' }])
@@ -346,12 +354,42 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       if (e.tipo === 'imagem' || e.tipo === 'documento') return fim('conferindo', [{ t: 'comprovante' }])
       return fim('conferindo', [{ t: 'texto', chave: 'conferindo' }])
 
+    case 'entregue':
+    case 'ajuste_detalhe': {
+      const ent = ctx.entrega
+      if (e.tipo !== 'texto' || !ent) return fim(etapa, [{ t: 'texto', chave: 'entrega_ajuste' }])
+      const t = sem(txt)
+      // "+5 fotos com desconto" (resposta à oferta enviada na entrega)
+      if (etapa === 'entregue' && (QUER_MAIS.test(t) || (d.upsell_oferecido && afirmativo(txt) && !AJUSTE.test(t)))) {
+        d.upsell_oferecido = false
+        d.pacote_qtd = ent.upsell_qtd; d.valor_cents = ent.upsell_valor_cents; d.moeda = ent.moeda
+        d.poses = []; d.tem_rosto = true; d.tem_corpo = true
+        return fim('fotos_poses', [{ t: 'upsell' }, { t: 'texto', chave: 'upsell_poses', vars: { qtd: ent.upsell_qtd } }])
+      }
+      const nums = posesDoTexto(txt).filter(n => ent.poses.includes(n))
+      const descricao = txt.replace(/\b\d{1,3}\b/g, '').replace(/\b(foto|fotos|photo|photos|numero|número|n[ºo°]|a|o|e|and|y)\b/gi, '').replace(/[\s,.;:-]+/g, ' ').trim()
+      const falaDeAjuste = etapa === 'ajuste_detalhe' || AJUSTE.test(t) || nums.length > 0
+      if (!falaDeAjuste) return fim(etapa, [{ t: 'ia', objetivo: 'pós-venda: o ensaio já foi entregue; ajuste grátis em até 24 h dizendo o número da foto e o que mudar; oferta de mais fotos com desconto' }])
+      if (!ent.pode_ajustar) return fim('entregue', [{ t: 'texto', chave: 'ajuste_expirado' }, { t: 'humano', motivo: 'cliente pediu ajuste fora do prazo/limite' }])
+      const poses = nums.length ? nums : (d.ajuste_poses ?? [])
+      if (poses.length === 0) return fim('ajuste_detalhe', [{ t: 'texto', chave: 'ajuste_pede_numero' }])
+      if (descricao.length < 4 || (nums.length > 0 && !AJUSTE.test(t) && descricao.length < 8)) {
+        d.ajuste_poses = poses
+        return fim('ajuste_detalhe', [{ t: 'texto', chave: 'ajuste_pede_o_que', vars: { poses: poses.join(', ') } }])
+      }
+      d.ajuste_poses = undefined
+      return fim('pago', [{ t: 'ajuste', poses, obs: txt.slice(0, 500) }, { t: 'texto', chave: 'ajuste_registrado', vars: { poses: poses.join(', ') } }])
+    }
+
     case 'pago':
       if (e.tipo !== 'texto') return fim('pago', [{ t: 'texto', chave: 'pedido_pago_duvida' }])
       return fim('pago', [{ t: 'ia', objetivo: 'tirar dúvidas; o pedido já está PAGO e na fila de produção (não peça pagamento de novo)' }])
   }
   return fim(etapa, [])
 }
+
+const AJUSTE = /\b(ajust|mud[ae]|trocar|troca|refaz|corrig|nao gostei|nao ficou|ficou estranh|nao parece|nao sou eu|change|fix|redo|adjust|cambiar|arreglar|no me gust)/
+const QUER_MAIS = /(\+\s*\d+\s*fotos?|mais \d+ fotos|quero mais|mais fotos|more photos|\d+ more|quiero mas|mas fotos)/
 
 const FALA_DE_PAGAMENTO = /\b(paguei|ja paguei|pago|pagamento|pix|comprovante|transferi|fiz a transferencia|i paid|paid|pague|ya pague)\b/
 
@@ -378,7 +416,7 @@ export function repetirPergunta(etapa: Etapa, d: Dados): Acao[] {
 
 // ── Cobranças (seção 5): 10 min, 30 min, 3 h — no máximo 3, só na janela ────
 
-export const ETAPAS_SEM_COBRANCA: Etapa[] = ['inicio', 'humano', 'conferindo', 'pago']
+export const ETAPAS_SEM_COBRANCA: Etapa[] = ['inicio', 'humano', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe']
 
 export function cobrancaDevida(c: {
   etapa: Etapa; modo: string; cobrancas: number; janela_ate: string | null

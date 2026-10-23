@@ -522,6 +522,31 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-29 — Estúdio IA, Fase 5 (fila, produção, ENTREGA AUTOMÁTICA, ajuste)**
+- Migration `20261029000000_estudio_ia_producao.sql` (PENDENTE no Studio):
+  motor/aprovacao_manual/gemini_api_key/prazo_min/ajustes_gratis/upsell_* em
+  `estudio_config`; fila_em, atraso_avisado_em, entrega_iniciada_em (trava),
+  api_iniciada_em, ajuste_em/ajuste_poses, upsell_de em `estudio_pedidos`;
+  motor/envio_path/enviada_em em `estudio_entregas`; pg_cron
+  'estudio-producao' a cada minuto (só chama com trabalho)
+- Contrato producao.py intocado: aguardando_producao|ajuste → (PC) gerando →
+  (PC) pronto + entregas 'aprovada' em estudio-entregas/<id>/<numero>.png
+- `src/lib/estudio/producao.ts` (puro), `gemini.ts` (gemini-3-pro-image 4:5 2K
+  + nota gemini-2.5-flash, <7 refaz 1×), `producao-servidor.ts`:
+  entrarNaFila (chamado por marcarPago e pela prévia; aviso "💰 Novo pedido
+  para produzir … gera o pedido <id>"), gerarPorApi (orçamento de tempo, trava
+  6 min, falha → volta p/ site + aviso), entregarPedido (JPEG ≤1600×2000 em
+  estudio-clientes/<id>/envio/, prévia com marca "PRÉVIA · Studio
+  Fotografico", fotos uma a uma + A6 + ajuste grátis + "+5 com 20% off" →
+  entregue), registrarAjuste, criarUpsell (mesmas fotos), avisarAtrasos
+- Ana: etapas `entregue`/`ajuste_detalhe` (número da foto + o que mudar →
+  ajuste; vencido → humano; "quero mais" → upsell com Pix do valor com desconto)
+- Rota `/api/cron/estudio-producao` (maxDuration 300); subaba **Pedidos**
+  (fila, fotos, notas, motor, Gerar por API, Refazer, Reenviar, Cancelar);
+  cartão **Motor de produção** em Configurações (chave Gemini só de escrita)
+- Visualização única: a Cloud API não oferece para envio — não usado
+- Bateria: **1075/1075**
+
 **2026-10-28 — Estúdio IA, Fase 4 (Pix por comprovante + cérebro da Ana)**
 - Migration `20261028000000_estudio_ia_pix.sql` (PENDENTE no Studio): Pix em
   `estudio_config` (pix_chave/tipo/recebedor, cotacoes), pagamento e dados de
