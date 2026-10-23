@@ -16,6 +16,8 @@ const PUBLIC_PREFIXES = [
   '/api/trafego/sync',
   // Cron dos Conteúdos Instagram: sem sessão, protegido por CRON_SECRET.
   '/api/cron/publicar-instagram',
+  // Cobranças da Ana (Estúdio IA): sem sessão, protegida pelo segredo do pg_cron.
+  '/api/cron/estudio-cobrancas',
   '/api/agents/meetings/remind',
   '/privacidade',
   '/api/track',

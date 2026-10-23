@@ -14,6 +14,8 @@ import { enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { origemDaMensagem, fimDaJanela, deveResponderTeste, RESPOSTA_TESTE_PADRAO, type Origem } from './whatsapp'
 import { paisDoWaId, devolveParaAna, previaDaMensagem } from './chat'
 import { guardarMidiaRecebida } from './midia'
+import { avisarAparelhos } from './push'
+import { rodarAna } from './ana/executor'
 
 export interface ConfigEstudio {
   tenant_id: string
@@ -23,12 +25,13 @@ export interface ConfigEstudio {
   resposta_teste: string | null
   app_secret?: string | null
   pausa_humano_horas?: number | null
+  whatsapp_avisos?: string | null
 }
 
 /** Config do estúdio para este phone_number_id, ou null (não é o estúdio). */
 export async function configDoNumero(admin: SupabaseClient, phoneNumberId: string): Promise<ConfigEstudio | null> {
   if (!phoneNumberId) return null
-  const base = 'tenant_id, phone_number_id, access_token, ativo, resposta_teste'
+  const base = 'tenant_id, phone_number_id, access_token, ativo, resposta_teste, whatsapp_avisos'
   const extras = 'app_secret, pausa_humano_horas'
   let { data, error } = await admin.from('estudio_config')
     .select(`${base}, ${extras}`).eq('phone_number_id', phoneNumberId).maybeSingle()
@@ -82,7 +85,7 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
       ...(m.referral && origem === 'anuncio' ? { referral: m.referral } : {}),
     }
     const { error } = await admin.from('estudio_contatos').update({
-      ...base, ultima_msg: previa, nao_lidas: Number(existente?.nao_lidas ?? 0) + 1,
+      ...base, ultima_msg: previa, nao_lidas: Number(existente?.nao_lidas ?? 0) + 1, ultima_cliente_em: agoraIso,
       ...(devolver ? { modo: 'ana', humano_desde: null } : {}),
     }).eq('id', contatoId)
     if (faltaColuna(error?.message)) await admin.from('estudio_contatos').update(base).eq('id', contatoId)
@@ -93,7 +96,7 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
       referral: m.referral ?? null, janela_ate: janela, primeira_msg_em: agoraIso, ultima_msg_em: agoraIso,
     }
     let { data: novo, error } = await admin.from('estudio_contatos')
-      .insert({ ...base, pais, idioma, ultima_msg: previa, nao_lidas: 1 }).select('id').single()
+      .insert({ ...base, pais, idioma, ultima_msg: previa, nao_lidas: 1, ultima_cliente_em: agoraIso }).select('id').single()
     if (faltaColuna(error?.message)) ({ data: novo, error } = await admin.from('estudio_contatos').insert(base).select('id').single())
     if (error || !novo) { console.error('[estudio] contato não criado:', error?.message); return }
     contatoId = novo.id as string
@@ -120,16 +123,27 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
 
   if (!cfg.ativo || !cfg.access_token) return   // conectado mas desligado: só registra
 
+  // Push no celular do Luís (app fechado também) — mensagem nova.
+  void avisarAparelhos(admin, cfg.tenant_id)
+
   // Luís atendendo: a Ana fica quieta.
   const modo = devolver ? 'ana' : (existente?.modo ?? 'ana')
   if (modo === 'humano') return
 
-  // ── Fase 2: resposta de teste (a Fase 3 troca pela Ana completa) ───────────
-  const { data: ultSaida } = await admin.from('estudio_mensagens').select('criado_em')
-    .eq('contato_id', contatoId).eq('direcao', 'saida').order('criado_em', { ascending: false }).limit(1).maybeSingle()
-  if (!deveResponderTeste(ultSaida?.criado_em ?? null)) return
-
-  await enviarEstudio(admin, cfg, contatoId, m.de, (cfg.resposta_teste ?? '').trim() || RESPOSTA_TESTE_PADRAO, 'ana')
+  // ── Fase 3: a Ana (máquina de estados da seção 5) ─────────────────────────
+  try {
+    await rodarAna(admin, {
+      tenant_id: cfg.tenant_id, phone_number_id: cfg.phone_number_id, access_token: cfg.access_token,
+      whatsapp_avisos: cfg.whatsapp_avisos ?? null,
+    }, contatoId, { tipo, texto: texto ?? '', media_path: midia?.path ?? null, media_mime: midia?.mime ?? m.mediaMime ?? null }, !existente)
+  } catch (err) {
+    // Sem o SQL da Fase 3 (colunas da Ana): cai na resposta de teste da Fase 2.
+    console.error('[estudio] Ana falhou, usando resposta de teste:', String(err).slice(0, 300))
+    const { data: ultSaida } = await admin.from('estudio_mensagens').select('criado_em')
+      .eq('contato_id', contatoId).eq('direcao', 'saida').order('criado_em', { ascending: false }).limit(1).maybeSingle()
+    if (!deveResponderTeste(ultSaida?.criado_em ?? null)) return
+    await enviarEstudio(admin, cfg, contatoId, m.de, (cfg.resposta_teste ?? '').trim() || RESPOSTA_TESTE_PADRAO, 'ana')
+  }
 }
 
 /** Envia texto pelo número do estúdio e registra no histórico. */
