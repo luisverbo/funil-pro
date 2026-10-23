@@ -7,14 +7,15 @@
 // executor lembra a cliente do que falta.
 //
 // Etapas: inicio → nome → tema → [idade_sensual] → pacote → fotos_poses →
-//         idade_prefs → aguardando_pagamento        (Fase 4 cobra o Pix)
+//         idade_prefs → aguardando_pagamento → [conferindo] → pago
+//         (Pix do Luís conferido pelo comprovante — Fase 4)
 //         prévia grátis: previa_fotos → volta para onde estava
 // ============================================================================
 import type { IdiomaAna } from './textos'
 
 export type Etapa =
   | 'inicio' | 'nome' | 'tema' | 'idade_sensual' | 'pacote' | 'fotos_poses'
-  | 'idade_prefs' | 'aguardando_pagamento' | 'previa_fotos' | 'humano'
+  | 'idade_prefs' | 'aguardando_pagamento' | 'conferindo' | 'pago' | 'previa_fotos' | 'humano'
 
 export interface Dados {
   nome?: string
@@ -50,6 +51,8 @@ export interface Contexto {
   /** Números de pose ATIVOS por tema. */
   posesDoTema: (slug: string) => string[]
   temasAtivos: string[]
+  /** Pix por comprovante disponível (Brasil, chave cadastrada). */
+  pix?: boolean
 }
 
 export type Acao =
@@ -64,6 +67,8 @@ export type Acao =
   | { t: 'ia'; objetivo: string }
   | { t: 'humano'; motivo: string }
   | { t: 'idioma'; idioma: IdiomaAna }
+  | { t: 'pix' }
+  | { t: 'comprovante' }
 
 export interface Resultado { etapa: Etapa; dados: Dados; acoes: Acao[] }
 
@@ -137,7 +142,8 @@ const AFIRMATIVO = /^(sim+|s|quero|pode( ser)?|claro|bora|vamos|ok|okay|yes|yeah
 export function afirmativo(texto: string): boolean { return AFIRMATIVO.test(sem(texto).trim()) }
 
 const PEDE_HUMANO = /\b(atendente|humano|human|pessoa real|persona real|real person|falar com (alguem|voce|uma pessoa)|hablar con (alguien|una persona)|talk to (someone|a person)|gerente|manager|reembolso|estorno|devolu(cao|ção)|refund|reclama|queja|complain|procon|processo|processar|advogad|abogad|lawyer|denunci|policia|police)\b/
-const PERGUNTA_ROBO = /\b(robo|robô|bot|ia\b|inteligencia artificial|ai\b|automatic|humana|eres humana|are you (a )?(human|real|bot))/
+// "e aí?" NÃO é pergunta sobre robô: "ia"/"ai" só contam em "é uma IA", "are you an AI"…
+const PERGUNTA_ROBO = /\b(robo|bot|inteligencia artificial|automatic|humana|eres humana|are you (a |an )?(human|real|bot|ai)|(e|eh) (uma )?ia|uma ia|eres (una )?ia|an ai)\b/
 
 export function pedeHumano(texto: string): boolean { return PEDE_HUMANO.test(sem(texto)) }
 export function perguntaSeERobo(texto: string): boolean { return PERGUNTA_ROBO.test(sem(texto)) && /\?|voce|vc|eres|are you|e um|é um|é uma/.test(sem(texto)) }
@@ -213,7 +219,7 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   // Aceitou a prévia oferecida na cobrança.
-  if (d.previa_oferecida && !d.previa_feita && etapa !== 'previa_fotos' && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
+  if (d.previa_oferecida && !d.previa_feita && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
     return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_pede_fotos' }])
@@ -312,7 +318,7 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         d.etapa_antes_previa = undefined
         return fim(volta, [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }])
       }
-      if (d.idade && d.cabelo !== undefined) return fechar(d, acoes)
+      if (d.idade && d.cabelo !== undefined) return fechar(d, acoes, ctx)
       return fim('idade_prefs', [...acoes, { t: 'texto', chave: 'pede_idade_prefs' }])
     }
 
@@ -326,17 +332,34 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       d.cabelo = (cabelo?.[1] ?? cabelo?.[2] ?? cabelo?.[3] ?? null)?.trim() ?? null
       const resto = txt.replace(/^\s*\d{1,3}\s*(anos|años|years?)?[\s,.;-]*/i, '').trim()
       d.preferencias = [d.preferencias && d.preferencias !== txt ? d.preferencias : null, resto || null].filter(Boolean).join(' · ') || null
-      return fechar(d, [{ t: 'atualizar_pedido' }])
+      return fechar(d, [{ t: 'atualizar_pedido' }], ctx)
     }
 
     case 'aguardando_pagamento':
-      return fim('aguardando_pagamento', [{ t: 'ia', objetivo: 'tirar dúvidas; o pedido já está registrado e o pagamento será enviado em seguida' }])
+      if (e.tipo === 'imagem' || e.tipo === 'documento') return fim('aguardando_pagamento', [{ t: 'comprovante' }])
+      if (e.tipo === 'texto' && FALA_DE_PAGAMENTO.test(sem(txt))) return fim('aguardando_pagamento', [{ t: 'texto', chave: ctx.pix ? 'pede_comprovante' : 'aguardando_pagamento' }])
+      return fim('aguardando_pagamento', [{ t: 'ia', objetivo: ctx.pix
+        ? 'a cliente pagar o Pix do valor do pedido e mandar o comprovante (imagem ou PDF) aqui'
+        : 'tirar dúvidas; o pedido já está registrado e a forma de pagamento será enviada em seguida' }])
+
+    case 'conferindo':
+      if (e.tipo === 'imagem' || e.tipo === 'documento') return fim('conferindo', [{ t: 'comprovante' }])
+      return fim('conferindo', [{ t: 'texto', chave: 'conferindo' }])
+
+    case 'pago':
+      if (e.tipo !== 'texto') return fim('pago', [{ t: 'texto', chave: 'pedido_pago_duvida' }])
+      return fim('pago', [{ t: 'ia', objetivo: 'tirar dúvidas; o pedido já está PAGO e na fila de produção (não peça pagamento de novo)' }])
   }
   return fim(etapa, [])
 }
 
-function fechar(d: Dados, acoes: Acao[]): Resultado {
-  return { etapa: 'aguardando_pagamento', dados: d, acoes: [...acoes, { t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'resumo_pedido' }] }
+const FALA_DE_PAGAMENTO = /\b(paguei|ja paguei|pago|pagamento|pix|comprovante|transferi|fiz a transferencia|i paid|paid|pague|ya pague)\b/
+
+function fechar(d: Dados, acoes: Acao[], ctx: Contexto): Resultado {
+  const fechamento: Acao[] = [...acoes, { t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'resumo_pedido' }]
+  // Brasil: a Ana manda a chave Pix + o valor exato e pede o comprovante.
+  if (ctx.pix && (d.moeda ?? 'BRL') === 'BRL') fechamento.push({ t: 'pix' }, { t: 'audio', chave: 'a5' }, { t: 'texto', chave: 'pede_comprovante' })
+  return { etapa: 'aguardando_pagamento', dados: d, acoes: fechamento }
 }
 
 /** Lembrete do que a etapa pede (depois de trocar idioma ou responder "é robô?"). */
@@ -355,7 +378,7 @@ export function repetirPergunta(etapa: Etapa, d: Dados): Acao[] {
 
 // ── Cobranças (seção 5): 10 min, 30 min, 3 h — no máximo 3, só na janela ────
 
-export const ETAPAS_SEM_COBRANCA: Etapa[] = ['inicio', 'humano']
+export const ETAPAS_SEM_COBRANCA: Etapa[] = ['inicio', 'humano', 'conferindo', 'pago']
 
 export function cobrancaDevida(c: {
   etapa: Etapa; modo: string; cobrancas: number; janela_ate: string | null

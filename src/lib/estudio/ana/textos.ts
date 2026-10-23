@@ -169,6 +169,48 @@ export const TEXTOS: Tabela = {
     es: 'Tu pedido ya está reservado 💖 ¡Cuando te envíe el pago, solo tienes que pagar!',
     en: "Your order is reserved 💖 As soon as I send you the payment details, just pay and it's in!",
   },
+  pix_dados: {
+    'pt-BR': '💸 Pagamento por Pix\nValor: *{valor}*\nRecebedor: {recebedor}\n\nChave Pix (toque para copiar) 👇',
+    'pt-PT': '💸 Pagamento por Pix\nValor: *{valor}*\nRecebedor: {recebedor}\n\nChave Pix 👇',
+    es: '💸 Pago por Pix\nValor: *{valor}*\nDestinatario: {recebedor}\n\nClave Pix 👇',
+    en: '💸 Payment via Pix\nAmount: *{valor}*\nRecipient: {recebedor}\n\nPix key 👇',
+  },
+  pede_comprovante: {
+    'pt-BR': 'Assim que pagar, me manda o *comprovante* aqui (print ou PDF) que eu já coloco na fila de produção 💖',
+    'pt-PT': 'Assim que pagares, envia-me o *comprovativo* aqui (imagem ou PDF) e coloco já na fila de produção 💖',
+    es: 'En cuanto pagues, envíame el *comprobante* aquí (captura o PDF) y lo pongo en la cola de producción 💖',
+    en: 'Once you pay, send me the *receipt* here (screenshot or PDF) and I will put it in the production queue 💖',
+  },
+  conferindo: {
+    'pt-BR': 'Recebi seu comprovante, {nome}! 🙏 Estou conferindo e já te confirmo, tá?',
+    'pt-PT': 'Recebi o teu comprovativo, {nome}! 🙏 Estou a confirmar e já te digo, está bem?',
+    es: '¡Recibí tu comprobante, {nome}! 🙏 Lo estoy revisando y enseguida te confirmo.',
+    en: 'Got your receipt, {nome}! 🙏 Checking it now, I will confirm in a moment.',
+  },
+  pago_ok: {
+    'pt-BR': 'Pagamento confirmado! ✅ Seu ensaio já entrou na fila de produção. Em até {prazo} minutos te mando as fotos 📸✨',
+    'pt-PT': 'Pagamento confirmado! ✅ A tua sessão já entrou na fila de produção. Em até {prazo} minutos envio-te as fotos 📸✨',
+    es: '¡Pago confirmado! ✅ Tu sesión ya entró en la cola de producción. En hasta {prazo} minutos te envío las fotos 📸✨',
+    en: 'Payment confirmed! ✅ Your shoot is now in the production queue. I will send your photos within {prazo} minutes 📸✨',
+  },
+  comprovante_recusado: {
+    'pt-BR': 'Amiga, não consegui confirmar esse pagamento 🥺 Confere se o valor é {valor} e se foi para a chave certa, e me manda o comprovante de novo?',
+    'pt-PT': 'Não consegui confirmar este pagamento 🥺 Confirma se o valor é {valor} e se foi para a chave certa, e envia-me o comprovativo outra vez?',
+    es: 'No pude confirmar este pago 🥺 ¿Revisas si el valor es {valor} y si fue a la clave correcta, y me envías el comprobante otra vez?',
+    en: "I couldn't confirm this payment 🥺 Could you check the amount is {valor} and it went to the right key, then send the receipt again?",
+  },
+  confirmar_equipe: {
+    'pt-BR': 'Boa pergunta! Vou confirmar com a equipe e já te respondo, tá? 💖',
+    'pt-PT': 'Boa pergunta! Vou confirmar com a equipa e já te respondo, está bem? 💖',
+    es: '¡Buena pregunta! Lo confirmo con el equipo y enseguida te respondo 💖',
+    en: 'Great question! Let me check with the team and get right back to you 💖',
+  },
+  pedido_pago_duvida: {
+    'pt-BR': 'Seu ensaio já está na fila de produção, {nome} 💖 Assim que ficar pronto eu te mando aqui!',
+    'pt-PT': 'A tua sessão já está na fila de produção, {nome} 💖 Assim que ficar pronta envio-ta aqui!',
+    es: 'Tu sesión ya está en la cola de producción, {nome} 💖 ¡En cuanto esté lista te la envío aquí!',
+    en: "Your shoot is already in the production queue, {nome} 💖 I'll send it here as soon as it's ready!",
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',

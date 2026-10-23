@@ -15,20 +15,21 @@ import { AbaConfig } from './aba-config'
 import { AbaConversas } from './aba-conversas'
 import { AbaAtendente } from './aba-atendente'
 import { AbaMidias } from './aba-midias'
+import { AbaPainelPix, CartaoPix } from './pix-ui'
 
 /** Fase em construção: subabas até ela já funcionam (sem selo). */
-const FASE_ATUAL = 3
+const FASE_ATUAL = 4
 
 type Catalogo = Awaited<ReturnType<typeof listarCatalogo>>
 
 const SUBABAS = [
   { chave: 'conversas', rotulo: 'Conversas', fase: 2, texto: '' },
-  { chave: 'painel', rotulo: 'Painel', fase: 6, texto: 'Vendas do dia e da semana, ticket médio, pedidos por status e tempo médio de entrega.' },
+  { chave: 'painel', rotulo: 'Painel', fase: 4, texto: 'Vendas do dia e da semana, ticket médio, pedidos por status e tempo médio de entrega.' },
   { chave: 'pedidos', rotulo: 'Pedidos', fase: 5, texto: 'A fila de produção: fotos da cliente, tema, poses, pagamento, fotos geradas e os botões Aprovar, Refazer e Cancelar.' },
   { chave: 'catalogo', rotulo: 'Catálogo', fase: 1, texto: '' },
   { chave: 'atendente', rotulo: 'Atendente', fase: 3, texto: 'A Ana, do Estúdio: textos de cada etapa, áudios e cobranças.' },
   { chave: 'midias', rotulo: 'Mídias', fase: 3, texto: 'Áudios A1–A6, imagem do menu, PDFs dos catálogos e foto de perfil.' },
-  { chave: 'config', rotulo: 'Configurações', fase: 2, texto: 'WhatsApp do estúdio (Fase 2). Motor de produção, preços, prazo, ajustes e Asaas chegam nas fases 4 e 5.' },
+  { chave: 'config', rotulo: 'Configurações', fase: 2, texto: 'WhatsApp do estúdio e Pix. Motor de produção, preços, prazo e ajustes chegam na Fase 5.' },
 ] as const
 type Subaba = (typeof SUBABAS)[number]['chave']
 
@@ -61,7 +62,7 @@ export default function EstudioClient({ inicial, supabaseUrl }: { inicial: Catal
         ))}
       </nav>
 
-      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <AbaConfig /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : (
+      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <><AbaConfig /><CartaoPix /></> : aba === 'painel' ? <AbaPainelPix /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
           <p className="text-3xl">🛠️</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">{info.rotulo} chega na Fase {info.fase}</h2>

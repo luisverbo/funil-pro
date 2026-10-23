@@ -7,6 +7,7 @@
 // ============================================================================
 import { useEffect, useMemo, useState } from 'react'
 import { listarTextosAna, salvarTextoAna } from '@/lib/estudio/client'
+import { BaseConhecimento } from './base-conhecimento'
 
 type Linha = Awaited<ReturnType<typeof listarTextosAna>>['linhas'][number]
 const IDIOMAS = [['pt-BR', '🇧🇷 Português (BR)'], ['pt-PT', '🇵🇹 Português (PT)'], ['es', '🇪🇸 Español'], ['en', '🇺🇸 English']] as const
@@ -17,8 +18,9 @@ const GRUPOS: [string, string[]][] = [
   ['Catálogo e pacotes', ['catalogo_link', 'tabela_precos', 'pacote_de_novo']],
   ['Fotos e poses', ['pede_fotos_poses', 'foto_rosto_ok', 'foto_corpo_ok', 'foto_ruim', 'foto_recusada', 'video_nao', 'poses_invalidas', 'poses_faltam', 'poses_demais', 'falta_foto']],
   ['Idade, preferências e pedido', ['pede_idade_prefs', 'idade_falta', 'resumo_pedido', 'aguardando_pagamento']],
+  ['Pix e comprovante', ['pix_dados', 'pede_comprovante', 'conferindo', 'pago_ok', 'comprovante_recusado', 'pedido_pago_duvida']],
   ['Cobranças e prévia', ['cobranca_1', 'cobranca_2', 'cobranca_3', 'previa_pede_fotos', 'previa_na_fila']],
-  ['Outros', ['nao_entendi', 'humano', 'sou_assistente', 'idioma_trocado']],
+  ['Outros', ['nao_entendi', 'confirmar_equipe', 'humano', 'sou_assistente', 'idioma_trocado']],
   ['Texto no lugar do áudio (quando não houver áudio no idioma)', ['a1', 'a2', 'a3', 'a4', 'a5', 'a6']],
 ]
 
@@ -41,9 +43,10 @@ export function AbaAtendente() {
         <p className="font-semibold">🤖 A Ana, do Estúdio</p>
         <p className="mt-1 text-xs text-violet-900/80">
           Ela segue o roteiro da venda (nome → tema → catálogo → pacote → fotos e poses → idade e preferências → pedido) e só usa IA para tirar dúvidas dentro de cada etapa.
-          Variáveis: {'{nome} {tema} {link} {tabela} {qtd} {faltam} {valor} {poses} {prazo}'}. Campo vazio = texto padrão.
+          Variáveis: {'{nome} {tema} {link} {tabela} {qtd} {faltam} {valor} {poses} {prazo} {recebedor}'}. Campo vazio = texto padrão.
         </p>
       </div>
+      <BaseConhecimento />
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1">
         {IDIOMAS.map(([k, l]) => (

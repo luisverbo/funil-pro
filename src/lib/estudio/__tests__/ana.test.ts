@@ -12,7 +12,7 @@ import {
   type Etapa, type Dados, type Entrada, type Contexto, type Acao,
 } from '@/lib/estudio/ana/maquina'
 import { TEXTOS, IDIOMAS, texto, idiomaDaAna, dinheiro, nomeDoTema } from '@/lib/estudio/ana/textos'
-import { lerRespostaIa, lerConferencia, responderDuvida, conferirFoto } from '@/lib/estudio/ana/ia'
+import { lerConferencia, responderDuvida, conferirFoto } from '@/lib/estudio/ana/ia'
 import { gerarVapid, jwtVapid, endpointValido, enviarPushVazio } from '@/lib/estudio/push'
 
 const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
@@ -81,7 +81,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const idi = proximoPasso('tema', { nome: 'Ann' }, txt('english please'), ctx)
     assert.deepEqual(idi.acoes[0], { t: 'idioma', idioma: 'en' })
     assert.ok(pedeHumano('quero reembolso')); assert.ok(!pedeHumano('quero o pacote 2'))
-    assert.ok(perguntaSeERobo('vc é um bot?'))
+    assert.ok(perguntaSeERobo('vc é um bot?')); assert.ok(perguntaSeERobo('você é uma IA?')); assert.ok(!perguntaSeERobo('e aí?')); assert.ok(!perguntaSeERobo('Oi, e aí, tudo bem?'))
   },
   'prévia grátis aceita na cobrança: 1 foto + 1 pose → fila e volta para a etapa': () => {
     const d: Dados = { nome: 'Lu', tema: 'casual', previa_oferecida: true }
@@ -127,14 +127,13 @@ const tests: Record<string, () => void | Promise<void>> = {
     for (const i of IDIOMAS) assert.match(TEXTOS.outro_tema[i], /\S/)
   },
   'IA: marcadores e conferência da foto; sem chave aceita; nunca chama rede nos testes': async () => {
-    assert.deepEqual(lerRespostaIa('[NAO_ENTENDI]'), { tipo: 'nao_entendi' }); assert.deepEqual(lerRespostaIa('[HUMANO]'), { tipo: 'humano' })
     assert.deepEqual(lerConferencia('{"pessoa":true,"rosto_visivel":false}'), { ok: false, motivo: 'ruim' })
     assert.deepEqual(lerConferencia('{"pessoa":true,"parece_menor":true}'), { ok: false, motivo: 'recusada' })
     const antes = process.env.ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_API_KEY
     let chamou = false
     const falso = (async () => { chamou = true; return new Response('{}') }) as unknown as typeof fetch
     assert.deepEqual(await conferirFoto(new Uint8Array([1]), 'image/jpeg', falso), { ok: true, motivo: 'ok' })
-    assert.deepEqual(await responderDuvida({ idioma: 'pt-BR', objetivo: 'x', tabelaPrecos: '', prazoMin: 60, temas: '', historico: [] }, 'oi', falso), { tipo: 'nao_entendi' })
+    assert.deepEqual((await responderDuvida({ idioma: 'pt-BR', objetivo: 'x', tabelaPrecos: '', prazoMin: 60, temas: '', historico: [] }, 'oi', falso)).resposta, { tipo: 'nao_entendi' })
     assert.equal(chamou, false)
     if (antes !== undefined) process.env.ANTHROPIC_API_KEY = antes
   },
