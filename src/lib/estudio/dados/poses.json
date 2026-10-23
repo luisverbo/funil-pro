@@ -1,0 +1,513 @@
+{
+ "versao": "2026-10-23",
+ "temas": [
+  {
+   "slug": "aniversario",
+   "nome": "Ensaio de Aniversário",
+   "sujeito": "mulher",
+   "poses": [
+    {
+     "numero": "01",
+     "cena": "sentada numa poltrona de palhinha dourada, vestido branco elegante, segurando um bolo pequeno branco com velas douradas com a idade dela, balões dourados ao lado, fundo rosa clarinho",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada numa poltrona de palhinha dourada, vestido branco elegante, segurando um bolo pequeno branco com velas douradas com a idade dela, balões dourados ao lado, fundo rosa clarinho. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada numa poltrona de palhinha dourada, vestido branco elegante, segurando um bolo pequeno branco com velas douradas com a idade dela, balões dourados ao lado, fundo rosa clarinho. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "02",
+     "cena": "em pé, segurando um buquê de balões metalizados rosé com o número da idade, vestido preto curto, confetes no ar, fundo cinza claro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé, segurando um buquê de balões metalizados rosé com o número da idade, vestido preto curto, confetes no ar, fundo cinza claro. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé, segurando um buquê de balões metalizados rosé com o número da idade, vestido preto curto, confetes no ar, fundo cinza claro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "03",
+     "cena": "sentada num cubo branco, pernas cruzadas, vestido de cetim laranja, balões rosé no chão, fundo branco",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada num cubo branco, pernas cruzadas, vestido de cetim laranja, balões rosé no chão, fundo branco. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada num cubo branco, pernas cruzadas, vestido de cetim laranja, balões rosé no chão, fundo branco. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "04",
+     "cena": "close do rosto com as mãos no queixo, olhando para as velas acesas de um bolo com a idade dela, luz quente de velas, fundo escuro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: close do rosto com as mãos no queixo, olhando para as velas acesas de um bolo com a idade dela, luz quente de velas, fundo escuro. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: close do rosto com as mãos no queixo, olhando para as velas acesas de um bolo com a idade dela, luz quente de velas, fundo escuro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "05",
+     "cena": "segurando duas velas douradas com os números da idade dela perto do rosto, luz de velas, fundo escuro com bokeh dourado",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: segurando duas velas douradas com os números da idade dela perto do rosto, luz de velas, fundo escuro com bokeh dourado. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: segurando duas velas douradas com os números da idade dela perto do rosto, luz de velas, fundo escuro com bokeh dourado. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "06",
+     "cena": "à frente de um número gigante iluminado com a idade dela, vestido vermelho de cetim, segurando uma vela faísca",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: à frente de um número gigante iluminado com a idade dela, vestido vermelho de cetim, segurando uma vela faísca. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: à frente de um número gigante iluminado com a idade dela, vestido vermelho de cetim, segurando uma vela faísca. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "07",
+     "cena": "em preto e branco, de costas para um número gigante branco com a idade dela, olhando por cima do ombro, vestido preto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em preto e branco, de costas para um número gigante branco com a idade dela, olhando por cima do ombro, vestido preto. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em preto e branco, de costas para um número gigante branco com a idade dela, olhando por cima do ombro, vestido preto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "08",
+     "cena": "deitada de bruços sobre lençol branco com pétalas, apoiando o queixo nas mãos, bolo pequeno à frente",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: deitada de bruços sobre lençol branco com pétalas, apoiando o queixo nas mãos, bolo pequeno à frente. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: deitada de bruços sobre lençol branco com pétalas, apoiando o queixo nas mãos, bolo pequeno à frente. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "09",
+     "cena": "brindando com uma taça de espumante, vestido dourado de paetê, fundo com cortina de luzes",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: brindando com uma taça de espumante, vestido dourado de paetê, fundo com cortina de luzes. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: brindando com uma taça de espumante, vestido dourado de paetê, fundo com cortina de luzes. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "10",
+     "cena": "soprando as velas de um bolo de dois andares, coroa delicada na cabeça, fundo rosa",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: soprando as velas de um bolo de dois andares, coroa delicada na cabeça, fundo rosa. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: soprando as velas de um bolo de dois andares, coroa delicada na cabeça, fundo rosa. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "11",
+     "cena": "sentada no chão cercada de balões transparentes com confetes dourados, vestido branco longo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada no chão cercada de balões transparentes com confetes dourados, vestido branco longo. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada no chão cercada de balões transparentes com confetes dourados, vestido branco longo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "12",
+     "cena": "rindo jogando confetes para cima, vestido rosa, fundo de estúdio rosa",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: rindo jogando confetes para cima, vestido rosa, fundo de estúdio rosa. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: rindo jogando confetes para cima, vestido rosa, fundo de estúdio rosa. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "13",
+     "cena": "segurando uma faixa de cetim escrito 'Aniversariante', vestido azul-claro, fundo neutro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: segurando uma faixa de cetim escrito 'Aniversariante', vestido azul-claro, fundo neutro. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: segurando uma faixa de cetim escrito 'Aniversariante', vestido azul-claro, fundo neutro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "14",
+     "cena": "sentada à mesa decorada com bolo, flores brancas e velas, de perfil, sorrindo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada à mesa decorada com bolo, flores brancas e velas, de perfil, sorrindo. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada à mesa decorada com bolo, flores brancas e velas, de perfil, sorrindo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "15",
+     "cena": "com chapéu de festa dourado e serpentinas, sorriso aberto, fundo colorido suave",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: com chapéu de festa dourado e serpentinas, sorriso aberto, fundo colorido suave. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: com chapéu de festa dourado e serpentinas, sorriso aberto, fundo colorido suave. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "16",
+     "cena": "em pé, de corpo inteiro, vestido longo verde-esmeralda, escadaria elegante, buquê de balões",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé, de corpo inteiro, vestido longo verde-esmeralda, escadaria elegante, buquê de balões. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé, de corpo inteiro, vestido longo verde-esmeralda, escadaria elegante, buquê de balões. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "17",
+     "cena": "retrato de meio corpo com maquiagem marcante, brincos grandes dourados, fundo bordô",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato de meio corpo com maquiagem marcante, brincos grandes dourados, fundo bordô. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato de meio corpo com maquiagem marcante, brincos grandes dourados, fundo bordô. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "18",
+     "cena": "segurando um bolo com o dedo provando a cobertura, expressão divertida, fundo branco",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: segurando um bolo com o dedo provando a cobertura, expressão divertida, fundo branco. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: segurando um bolo com o dedo provando a cobertura, expressão divertida, fundo branco. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "19",
+     "cena": "sentada numa poltrona de veludo rosa, vestido de tule, véu de luzes ao fundo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada numa poltrona de veludo rosa, vestido de tule, véu de luzes ao fundo. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada numa poltrona de veludo rosa, vestido de tule, véu de luzes ao fundo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "20",
+     "cena": "retrato elegante com coroa de flores, luz natural de janela, vestido creme",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato elegante com coroa de flores, luz natural de janela, vestido creme. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio de aniversário, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato elegante com coroa de flores, luz natural de janela, vestido creme. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    }
+   ]
+  },
+  {
+   "slug": "corporativo",
+   "nome": "Ensaio Corporativo Feminino",
+   "sujeito": "mulher",
+   "poses": [
+    {
+     "numero": "01",
+     "cena": "em pé de braços cruzados, blazer bege claro sobre blusa de seda off-white, fundo de estúdio cinza esfumado",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé de braços cruzados, blazer bege claro sobre blusa de seda off-white, fundo de estúdio cinza esfumado. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé de braços cruzados, blazer bege claro sobre blusa de seda off-white, fundo de estúdio cinza esfumado. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "02",
+     "cena": "sentada numa cadeira de design, pernas cruzadas, terninho preto, fundo cinza escuro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada numa cadeira de design, pernas cruzadas, terninho preto, fundo cinza escuro. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada numa cadeira de design, pernas cruzadas, terninho preto, fundo cinza escuro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "03",
+     "cena": "retrato de meio corpo sorrindo, camisa branca e blazer azul-marinho, fundo branco",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato de meio corpo sorrindo, camisa branca e blazer azul-marinho, fundo branco. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato de meio corpo sorrindo, camisa branca e blazer azul-marinho, fundo branco. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "04",
+     "cena": "apoiada numa mesa de escritório moderno, notebook aberto, blazer cinza",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: apoiada numa mesa de escritório moderno, notebook aberto, blazer cinza. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: apoiada numa mesa de escritório moderno, notebook aberto, blazer cinza. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "05",
+     "cena": "caminhando num corredor corporativo de vidro, terninho off-white, segurando uma pasta",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: caminhando num corredor corporativo de vidro, terninho off-white, segurando uma pasta. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: caminhando num corredor corporativo de vidro, terninho off-white, segurando uma pasta. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "06",
+     "cena": "retrato de perfil olhando pela janela de um escritório alto, blazer preto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato de perfil olhando pela janela de um escritório alto, blazer preto. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato de perfil olhando pela janela de um escritório alto, blazer preto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "07",
+     "cena": "em pé ao lado de uma estante com livros, mãos nos bolsos, terninho caramelo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé ao lado de uma estante com livros, mãos nos bolsos, terninho caramelo. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé ao lado de uma estante com livros, mãos nos bolsos, terninho caramelo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "08",
+     "cena": "sentada à mesa de reunião, mãos entrelaçadas, sorriso confiante, blazer vinho",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada à mesa de reunião, mãos entrelaçadas, sorriso confiante, blazer vinho. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada à mesa de reunião, mãos entrelaçadas, sorriso confiante, blazer vinho. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "09",
+     "cena": "segurando uma xícara de café, encostada na parede, camisa de seda verde",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: segurando uma xícara de café, encostada na parede, camisa de seda verde. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: segurando uma xícara de café, encostada na parede, camisa de seda verde. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "10",
+     "cena": "retrato fechado com a mão no queixo, expressão pensativa, blazer branco, fundo cinza",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato fechado com a mão no queixo, expressão pensativa, blazer branco, fundo cinza. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato fechado com a mão no queixo, expressão pensativa, blazer branco, fundo cinza. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "11",
+     "cena": "em pé de corpo inteiro, terninho rosa-claro, fundo de estúdio branco",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé de corpo inteiro, terninho rosa-claro, fundo de estúdio branco. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé de corpo inteiro, terninho rosa-claro, fundo de estúdio branco. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "12",
+     "cena": "sorrindo ao telefone, sentada num sofá de couro, blazer bege",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sorrindo ao telefone, sentada num sofá de couro, blazer bege. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sorrindo ao telefone, sentada num sofá de couro, blazer bege. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "13",
+     "cena": "com óculos de grau na mão, retrato meio corpo, camisa azul-clara, fundo escuro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: com óculos de grau na mão, retrato meio corpo, camisa azul-clara, fundo escuro. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: com óculos de grau na mão, retrato meio corpo, camisa azul-clara, fundo escuro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "14",
+     "cena": "em pé num lobby moderno, braços cruzados, vestido tubinho preto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé num lobby moderno, braços cruzados, vestido tubinho preto. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé num lobby moderno, braços cruzados, vestido tubinho preto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "15",
+     "cena": "escrevendo num caderno de couro, mesa de madeira, blazer xadrez discreto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: escrevendo num caderno de couro, mesa de madeira, blazer xadrez discreto. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: escrevendo num caderno de couro, mesa de madeira, blazer xadrez discreto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "16",
+     "cena": "apresentando com uma mão estendida, quadro branco desfocado ao fundo, terninho azul",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: apresentando com uma mão estendida, quadro branco desfocado ao fundo, terninho azul. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: apresentando com uma mão estendida, quadro branco desfocado ao fundo, terninho azul. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "17",
+     "cena": "retrato de meio corpo com fundo de cidade desfocada pela janela, blazer creme",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato de meio corpo com fundo de cidade desfocada pela janela, blazer creme. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato de meio corpo com fundo de cidade desfocada pela janela, blazer creme. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "18",
+     "cena": "sentada na beira da mesa, notebook ao lado, camisa branca, sorriso leve",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada na beira da mesa, notebook ao lado, camisa branca, sorriso leve. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada na beira da mesa, notebook ao lado, camisa branca, sorriso leve. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "19",
+     "cena": "retrato preto e branco, olhar direto, blazer preto, fundo liso",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato preto e branco, olhar direto, blazer preto, fundo liso. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato preto e branco, olhar direto, blazer preto, fundo liso. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "20",
+     "cena": "em pé no terraço de um prédio, cidade ao fundo, terninho bege, fim de tarde",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé no terraço de um prédio, cidade ao fundo, terninho bege, fim de tarde. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio corporativo feminino, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: em pé no terraço de um prédio, cidade ao fundo, terninho bege, fim de tarde. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    }
+   ]
+  },
+  {
+   "slug": "casual",
+   "nome": "Ensaio Casual",
+   "sujeito": "mulher",
+   "poses": [
+    {
+     "numero": "01",
+     "cena": "sentada num café ao ar livre, calça jeans e camisa de linho branca, segurando uma xícara",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada num café ao ar livre, calça jeans e camisa de linho branca, segurando uma xícara. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada num café ao ar livre, calça jeans e camisa de linho branca, segurando uma xícara. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "02",
+     "cena": "caminhando num jardim florido ao fim da tarde, vestido midi floral",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: caminhando num jardim florido ao fim da tarde, vestido midi floral. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: caminhando num jardim florido ao fim da tarde, vestido midi floral. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "03",
+     "cena": "sentada na escada de uma casa colorida, jeans e tênis branco",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada na escada de uma casa colorida, jeans e tênis branco. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada na escada de uma casa colorida, jeans e tênis branco. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "04",
+     "cena": "rindo na praia, vestido branco leve, cabelo ao vento",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: rindo na praia, vestido branco leve, cabelo ao vento. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: rindo na praia, vestido branco leve, cabelo ao vento. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "05",
+     "cena": "andando na rua de uma cidade histórica, bolsa de palha, vestido amarelo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: andando na rua de uma cidade histórica, bolsa de palha, vestido amarelo. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: andando na rua de uma cidade histórica, bolsa de palha, vestido amarelo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "06",
+     "cena": "sentada na grama de um parque, livro na mão, camiseta branca",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada na grama de um parque, livro na mão, camiseta branca. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada na grama de um parque, livro na mão, camiseta branca. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "07",
+     "cena": "encostada num muro de flores, saia longa e regata",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: encostada num muro de flores, saia longa e regata. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: encostada num muro de flores, saia longa e regata. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "08",
+     "cena": "segurando um sorvete, rua charmosa, roupa de verão",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: segurando um sorvete, rua charmosa, roupa de verão. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: segurando um sorvete, rua charmosa, roupa de verão. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "09",
+     "cena": "num campo de girassóis, chapéu de palha, vestido branco",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: num campo de girassóis, chapéu de palha, vestido branco. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: num campo de girassóis, chapéu de palha, vestido branco. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "10",
+     "cena": "numa feira de flores segurando um buquê, camisa listrada",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: numa feira de flores segurando um buquê, camisa listrada. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: numa feira de flores segurando um buquê, camisa listrada. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "11",
+     "cena": "retrato de meio corpo com jaqueta jeans, fundo urbano desfocado",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato de meio corpo com jaqueta jeans, fundo urbano desfocado. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato de meio corpo com jaqueta jeans, fundo urbano desfocado. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "12",
+     "cena": "sentada numa janela grande com café, suéter bege, luz da manhã",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada numa janela grande com café, suéter bege, luz da manhã. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: sentada numa janela grande com café, suéter bege, luz da manhã. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "13",
+     "cena": "na varanda com plantas, roupa confortável, sorrindo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: na varanda com plantas, roupa confortável, sorrindo. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: na varanda com plantas, roupa confortável, sorrindo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "14",
+     "cena": "caminhando com sacolas de compras numa rua de lojas",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: caminhando com sacolas de compras numa rua de lojas. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: caminhando com sacolas de compras numa rua de lojas. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "15",
+     "cena": "deitada numa rede, vestido leve, casa de praia",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: deitada numa rede, vestido leve, casa de praia. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: deitada numa rede, vestido leve, casa de praia. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "16",
+     "cena": "na beira de um lago, de jeans, olhando o horizonte",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: na beira de um lago, de jeans, olhando o horizonte. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: na beira de um lago, de jeans, olhando o horizonte. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "17",
+     "cena": "segurando o celular rindo, café moderno",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: segurando o celular rindo, café moderno. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: segurando o celular rindo, café moderno. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "18",
+     "cena": "andando de bicicleta com cesta de flores",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: andando de bicicleta com cesta de flores. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: andando de bicicleta com cesta de flores. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "19",
+     "cena": "no mirante de uma montanha, roupa de trilha leve",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: no mirante de uma montanha, roupa de trilha leve. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: no mirante de uma montanha, roupa de trilha leve. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "20",
+     "cena": "retrato espontâneo arrumando o cabelo, luz dourada",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio casual, vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato espontâneo arrumando o cabelo, luz dourada. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio casual, vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Cena: retrato espontâneo arrumando o cabelo, luz dourada. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    }
+   ]
+  },
+  {
+   "slug": "sensual",
+   "nome": "Ensaio Sensual (adulto, sem nudez)",
+   "sujeito": "mulher",
+   "poses": [
+    {
+     "numero": "01",
+     "cena": "sentada na beira de uma cama com lençóis brancos, robe de seda champanhe, luz de janela",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada na beira de uma cama com lençóis brancos, robe de seda champanhe, luz de janela. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: sentada na beira de uma cama com lençóis brancos, robe de seda champanhe, luz de janela. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "02",
+     "cena": "em pé encostada numa janela com cortina leve, body de renda preto coberto por kimono de seda",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé encostada numa janela com cortina leve, body de renda preto coberto por kimono de seda. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: em pé encostada numa janela com cortina leve, body de renda preto coberto por kimono de seda. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "03",
+     "cena": "deitada de lado num sofá de veludo, vestido de cetim vermelho longo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: deitada de lado num sofá de veludo, vestido de cetim vermelho longo. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: deitada de lado num sofá de veludo, vestido de cetim vermelho longo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "04",
+     "cena": "de costas olhando por cima do ombro, vestido de costas abertas, fundo escuro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: de costas olhando por cima do ombro, vestido de costas abertas, fundo escuro. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: de costas olhando por cima do ombro, vestido de costas abertas, fundo escuro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "05",
+     "cena": "sentada numa poltrona de couro, camisa social masculina branca grande e salto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada numa poltrona de couro, camisa social masculina branca grande e salto. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: sentada numa poltrona de couro, camisa social masculina branca grande e salto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "06",
+     "cena": "retrato fechado com batom vermelho, ombros à mostra, fundo escuro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato fechado com batom vermelho, ombros à mostra, fundo escuro. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: retrato fechado com batom vermelho, ombros à mostra, fundo escuro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "07",
+     "cena": "com lençol de seda branco enrolado no corpo, coberto, luz suave",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: com lençol de seda branco enrolado no corpo, coberto, luz suave. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: com lençol de seda branco enrolado no corpo, coberto, luz suave. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "08",
+     "cena": "sentada no chão de um quarto elegante, vestido slip dress preto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada no chão de um quarto elegante, vestido slip dress preto. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: sentada no chão de um quarto elegante, vestido slip dress preto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "09",
+     "cena": "em preto e branco, silhueta contra a janela, vestido longo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em preto e branco, silhueta contra a janela, vestido longo. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: em preto e branco, silhueta contra a janela, vestido longo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "10",
+     "cena": "deitada de bruços na cama, apoiada nos cotovelos, pijama de seda",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: deitada de bruços na cama, apoiada nos cotovelos, pijama de seda. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: deitada de bruços na cama, apoiada nos cotovelos, pijama de seda. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "11",
+     "cena": "em pé ao lado de um espelho antigo, robe de seda bordô",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé ao lado de um espelho antigo, robe de seda bordô. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: em pé ao lado de um espelho antigo, robe de seda bordô. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "12",
+     "cena": "sentada numa banheira vazia vintage, vestida com robe de cetim",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada numa banheira vazia vintage, vestida com robe de cetim. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: sentada numa banheira vazia vintage, vestida com robe de cetim. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "13",
+     "cena": "retrato com chapéu preto e blazer sem nada por baixo, fechado, decote discreto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato com chapéu preto e blazer sem nada por baixo, fechado, decote discreto. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: retrato com chapéu preto e blazer sem nada por baixo, fechado, decote discreto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "14",
+     "cena": "olhando pela janela da sacada à noite, vestido de seda preto",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: olhando pela janela da sacada à noite, vestido de seda preto. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: olhando pela janela da sacada à noite, vestido de seda preto. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "15",
+     "cena": "sentada na escada com vestido de festa longo com fenda",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada na escada com vestido de festa longo com fenda. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: sentada na escada com vestido de festa longo com fenda. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "16",
+     "cena": "deitada sobre pétalas de rosa, vestido de cetim, enquadramento do busto para cima",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: deitada sobre pétalas de rosa, vestido de cetim, enquadramento do busto para cima. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: deitada sobre pétalas de rosa, vestido de cetim, enquadramento do busto para cima. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "17",
+     "cena": "retrato com luz de velas, ombro à mostra, fundo escuro",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato com luz de velas, ombro à mostra, fundo escuro. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: retrato com luz de velas, ombro à mostra, fundo escuro. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "18",
+     "cena": "em pé no meio do quarto com a luz da manhã, body nude coberto por camisa aberta",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: em pé no meio do quarto com a luz da manhã, body nude coberto por camisa aberta. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: em pé no meio do quarto com a luz da manhã, body nude coberto por camisa aberta. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "19",
+     "cena": "sentada num banco de piano, vestido preto longo",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: sentada num banco de piano, vestido preto longo. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: sentada num banco de piano, vestido preto longo. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    },
+    {
+     "numero": "20",
+     "cena": "retrato de perfil com cabelo solto, luz dourada, vestido de alcinha",
+     "prompt_catalogo": "Foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5, com uma modelo brasileira adulta de uns 35 anos, aparência comum e natural (pessoa fictícia, não famosa). Cena: retrato de perfil com cabelo solto, luz dourada, vestido de alcinha. Ensaio elegante, sem nudez. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos.",
+     "prompt_cliente": "Usando estas 2 fotos da MESMA mulher (a 1ª é o rosto, a 2ª é o corpo inteiro), crie uma foto ULTRA REALISTA de ensaio sensual (adulto, sem nudez), vertical 4:5. REGRA MAIS IMPORTANTE: o rosto tem que ser exatamente o dela, idêntico e reconhecível (mesmo formato do rosto, olhos, nariz, boca, sobrancelhas, tom de pele, idade aparente de {idade} anos, cabelo {cabelo}), sem embelezar demais, sem afinar o rosto, sem rejuvenescer, sem mudar o tipo de corpo. Ensaio elegante e adulto, SEM nudez e sem transparência nas partes íntimas. Cena: retrato de perfil com cabelo solto, luz dourada, vestido de alcinha. Preferências da cliente: {preferencias}. Iluminação profissional, câmera 85mm, pele com textura real, cores naturais, sem cara de IA, sem texto, sem logos."
+    }
+   ]
+  }
+ ]
+}

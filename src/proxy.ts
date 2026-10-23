@@ -5,6 +5,8 @@ import { createServerClient } from '@supabase/ssr'
 // '/quiz' deixaria '/quiz-editor/…' público.
 const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding', '/quiz', '/api/checkout/quiz'])
 const PUBLIC_PREFIXES = [
+  // Estúdio IA: vitrine pública do catálogo (só leitura, só temas/poses ativos).
+  '/estudio/catalogo',
   '/api/webhooks',
   '/api/funnels',
   '/api/queue/process',
