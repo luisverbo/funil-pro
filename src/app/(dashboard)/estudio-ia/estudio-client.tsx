@@ -18,6 +18,7 @@ import { AbaMidias } from './aba-midias'
 import { AbaPainelPix, CartaoPix } from './pix-ui'
 import { AbaPedidos, CartaoMotor } from './aba-pedidos'
 import { CartaoHotmart, CartaoPrecos } from './hotmart-ui'
+import { CartaoMetaCapi } from './anuncios-ui'
 
 /** Fase em construção: subabas até ela já funcionam (sem selo). */
 const FASE_ATUAL = 5
@@ -64,7 +65,7 @@ export default function EstudioClient({ inicial, supabaseUrl }: { inicial: Catal
         ))}
       </nav>
 
-      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <><AbaConfig /><CartaoPix /><CartaoHotmart /><CartaoPrecos /><CartaoMotor /></> : aba === 'pedidos' ? <AbaPedidos /> : aba === 'painel' ? <AbaPainelPix /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : (
+      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <><AbaConfig /><CartaoPix /><CartaoHotmart /><CartaoPrecos /><CartaoMetaCapi /><CartaoMotor /></> : aba === 'pedidos' ? <AbaPedidos /> : aba === 'painel' ? <AbaPainelPix /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
           <p className="text-3xl">🛠️</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">{info.rotulo} chega na Fase {info.fase}</h2>

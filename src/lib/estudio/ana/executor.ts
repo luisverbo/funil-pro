@@ -30,6 +30,7 @@ interface Contato {
   id: string; tenant_id: string; wa_id: string; nome: string | null; pais: string | null; idioma: string | null
   etapa: string | null; dados: Dados | null; pedido_atual_id: string | null; idioma_fixo?: boolean
   nao_entendeu?: number; modo?: string; fotos_recebidas?: FotoRecebida[]
+  origem?: string | null; ad_id?: string | null; ctwa_clid?: string | null
 }
 
 /** Tabela de preços em texto, na moeda do país (5 = 🔥 mais vendido). */
@@ -307,11 +308,18 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
         }
         case 'criar_pedido': {
           const previa = a.tipo === 'previa'
-          const { data: p } = await admin.from('estudio_pedidos').insert({
+          const basePedido = {
             tenant_id: c.tenant_id, contato_id: c.id, cliente_nome: dados.nome ?? c.nome, wa_id: c.wa_id,
             tema_slug: dados.tema ?? null, pacote_qtd: previa ? 1 : dados.pacote_qtd, valor_cents: previa ? 0 : dados.valor_cents,
             moeda: dados.moeda ?? 'BRL', idioma, pais: c.pais, status: 'novo', tipo: a.tipo, idade: dados.idade ?? null,
+          }
+          // De onde veio (anúncio → clique), para o painel e para o evento da Meta.
+          const primeira = await admin.from('estudio_pedidos').insert({
+            ...basePedido, origem: c.ad_id ? 'anuncio' : (c.origem ?? 'organico'), ad_id: c.ad_id ?? null, ctwa_clid: c.ctwa_clid ?? null,
           }).select('id').single()
+          let p = primeira.data
+          // SQL do rastreio ainda não rodou: cria o pedido mesmo assim (sem a origem).
+          if (primeira.error && /ctwa_clid|ad_id|origem|column|schema cache/i.test(primeira.error.message)) p = (await admin.from('estudio_pedidos').insert(basePedido).select('id').single()).data
           if (p) {
             pedidoId = p.id
             if (previa) dados.poses = []   // as fotos que ela já mandou continuam valendo
@@ -351,6 +359,9 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           } else {
             await admin.from('estudio_pedidos').update({ status: 'aguardando_pagamento' }).eq('id', pedidoId)
             await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'pedido_registrado', detalhe: { valor_cents: dados.valor_cents, poses: dados.poses } })
+            // Meta: LeadSubmitted (só se veio de anúncio; nunca 2×). Falha não atrapalha a conversa.
+            const pid = pedidoId
+            await import('../anuncios-servidor').then(x => x.enviarEventoPedido(admin, pid, 'LeadSubmitted')).catch(err => console.warn('[estudio] LeadSubmitted:', String(err).slice(0, 200)))
           }
           break
         case 'pix': {

@@ -13,6 +13,7 @@ import {
   recusarPagamentoPix, cancelarPedidoEstudio, custoIaDaConversa, custoIaDoDia, listarAvisosEstudio, enviarTesteAvisos,
 } from '@/lib/estudio/client'
 import { Faturamento } from './hotmart-ui'
+import { OrigemDasVendas } from './anuncios-ui'
 
 type PedidoPix = Awaited<ReturnType<typeof listarConferenciasPix>>['pedidos'][number]
 type Custo = Awaited<ReturnType<typeof custoIaDaConversa>>
@@ -152,6 +153,7 @@ export function AbaPainelPix() {
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       <PainelAvisos versao={versao} />
       <Faturamento />
+      <OrigemDasVendas />
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">🧾 Comprovantes para conferir {pend.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{pend.length}</span>}</h2>
         {pend.length === 0 ? <p className="mt-2 text-sm text-slate-500">Nada pendente. 🎉</p>

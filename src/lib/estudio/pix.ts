@@ -90,11 +90,12 @@ export function linhasDoPix(pix: PixDoLuis): { chave: string; recebedor: string 
 
 // ── Dados de venda gravados no pedido pago (o Painel da Fase 6 lê daqui) ────
 
-export interface ContatoVenda { origem?: string | null; referral?: Record<string, unknown> | null; pais?: string | null; idioma?: string | null }
+export interface ContatoVenda { origem?: string | null; referral?: Record<string, unknown> | null; pais?: string | null; idioma?: string | null; ad_id?: string | null; ctwa_clid?: string | null }
 
 export function dadosDeVenda(c: ContatoVenda, veioDePrevia: boolean) {
   const ref = (c.referral ?? {}) as Record<string, unknown>
-  const adId = typeof ref.source_id === 'string' ? ref.source_id : typeof ref.ad_id === 'string' ? ref.ad_id : null
+  // Colunas do último clique (rastreio por anúncio) valem sobre o referral bruto.
+  const adId = c.ad_id ?? (typeof ref.source_id === 'string' ? ref.source_id : typeof ref.ad_id === 'string' ? ref.ad_id : null)
   return {
     origem: c.origem === 'anuncio' || adId ? 'anuncio' : 'organico',
     ad_id: adId,
