@@ -522,6 +522,22 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-23 — Estúdio IA, Fase 1 (catálogo)** — projeto completo enviado pelo dono
+(ensaio fotográfico com IA vendido pelo WhatsApp; 6 fases, seção 11)
+- Migration `20261023000000_estudio_ia_fase1.sql` — **PENDENTE de aplicar no
+  Studio** (MCP do Supabase sem permissão em 23/10): tabelas `estudio_temas`,
+  `estudio_poses`, `estudio_pedidos`, `estudio_entregas`, `estudio_eventos` com os
+  nomes EXATOS da seção 4 (contrato com `producao.py` do PC — teste reprova
+  renomeação); buckets `estudio-clientes`/`estudio-entregas` privados e
+  `estudio-catalogo` público; RLS + REVOKE anon
+- `src/lib/estudio/catalogo.ts` (puro: lerPosesJson, URLs, mensagem de escolha,
+  preencherPrompt) + `dados/poses.json` (4 temas × 20 poses do projeto)
+- Aba `/estudio-ia` (6 subabas; só Catálogo funcional) via `/api/estudio` +
+  `src/lib/estudio/client.ts`; botão Importar (upsert, preserva foto/ativa)
+- Público `/estudio/catalogo` e `/estudio/catalogo/<slug>` (tema escuro, número
+  grande, seleção → "Quero as poses 03, 12"; botão wa.me entra na Fase 2)
+- Bateria: **999/999**
+
 **2026-10-14 — Instagram: clique em botão com emoji + sequência espera o clique**
 - Automação PLUGUE EDITOR: clique em "Quero o link 👉" chegou como
   "Quero o link �" (emoji quebrado) → `chaveDoBotao` agora compara só letras e

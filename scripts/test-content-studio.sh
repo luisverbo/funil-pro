@@ -41,7 +41,8 @@ cat > "$OUT/tsconfig.json" <<JSON
     "$RAIZ/src/lib/trafego/__tests__/*.test.ts",
     "$RAIZ/src/lib/pages/__tests__/*.test.ts",
     "$RAIZ/src/lib/billing/__tests__/*.test.ts",
-    "$RAIZ/src/lib/conteudos-ig/__tests__/*.test.ts"
+    "$RAIZ/src/lib/conteudos-ig/__tests__/*.test.ts",
+    "$RAIZ/src/lib/estudio/__tests__/*.test.ts"
   ]
 }
 JSON
@@ -74,7 +75,8 @@ for arquivo in "$OUT"/lib/content-studio/__tests__/*.test.js \
                "$OUT"/lib/trafego/__tests__/*.test.js \
                "$OUT"/lib/pages/__tests__/*.test.js \
                "$OUT"/lib/billing/__tests__/*.test.js \
-               "$OUT"/lib/conteudos-ig/__tests__/*.test.js; do
+               "$OUT"/lib/conteudos-ig/__tests__/*.test.js \
+               "$OUT"/lib/estudio/__tests__/*.test.js; do
   [ -e "$arquivo" ] || continue
   nome="$(basename "$arquivo")"
   linha="$(cd "$RAIZ" && CS_OUT="$OUT" NODE_PATH="$RAIZ/node_modules" \
