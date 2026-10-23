@@ -14,6 +14,7 @@ import {
   enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
   chavePushEstudio, inscreverPushEstudio,
 } from '@/lib/estudio/client'
+import { ConferenciaPix, CustoDaConversa } from './pix-ui'
 import { createClient } from '@/lib/supabase/client'
 import { webmParaOgg } from '@/lib/whatsapp-cloud/webm-para-ogg'
 import { bandeira, tempoDaJanela, tick, tipoCloudDoMime } from '@/lib/estudio/chat'
@@ -495,9 +496,11 @@ function Painel({ aberta, fechar, recarregar, setErro }: { aberta: Aberta; fecha
           {!salvo && <button onClick={async () => { const r = await salvarNotasChat(c.id, notas); if (r.error) setErro(r.error); else setSalvo(true) }}
             className="mt-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">Salvar notas</button>}
         </div>
+        <ConferenciaPix contatoId={c.id} onMudou={() => void recarregar()} />
+        <CustoDaConversa contatoId={c.id} />
         <div>
           <p className="text-xs font-semibold text-slate-700">Pedidos</p>
-          {aberta.pedidos.length === 0 ? <p className="mt-1 text-xs text-slate-500">Nenhum pedido ainda (a Ana cria na Fase 3).</p> : aberta.pedidos.map(p => (
+          {aberta.pedidos.length === 0 ? <p className="mt-1 text-xs text-slate-500">Nenhum pedido ainda.</p> : aberta.pedidos.map(p => (
             <div key={p.id} className="mt-2 rounded-lg border border-slate-200 p-2.5">
               <p className="text-xs"><strong>{STATUS_PEDIDO[p.status] ?? p.status}</strong> · {p.tema_slug ?? '—'} · {p.pacote_qtd ?? '?'} fotos{p.valor_cents ? ` · R$ ${(p.valor_cents / 100).toFixed(2).replace('.', ',')}` : ''}</p>
               {p.poses.length > 0 && <p className="text-[11px] text-slate-500">Poses: {p.poses.join(', ')}</p>}

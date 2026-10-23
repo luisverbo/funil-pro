@@ -1,6 +1,6 @@
 // Cliente HTTP da aba Estúdio IA — mesmas assinaturas das actions (tipo via
 // typeof import), transporte por fetch para /api/estudio.
-type Acoes = typeof import('@/app/actions/estudio') & typeof import('@/app/actions/estudio-chat') & typeof import('@/app/actions/estudio-ana')
+type Acoes = typeof import('@/app/actions/estudio') & typeof import('@/app/actions/estudio-chat') & typeof import('@/app/actions/estudio-ana') & typeof import('@/app/actions/estudio-pix')
 
 async function chamar(op: string, args: unknown[]): Promise<unknown> {
   let resp: Response
@@ -58,3 +58,16 @@ export const statusMidiasAna = op('statusMidiasAna')
 export const chavePushEstudio = op('chavePushEstudio')
 export const inscreverPushEstudio = op('inscreverPushEstudio')
 export const testarPushEstudio = op('testarPushEstudio')
+
+export const lerPixConfig = op('lerPixConfig')
+export const salvarPixConfig = op('salvarPixConfig')
+export const listarConferenciasPix = op('listarConferenciasPix')
+export const listarPixDoDia = op('listarPixDoDia')
+export const aprovarPagamentoPix = op('aprovarPagamentoPix')
+export const recusarPagamentoPix = op('recusarPagamentoPix')
+export const cancelarPedidoEstudio = op('cancelarPedidoEstudio')
+export const listarConhecimento = op('listarConhecimento')
+export const salvarConhecimento = op('salvarConhecimento')
+export const excluirConhecimento = op('excluirConhecimento')
+export const custoIaDaConversa = op('custoIaDaConversa')
+export const custoIaDoDia = op('custoIaDoDia')

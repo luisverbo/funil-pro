@@ -522,6 +522,30 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-28 — Estúdio IA, Fase 4 (Pix por comprovante + cérebro da Ana)**
+- Migration `20261028000000_estudio_ia_pix.sql` (PENDENTE no Studio): Pix em
+  `estudio_config` (pix_chave/tipo/recebedor, cotacoes), pagamento e dados de
+  venda em `estudio_pedidos` (pix_e2e_id UNIQUE, pago_por, forma_pagamento,
+  valor_pago_cents, comprovante_path/dados, conferencia_motivo, origem, ad_id,
+  veio_de_previa, custo_ia_usd, cancelado_*), `estudio_conhecimento`,
+  `estudio_ia_uso` (tokens + custo US$ por chamada)
+- Fechamento: resumo + chave Pix (mensagem separada p/ copiar) + A5 + pede
+  comprovante. Comprovante (imagem/PDF) → `estudio-clientes/<pedido>/
+  comprovante.*` → Sonnet lê → régua pura `src/lib/estudio/pix.ts` (valor,
+  recebedor por nome abreviado OU chave mascarada, ≤24h, E2E inédito) →
+  'pago' (pago_por=comprovante) ou 'aguardando_conferencia' + aviso. Etapas
+  novas `conferindo`/`pago` (sem cobrança). `pix-servidor.ts::marcarPago`
+  grava o retrato da venda (origem/ad_id do referral, prévia, custo IA)
+- IA (`ana/ia.ts`): Anthropic, `claude-haiku-5-5` no dia a dia,
+  `claude-sonnet-5-5` em objeção/reclamação/ambíguo/imagens; saída
+  estruturada (json_schema); sistema decide (`decidirResposta`) e trava
+  preço/desconto/prazo fora da tabela/base → "vou confirmar com a equipe" + aviso
+- Telas: Painel (conferências pendentes + "Pix por comprovante" do dia +
+  cancelar/estornar + custo IA do dia), cartão Pix em Configurações, Base de
+  conhecimento no Atendente, Aprovar/Recusar + custo IA ao lado da conversa
+- Bug da Fase 3 corrigido: "e aí?" era lido como "você é robô?"
+- Bateria: **1057/1057**
+
 **2026-10-27 — Estúdio IA, Fase 3 (a Ana + idiomas + catálogo/PDF + push)**
 - Migration `20261027000000_estudio_ia_ana.sql` (PENDENTE no Studio):
   `estudio_textos`, `estudio_precos` (BR semeado), `estudio_push`, colunas

@@ -1,18 +1,38 @@
 // ============================================================================
-// Estúdio IA — a IA da Ana: só responde dúvida livre e confere a foto
+// Estúdio IA — o cérebro da Ana (API da Anthropic, Claude)
 // ----------------------------------------------------------------------------
-// A máquina de estados decide a venda; aqui a IA:
-//   1) responde uma pergunta livre DENTRO da etapa, curta, no idioma da
-//      cliente, sem inventar preço/prazo (vêm no prompt) — ou devolve
-//      [NAO_ENTENDI] / [HUMANO];
-//   2) confere a foto do rosto (pessoa real, de frente, nítida, adulta, não é
-//      famosa/print) — seção 7 do projeto.
+// A máquina de estados decide a venda; aqui a IA só:
+//   1) entende uma mensagem livre DENTRO da etapa e devolve uma resposta
+//      ESTRUTURADA (intenção, dados extraídos, texto, precisa de humano?,
+//      está na base?) — o sistema decide o que fazer com ela;
+//   2) confere a foto do rosto (pessoa real, de frente, nítida, adulta);
+//   3) lê o comprovante do Pix (valor, data, recebedor, pagador, E2E).
+// Modelos: Haiku 5.5 no dia a dia; Sonnet 5.5 em objeção, reclamação, caso
+// ambíguo e em toda leitura de imagem/PDF. Cada chamada devolve o uso de
+// tokens e o custo em US$ (gravado em estudio_ia_uso).
 // `fetchFn` injetável: os testes nunca chamam a API de verdade.
 // ============================================================================
 import type { IdiomaAna } from './textos'
+import type { LeituraComprovante } from '../pix'
 
-const MODELO = process.env.ESTUDIO_MODEL ?? process.env.AGENT_MODEL ?? 'claude-sonnet-5'
+export const MODELO_RAPIDO = 'claude-haiku-5-5'
+export const MODELO_FORTE = 'claude-sonnet-5-5'
 type Fetch = typeof fetch
+
+/** US$ por 1 milhão de tokens (entrada, saída). Cache: leitura 0,1× e escrita 1,25× da entrada. */
+export const PRECO_POR_MILHAO: Record<string, { entrada: number; saida: number }> = {
+  [MODELO_RAPIDO]: { entrada: 0.10, saida: 0.50 },
+  [MODELO_FORTE]: { entrada: 2.00, saida: 10.00 },
+}
+
+export interface UsoIa { modelo: string; input_tokens: number; output_tokens: number; cache_read: number; cache_write: number; custo_usd: number }
+
+export function custoDoUso(modelo: string, u: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }): UsoIa {
+  const p = PRECO_POR_MILHAO[modelo] ?? PRECO_POR_MILHAO[MODELO_FORTE]
+  const i = u.input_tokens ?? 0, o = u.output_tokens ?? 0, cr = u.cache_read_input_tokens ?? 0, cw = u.cache_creation_input_tokens ?? 0
+  const custo = (i * p.entrada + o * p.saida + cr * p.entrada * 0.1 + cw * p.entrada * 1.25) / 1e6
+  return { modelo, input_tokens: i, output_tokens: o, cache_read: cr, cache_write: cw, custo_usd: Math.round(custo * 1e6) / 1e6 }
+}
 
 const NOME_IDIOMA: Record<IdiomaAna, string> = {
   'pt-BR': 'português do Brasil (informal, carinhoso, "amiga")',
@@ -21,6 +41,8 @@ const NOME_IDIOMA: Record<IdiomaAna, string> = {
   en: 'English (warm, friendly)',
 }
 
+export interface ItemBase { tipo: 'faq' | 'regra' | 'nao_dizer'; pergunta?: string | null; resposta: string }
+
 export interface ContextoIa {
   idioma: IdiomaAna
   objetivo: string            // o que a etapa precisa (ex.: "escolher um pacote")
@@ -28,53 +50,150 @@ export interface ContextoIa {
   prazoMin: number
   temas: string               // "Aniversário, Corporativo, Casual, Sensual"
   historico: { de: 'cliente' | 'ana'; texto: string }[]
+  base?: ItemBase[]
 }
 
 export function promptDaAna(c: ContextoIa): string {
+  const base = c.base ?? []
+  const faq = base.filter(b => b.tipo === 'faq').map(b => `P: ${b.pergunta ?? ''}\nR: ${b.resposta}`).join('\n\n')
+  const regras = base.filter(b => b.tipo === 'regra').map(b => `- ${b.resposta}`).join('\n')
+  const proibido = base.filter(b => b.tipo === 'nao_dizer').map(b => `- ${b.resposta}`).join('\n')
   return `Você é a Ana, assistente virtual do Estúdio (ensaio fotográfico feito com IA, vendido pelo WhatsApp).
-Responda SEMPRE em ${NOME_IDIOMA[c.idioma]}. Frases curtas, no máximo 3 linhas, emojis com moderação.
+Escreva a "resposta" SEMPRE em ${NOME_IDIOMA[c.idioma]}. Frases curtas, no máximo 3 linhas, emojis com moderação.
 
-FATOS (use só estes, nunca invente):
+FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - O ensaio é 100% on-line: a cliente manda 2 fotos (rosto de frente e corpo inteiro), escolhe tema e poses num catálogo numerado e recebe as fotos prontas.
 - Temas disponíveis: ${c.temas}. Outros temas: "em breve".
 - Preços: ${c.tabelaPrecos}
 - Prazo: até ${c.prazoMin} minutos após o pagamento e as fotos, no horário de produção.
 - 1 ajuste grátis por pacote, em até 24 h após a entrega.
 - Sensual: só maiores de 18 e sem nudez. Só fotos da própria cliente.
+- Pagamento no Brasil: Pix, conferido pelo comprovante.
 - As imagens são geradas por IA; uma pessoa da equipe revisa todas.
-- Não tem currículo, depoimentos ou anos de experiência para contar: nunca invente nada disso.
+${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE — REGRAS:\n${regras}\n` : ''}${proibido ? `\nNUNCA DIGA:\n${proibido}\n` : ''}
+PROIBIDO: inventar preço, valor, desconto, cupom, brinde, prazo, garantia ou qualquer promessa que não esteja acima. Nada de currículo, depoimentos ou anos de experiência.
 
 AGORA a etapa precisa de: ${c.objetivo}.
-Responda a dúvida da cliente e, no fim, lembre com carinho o que falta para seguir.
+Responda a dúvida e, no fim, lembre com carinho o que falta para seguir.
 
-Regras de saída:
-- Se não der para entender o que ela quis dizer, responda exatamente: [NAO_ENTENDI]
-- Se for reclamação, pedido de reembolso, ameaça ou algo fora destas regras, responda exatamente: [HUMANO]`
+Campos:
+- intencao: duvida | objecao (caro, desconfiança, "é golpe?") | reclamacao | reembolso | quer_humano | compra | fora_da_base | nao_entendi | outro
+- na_base: false se a resposta exigiria um fato que NÃO está nos FATOS nem na BASE (nesse caso intencao = fora_da_base)
+- precisa_humano: true para reclamação, reembolso, ameaça, pedido de falar com pessoa, ou algo fora das regras
+- dados: o que a cliente informou nesta mensagem (null quando não disse)`
 }
 
-export type RespostaIa = { tipo: 'texto'; texto: string } | { tipo: 'nao_entendi' } | { tipo: 'humano' }
+const SCHEMA_RESPOSTA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['intencao', 'dados', 'resposta', 'precisa_humano', 'na_base'],
+  properties: {
+    intencao: { type: 'string', enum: ['duvida', 'objecao', 'reclamacao', 'reembolso', 'quer_humano', 'compra', 'fora_da_base', 'nao_entendi', 'outro'] },
+    dados: {
+      type: 'object', additionalProperties: false,
+      required: ['nome', 'tema', 'pacote_qtd', 'poses', 'idade'],
+      properties: {
+        nome: { type: ['string', 'null'] }, tema: { type: ['string', 'null'] }, pacote_qtd: { type: ['integer', 'null'] },
+        poses: { type: ['array', 'null'], items: { type: 'string' } }, idade: { type: ['integer', 'null'] },
+      },
+    },
+    resposta: { type: 'string' },
+    precisa_humano: { type: 'boolean' },
+    na_base: { type: 'boolean' },
+  },
+} as const
 
-export function lerRespostaIa(bruto: string): RespostaIa {
-  const t = (bruto ?? '').trim()
-  if (!t || /\[NAO_ENTENDI\]/i.test(t)) return { tipo: 'nao_entendi' }
-  if (/\[HUMANO\]/i.test(t)) return { tipo: 'humano' }
-  return { tipo: 'texto', texto: t.slice(0, 900) }
+export type Intencao = 'duvida' | 'objecao' | 'reclamacao' | 'reembolso' | 'quer_humano' | 'compra' | 'fora_da_base' | 'nao_entendi' | 'outro'
+export interface RespostaEstruturada {
+  intencao: Intencao
+  dados: { nome: string | null; tema: string | null; pacote_qtd: number | null; poses: string[] | null; idade: number | null }
+  resposta: string
+  precisa_humano: boolean
+  na_base: boolean
 }
 
-async function chamarClaude(body: Record<string, unknown>, f: Fetch): Promise<string> {
+/** O que o SISTEMA faz com a resposta da IA. */
+export type RespostaIa =
+  | { tipo: 'texto'; texto: string }
+  | { tipo: 'nao_entendi' }
+  | { tipo: 'humano' }
+  | { tipo: 'confirmar_equipe'; motivo: string }
+
+const OBJECAO = /\b(caro|cara demais|desconto|cupom|promo|golpe|confi[aá]ve|confian|seguro|garantia|medo|desconfi|nao confio|demor|atras|reclama|horr[ií]vel|p[eé]ssim|nao gostei|feio|estorn|reembols|devolv|procon|advogad|expensive|scam|trust|refund|estafa)/i
+
+/** Haiku no dia a dia; Sonnet em objeção/reclamação ou mensagem longa (ambígua). */
+export function modeloParaMensagem(texto: string): string {
+  const t = (texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return OBJECAO.test(t) || t.length > 280 ? MODELO_FORTE : MODELO_RAPIDO
+}
+
+const VALOR = /(?:R\$|€|US\$|\$|USD|EUR|BRL)\s*\d+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?\s*(?:reais|euros?|d[oó]lares?|dollars?)/gi
+const PROMESSA = /\b(desconto|cupom|cupon|coupon|discount|gr[aá]tis|free|brinde|de presente|garanto|garantimos|guarantee|reembolso garantido|dinheiro de volta|money back)\b/i
+const TEMPO = /(\d+)\s*(min(?:utos?)?|minutes?|h(?:oras?)?|hours?|dias?|days?)\b/gi
+
+/**
+ * Trava final: a resposta da IA só sai se não trouxer valor fora da tabela,
+ * promessa (desconto/brinde/garantia) que não esteja na base, nem prazo
+ * diferente do prometido. Devolve o motivo do bloqueio ou null.
+ */
+export function bloqueioDaResposta(texto: string, permitido: { tabelaPrecos: string; prazoMin: number; base?: ItemBase[] }): string | null {
+  const baseTxt = [permitido.tabelaPrecos, ...(permitido.base ?? []).map(b => `${b.pergunta ?? ''} ${b.resposta}`)].join(' ')
+  const norm = (v: string) => v.replace(/[^\d.,]/g, '').replace(',', '.').replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1')
+  const valoresOk = new Set((baseTxt.match(VALOR) ?? []).map(norm))
+  for (const v of texto.match(VALOR) ?? []) if (!valoresOk.has(norm(v))) return `valor fora da tabela (${v.trim()})`
+  if (PROMESSA.test(texto)) {
+    const p = texto.match(PROMESSA)![1].toLowerCase()
+    if (!baseTxt.toLowerCase().includes(p)) return `promessa fora da base (${p})`
+  }
+  for (const m of texto.matchAll(TEMPO)) {
+    const n = Number(m[1]); const u = m[2].toLowerCase()
+    const emMin = u.startsWith('h') ? n * 60 : u.startsWith('d') ? n * 1440 : n
+    if (emMin !== permitido.prazoMin && emMin !== 24 * 60 && !baseTxt.includes(m[0])) return `prazo diferente do prometido (${m[0]})`
+  }
+  return null
+}
+
+/** Lê a saída estruturada (JSON). Inválida → não entendi. */
+export function lerEstruturada(bruto: string): RespostaEstruturada | null {
+  try {
+    const m = (bruto ?? '').match(/\{[\s\S]*\}/)
+    if (!m) return null
+    const j = JSON.parse(m[0]) as RespostaEstruturada
+    if (typeof j.intencao !== 'string' || typeof j.resposta !== 'string') return null
+    return { ...j, dados: j.dados ?? { nome: null, tema: null, pacote_qtd: null, poses: null, idade: null } }
+  } catch { return null }
+}
+
+/** Decisão do sistema sobre a resposta estruturada (pura). */
+export function decidirResposta(r: RespostaEstruturada | null, permitido: { tabelaPrecos: string; prazoMin: number; base?: ItemBase[] }): RespostaIa {
+  if (!r || r.intencao === 'nao_entendi' || !r.resposta.trim()) return { tipo: 'nao_entendi' }
+  if (r.precisa_humano || ['reclamacao', 'reembolso', 'quer_humano'].includes(r.intencao)) return { tipo: 'humano' }
+  if (!r.na_base || r.intencao === 'fora_da_base') return { tipo: 'confirmar_equipe', motivo: 'pergunta fora da base de conhecimento' }
+  const bloqueio = bloqueioDaResposta(r.resposta, permitido)
+  if (bloqueio) return { tipo: 'confirmar_equipe', motivo: `a IA tentou responder com ${bloqueio}` }
+  return { tipo: 'texto', texto: r.resposta.trim().slice(0, 900) }
+}
+
+type Corpo = { content?: { type: string; text?: string }[]; usage?: Record<string, number>; stop_reason?: string; error?: { message?: string } }
+
+async function chamarClaude(modelo: string, body: Record<string, unknown>, f: Fetch): Promise<{ texto: string; uso: UsoIa }> {
   const chave = process.env.ANTHROPIC_API_KEY
   if (!chave) throw new Error('ANTHROPIC_API_KEY ausente')
   const r = await f('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': chave, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODELO, ...body }),
+    body: JSON.stringify({ model: modelo, ...body }),
   })
-  const j = await r.json().catch(() => null) as { content?: { type: string; text?: string }[]; error?: { message?: string } } | null
+  const j = await r.json().catch(() => null) as Corpo | null
   if (!r.ok || !j) throw new Error(j?.error?.message ?? `Anthropic HTTP ${r.status}`)
-  return (j.content ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join('')
+  const uso = custoDoUso(modelo, j.usage ?? {})
+  if (j.stop_reason === 'refusal') return { texto: '', uso }
+  return { texto: (j.content ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join(''), uso }
 }
 
-export async function responderDuvida(c: ContextoIa, mensagem: string, f: Fetch = fetch): Promise<RespostaIa> {
+export interface ResultadoIa { resposta: RespostaIa; estruturada: RespostaEstruturada | null; usos: UsoIa[] }
+
+export async function responderDuvida(c: ContextoIa, mensagem: string, f: Fetch = fetch): Promise<ResultadoIa> {
   const msgs = [...c.historico.slice(-8), { de: 'cliente' as const, texto: mensagem }]
     .map(m => ({ role: m.de === 'cliente' ? 'user' : 'assistant', content: m.texto || '…' }))
   // A API exige começar por 'user' e alternar papéis.
@@ -85,15 +204,33 @@ export async function responderDuvida(c: ContextoIa, mensagem: string, f: Fetch 
     if (ult && ult.role === m.role) ult.content += `\n${m.content}`
     else alternadas.push({ ...m })
   }
+  const permitido = { tabelaPrecos: c.tabelaPrecos, prazoMin: c.prazoMin, base: c.base }
+  const usos: UsoIa[] = []
+  const rodar = async (modelo: string) => {
+    const { texto, uso } = await chamarClaude(modelo, {
+      max_tokens: 1024,
+      system: [{ type: 'text', text: promptDaAna(c), cache_control: { type: 'ephemeral' } }],
+      messages: alternadas,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_RESPOSTA } },
+    }, f)
+    usos.push(uso)
+    return lerEstruturada(texto)
+  }
   try {
-    return lerRespostaIa(await chamarClaude({ max_tokens: 300, system: promptDaAna(c), messages: alternadas }, f))
+    const primeiro = modeloParaMensagem(mensagem)
+    let est = await rodar(primeiro)
+    // Caso ambíguo no Haiku (não entendeu / objeção / fora da base): o Sonnet olha de novo.
+    if (primeiro === MODELO_RAPIDO && (!est || ['nao_entendi', 'objecao', 'fora_da_base', 'reclamacao'].includes(est.intencao))) {
+      est = (await rodar(MODELO_FORTE)) ?? est
+    }
+    return { resposta: decidirResposta(est, permitido), estruturada: est, usos }
   } catch (err) {
     console.error('[estudio/ana] IA falhou:', String(err).slice(0, 200))
-    return { tipo: 'nao_entendi' }
+    return { resposta: { tipo: 'nao_entendi' }, estruturada: null, usos }
   }
 }
 
-// ── Conferência da foto do rosto ────────────────────────────────────────────
+// ── Conferência da foto do rosto (Sonnet, visão) ────────────────────────────
 
 export interface ConferenciaFoto { ok: boolean; motivo: 'ok' | 'ruim' | 'recusada' }
 
@@ -108,21 +245,77 @@ export function lerConferencia(bruto: string): ConferenciaFoto {
   } catch { return { ok: true, motivo: 'ok' } }
 }
 
+const SCHEMA_FOTO = {
+  type: 'object', additionalProperties: false,
+  required: ['pessoa', 'rosto_visivel', 'nitida', 'parece_menor', 'famosa_ou_print'],
+  properties: { pessoa: { type: 'boolean' }, rosto_visivel: { type: 'boolean' }, nitida: { type: 'boolean' }, parece_menor: { type: 'boolean' }, famosa_ou_print: { type: 'boolean' } },
+} as const
+
+const tipoImagem = (mime: string) => /png/.test(mime) ? 'image/png' : /webp/.test(mime) ? 'image/webp' : 'image/jpeg'
+
 /** Confere a foto; sem chave da IA ou com erro, ACEITA (o Luís revisa depois). */
-export async function conferirFoto(bytes: Uint8Array, mime: string, f: Fetch = fetch): Promise<ConferenciaFoto> {
+export async function conferirFoto(bytes: Uint8Array, mime: string, f: Fetch = fetch): Promise<ConferenciaFoto & { uso?: UsoIa }> {
   if (!process.env.ANTHROPIC_API_KEY) return { ok: true, motivo: 'ok' }
-  const tipo = /png/.test(mime) ? 'image/png' : /webp/.test(mime) ? 'image/webp' : 'image/jpeg'
   try {
-    const bruto = await chamarClaude({
-      max_tokens: 120,
+    const { texto, uso } = await chamarClaude(MODELO_FORTE, {
+      max_tokens: 1024,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_FOTO } },
       messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type: tipo, data: Buffer.from(bytes).toString('base64') } },
-        { type: 'text', text: 'Esta foto será usada como referência do ROSTO para um ensaio fotográfico. Responda só um JSON: {"pessoa":bool,"rosto_visivel":bool,"nitida":bool,"parece_menor":bool,"famosa_ou_print":bool}. rosto_visivel = rosto de frente e inteiro; famosa_ou_print = celebridade, foto de revista, print de rede social de outra pessoa ou desenho.' },
+        { type: 'image', source: { type: 'base64', media_type: tipoImagem(mime), data: Buffer.from(bytes).toString('base64') } },
+        { type: 'text', text: 'Esta foto será usada como referência do ROSTO para um ensaio fotográfico. rosto_visivel = rosto de frente e inteiro; famosa_ou_print = celebridade, foto de revista, print de rede social de outra pessoa ou desenho.' },
       ] }],
     }, f)
-    return lerConferencia(bruto)
+    return { ...lerConferencia(texto), uso }
   } catch (err) {
     console.error('[estudio/ana] conferência de foto falhou:', String(err).slice(0, 200))
     return { ok: true, motivo: 'ok' }
+  }
+}
+
+// ── Leitura do comprovante do Pix (Sonnet, visão; imagem ou PDF) ────────────
+
+const SCHEMA_COMPROVANTE = {
+  type: 'object', additionalProperties: false,
+  required: ['e_comprovante', 'legivel', 'valor_cents', 'data_hora', 'recebedor_nome', 'recebedor_chave', 'pagador_nome', 'e2e_id'],
+  properties: {
+    e_comprovante: { type: 'boolean' }, legivel: { type: 'boolean' },
+    valor_cents: { type: ['integer', 'null'] }, data_hora: { type: ['string', 'null'] },
+    recebedor_nome: { type: ['string', 'null'] }, recebedor_chave: { type: ['string', 'null'] },
+    pagador_nome: { type: ['string', 'null'] }, e2e_id: { type: ['string', 'null'] },
+  },
+} as const
+
+export const LEITURA_VAZIA: LeituraComprovante = {
+  e_comprovante: false, legivel: false, valor_cents: null, data_hora: null,
+  recebedor_nome: null, recebedor_chave: null, pagador_nome: null, e2e_id: null,
+}
+
+export function lerLeitura(bruto: string): LeituraComprovante {
+  const m = (bruto ?? '').match(/\{[\s\S]*\}/)
+  if (!m) return LEITURA_VAZIA
+  try { return { ...LEITURA_VAZIA, ...(JSON.parse(m[0]) as Partial<LeituraComprovante>) } } catch { return LEITURA_VAZIA }
+}
+
+/** Sem chave ou com erro devolve leitura vazia → vai para a conferência do Luís (nunca aprova sozinho). */
+export async function lerComprovante(bytes: Uint8Array, mime: string, f: Fetch = fetch): Promise<{ leitura: LeituraComprovante; uso?: UsoIa }> {
+  if (!process.env.ANTHROPIC_API_KEY) return { leitura: LEITURA_VAZIA }
+  const b64 = Buffer.from(bytes).toString('base64')
+  const arquivo = /pdf/.test(mime)
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }
+    : { type: 'image', source: { type: 'base64', media_type: tipoImagem(mime), data: b64 } }
+  try {
+    const { texto, uso } = await chamarClaude(MODELO_FORTE, {
+      max_tokens: 1024,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_COMPROVANTE } },
+      messages: [{ role: 'user', content: [arquivo, { type: 'text', text:
+        'Leia este comprovante de Pix (Brasil). Copie os dados EXATAMENTE como aparecem; não invente nada (use null quando não houver). ' +
+        'valor_cents = valor pago em centavos (R$ 49,90 → 4990). data_hora = data e hora da transação em ISO 8601 com fuso -03:00 se não houver outro. ' +
+        'recebedor_nome/recebedor_chave = quem RECEBEU (destino). pagador_nome = quem pagou. e2e_id = ID da transação / End-to-End (começa com E) ou código de autenticação. ' +
+        'e_comprovante = false se não for um comprovante de pagamento; legivel = false se estiver cortado, borrado ou rasurado.' }] }],
+    }, f)
+    return { leitura: lerLeitura(texto), uso }
+  } catch (err) {
+    console.error('[estudio/ana] leitura do comprovante falhou:', String(err).slice(0, 200))
+    return { leitura: LEITURA_VAZIA }
   }
 }

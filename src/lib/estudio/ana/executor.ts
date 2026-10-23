@@ -10,7 +10,9 @@ import { extensaoDoMime } from '../chat'
 import { avisarAparelhos } from '../push'
 import { proximoPasso, idiomaDaMensagem, cobrancaDevida, type Acao, type Dados, type Etapa, type Preco } from './maquina'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
-import { responderDuvida, conferirFoto } from './ia'
+import { responderDuvida, conferirFoto, type ItemBase } from './ia'
+import { linhasDoPix } from '../pix'
+import { registrarUsoIa, pixDoTenant, processarComprovante } from '../pix-servidor'
 
 export const PRAZO_MIN = 60
 export const PRECOS_PADRAO_BR: Preco[] = [
@@ -89,18 +91,25 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   // boas-vindas a cada mensagem: melhor falhar e cair na resposta de teste.
   if (!c || !('dados' in (bruto as object)) || !('cobrancas' in (bruto as object))) throw new Error('SQL da Fase 3 (20261027000000_estudio_ia_ana.sql) pendente')
   let idioma = idiomaDaAna(c.idioma)
+  let pedidoId = c.pedido_atual_id
   // 1ª mensagem claramente em outro idioma: segue o idioma da mensagem.
   if (primeiraMensagem && !c.idioma_fixo && msg.tipo === 'texto') {
     const detectado = idiomaDaMensagem(msg.texto)
     if (detectado && detectado !== idioma) { idioma = detectado; await admin.from('estudio_contatos').update({ idioma: detectado }).eq('id', c.id) }
   }
 
-  const [precos, sob, temasQ, posesQ] = await Promise.all([
+  const [precos, sob, temasQ, posesQ, pix, baseQ] = await Promise.all([
     precosDoPais(admin, c.tenant_id, c.pais),
     sobrescritas(admin, c.tenant_id),
     admin.from('estudio_temas').select('slug, nome').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem'),
     admin.from('estudio_poses').select('tema_slug, numero').eq('tenant_id', c.tenant_id).eq('ativa', true).limit(5000),
+    pixDoTenant(admin, c.tenant_id),
+    admin.from('estudio_conhecimento').select('tipo, pergunta, resposta').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem').limit(200),
   ])
+  const base = (baseQ.data ?? []) as ItemBase[]
+  const pixOk = !!linhasDoPix(pix)
+  const usou = (finalidade: string, uso: Parameters<typeof registrarUsoIa>[1]['uso'] | undefined, intencao?: string | null) =>
+    uso ? registrarUsoIa(admin, { tenant_id: c.tenant_id, contato_id: c.id, pedido_id: pedidoId, finalidade, intencao, uso }) : Promise.resolve()
   const temasAtivos = (temasQ.data ?? []).map(t => t.slug)
   const posesPorTema = new Map<string, string[]>()
   for (const p of posesQ.data ?? []) posesPorTema.set(p.tema_slug, [...(posesPorTema.get(p.tema_slug) ?? []), p.numero])
@@ -112,15 +121,18 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   let foto: 'ok' | 'ruim' | 'recusada' | undefined
   if (msg.tipo === 'imagem' && ['fotos_poses', 'previa_fotos'].includes(etapaAtual) && !dados.tem_rosto && msg.media_path) {
     const { data: arq } = await admin.storage.from(BUCKET_CLIENTES).download(msg.media_path)
-    if (arq) foto = (await conferirFoto(new Uint8Array(await arq.arrayBuffer()), msg.media_mime ?? 'image/jpeg')).motivo
+    if (arq) {
+      const conf = await conferirFoto(new Uint8Array(await arq.arrayBuffer()), msg.media_mime ?? 'image/jpeg')
+      foto = conf.motivo
+      await usou('foto', conf.uso)
+    }
   }
 
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', foto }, {
-    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [],
+    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk,
   })
   dados = r.dados
-  const etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
-  let pedidoId = c.pedido_atual_id
+  let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
   let falou = false
   let naoEntendeu = Number(c.nao_entendeu ?? 0)
   let entendeu = true
@@ -232,14 +244,47 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'pedido_registrado', detalhe: { valor_cents: dados.valor_cents, poses: dados.poses } })
           }
           break
+        case 'pix': {
+          const l = linhasDoPix(pix)
+          if (!l) break
+          await enviarTexto(renderTexto('pix_dados', idioma, vars({ recebedor: l.recebedor }), sob.textos))
+          await enviarTexto(l.chave)   // sozinha numa mensagem: a cliente toca e copia
+          break
+        }
+        case 'comprovante': {
+          if (!pedidoId || !msg.media_path) { await enviarTexto(renderTexto('pede_comprovante', idioma, vars(), sob.textos)); break }
+          const res = await processarComprovante(admin, c, pedidoId, { path: msg.media_path, mime: msg.media_mime ?? 'image/jpeg' })
+          const quem = dados.nome ?? c.nome ?? `+${c.wa_id}`
+          const valor = vars().valor
+          if (res.resultado === 'pago') {
+            etapa = 'pago'
+            await enviarTexto(renderTexto('pago_ok', idioma, vars(), sob.textos))
+            await avisarLuis(admin, con, `💰 Pedido PAGO (Pix conferido pelo comprovante): ${quem} · ${valor} · ${dados.pacote_qtd ?? ''} fotos ${nomeDoTema(dados.tema, 'pt-BR')}.\nAbra o Claude Code e peça: gera o pedido ${pedidoId}`)
+          } else if (res.resultado === 'nao_e_comprovante') {
+            await enviarTexto(renderTexto('pede_comprovante', idioma, vars(), sob.textos))
+          } else {
+            etapa = 'conferindo'
+            await enviarTexto(renderTexto('conferindo', idioma, vars(), sob.textos))
+            await admin.from('estudio_contatos').update({ precisa_humano: true }).eq('id', c.id)
+            await avisarLuis(admin, con, `🧾 Comprovante para conferir: ${quem} · ${valor}\nMotivo: ${res.motivos.join('; ')}\nAprovar ou recusar: ${APP_URL()}/estudio-ia?aba=conversas&c=${c.id}`)
+          }
+          break
+        }
         case 'ia': {
           const { data: hist } = await admin.from('estudio_mensagens').select('direcao, texto').eq('contato_id', c.id).order('criado_em', { ascending: false }).limit(10)
-          const resp = await responderDuvida({
+          const out = await responderDuvida({
             idioma, objetivo: a.objetivo, tabelaPrecos: tabelaDePrecos(precos, idioma).replace(/\n/g, '; '), prazoMin: PRAZO_MIN,
             temas: temasAtivos.map(t => nomeDoTema(t, idioma)).join(', '),
             historico: [...(hist ?? [])].reverse().slice(0, -1).map(h => ({ de: h.direcao === 'entrada' ? 'cliente' as const : 'ana' as const, texto: h.texto ?? '' })),
+            base,
           }, msg.texto)
-          if (resp.tipo === 'texto') await enviarTexto(resp.texto)
+          for (const u of out.usos) await usou('resposta', u, out.estruturada?.intencao)
+          const resp = out.resposta
+          if (resp.tipo === 'confirmar_equipe') {
+            await enviarTexto(renderTexto('confirmar_equipe', idioma, vars(), sob.textos))
+            await admin.from('estudio_contatos').update({ precisa_humano: true }).eq('id', c.id)
+            await avisarLuis(admin, con, `❓ ${dados.nome ?? c.nome ?? `+${c.wa_id}`} perguntou algo fora da base da Ana: "${msg.texto.slice(0, 200)}"\n(${resp.motivo})\nResponda e, se quiser, cadastre na base (Atendente): ${APP_URL()}/estudio-ia?aba=conversas&c=${c.id}`)
+          } else if (resp.tipo === 'texto') await enviarTexto(resp.texto)
           else if (resp.tipo === 'humano') { await enviarTexto(renderTexto('humano', idioma, vars(), sob.textos)); await passarParaHumano('a IA identificou reclamação/reembolso/fora das regras') }
           else {
             entendeu = false
@@ -301,4 +346,30 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
     if (s.ok) enviadas++
   }
   return enviadas
+}
+
+/**
+ * Mensagem fixa da Ana disparada pelo PAINEL (Luís aprovou/recusou o Pix):
+ * texto no idioma da cliente, registrado no chat, e etapa nova da conversa.
+ */
+export async function falarComCliente(admin: SupabaseClient, tenantId: string, contatoId: string, chave: string, novaEtapa?: Etapa, extra: Record<string, string | number> = {}): Promise<{ ok: boolean; erro?: string }> {
+  const { data: c } = await admin.from('estudio_contatos').select('id, tenant_id, wa_id, nome, idioma, dados').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
+  if (!c) return { ok: false, erro: 'Conversa não encontrada.' }
+  const { data: cfg } = await admin.from('estudio_config').select('tenant_id, phone_number_id, access_token').eq('tenant_id', tenantId).maybeSingle()
+  if (!cfg?.access_token) return { ok: false, erro: 'Número do estúdio não conectado.' }
+  const d = (c.dados ?? {}) as Dados
+  const idioma = idiomaDaAna(c.idioma)
+  const { textos } = await sobrescritas(admin, tenantId)
+  const t = renderTexto(chave, idioma, {
+    nome: d.nome ?? c.nome ?? '', prazo: PRAZO_MIN, qtd: d.pacote_qtd ?? '',
+    valor: d.valor_cents !== undefined ? dinheiro(d.valor_cents, d.moeda ?? 'BRL', idioma) : '', ...extra,
+  }, textos)
+  const s = await enviarTextoCloud(cfg as Conexao, c.wa_id, t)
+  await registrar(admin, c as Contato, s, 'texto', t)
+  const agora = new Date().toISOString()
+  if (s.ok) d.aguardando_desde = agora
+  await admin.from('estudio_contatos').update({
+    ...(novaEtapa ? { etapa: novaEtapa } : {}), dados: d, ultima_ana_em: agora, cobrancas: 0, precisa_humano: false, ultima_msg: t.slice(0, 120),
+  }).eq('id', c.id)
+  return s.ok ? { ok: true } : { ok: false, erro: s.erro }
 }
