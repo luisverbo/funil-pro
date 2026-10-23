@@ -522,6 +522,30 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-26 — Estúdio IA, Fase 2b (chat do estúdio) + decisões novas do dono**
+- Decisões de 23/10 (valem daqui em diante): **sem Asaas** — Pix da chave do
+  Luís conferido pelo COMPROVANTE (IA de visão; valor, recebedor, ≤24h,
+  `pix_e2e_id` UNIQUE; senão `aguardando_conferencia` + aviso no chat); venda
+  internacional (idioma pelo DDI, `estudio_textos`, `estudio_precos`, aceite de
+  privacidade; Hotmart só no FIM). Nova ordem: 2b Chat → 3 Ana (idiomas) →
+  4 Pix por comprovante → 5 Fila/produção → 6 Prévia/painel → 7 Hotmart
+- Migration `20261026000000_estudio_ia_chat.sql` (PENDENTE): colunas novas em
+  `estudio_contatos` (pais, idioma, nao_lidas, ultima_msg, modo ana|humano,
+  humano_desde, humano_fixo, etapa, notas, precisa_humano), `estudio_mensagens`
+  (media_path/mime/nome, autor, erro), `estudio_config.pausa_humano_horas`
+- Subaba **Conversas** (`aba-conversas.tsx`): lista + conversa estilo WhatsApp
+  Web, polling 5 s/3 s, ✓/✓✓/azul, texto/emoji/várias mídias/voz OGG-Opus
+  gravada (webmParaOgg), fotos do pedido, Assumir/Devolver (manual pausa a Ana,
+  volta após N h; Assumir é fixo), janela 24h + modelos aprovados fora dela,
+  notas e pedidos ao lado
+- Mídia recebida baixada NA HORA (`src/lib/estudio/midia.ts`) para
+  `estudio-clientes/conversas/<contato>/…`; envio por upload direto assinado
+- PWA: `src/app/manifest.ts` (abre no chat), `public/sw-estudio.js`
+  (notificação com o app aberto/em segundo plano); manifest/sw liberados no proxy
+- `src/lib/estudio/chat.ts` puro (paisDoWaId, bandeira, devolveParaAna, tick…)
+- Entrada continua funcionando sem o SQL novo (fallback por coluna)
+- Bateria: **1029/1029**
+
 **2026-10-24 — Estúdio IA, Fase 2 (WhatsApp Cloud API do estúdio)**
 - Migration `20261024000000_estudio_ia_fase2.sql` — **PENDENTE no Studio**:
   `estudio_config` (token só service role), `estudio_contatos` (wa_id, origem

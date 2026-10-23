@@ -19,6 +19,11 @@ export interface MensagemRecebida {
   mediaId?: string | null
   /** Clique em anúncio "Converse conosco" (Click-to-WhatsApp): source_id, headline, ctwa_clid… */
   referral?: Record<string, unknown> | null
+  /** type original da Meta (text, image, sticker, location…) — o `tipo` acima é o do inbox. */
+  tipoBruto?: string
+  mediaMime?: string | null
+  mediaNome?: string | null
+  localizacao?: { lat: number; lng: number; nome: string | null } | null
 }
 
 export interface StatusEntrega {
@@ -93,7 +98,13 @@ export function lerWebhookCloud(payload: unknown): WebhookLido {
         const bloco = m[String(m.type ?? '')] as Json | undefined
         const mediaId = bloco && typeof bloco === 'object' && typeof bloco.id === 'string' ? bloco.id : null
         const referral = (m.referral && typeof m.referral === 'object') ? m.referral as Json : null
+        const loc = m.type === 'location' ? m.location as Json | undefined : undefined
+        const lat = Number(loc?.latitude), lng = Number(loc?.longitude)
         saida.mensagens.push({
+          tipoBruto: String(m.type ?? 'outro'),
+          mediaMime: bloco && typeof bloco.mime_type === 'string' ? bloco.mime_type : null,
+          mediaNome: bloco && typeof bloco.filename === 'string' ? bloco.filename : null,
+          localizacao: Number.isFinite(lat) && Number.isFinite(lng) && loc ? { lat, lng, nome: loc.name ? String(loc.name) : null } : null,
           mediaId,
           referral,
           phoneNumberId,

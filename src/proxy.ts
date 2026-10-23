@@ -3,7 +3,9 @@ import { createServerClient } from '@supabase/ssr'
 
 // '/quiz' (landing de venda) e o checkout são EXATOS de propósito: um prefixo
 // '/quiz' deixaria '/quiz-editor/…' público.
-const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding', '/quiz', '/api/checkout/quiz'])
+const PUBLIC_ROUTES = new Set(['/login', '/register', '/onboarding', '/quiz', '/api/checkout/quiz',
+  // PWA: o navegador busca o manifest SEM cookie — com login no meio a instalação quebra.
+  '/manifest.webmanifest', '/sw-estudio.js'])
 const PUBLIC_PREFIXES = [
   // Estúdio IA: vitrine pública do catálogo (só leitura, só temas/poses ativos).
   '/estudio/catalogo',
