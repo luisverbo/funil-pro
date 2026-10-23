@@ -522,6 +522,16 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-02 — Estúdio IA: Painel de resultado (lucro, custos, anúncio, país)**
+- `src/lib/estudio/painel.ts` (puro): KPIs em R$ (USD pela cotação),
+  lucro = faturamento − gasto em anúncio − custo de IA (fotos Gemini +
+  conversa), custo por venda/lead, ROAS, conversão, comparação com período
+  anterior de mesmo tamanho; tabelas por anúncio (gasto, ROAS, lucro) e por país
+- Action `painelEstudio` (despachante): gasto vem de `ad_insights` (level ad)
+  sincronizado pela aba Tráfego para os ad_id que trouxeram conversa/venda;
+  avisa se não há gasto sincronizado. `painel-ui.tsx` substitui OrigemDasVendas
+- Bateria: **1132/1132**
+
 **2026-11-01 — Estúdio IA: rastreio de vendas por anúncio + CAPI para mensagens**
 - Migration `20261101000000_estudio_ia_anuncios.sql` (PENDENTE no Studio):
   origem no contato (ad_id, ctwa_clid, headline/body/mídia, origem_em +

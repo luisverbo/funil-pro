@@ -315,3 +315,58 @@ export async function salvarCodigoTesteMeta(codigo: string): Promise<{ success: 
     return error ? { success: false, error: error.message } : { success: true }
   } catch (e) { return { success: false, error: String(e) } }
 }
+
+// ── Painel de resultado: lucro, custos, anúncios, países ────────────────────
+
+type KpisTela = import('@/lib/estudio/painel').Kpis
+type PaisTela = import('@/lib/estudio/painel').LinhaPais
+type AnuncioTela = import('@/lib/estudio/painel').LinhaAnuncio & { nome: string | null; campanha: string | null }
+
+export async function painelEstudio(de: string, ate: string): Promise<{
+  atual: KpisTela | null; anterior: KpisTela | null; paises: PaisTela[]; anuncios: AnuncioTela[]
+  cotacao_usd: number; gasto_sincronizado: boolean; avisos: string[]; error?: string
+}> {
+  const vazio = { atual: null, anterior: null, paises: [], anuncios: [], cotacao_usd: 0, gasto_sincronizado: false, avisos: [] }
+  try {
+    const tenantId = await getTenantId()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate) || de > ate) return { ...vazio, error: 'Período inválido.' }
+    const P = await import('@/lib/estudio/painel')
+    const admin = createAdminClient()
+    const ant = P.periodoAnterior(de, ate)
+    const { data: cfg } = await admin.from('estudio_config').select('cotacoes').eq('tenant_id', tenantId).maybeSingle()
+    const cot: Record<string, number> = { BRL: 1, USD: 5.5, EUR: 6, ...((cfg?.cotacoes ?? {}) as Record<string, number>) }
+    const avisos: string[] = []
+
+    const carregar = async (d0: string, d1: string) => {
+      const ini = new Date(`${d0}T00:00:00-03:00`).toISOString(), fim = new Date(new Date(`${d1}T00:00:00-03:00`).getTime() + 86400e3).toISOString()
+      let ct = await admin.from('estudio_contatos').select('pais, ad_id, ad_id_primeiro').eq('tenant_id', tenantId).gte('primeira_msg_em', ini).lt('primeira_msg_em', fim).limit(20000)
+      if (ct.error) {
+        if (!avisos.includes('anuncios')) avisos.push('anuncios')
+        ct = await admin.from('estudio_contatos').select('pais').eq('tenant_id', tenantId).gte('primeira_msg_em', ini).lt('primeira_msg_em', fim).limit(20000) as typeof ct
+      }
+      const [pd, uso] = await Promise.all([
+        admin.from('estudio_pedidos').select('pais, ad_id, contato_id, valor_pago_cents, moeda, status, tipo').eq('tenant_id', tenantId).gte('pago_em', ini).lt('pago_em', fim).neq('tipo', 'previa').limit(20000),
+        admin.from('estudio_ia_uso').select('finalidade, custo_usd').eq('tenant_id', tenantId).gte('criado_em', ini).lt('criado_em', fim).limit(50000),
+      ])
+      const contatos = (ct.data ?? []).map((c: Record<string, unknown>) => ({ pais: (c.pais as string) ?? null, ad_id: ((c.ad_id_primeiro ?? c.ad_id) as string) || null }))
+      const vendas = (pd.data ?? []).map(p => ({ pais: p.pais ?? null, ad_id: p.ad_id || null, contato_id: p.contato_id, valor_pago_cents: p.valor_pago_cents, moeda: p.moeda, status: p.status }))
+      // Gasto: anúncios que trouxeram conversa ou venda ao estúdio, pela sincronização da aba Tráfego.
+      const ads = [...new Set([...contatos, ...vendas].map(x => x.ad_id).filter((x): x is string => !!x))]
+      let gastos: { ad_id: string; spend_cents: number; currency: string | null }[] = []
+      if (ads.length) {
+        const { data: ins } = await admin.from('ad_insights').select('external_id, spend_cents, currency').eq('tenant_id', tenantId).eq('level', 'ad').is('hour', null).in('external_id', ads).gte('date', d0).lte('date', d1).limit(20000)
+        gastos = (ins ?? []).map(i => ({ ad_id: i.external_id, spend_cents: i.spend_cents ?? 0, currency: i.currency }))
+      }
+      return { contatos, vendas, usos: (uso.data ?? []).map(u => ({ finalidade: u.finalidade, custo_usd: Number(u.custo_usd ?? 0) })), gastos, temAds: ads.length > 0 }
+    }
+
+    const [a, b] = await Promise.all([carregar(de, ate), carregar(ant.de, ant.ate)])
+    const { data: nomes } = await admin.from('estudio_anuncios').select('ad_id, nome, campanha').eq('tenant_id', tenantId)
+    const mapa = new Map((nomes ?? []).map(n => [n.ad_id, n]))
+    const anuncios = P.porAnuncio(a, cot).map(l => ({ ...l, nome: l.ad_id ? mapa.get(l.ad_id)?.nome ?? null : null, campanha: l.ad_id ? mapa.get(l.ad_id)?.campanha ?? null : null }))
+    return {
+      atual: P.calcularKpis(a, cot), anterior: P.calcularKpis(b, cot), paises: P.porPais(a, cot), anuncios,
+      cotacao_usd: Number(cot.USD) || 0, gasto_sincronizado: !a.temAds || a.gastos.length > 0, avisos,
+    }
+  } catch (e) { return { ...vazio, error: String(e) } }
+}
