@@ -9,7 +9,6 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CRON_UNAUTHORIZED_BODY, evaluateCronAuth, logCronAuth } from '@/lib/security/cron-auth'
-import { rodadaDeProducao } from '@/lib/estudio/producao-servidor'
 
 export const dynamic = 'force-dynamic'
 // Gerar por API leva ~30–60 s por foto: a rodada usa até ~4 min e o resto fica para a próxima.
@@ -31,11 +30,14 @@ async function executar(request: Request) {
     logCronAuth(auth, request, 200)
   }
   try {
+    // Sob demanda: se o motor não carregar, a rota responde JSON com o motivo (e loga).
+    const { rodadaDeProducao } = await import('@/lib/estudio/producao-servidor')
     const r = await rodadaDeProducao(createAdminClient())
     return NextResponse.json({ success: true, ...r })
   } catch (err) {
-    console.error('[cron/estudio-producao]', String(err).slice(0, 300))
-    return NextResponse.json({ success: false, error: 'falhou' }, { status: 500 })
+    const detalhe = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    console.error('[cron/estudio-producao]', detalhe.slice(0, 500))
+    return NextResponse.json({ success: false, error: 'falhou', detalhe: detalhe.slice(0, 300) }, { status: 500 })
   }
 }
 

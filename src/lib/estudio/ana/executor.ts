@@ -131,16 +131,18 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   // Pós-entrega: o que a cliente pode fazer com o pedido entregue (ajuste / +5 fotos).
   let ctxEntrega: Contexto['entrega']
   if (['entregue', 'ajuste_detalhe'].includes(etapaAtual) && pedidoId) {
-    const [{ data: ped }, { configProducao }, { podeAjustar, valorComDesconto }] = await Promise.all([
-      admin.from('estudio_pedidos').select('poses, entregue_em, ajustes_usados, status').eq('id', pedidoId).single(),
-      import('../producao-servidor'), import('../producao'),
-    ])
-    const cfg = await configProducao(admin, c.tenant_id)
-    const cheio = precos.find(x => x.pacote_qtd === cfg.upsell_qtd)
-    ctxEntrega = {
-      pode_ajustar: !!ped && podeAjustar(ped, cfg.ajustes_gratis), poses: ped?.poses ?? [],
-      upsell_qtd: cfg.upsell_qtd, upsell_valor_cents: cheio ? valorComDesconto(cheio.valor_cents, cfg.upsell_desconto_pct) : 0, moeda: cheio?.moeda ?? 'BRL',
-    }
+    try {
+      const [{ data: ped }, { configProducao }, { podeAjustar, valorComDesconto }] = await Promise.all([
+        admin.from('estudio_pedidos').select('poses, entregue_em, ajustes_usados, status').eq('id', pedidoId).single(),
+        import('../producao-servidor'), import('../producao'),
+      ])
+      const cfg = await configProducao(admin, c.tenant_id)
+      const cheio = precos.find(x => x.pacote_qtd === cfg.upsell_qtd)
+      ctxEntrega = {
+        pode_ajustar: !!ped && podeAjustar(ped, cfg.ajustes_gratis), poses: ped?.poses ?? [],
+        upsell_qtd: cfg.upsell_qtd, upsell_valor_cents: cheio ? valorComDesconto(cheio.valor_cents, cfg.upsell_desconto_pct) : 0, moeda: cheio?.moeda ?? 'BRL',
+      }
+    } catch (err) { console.error('[estudio/ana] pós-entrega:', String(err).slice(0, 300)) }   // sem isso a Ana responde pela IA
   }
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', foto }, {
     idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega,

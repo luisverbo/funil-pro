@@ -10,7 +10,8 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { BUCKET_CLIENTES, BUCKET_ENTREGAS } from '@/lib/estudio/catalogo'
-import { entregarPedido, registrarAjuste, entrarNaFila } from '@/lib/estudio/producao-servidor'
+// Produção carregada sob demanda: o painel nunca cai por causa do motor de imagem.
+const producao = () => import('@/lib/estudio/producao-servidor')
 
 async function getTenantId(): Promise<string> {
   const cookieStore = await cookies()
@@ -140,7 +141,7 @@ export async function gerarPorApiAgora(id: string): Promise<{ success: boolean; 
     if (!['pago', 'aguardando_fotos', 'aguardando_producao', 'gerando', 'ajuste'].includes(p.status)) return { success: false, error: `Pedido está "${p.status}".` }
     const admin = createAdminClient()
     if (p.status === 'pago' || p.status === 'aguardando_fotos') {
-      const r = await entrarNaFila(admin, id)
+      const r = await (await producao()).entrarNaFila(admin, id)
       if (!r.ok) return { success: false, error: `Falta: ${(r.falta ?? []).join(', ')}` }
     }
     const { error } = await admin.from('estudio_pedidos').update({
@@ -160,7 +161,7 @@ export async function aprovarEntregaEstudio(id: string): Promise<{ success: bool
     await admin.from('estudio_entregas').update({ status: 'aprovada' }).eq('pedido_id', id).eq('status', 'aguardando_aprovacao')
     await admin.from('estudio_pedidos').update({ status: 'pronto', entrega_iniciada_em: null }).eq('id', id)
     await admin.from('estudio_eventos').insert({ pedido_id: id, tipo: 'aprovado', detalhe: { por: 'luis' } })
-    const r = await entregarPedido(admin, id)
+    const r = await (await producao()).entregarPedido(admin, id)
     return r.erro ? { success: false, error: r.erro } : { success: true, enviadas: r.enviadas }
   } catch (e) { return { success: false, error: String(e) } }
 }
@@ -172,7 +173,7 @@ export async function refazerPedidoEstudio(id: string, poses: string[], obs: str
     const p = await pedidoDoTenant(tenantId, id)
     if (['cancelado', 'novo', 'aguardando_pagamento', 'aguardando_conferencia'].includes(p.status)) return { success: false, error: `Pedido está "${p.status}".` }
     const alvo = (poses ?? []).filter(n => (p.poses ?? []).includes(n))
-    const r = await registrarAjuste(createAdminClient(), id, alvo.length ? alvo : (p.poses ?? []), String(obs ?? '').slice(0, 500) || 'refazer', false)
+    const r = await (await producao()).registrarAjuste(createAdminClient(), id, alvo.length ? alvo : (p.poses ?? []), String(obs ?? '').slice(0, 500) || 'refazer', false)
     return r.ok ? { success: true } : { success: false, error: aviso(r.erro ?? 'falhou') }
   } catch (e) { return { success: false, error: String(e) } }
 }
@@ -185,7 +186,7 @@ export async function reenviarEntregaEstudio(id: string): Promise<{ success: boo
     if (p.status !== 'pronto') return { success: false, error: `Só dá para reenviar pedido "pronto" (este está "${p.status}").` }
     const admin = createAdminClient()
     await admin.from('estudio_pedidos').update({ entrega_iniciada_em: null, entrega_erro: null }).eq('id', id)
-    const r = await entregarPedido(admin, id)
+    const r = await (await producao()).entregarPedido(admin, id)
     return r.erro ? { success: false, error: r.erro } : { success: true, enviadas: r.enviadas }
   } catch (e) { return { success: false, error: String(e) } }
 }

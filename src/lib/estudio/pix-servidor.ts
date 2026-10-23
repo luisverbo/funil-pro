@@ -66,8 +66,11 @@ export async function marcarPago(admin: SupabaseClient, pedidoId: string, p: Pag
   if (error) return /duplicate|unique|23505/i.test(error.message) ? { duplicado: true, error: 'Este comprovante já pagou outro pedido.' } : { error: error.message }
   await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'pago', detalhe: { pago_por: p.pago_por, valor_pago_cents: p.valor_pago_cents, e2e: p.pix_e2e_id ?? null } })
   // Fase 5: pago + fotos + poses + idade → fila de produção + aviso ao Luís.
-  const { entrarNaFila } = await import('./producao-servidor')
-  await entrarNaFila(admin, pedidoId).catch(err => console.error('[estudio] entrar na fila:', String(err).slice(0, 200)))
+  // Nunca deixa a fila derrubar o pagamento: o pedido já está 'pago' no banco.
+  try {
+    const { entrarNaFila } = await import('./producao-servidor')
+    await entrarNaFila(admin, pedidoId)
+  } catch (err) { console.error('[estudio] entrar na fila:', String(err).slice(0, 300)) }
   return {}
 }
 
