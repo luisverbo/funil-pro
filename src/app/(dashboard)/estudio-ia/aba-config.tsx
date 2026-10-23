@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import {
   lerConfigEstudio, salvarConfigEstudio, testarConexaoEstudio, registrarNumeroEstudio,
   appsDaWaba, inscreverAppNaWaba, enviarTesteAvisos, ultimasConversasEstudio,
+  webhookDoNumeroEstudio, apontarWebhookEstudio,
 } from '@/lib/estudio/client'
 import { RESPOSTA_TESTE_PADRAO, dentroDaJanela } from '@/lib/estudio/whatsapp'
 
@@ -17,15 +18,16 @@ type Status = NonNullable<Awaited<ReturnType<typeof testarConexaoEstudio>>['stat
 type Conversa = Awaited<ReturnType<typeof ultimasConversasEstudio>>['conversas'][number]
 type Aviso = { tipo: 'ok' | 'erro'; texto: string } | null
 
-const VAZIO: Config = { waba_id: null, phone_number_id: null, display_number: null, whatsapp_avisos: null, resposta_teste: null, ativo: false, temToken: false, verificado_em: null }
+const VAZIO: Config = { waba_id: null, phone_number_id: null, display_number: null, whatsapp_avisos: null, resposta_teste: null, ativo: false, temToken: false, temAppSecret: false, verificado_em: null }
 
 export function AbaConfig() {
   const [cfg, setCfg] = useState<Config | null>(null)
-  const [form, setForm] = useState({ waba_id: '', phone_number_id: '', display_number: '', whatsapp_avisos: '', resposta_teste: '', access_token: '' })
+  const [form, setForm] = useState({ waba_id: '', phone_number_id: '', display_number: '', whatsapp_avisos: '', resposta_teste: '', access_token: '', app_secret: '' })
   const [aviso, setAviso] = useState<Aviso>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [status, setStatus] = useState<Status | null>(null)
   const [apps, setApps] = useState<{ id?: string; name?: string }[] | null>(null)
+  const [hook, setHook] = useState<{ webhook?: { application?: string; phone_number?: string; whatsapp_business_account?: string }; nosso?: string } | null>(null)
   const [pin, setPin] = useState('')
   const [conversas, setConversas] = useState<Conversa[] | null>(null)
 
@@ -33,7 +35,7 @@ export function AbaConfig() {
     setCfg(c)
     setForm({
       waba_id: c.waba_id ?? '', phone_number_id: c.phone_number_id ?? '', display_number: c.display_number ?? '',
-      whatsapp_avisos: c.whatsapp_avisos ?? '', resposta_teste: c.resposta_teste ?? '', access_token: '',
+      whatsapp_avisos: c.whatsapp_avisos ?? '', resposta_teste: c.resposta_teste ?? '', access_token: '', app_secret: '',
     })
   }
 
@@ -98,6 +100,11 @@ export function AbaConfig() {
                 <input {...campo('access_token')} type="password" autoComplete="off" placeholder={cfg.temToken ? '••••••••  (deixe vazio para manter)' : 'EAAG…'} className={inp} />
               </Campo>
             </div>
+            <div className="sm:col-span-2">
+              <Campo rotulo={`App Secret do app Cobrazap ${cfg.temAppSecret ? '· ✅ salvo' : '· ainda não salvo'}`} dica="developers.facebook.com → app Cobrazap → Configurações → Básico → Chave secreta do app. A Meta assina as mensagens deste número com ela.">
+                <input {...campo('app_secret')} type="password" autoComplete="off" placeholder={cfg.temAppSecret ? '••••••••  (deixe vazio para manter)' : '32 caracteres'} className={inp} />
+              </Campo>
+            </div>
           </div>
           <div className="mt-4 flex justify-end">
             <button onClick={() => salvar()} disabled={!!ocupado} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50">{ocupado === 'salvar' ? 'Salvando…' : 'Salvar'}</button>
@@ -131,7 +138,23 @@ export function AbaConfig() {
             </div>
           </Passo>
 
-          <Passo n={3} titulo="App inscrito na WABA" texto="O webhook só recebe mensagens das WABAs em que o app está inscrito.">
+          <Passo n={3} titulo="Webhook SÓ deste número → FunilPro" texto="Usa o override por número da Meta: o 99077-3595 passa a vir para o FunilPro e o webhook do app Cobrazap continua no CobrarZap (os outros números não mudam). Precisa do App Secret salvo.">
+            <div className="flex gap-2">
+              <button onClick={() => rodar('hookver', webhookDoNumeroEstudio, r => { setHook(r); return null })} disabled={!!ocupado} className={btn}>{ocupado === 'hookver' ? '…' : 'Ver'}</button>
+              <button onClick={() => rodar('hook', apontarWebhookEstudio, r => r.success ? 'Webhook deste número apontado para o FunilPro. Clique em Ver para conferir.' : null)}
+                disabled={!!ocupado || !cfg.temAppSecret} className={btn}>{ocupado === 'hook' ? '…' : 'Apontar'}</button>
+            </div>
+          </Passo>
+          {hook?.webhook && (
+            <dl className="ml-9 mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg bg-slate-50 p-3 text-xs">
+              <dt className="text-slate-500">Deste número</dt>
+              <dd className={`break-all font-medium ${hook.webhook.phone_number === hook.nosso ? 'text-emerald-700' : 'text-amber-700'}`}>{hook.webhook.phone_number ?? '— (sem override: vai para o webhook do app)'}</dd>
+              <dt className="text-slate-500">Da WABA</dt><dd className="break-all text-slate-900">{hook.webhook.whatsapp_business_account ?? '—'}</dd>
+              <dt className="text-slate-500">Do app</dt><dd className="break-all text-slate-900">{hook.webhook.application ?? '—'}</dd>
+            </dl>
+          )}
+
+          <Passo n={4} titulo="App inscrito na WABA" texto="Confere se o Cobrazap está inscrito (já deve estar — é ele que atende o CobrarZap). Não precisa inscrever outro app.">
             <div className="flex gap-2">
               <button onClick={() => rodar('apps', appsDaWaba, r => { setApps(r.apps ?? []); return null })} disabled={!!ocupado} className={btn}>{ocupado === 'apps' ? '…' : 'Ver apps'}</button>
               <button onClick={() => rodar('insc', inscreverAppNaWaba, r => r.success ? 'App inscrito na WABA.' : null)} disabled={!!ocupado} className={btn}>{ocupado === 'insc' ? '…' : 'Inscrever'}</button>
@@ -143,7 +166,7 @@ export function AbaConfig() {
             </p>
           )}
 
-          <Passo n={4} titulo="Teste dos avisos" texto="Manda uma mensagem para o seu WhatsApp pessoal. Antes, mande um 'oi' do seu WhatsApp para o número do estúdio (regra das 24h da Meta).">
+          <Passo n={5} titulo="Teste dos avisos" texto="Manda uma mensagem para o seu WhatsApp pessoal. Antes, mande um 'oi' do seu WhatsApp para o número do estúdio (regra das 24h da Meta).">
             <button onClick={() => rodar('aviso', enviarTesteAvisos, r => r.success ? 'Enviado! Confira o seu WhatsApp.' : null)} disabled={!!ocupado} className={btn}>{ocupado === 'aviso' ? '…' : 'Enviar teste'}</button>
           </Passo>
         </section>

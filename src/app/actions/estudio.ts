@@ -17,8 +17,10 @@ import { lerPosesJson, normalizarNumero, BUCKET_CATALOGO, caminhoExemplo, type T
 import posesPadrao from '@/lib/estudio/dados/poses.json'
 import {
   normalizarWhatsApp, statusDoNumero, registrarNumero, appsInscritos, inscreverApp, limparErro,
-  type StatusDoNumero, type AppInscrito,
+  webhookDoNumero, apontarWebhookDoNumero,
+  type StatusDoNumero, type AppInscrito, type WebhookDoNumero,
 } from '@/lib/estudio/whatsapp'
+import { novoVerifyToken, URL_WEBHOOK_ESTUDIO } from '@/lib/estudio/assinatura'
 import { enviarEstudio } from '@/lib/estudio/entrada'
 
 async function getTenantId(): Promise<string> {
@@ -180,13 +182,17 @@ export interface ConfigEstudioTela {
   resposta_teste: string | null
   ativo: boolean
   temToken: boolean
+  temAppSecret: boolean
   verificado_em: string | null
 }
 
 async function configCompleta(tenantId: string) {
   const { data, error } = await createAdminClient().from('estudio_config')
-    .select('waba_id, phone_number_id, display_number, whatsapp_avisos, resposta_teste, ativo, access_token, verificado_em')
+    .select('waba_id, phone_number_id, display_number, whatsapp_avisos, resposta_teste, ativo, access_token, verificado_em, app_secret, verify_token')
     .eq('tenant_id', tenantId).maybeSingle()
+  if (error && /app_secret|verify_token/.test(error.message)) {
+    throw new Error('Falta rodar o SQL da Fase 2b (20261025000000_estudio_ia_webhook_override.sql) no Supabase.')
+  }
   if (error) throw new Error(avisoDeTabela(error.message).replace('20261023000000_estudio_ia_fase1', '20261024000000_estudio_ia_fase2'))
   return data
 }
@@ -196,14 +202,15 @@ export async function lerConfigEstudio(): Promise<{ config: ConfigEstudioTela | 
     const tenantId = await getTenantId()
     const c = await configCompleta(tenantId)
     if (!c) return { config: null }
-    const { access_token, ...resto } = c
-    return { config: { ...resto, ativo: !!resto.ativo, temToken: !!access_token } as ConfigEstudioTela }
+    const { access_token, app_secret, verify_token: _vt, ...resto } = c
+    void _vt
+    return { config: { ...resto, ativo: !!resto.ativo, temToken: !!access_token, temAppSecret: !!app_secret } as ConfigEstudioTela }
   } catch (err) { return { config: null, error: err instanceof Error ? err.message : String(err) } }
 }
 
 export async function salvarConfigEstudio(patch: {
   waba_id?: string; phone_number_id?: string; display_number?: string; whatsapp_avisos?: string
-  resposta_teste?: string; access_token?: string; ativo?: boolean
+  resposta_teste?: string; access_token?: string; app_secret?: string; ativo?: boolean
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
@@ -227,6 +234,11 @@ export async function salvarConfigEstudio(patch: {
     }
     if (patch.resposta_teste !== undefined) upd.resposta_teste = patch.resposta_teste.trim().slice(0, 1000) || null
     if (patch.access_token !== undefined && patch.access_token.trim()) upd.access_token = patch.access_token.trim()
+    if (patch.app_secret !== undefined && patch.app_secret.trim()) {
+      const sec = patch.app_secret.trim()
+      if (!/^[a-f0-9]{32}$/i.test(sec)) return { success: false, error: 'O App Secret tem 32 caracteres (letras a–f e números). Copie de developers.facebook.com → app Cobrazap → Configurações → Básico.' }
+      upd.app_secret = sec
+    }
     if (patch.ativo !== undefined) upd.ativo = !!patch.ativo
     const { error } = await createAdminClient().from('estudio_config').upsert(upd, { onConflict: 'tenant_id' })
     if (error) return { success: false, error: avisoDeTabela(error.message) }
@@ -319,4 +331,34 @@ export async function ultimasConversasEstudio(): Promise<{ conversas: ConversaRe
     }
     return { conversas }
   } catch (err) { return { conversas: [], error: String(err) } }
+}
+
+/** Onde as mensagens deste número caem hoje (webhook do app × override do número). */
+export async function webhookDoNumeroEstudio(): Promise<{ webhook?: WebhookDoNumero; nosso?: string; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    return { webhook: await webhookDoNumero(c.phone_number_id, c.access_token), nosso: URL_WEBHOOK_ESTUDIO }
+  } catch (err) { return { error: err instanceof Error ? err.message : String(err) } }
+}
+
+/**
+ * Aponta SÓ o número do estúdio para o FunilPro (override_callback_uri). O
+ * webhook do app Cobrazap continua indo para o CobrarZap. Exige o App Secret
+ * salvo antes: sem ele os POSTs assinados pelo Cobrazap seriam recusados.
+ */
+export async function apontarWebhookEstudio(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = await exigirConexao(tenantId)
+    if (!c.app_secret) return { success: false, error: 'Salve antes o App Secret do app Cobrazap — sem ele o FunilPro recusaria as mensagens assinadas por esse app.' }
+    let verify = c.verify_token as string | null
+    if (!verify) {
+      verify = novoVerifyToken()
+      const { error } = await createAdminClient().from('estudio_config').update({ verify_token: verify }).eq('tenant_id', tenantId)
+      if (error) return { success: false, error: error.message }
+    }
+    await apontarWebhookDoNumero(c.phone_number_id, c.access_token, URL_WEBHOOK_ESTUDIO, verify)
+    return { success: true }
+  } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
 }

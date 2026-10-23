@@ -117,3 +117,31 @@ export async function appsInscritos(wabaId: string, token: string, f?: Fetch): P
 export async function inscreverApp(wabaId: string, token: string, f?: Fetch): Promise<void> {
   await graph<{ success?: boolean }>(`${encodeURIComponent(wabaId)}/subscribed_apps`, token, { method: 'POST' }, f)
 }
+
+// ── Webhook por número (override) ───────────────────────────────────────────
+
+export interface WebhookDoNumero {
+  application?: string          // webhook do app (ex.: cobrarzap.com.br)
+  phone_number?: string         // override deste número (o nosso)
+  whatsapp_business_account?: string
+}
+
+/** GET /{phone_number_id}?fields=webhook_configuration — onde as mensagens deste número caem hoje. */
+export async function webhookDoNumero(phoneNumberId: string, token: string, f?: Fetch): Promise<WebhookDoNumero> {
+  const r = await graph<{ webhook_configuration?: WebhookDoNumero }>(`${encodeURIComponent(phoneNumberId)}?fields=webhook_configuration`, token, {}, f)
+  return r.webhook_configuration ?? {}
+}
+
+/**
+ * POST /{phone_number_id} com webhook_configuration.override_callback_uri:
+ * SÓ este número passa a ir para o FunilPro; o webhook do app (CobrarZap)
+ * continua igual para os outros números da WABA.
+ */
+export async function apontarWebhookDoNumero(phoneNumberId: string, token: string, callbackUri: string, verifyToken: string, f?: Fetch): Promise<void> {
+  if (!/^https:\/\//.test(callbackUri)) throw new Error('A URL do webhook precisa ser https.')
+  if (!verifyToken) throw new Error('verify_token vazio.')
+  await graph<{ success?: boolean }>(`${encodeURIComponent(phoneNumberId)}`, token, {
+    method: 'POST',
+    body: { webhook_configuration: { override_callback_uri: callbackUri, verify_token: verifyToken } },
+  }, f)
+}

@@ -107,7 +107,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(sql.includes('REVOKE ALL ON estudio_config FROM anon, authenticated;'))
     assert.ok(/ALTER TABLE estudio_config\s+ENABLE ROW LEVEL SECURITY/.test(sql))
     const a = ler('src/app/actions/estudio.ts')
-    assert.ok(a.includes('const { access_token, ...resto } = c'))
+    assert.ok(a.includes('const { access_token, app_secret, verify_token: _vt, ...resto } = c'))
     assert.ok(a.includes('temToken: !!access_token'))
     assert.ok(!ler('src/app/estudio/catalogo/dados.ts').includes('access_token'), 'página pública não lê o token')
     assert.ok(ler('src/app/(dashboard)/estudio-ia/aba-config.tsx').includes('type="password"'))

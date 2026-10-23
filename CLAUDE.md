@@ -534,6 +534,15 @@ APP_SECRET=
   1×/30 min; catálogo público ganha botão wa.me com o número do estúdio
 - Número do estúdio: +55 21 99077-3595, phone_number_id 1418653454665224,
   WABA 2250778325757289 (Cobrazap, BM LUIS)
+- **Fase 2b (webhook override por número)**: a WABA é do app **Cobrazap**
+  (1429754142539461), cujo webhook vai para cobrarzap.com.br e NÃO pode mudar.
+  Botão "Apontar" faz POST /{phone_number_id} webhook_configuration
+  .override_callback_uri → só o número do estúdio vem para o FunilPro.
+  Migration `20261025000000_estudio_ia_webhook_override.sql` (PENDENTE):
+  `estudio_config.app_secret` (App Secret do Cobrazap) + `verify_token`. Rota
+  meta-wa: GET aceita o verify_token do estúdio; POST aceita assinatura do
+  Cobrazap (inbox mantém a regra antiga); `src/lib/estudio/assinatura.ts`.
+  Token: usuário do sistema "CobrarZap API" (BM no limite de usuários)
 - Bateria: **1010/1010**
 
 **2026-10-23 — Estúdio IA, Fase 1 (catálogo)** — projeto completo enviado pelo dono

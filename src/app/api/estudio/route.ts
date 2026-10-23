@@ -10,6 +10,7 @@ import {
   listarCatalogo, importarPoses, salvarTema, salvarPose, subirFotoExemplo,
   lerConfigEstudio, salvarConfigEstudio, testarConexaoEstudio, registrarNumeroEstudio,
   appsDaWaba, inscreverAppNaWaba, enviarTesteAvisos, ultimasConversasEstudio,
+  webhookDoNumeroEstudio, apontarWebhookEstudio,
 } from '@/app/actions/estudio'
 
 // Upload de foto de exemplo cabe folgado.
@@ -20,6 +21,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   listarCatalogo, importarPoses, salvarTema, salvarPose, subirFotoExemplo,
   lerConfigEstudio, salvarConfigEstudio, testarConexaoEstudio, registrarNumeroEstudio,
   appsDaWaba, inscreverAppNaWaba, enviarTesteAvisos, ultimasConversasEstudio,
+  webhookDoNumeroEstudio, apontarWebhookEstudio,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
