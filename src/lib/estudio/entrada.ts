@@ -19,14 +19,20 @@ export interface ConfigEstudio {
   access_token: string | null
   ativo: boolean
   resposta_teste: string | null
+  app_secret?: string | null
 }
 
 /** Config do estúdio para este phone_number_id, ou null (não é o estúdio). */
 export async function configDoNumero(admin: SupabaseClient, phoneNumberId: string): Promise<ConfigEstudio | null> {
   if (!phoneNumberId) return null
-  const { data, error } = await admin.from('estudio_config')
-    .select('tenant_id, phone_number_id, access_token, ativo, resposta_teste')
-    .eq('phone_number_id', phoneNumberId).maybeSingle()
+  const base = 'tenant_id, phone_number_id, access_token, ativo, resposta_teste'
+  let { data, error } = await admin.from('estudio_config')
+    .select(`${base}, app_secret`).eq('phone_number_id', phoneNumberId).maybeSingle()
+  // Coluna app_secret ainda não criada (SQL da Fase 2b pendente): o número
+  // continua sendo reconhecido como do estúdio, só sem a checagem extra.
+  if (error && /app_secret/.test(error.message)) {
+    ({ data, error } = await admin.from('estudio_config').select(base).eq('phone_number_id', phoneNumberId).maybeSingle())
+  }
   if (error || !data) return null   // tabela ainda não criada = segue o inbox normal
   return data as ConfigEstudio
 }

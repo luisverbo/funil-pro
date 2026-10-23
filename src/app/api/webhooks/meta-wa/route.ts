@@ -24,6 +24,7 @@ import { processAgentMessage } from '@/lib/agents/chat'
 import { foneChave, foneBate } from '@/lib/webhooks/contato-match'
 import { escolherAtendente, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/distribuicao'
 import { configDoNumero, processarEntradaEstudio, type ConfigEstudio } from '@/lib/estudio/entrada'
+import { assinaturaConfere, tokenConfere } from '@/lib/estudio/assinatura'
 
 export const maxDuration = 60
 
@@ -37,7 +38,27 @@ export async function GET(request: NextRequest) {
   if (modo === 'subscribe' && esperado && token === esperado && challenge) {
     return new NextResponse(challenge, { status: 200 })
   }
+  // Override por número (Estúdio IA): a Meta verifica com o verify_token que o
+  // FunilPro mandou no override_callback_uri do número do estúdio.
+  if (modo === 'subscribe' && token && challenge && await verifyTokenDoEstudio(token)) {
+    return new NextResponse(challenge, { status: 200 })
+  }
   return NextResponse.json({ error: 'verificação recusada' }, { status: 403 })
+}
+
+async function verifyTokenDoEstudio(token: string): Promise<boolean> {
+  try {
+    const { data } = await createAdminClient().from('estudio_config').select('verify_token').not('verify_token', 'is', null)
+    return (data ?? []).some(c => tokenConfere(token, c.verify_token as string))
+  } catch { return false }
+}
+
+/** App Secrets dos apps que assinam webhooks do estúdio (ex.: Cobrazap). */
+async function secretsDoEstudio(): Promise<string[]> {
+  try {
+    const { data } = await createAdminClient().from('estudio_config').select('app_secret').not('app_secret', 'is', null)
+    return (data ?? []).map(c => String(c.app_secret)).filter(Boolean)
+  } catch { return [] }
 }
 
 function assinaturaValida(raw: string, header: string | null): boolean {
@@ -55,7 +76,10 @@ function assinaturaValida(raw: string, header: string | null): boolean {
 // ── POST: mensagens e status ────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   const raw = await request.text()
-  if (!assinaturaValida(raw, request.headers.get('x-hub-signature-256'))) {
+  const assinatura = request.headers.get('x-hub-signature-256')
+  // Assinado pelo app do estúdio (Cobrazap)? Senão, a regra de sempre do inbox.
+  const assinadoPeloEstudio = (await secretsDoEstudio()).some(sec => assinaturaConfere(raw, assinatura, sec))
+  if (!assinadoPeloEstudio && !assinaturaValida(raw, assinatura)) {
     return NextResponse.json({ error: 'bad signature' }, { status: 401 })
   }
 
@@ -87,6 +111,8 @@ export async function POST(request: NextRequest) {
     try {
       const estudio = await doEstudio(m.phoneNumberId)
       if (estudio) {
+        // Com App Secret configurado, mensagem do estúdio só vale assinada por ele.
+        if (estudio.app_secret && !assinadoPeloEstudio) { console.warn('[estudio] webhook sem assinatura do app do estúdio — ignorado'); continue }
         await processarEntradaEstudio(admin, estudio, m)
         continue
       }
