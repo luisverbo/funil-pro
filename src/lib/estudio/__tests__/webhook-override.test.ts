@@ -78,7 +78,9 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(sql.includes('ADD COLUMN IF NOT EXISTS app_secret   text'))
     assert.ok(sql.includes('ADD COLUMN IF NOT EXISTS verify_token text'))
     assert.ok(sql.includes('REVOKE ALL ON estudio_config FROM anon, authenticated;'))
-    assert.ok(ler('src/lib/estudio/entrada.ts').includes("if (error && /app_secret/.test(error.message))"))
+    const e = ler('src/lib/estudio/entrada.ts')
+    assert.ok(e.includes("for (const sel of [`${base}, app_secret`, base])"), 'sem coluna nova, tenta mantendo o app_secret')
+    assert.ok(e.includes("if (!error || !/app_secret|pausa_humano_horas/.test(error.message)) break"))
   },
 }
 

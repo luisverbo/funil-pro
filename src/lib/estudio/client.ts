@@ -1,6 +1,6 @@
 // Cliente HTTP da aba Estúdio IA — mesmas assinaturas das actions (tipo via
 // typeof import), transporte por fetch para /api/estudio.
-type Acoes = typeof import('@/app/actions/estudio')
+type Acoes = typeof import('@/app/actions/estudio') & typeof import('@/app/actions/estudio-chat')
 
 async function chamar(op: string, args: unknown[]): Promise<unknown> {
   let resp: Response
@@ -40,3 +40,13 @@ export const enviarTesteAvisos = op('enviarTesteAvisos')
 export const ultimasConversasEstudio = op('ultimasConversasEstudio')
 export const webhookDoNumeroEstudio = op('webhookDoNumeroEstudio')
 export const apontarWebhookEstudio = op('apontarWebhookEstudio')
+export const listarConversasChat = op('listarConversasChat')
+export const abrirConversaChat = op('abrirConversaChat')
+export const enviarTextoChat = op('enviarTextoChat')
+export const urlDeUploadChat = op('urlDeUploadChat')
+export const enviarMidiaChat = op('enviarMidiaChat')
+export const enviarFotosDoPedidoChat = op('enviarFotosDoPedidoChat')
+export const listarModelosChat = op('listarModelosChat')
+export const enviarModeloChat = op('enviarModeloChat')
+export const definirAtendimentoChat = op('definirAtendimentoChat')
+export const salvarNotasChat = op('salvarNotasChat')

@@ -12,6 +12,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MensagemRecebida } from '@/lib/whatsapp-cloud/webhook-parser'
 import { enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { origemDaMensagem, fimDaJanela, deveResponderTeste, RESPOSTA_TESTE_PADRAO, type Origem } from './whatsapp'
+import { paisDoWaId, devolveParaAna, previaDaMensagem } from './chat'
+import { guardarMidiaRecebida } from './midia'
 
 export interface ConfigEstudio {
   tenant_id: string
@@ -20,21 +22,31 @@ export interface ConfigEstudio {
   ativo: boolean
   resposta_teste: string | null
   app_secret?: string | null
+  pausa_humano_horas?: number | null
 }
 
 /** Config do estúdio para este phone_number_id, ou null (não é o estúdio). */
 export async function configDoNumero(admin: SupabaseClient, phoneNumberId: string): Promise<ConfigEstudio | null> {
   if (!phoneNumberId) return null
   const base = 'tenant_id, phone_number_id, access_token, ativo, resposta_teste'
+  const extras = 'app_secret, pausa_humano_horas'
   let { data, error } = await admin.from('estudio_config')
-    .select(`${base}, app_secret`).eq('phone_number_id', phoneNumberId).maybeSingle()
+    .select(`${base}, ${extras}`).eq('phone_number_id', phoneNumberId).maybeSingle()
   // Coluna app_secret ainda não criada (SQL da Fase 2b pendente): o número
   // continua sendo reconhecido como do estúdio, só sem a checagem extra.
-  if (error && /app_secret/.test(error.message)) {
-    ({ data, error } = await admin.from('estudio_config').select(base).eq('phone_number_id', phoneNumberId).maybeSingle())
+  // Coluna nova ainda não criada: tenta mantendo o app_secret (checagem de
+  // assinatura), e só por último sem nada extra.
+  for (const sel of [`${base}, app_secret`, base]) {
+    if (!error || !/app_secret|pausa_humano_horas/.test(error.message)) break
+    ;({ data, error } = await admin.from('estudio_config').select(sel).eq('phone_number_id', phoneNumberId).maybeSingle())
   }
   if (error || !data) return null   // tabela ainda não criada = segue o inbox normal
   return data as ConfigEstudio
+}
+
+/** Erro de coluna que ainda não existe (SQL do chat pendente) — refaz sem ela. */
+function faltaColuna(msg: string | undefined): boolean {
+  return !!msg && /column|schema cache|could not find/i.test(msg)
 }
 
 export async function processarEntradaEstudio(admin: SupabaseClient, cfg: ConfigEstudio, m: MensagemRecebida): Promise<void> {
@@ -42,58 +54,99 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
   const { data: ja } = await admin.from('estudio_mensagens').select('id').eq('wamid', m.wamid).maybeSingle()
   if (ja) return
 
-  const agora = new Date().toISOString()
+  const agora = new Date()
+  const agoraIso = agora.toISOString()
   const { data: existente } = await admin.from('estudio_contatos')
-    .select('id, origem, nome').eq('tenant_id', cfg.tenant_id).eq('wa_id', m.de).maybeSingle()
+    .select('*').eq('tenant_id', cfg.tenant_id).eq('wa_id', m.de).maybeSingle()
 
   // Veio de anúncio uma vez → conversa inteira conta como anúncio (janela 72h).
   const origem: Origem = existente?.origem === 'anuncio' ? 'anuncio' : origemDaMensagem(m.referral)
   const janela = fimDaJanela(m.timestamp, origem)
+  const tipo = m.tipoBruto === 'sticker' ? 'figurinha' : m.tipoBruto === 'location' ? 'localizacao' : m.tipo
+  const texto = m.localizacao
+    ? `📍 ${m.localizacao.nome ? `${m.localizacao.nome} · ` : ''}https://maps.google.com/?q=${m.localizacao.lat},${m.localizacao.lng}`
+    : m.corpo
+  const previa = previaDaMensagem(tipo, texto)
+
+  // A Ana volta sozinha após N horas sem mensagem manual do Luís.
+  const devolver = existente && devolveParaAna(
+    { modo: existente.modo ?? 'ana', humano_desde: existente.humano_desde ?? null, humano_fixo: !!existente.humano_fixo },
+    Number(cfg.pausa_humano_horas ?? 2), agora,
+  )
 
   let contatoId = existente?.id as string | undefined
   if (contatoId) {
-    await admin.from('estudio_contatos').update({
-      ultima_msg_em: agora, janela_ate: janela, origem,
+    const base = {
+      ultima_msg_em: agoraIso, janela_ate: janela, origem,
       ...(m.nome && !existente?.nome ? { nome: m.nome } : {}),
       ...(m.referral && origem === 'anuncio' ? { referral: m.referral } : {}),
+    }
+    const { error } = await admin.from('estudio_contatos').update({
+      ...base, ultima_msg: previa, nao_lidas: Number(existente?.nao_lidas ?? 0) + 1,
+      ...(devolver ? { modo: 'ana', humano_desde: null } : {}),
     }).eq('id', contatoId)
+    if (faltaColuna(error?.message)) await admin.from('estudio_contatos').update(base).eq('id', contatoId)
   } else {
-    const { data: novo, error } = await admin.from('estudio_contatos').insert({
+    const { pais, idioma } = paisDoWaId(m.de)
+    const base = {
       tenant_id: cfg.tenant_id, wa_id: m.de, nome: m.nome, origem,
-      referral: m.referral ?? null, janela_ate: janela, primeira_msg_em: agora, ultima_msg_em: agora,
-    }).select('id').single()
+      referral: m.referral ?? null, janela_ate: janela, primeira_msg_em: agoraIso, ultima_msg_em: agoraIso,
+    }
+    let { data: novo, error } = await admin.from('estudio_contatos')
+      .insert({ ...base, pais, idioma, ultima_msg: previa, nao_lidas: 1 }).select('id').single()
+    if (faltaColuna(error?.message)) ({ data: novo, error } = await admin.from('estudio_contatos').insert(base).select('id').single())
     if (error || !novo) { console.error('[estudio] contato não criado:', error?.message); return }
     contatoId = novo.id as string
   }
 
-  const { error: eMsg } = await admin.from('estudio_mensagens').insert({
+  // Mídia: baixa AGORA (a URL da Meta expira) e guarda no bucket privado.
+  let midia: { path: string; mime: string } | null = null
+  let erroMidia: string | null = null
+  if (m.mediaId && cfg.access_token) {
+    try { midia = await guardarMidiaRecebida(admin, contatoId, m.wamid, m.mediaId, cfg.access_token, m.mediaNome) }
+    catch (err) { erroMidia = String(err).slice(0, 300); console.error('[estudio] mídia não baixada:', erroMidia) }
+  }
+
+  const baseMsg = {
     tenant_id: cfg.tenant_id, contato_id: contatoId, wamid: m.wamid, direcao: 'entrada',
-    tipo: m.tipo, texto: m.corpo, media_id: m.mediaId ?? null,
+    tipo, texto, media_id: m.mediaId ?? null,
+  }
+  let { error: eMsg } = await admin.from('estudio_mensagens').insert({
+    ...baseMsg, autor: 'cliente', media_path: midia?.path ?? null, media_mime: midia?.mime ?? m.mediaMime ?? null,
+    media_nome: m.mediaNome ?? null, erro: erroMidia,
   })
+  if (faltaColuna(eMsg?.message)) ({ error: eMsg } = await admin.from('estudio_mensagens').insert(baseMsg))
   if (eMsg) return   // wamid repetido na corrida: outra execução já tratou
 
   if (!cfg.ativo || !cfg.access_token) return   // conectado mas desligado: só registra
 
-  // ── Fase 2: resposta de teste ──────────────────────────────────────────────
+  // Luís atendendo: a Ana fica quieta.
+  const modo = devolver ? 'ana' : (existente?.modo ?? 'ana')
+  if (modo === 'humano') return
+
+  // ── Fase 2: resposta de teste (a Fase 3 troca pela Ana completa) ───────────
   const { data: ultSaida } = await admin.from('estudio_mensagens').select('criado_em')
     .eq('contato_id', contatoId).eq('direcao', 'saida').order('criado_em', { ascending: false }).limit(1).maybeSingle()
   if (!deveResponderTeste(ultSaida?.criado_em ?? null)) return
 
-  await enviarEstudio(admin, cfg, contatoId, m.de, (cfg.resposta_teste ?? '').trim() || RESPOSTA_TESTE_PADRAO)
+  await enviarEstudio(admin, cfg, contatoId, m.de, (cfg.resposta_teste ?? '').trim() || RESPOSTA_TESTE_PADRAO, 'ana')
 }
 
 /** Envia texto pelo número do estúdio e registra no histórico. */
 export async function enviarEstudio(
   admin: SupabaseClient, cfg: Pick<ConfigEstudio, 'tenant_id' | 'phone_number_id' | 'access_token'>,
-  contatoId: string | null, para: string, texto: string,
+  contatoId: string | null, para: string, texto: string, autor: 'ana' | 'luis' | 'sistema' = 'sistema',
 ): Promise<{ ok: boolean; erro?: string }> {
   if (!cfg.access_token) return { ok: false, erro: 'sem token' }
   const r = await enviarTextoCloud({ phone_number_id: cfg.phone_number_id, access_token: cfg.access_token }, para, texto)
   if (contatoId) {
-    await admin.from('estudio_mensagens').insert({
+    const base = {
       tenant_id: cfg.tenant_id, contato_id: contatoId, wamid: r.ok ? r.wamid : null, direcao: 'saida',
       tipo: 'texto', texto, status_entrega: r.ok ? 'sent' : 'failed',
-    })
+    }
+    const { error } = await admin.from('estudio_mensagens').insert({ ...base, autor, erro: r.ok ? null : (r.erro ?? '').slice(0, 300) })
+    if (faltaColuna(error?.message)) await admin.from('estudio_mensagens').insert(base)
+    await admin.from('estudio_contatos').update({ ultima_msg: texto.slice(0, 120) }).eq('id', contatoId).then(() => {}, () => {})
   }
   if (!r.ok) console.error('[estudio] envio falhou:', r.erro)
   return r.ok ? { ok: true } : { ok: false, erro: r.erro }

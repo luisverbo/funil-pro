@@ -12,8 +12,12 @@ import {
   appsDaWaba, inscreverAppNaWaba, enviarTesteAvisos, ultimasConversasEstudio,
   webhookDoNumeroEstudio, apontarWebhookEstudio,
 } from '@/app/actions/estudio'
+import {
+  listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
+  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
+} from '@/app/actions/estudio-chat'
 
-// Upload de foto de exemplo cabe folgado.
+// Envio de várias fotos do pedido pela Meta pode levar alguns segundos.
 export const maxDuration = 60
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -22,6 +26,8 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   lerConfigEstudio, salvarConfigEstudio, testarConexaoEstudio, registrarNumeroEstudio,
   appsDaWaba, inscreverAppNaWaba, enviarTesteAvisos, ultimasConversasEstudio,
   webhookDoNumeroEstudio, apontarWebhookEstudio,
+  listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
+  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
