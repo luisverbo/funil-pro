@@ -1,74 +1,13 @@
 'use client'
 // ============================================================================
-// Estúdio IA — de onde vem a venda (por anúncio) + estado da Meta (CAPI)
-//   OrigemDasVendas  → Painel: anúncio · conversas · pedidos · vendas ·
-//                      faturamento (por moeda) · conversa→venda; Orgânico
+// Estúdio IA — estado da Meta (CAPI); "de onde vem a venda" está no painel-ui
 //   CartaoMetaCapi   → Configurações: dataset do WhatsApp, último erro,
 //                      código do "Testar eventos"
 // ============================================================================
 import { useEffect, useState } from 'react'
-import { origemDasVendas, estadoMetaCapi, obterDatasetMeta, salvarCodigoTesteMeta } from '@/lib/estudio/client'
+import { estadoMetaCapi, obterDatasetMeta, salvarCodigoTesteMeta } from '@/lib/estudio/client'
 
-type Linha = Awaited<ReturnType<typeof origemDasVendas>>['linhas'][number]
 type Estado = Awaited<ReturnType<typeof estadoMetaCapi>>
-
-const hoje = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)
-const diasAtras = (n: number) => new Date(Date.now() - 3 * 3600e3 - n * 86400e3).toISOString().slice(0, 10)
-const dinheiro = (c: number, m: string) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: m })
-
-export function OrigemDasVendas() {
-  const [de, setDe] = useState(() => diasAtras(29))
-  const [ate, setAte] = useState(hoje)
-  const [linhas, setLinhas] = useState<Linha[] | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  useEffect(() => {
-    let vivo = true
-    origemDasVendas(de, ate).then(r => { if (!vivo) return; setLinhas(r.linhas); setErro(r.error ?? null) }).catch(e => setErro(String(e)))
-    return () => { vivo = false }
-  }, [de, ate])
-  const atalho = (n: number) => { setDe(diasAtras(n - 1)); setAte(hoje()) }
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">📣 De onde vem a venda</h2>
-          <p className="text-xs text-slate-500">Conversa conta para o anúncio que a trouxe; pedido e venda, para o último clique. Faturamento separado por moeda.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {[[1, 'Hoje'], [7, '7 dias'], [30, '30 dias']].map(([n, t]) => <button key={t} onClick={() => atalho(Number(n))} className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{t}</button>)}
-          <input type="date" value={de} onChange={e => setDe(e.target.value)} className="rounded border border-slate-200 p-1" />
-          <span>até</span>
-          <input type="date" value={ate} onChange={e => setAte(e.target.value)} className="rounded border border-slate-200 p-1" />
-        </div>
-      </div>
-      {erro && <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">{erro}</p>}
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[760px] text-sm">
-          <thead><tr className="text-left text-[11px] uppercase tracking-wider text-slate-500"><th className="py-2">Anúncio</th><th className="text-right">Conversas</th><th className="text-right">Pedidos</th><th className="text-right">Vendas</th><th className="text-right">Faturamento</th><th className="text-right">Conversa → venda</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {!linhas ? <tr><td colSpan={6} className="py-4 text-center text-slate-500">Carregando…</td></tr>
-              : linhas.length === 0 ? <tr><td colSpan={6} className="py-4 text-center text-slate-500">Nenhuma conversa no período.</td></tr>
-              : linhas.map(l => (
-                <tr key={l.ad_id ?? 'organico'} className={l.ad_id ? '' : 'bg-slate-50'}>
-                  <td className="py-2">
-                    {l.ad_id ? <>
-                      <p className="font-medium text-slate-900">{l.nome ?? l.headline ?? `Anúncio ${l.ad_id}`}</p>
-                      <p className="text-[11px] text-slate-500">{l.campanha ? `${l.campanha} · ` : ''}ID {l.ad_id}</p>
-                    </> : <p className="font-medium text-slate-700">🌱 Orgânico</p>}
-                  </td>
-                  <td className="text-right tabular-nums">{l.conversas}</td>
-                  <td className="text-right tabular-nums">{l.pedidos}</td>
-                  <td className="text-right font-semibold tabular-nums">{l.vendas}</td>
-                  <td className="text-right tabular-nums">{Object.keys(l.faturamento).length ? Object.entries(l.faturamento).map(([m, c]) => <span key={m} className="block">{dinheiro(c, m)}</span>) : '—'}</td>
-                  <td className="text-right tabular-nums">{l.taxa === null ? '—' : `${(l.taxa * 100).toFixed(1).replace('.', ',')}%`}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  )
-}
 
 export function CartaoMetaCapi() {
   const [e, setE] = useState<Estado | null>(null)
