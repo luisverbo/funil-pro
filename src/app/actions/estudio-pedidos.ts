@@ -99,6 +99,8 @@ export interface PedidoDetalhe {
   fotos: { rosto: string | null; corpo: string | null; comprovante: string | null }
   entregas: { id: string; pose_numero: string; status: string; nota_rosto: number | null; motor: string | null; url: string | null; enviada_em: string | null }[]
   eventos: { tipo: string; detalhe: unknown; criado_em: string }[]
+  /** "Veio do anúncio X (campanha Y)" — null = orgânico. */
+  anuncio?: { ad_id: string; nome: string | null; conjunto: string | null; campanha: string | null; headline: string | null } | null
   error?: string
 }
 
@@ -123,6 +125,10 @@ export async function abrirPedidoEstudio(id: string): Promise<PedidoDetalhe> {
         enviada_em: e.enviada_em ?? null, url: await assinar(BUCKET_ENTREGAS, e.foto_path),
       }))),
       eventos: (evs ?? []) as PedidoDetalhe['eventos'],
+      anuncio: p.ad_id ? await (async () => {
+        const { data: a } = await admin.from('estudio_anuncios').select('nome, conjunto, campanha, headline').eq('tenant_id', tenantId).eq('ad_id', p.ad_id).maybeSingle().then(r => r, () => ({ data: null }))
+        return { ad_id: String(p.ad_id), nome: a?.nome ?? null, conjunto: a?.conjunto ?? null, campanha: a?.campanha ?? null, headline: a?.headline ?? null }
+      })() : null,
     }
   } catch (e) { return { ...vazio, error: String(e) } }
 }
@@ -244,5 +250,68 @@ export async function usarFotoComoEstudio(id: string, path: string, papel: 'rost
     await aplicarEscolhaDeFotos(admin, id, lista)
     await admin.from('estudio_eventos').insert({ pedido_id: id, tipo: 'foto_trocada', detalhe: { papel, path } })
     return { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+// ── De onde vem a venda (por anúncio) ───────────────────────────────────────
+
+export interface LinhaOrigemTela {
+  ad_id: string | null; nome: string | null; campanha: string | null; headline: string | null
+  conversas: number; pedidos: number; vendas: number; faturamento: Record<string, number>; taxa: number | null
+}
+
+export async function origemDasVendas(de: string, ate: string): Promise<{ linhas: LinhaOrigemTela[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return { linhas: [], error: 'Período inválido.' }
+    const ini = new Date(`${de}T00:00:00-03:00`).toISOString(), fim = new Date(new Date(`${ate}T00:00:00-03:00`).getTime() + 86400e3).toISOString()
+    const admin = createAdminClient()
+    const [ct, pd, an] = await Promise.all([
+      admin.from('estudio_contatos').select('ad_id, ad_id_primeiro, origem').eq('tenant_id', tenantId).gte('primeira_msg_em', ini).lt('primeira_msg_em', fim).limit(20000),
+      admin.from('estudio_pedidos').select('ad_id, status, pago_em, valor_pago_cents, moeda, tipo, criado_em').eq('tenant_id', tenantId).gte('criado_em', ini).lt('criado_em', fim).neq('tipo', 'previa').limit(20000),
+      admin.from('estudio_anuncios').select('ad_id, nome, campanha, headline').eq('tenant_id', tenantId),
+    ])
+    if (ct.error) return { linhas: [], error: /ad_id|column/i.test(ct.error.message) ? 'Falta rodar o SQL 20261101000000_estudio_ia_anuncios.sql no Supabase.' : ct.error.message }
+    const { agruparPorAnuncio } = await import('@/lib/estudio/anuncios')
+    // A conversa conta para o anúncio que a TROUXE (primeiro clique); o pedido, para o último clique.
+    const linhas = agruparPorAnuncio(
+      (ct.data ?? []).map(c => ({ ad_id: (c.ad_id_primeiro ?? c.ad_id) || null })),
+      (pd.data ?? []).map(p => ({ ad_id: p.ad_id || null, status: p.status, pago: !!p.pago_em, valor_pago_cents: p.valor_pago_cents, moeda: p.moeda })),
+    )
+    const nomes = new Map((an.data ?? []).map(a => [a.ad_id, a]))
+    return { linhas: linhas.map(l => ({ ...l, nome: l.ad_id ? nomes.get(l.ad_id)?.nome ?? null : null, campanha: l.ad_id ? nomes.get(l.ad_id)?.campanha ?? null : null, headline: l.ad_id ? nomes.get(l.ad_id)?.headline ?? null : null })) }
+  } catch (e) { return { linhas: [], error: String(e) } }
+}
+
+// ── Meta (CAPI para mensagens): dataset, erro, código de teste ──────────────
+
+export async function estadoMetaCapi(): Promise<{ waba_id: string | null; dataset_id: string | null; erro: string | null; erro_em: string | null; codigo_teste: string | null; pendentes: number; error?: string }> {
+  const vazio = { waba_id: null, dataset_id: null, erro: null, erro_em: null, codigo_teste: null, pendentes: 0 }
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data, error } = await admin.from('estudio_config').select('waba_id, meta_dataset_id, meta_capi_erro, meta_capi_erro_em, meta_test_event_code').eq('tenant_id', tenantId).maybeSingle()
+    if (error) return { ...vazio, error: /meta_|column/i.test(error.message) ? 'Falta rodar o SQL 20261101000000_estudio_ia_anuncios.sql no Supabase.' : error.message }
+    const { count } = await admin.from('estudio_pedidos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).not('meta_erro', 'is', null)
+    return { waba_id: data?.waba_id ?? null, dataset_id: data?.meta_dataset_id ?? null, erro: data?.meta_capi_erro ?? null, erro_em: data?.meta_capi_erro_em ?? null, codigo_teste: data?.meta_test_event_code ?? null, pendentes: count ?? 0 }
+  } catch (e) { return { ...vazio, error: String(e) } }
+}
+
+export async function obterDatasetMeta(): Promise<{ success: boolean; dataset_id?: string | null; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { obterDataset } = await import('@/lib/estudio/anuncios-servidor')
+    const r = await obterDataset(createAdminClient(), tenantId)
+    return r.dataset_id ? { success: true, dataset_id: r.dataset_id } : { success: false, error: r.erro }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+/** Código do "Testar eventos" do Gerenciador de Eventos (vazio = produção). */
+export async function salvarCodigoTesteMeta(codigo: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const c = String(codigo ?? '').trim().slice(0, 40) || null
+    const { error } = await createAdminClient().from('estudio_config').update({ meta_test_event_code: c }).eq('tenant_id', tenantId)
+    return error ? { success: false, error: error.message } : { success: true }
   } catch (e) { return { success: false, error: String(e) } }
 }

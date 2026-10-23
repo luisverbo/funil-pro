@@ -522,6 +522,28 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-01 — Estúdio IA: rastreio de vendas por anúncio + CAPI para mensagens**
+- Migration `20261101000000_estudio_ia_anuncios.sql` (PENDENTE no Studio):
+  origem no contato (ad_id, ctwa_clid, headline/body/mídia, origem_em +
+  *_primeiro; backfill do referral antigo), `estudio_pedidos.ctwa_clid` +
+  meta_lead/purchase_enviado_em, meta_erro, meta_tentativas;
+  `estudio_anuncios` (cache nome/conjunto/campanha); `estudio_config`
+  meta_dataset_id, meta_test_event_code, meta_capi_erro; robô da produção
+  também dispara reenvio de evento com erro (<3 tentativas)
+- `src/lib/estudio/anuncios.ts` (puro): `anuncioDoReferral`,
+  `atualizacaoDeOrigem` (último clique ganha, primeiro guardado, orgânico não
+  apaga), `corpoDoEvento` (business_messaging/whatsapp/ctwa_clid, event_id
+  `<pedido>-purchase|-lead`), `deveEnviar`, `agruparPorAnuncio`
+- `anuncios-servidor.ts`: `obterDataset` (GET/POST /{WABA}/dataset),
+  `enviarEventoPedido` (v23.0 /{dataset}/events; LeadSubmitted no fechamento,
+  Purchase em `marcarPago` = Pix e Hotmart), `reenviarEventosPendentes`,
+  `buscarAnuncio` (Graph, erro de permissão guardado sem quebrar)
+- Pedido nasce com origem/ad_id/ctwa_clid (fallback sem as colunas novas)
+- Telas: Painel "De onde vem a venda" (por anúncio + Orgânico, período,
+  faturamento por moeda, conversa→venda); cartão Meta em Configurações
+  (dataset, erro, código de teste); "Veio do anúncio X (campanha Y)" no pedido
+- Bateria: **1124/1124**
+
 **2026-10-31 — Estúdio IA, Fase 7 (Hotmart — pagamento internacional em USD)**
 - Migration `20261031000000_estudio_ia_hotmart.sql` (PENDENTE no Studio):
   `estudio_config.hotmart_hottok` (só service role) + `hotmart_produto_id`

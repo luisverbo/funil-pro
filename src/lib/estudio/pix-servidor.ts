@@ -50,7 +50,7 @@ export async function marcarPago(admin: SupabaseClient, pedidoId: string, p: Pag
   if (!ped) return { error: 'Pedido não encontrado.' }
   if (ped.status === 'cancelado') return { error: 'Pedido cancelado.' }
   const { data: contato } = ped.contato_id
-    ? await admin.from('estudio_contatos').select('origem, referral, pais, idioma').eq('id', ped.contato_id).single()
+    ? await admin.from('estudio_contatos').select('*').eq('id', ped.contato_id).single()
     : { data: null }
   const { count: previas } = ped.contato_id
     ? await admin.from('estudio_pedidos').select('id', { count: 'exact', head: true }).eq('contato_id', ped.contato_id).eq('tipo', 'previa').neq('id', pedidoId)
@@ -69,6 +69,11 @@ export async function marcarPago(admin: SupabaseClient, pedidoId: string, p: Pag
   }).eq('id', pedidoId)
   if (error) return /duplicate|unique|23505/i.test(error.message) ? { duplicado: true, error: 'Este comprovante já pagou outro pedido.' } : { error: error.message }
   await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'pago', detalhe: { pago_por: p.pago_por, valor_pago_cents: p.valor_pago_cents, e2e: p.pix_e2e_id ?? null } })
+  // Meta: Purchase (só se veio de anúncio; event_id fixo — nunca conta 2×).
+  try {
+    const { enviarEventoPedido } = await import('./anuncios-servidor')
+    await enviarEventoPedido(admin, pedidoId, 'Purchase')
+  } catch (err) { console.warn('[estudio] Purchase para a Meta:', String(err).slice(0, 200)) }
   // Fase 5: pago + fotos + poses + idade → fila de produção + aviso ao Luís.
   // Nunca deixa a fila derrubar o pagamento: o pedido já está 'pago' no banco.
   try {

@@ -18,6 +18,7 @@ import { avisarAparelhos } from './push'
 import { marcarLidaDigitando, marcarLida, ehSoConfirmacao } from './envio'
 import { Cronometro } from './tempos'
 import { processarConversa } from './ana/fila'
+import { anuncioDoReferral, atualizacaoDeOrigem } from './anuncios'
 
 export interface ConfigEstudio {
   tenant_id: string
@@ -113,6 +114,15 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
     contatoId = novo.id as string
   }
 
+  // Origem por anúncio (Click-to-WhatsApp): último clique ganha, o primeiro fica
+  // guardado; mensagem orgânica nunca apaga. Update à parte: SQL pendente não quebra.
+  const anuncio = anuncioDoReferral(m.referral)
+  const origemNova = atualizacaoDeOrigem(existente ?? null, anuncio, agoraIso)
+  if (origemNova) {
+    const { error: eOrig } = await admin.from('estudio_contatos').update(origemNova).eq('id', contatoId)
+    if (eOrig) console.warn('[estudio] origem do anúncio não gravada (SQL pendente?):', eOrig.message)
+  }
+
   // Mídia: baixa AGORA (a URL da Meta expira) e guarda no bucket privado.
   let midia: { path: string; mime: string } | null = null
   let erroMidia: string | null = null
@@ -149,6 +159,8 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
       tenant_id: cfg.tenant_id, phone_number_id: cfg.phone_number_id, access_token: cfg.access_token,
       whatsapp_avisos: cfg.whatsapp_avisos ?? null,
     }, contatoId, { cronometro: crono, wamid: m.wamid, primeira: !existente })
+    // Nome do anúncio/conjunto/campanha em cache (depois da resposta: não atrasa a Ana).
+    if (anuncio) await import('./anuncios-servidor').then(x => x.buscarAnuncio(admin, cfg.tenant_id, anuncio.ad_id, anuncio.headline)).catch(err => console.warn('[estudio] nome do anúncio:', String(err).slice(0, 200)))
   } catch (err) {
     // Sem o SQL da Fase 3 (colunas da Ana): cai na resposta de teste da Fase 2.
     console.error('[estudio] Ana falhou, usando resposta de teste:', String(err).slice(0, 300))

@@ -360,5 +360,7 @@ export async function rodadaDeProducao(admin: SupabaseClient, orcamentoMs = 250_
     geradas += r.geradas
     if (r.terminou) { const e = await entregarPedido(admin, p.id); if (e.enviadas) entregues++ }
   }
+  // Evento da Meta que falhou: reenvia (até 3×).
+  await import('./anuncios-servidor').then(x => x.reenviarEventosPendentes(admin)).catch(err => console.warn('[estudio] reenvio Meta:', String(err).slice(0, 200)))
   return { entregues, geradas, atrasos }
 }
