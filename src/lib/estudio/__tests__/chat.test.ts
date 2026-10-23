@@ -80,10 +80,10 @@ const tests: Record<string, () => void | Promise<void>> = {
   },
   'entrada: baixa a mídia na hora, conta não lida, grava país/idioma, Ana quieta com o Luís': () => {
     const e = ler('src/lib/estudio/entrada.ts')
-    assert.ok(e.includes('await guardarMidiaRecebida(admin, contatoId, m.wamid, m.mediaId, cfg.access_token, m.mediaNome)'))
+    assert.ok(e.includes('guardarMidiaRecebida(admin, contatoId!, m.wamid, m.mediaId!, cfg.access_token!, m.mediaNome)'))
     assert.ok(e.includes('nao_lidas: Number(existente?.nao_lidas ?? 0) + 1'))
     assert.ok(e.includes('const { pais, idioma } = paisDoWaId(m.de)'))
-    assert.ok(e.includes("if (modo === 'humano') return"))
+    assert.ok(e.includes("if (modo === 'humano') { await fechar(); return }"))
     assert.ok(e.includes("if (faltaColuna(eMsg?.message))"), 'sem o SQL novo, a Fase 2 continua funcionando')
   },
   'envio: janela checada, upload direto assinado, caminho do próprio contato, manual pausa a Ana': () => {

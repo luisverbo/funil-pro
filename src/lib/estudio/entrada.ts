@@ -15,7 +15,9 @@ import { origemDaMensagem, fimDaJanela, deveResponderTeste, RESPOSTA_TESTE_PADRA
 import { paisDoWaId, devolveParaAna, previaDaMensagem } from './chat'
 import { guardarMidiaRecebida } from './midia'
 import { avisarAparelhos } from './push'
-import { rodarAna } from './ana/executor'
+import { marcarLidaDigitando, marcarLida, ehSoConfirmacao } from './envio'
+import { Cronometro } from './tempos'
+import { processarConversa } from './ana/fila'
 
 export interface ConfigEstudio {
   tenant_id: string
@@ -52,10 +54,19 @@ function faltaColuna(msg: string | undefined): boolean {
   return !!msg && /column|schema cache|could not find/i.test(msg)
 }
 
-export async function processarEntradaEstudio(admin: SupabaseClient, cfg: ConfigEstudio, m: MensagemRecebida): Promise<void> {
+export async function processarEntradaEstudio(admin: SupabaseClient, cfg: ConfigEstudio, m: MensagemRecebida, recebidaEm = Date.now()): Promise<void> {
+  const crono = new Cronometro(recebidaEm)
+  // "digitando…" JÁ (antes de banco, mídia e IA): meta < 1 s. Reação não liga.
+  // "ok"/👍/figurinha podem não ter resposta: aí só marca como lida (sem "digitando" no vazio).
+  const conta = cfg.access_token ? { phone_number_id: cfg.phone_number_id, access_token: cfg.access_token } : null
+  const talvezSemResposta = m.tipoBruto === 'sticker' || ehSoConfirmacao(m.corpo)
+  const digitando = cfg.ativo && conta && m.tipoBruto !== 'reaction'
+    ? (talvezSemResposta ? marcarLida(conta, m.wamid) : marcarLidaDigitando(conta, m.wamid).then(r => { if (r.ok) crono.digitou(); return r })).then(() => {}, () => {})
+    : Promise.resolve()
+
   // Dedupe: a Meta REENVIA em timeout (o UNIQUE do wamid barra a corrida).
   const { data: ja } = await admin.from('estudio_mensagens').select('id').eq('wamid', m.wamid).maybeSingle()
-  if (ja) return
+  if (ja) { await digitando; return }
 
   const agora = new Date()
   const agoraIso = agora.toISOString()
@@ -65,7 +76,7 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
   // Veio de anúncio uma vez → conversa inteira conta como anúncio (janela 72h).
   const origem: Origem = existente?.origem === 'anuncio' ? 'anuncio' : origemDaMensagem(m.referral)
   const janela = fimDaJanela(m.timestamp, origem)
-  const tipo = m.tipoBruto === 'sticker' ? 'figurinha' : m.tipoBruto === 'location' ? 'localizacao' : m.tipo
+  const tipo = m.tipoBruto === 'sticker' ? 'figurinha' : m.tipoBruto === 'location' ? 'localizacao' : m.tipoBruto === 'reaction' ? 'reacao' : m.tipo
   const texto = m.localizacao
     ? `📍 ${m.localizacao.nome ? `${m.localizacao.nome} · ` : ''}https://maps.google.com/?q=${m.localizacao.lat},${m.localizacao.lng}`
     : m.corpo
@@ -106,7 +117,7 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
   let midia: { path: string; mime: string } | null = null
   let erroMidia: string | null = null
   if (m.mediaId && cfg.access_token) {
-    try { midia = await guardarMidiaRecebida(admin, contatoId, m.wamid, m.mediaId, cfg.access_token, m.mediaNome) }
+    try { midia = await crono.medir('midia', () => guardarMidiaRecebida(admin, contatoId!, m.wamid, m.mediaId!, cfg.access_token!, m.mediaNome)) }
     catch (err) { erroMidia = String(err).slice(0, 300); console.error('[estudio] mídia não baixada:', erroMidia) }
   }
 
@@ -114,28 +125,30 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
     tenant_id: cfg.tenant_id, contato_id: contatoId, wamid: m.wamid, direcao: 'entrada',
     tipo, texto, media_id: m.mediaId ?? null,
   }
-  let { error: eMsg } = await admin.from('estudio_mensagens').insert({
-    ...baseMsg, autor: 'cliente', media_path: midia?.path ?? null, media_mime: midia?.mime ?? m.mediaMime ?? null,
-    media_nome: m.mediaNome ?? null, erro: erroMidia,
-  })
+  const completa = { ...baseMsg, autor: 'cliente', media_path: midia?.path ?? null, media_mime: midia?.mime ?? m.mediaMime ?? null, media_nome: m.mediaNome ?? null, erro: erroMidia }
+  // processada_em = null → entra na fila da conversa (ana/fila.ts).
+  let { error: eMsg } = await admin.from('estudio_mensagens').insert({ ...completa, processada_em: null })
+  if (faltaColuna(eMsg?.message)) ({ error: eMsg } = await admin.from('estudio_mensagens').insert(completa))
   if (faltaColuna(eMsg?.message)) ({ error: eMsg } = await admin.from('estudio_mensagens').insert(baseMsg))
+  await digitando
   if (eMsg) return   // wamid repetido na corrida: outra execução já tratou
 
-  if (!cfg.ativo || !cfg.access_token) return   // conectado mas desligado: só registra
+  const fechar = () => admin.from('estudio_mensagens').update({ processada_em: new Date().toISOString() }).eq('wamid', m.wamid).then(() => {}, () => {})
+  if (!cfg.ativo || !cfg.access_token) { await fechar(); return }   // conectado mas desligado: só registra
 
-  // Push no celular do Luís (app fechado também) — mensagem nova.
-  void avisarAparelhos(admin, cfg.tenant_id)
+  // Push no celular do Luís (app fechado também) — mensagem nova (reação não).
+  if (tipo !== 'reacao') void avisarAparelhos(admin, cfg.tenant_id)
 
   // Luís atendendo: a Ana fica quieta.
   const modo = devolver ? 'ana' : (existente?.modo ?? 'ana')
-  if (modo === 'humano') return
+  if (modo === 'humano') { await fechar(); return }
 
-  // ── Fase 3: a Ana (máquina de estados da seção 5) ─────────────────────────
+  // ── A Ana, pela fila da conversa (uma execução por vez, fotos juntas) ────
   try {
-    await rodarAna(admin, {
+    await processarConversa(admin, {
       tenant_id: cfg.tenant_id, phone_number_id: cfg.phone_number_id, access_token: cfg.access_token,
       whatsapp_avisos: cfg.whatsapp_avisos ?? null,
-    }, contatoId, { tipo, texto: texto ?? '', media_path: midia?.path ?? null, media_mime: midia?.mime ?? m.mediaMime ?? null }, !existente)
+    }, contatoId, { cronometro: crono, wamid: m.wamid, primeira: !existente })
   } catch (err) {
     // Sem o SQL da Fase 3 (colunas da Ana): cai na resposta de teste da Fase 2.
     console.error('[estudio] Ana falhou, usando resposta de teste:', String(err).slice(0, 300))

@@ -91,7 +91,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const desvio = w.indexOf('const estudio = await doEstudio(m.phoneNumberId)')
     const inbox = w.indexOf(".from('wa_accounts')")
     assert.ok(desvio > 0 && inbox > desvio, 'desvio vem antes de procurar a conta do inbox')
-    assert.ok(w.includes('await processarEntradaEstudio(admin, estudio, m)\n        continue'))
+    assert.ok(w.includes('doEstudioAgora.push(processarEntradaEstudio(admin, estudio, m, recebidaEm)') && w.includes('after(() => Promise.all(doEstudioAgora)'))
     assert.ok(w.includes("const tabela = (await doEstudio(st.phoneNumberId)) ? 'estudio_mensagens' : 'wa_messages'"))
     const e = ler('src/lib/estudio/entrada.ts')
     assert.ok(!/from\('wa_/.test(e), 'estúdio nunca lê nem escreve tabelas do inbox')
@@ -101,7 +101,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const e = ler('src/lib/estudio/entrada.ts')
     assert.ok(e.includes(".from('estudio_mensagens').select('id').eq('wamid', m.wamid).maybeSingle()"))
     assert.ok(e.includes("existente?.origem === 'anuncio' ? 'anuncio' : origemDaMensagem(m.referral)"))
-    assert.ok(e.includes('if (!cfg.ativo || !cfg.access_token) return'))
+    assert.ok(e.includes('if (!cfg.ativo || !cfg.access_token) { await fechar(); return }'))
   },
   'segurança: token só no servidor; tabela de config fechada; tela não recebe o token': () => {
     assert.ok(sql.includes('REVOKE ALL ON estudio_config FROM anon, authenticated;'))

@@ -522,6 +522,37 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-10-30 — Estúdio IA: Ana humanizada + correção das 2 fotos juntas**
+- Migration `20261030000000_estudio_ia_humano.sql` (PENDENTE no Studio):
+  `estudio_travar_conversa` (trava por conversa), `estudio_add_foto` (lista
+  atômica), `estudio_contatos.fotos_recebidas/processando_ate`,
+  `estudio_mensagens.processada_em/tempos`, preferências e rosto_origem/
+  corpo_origem/rosto_recortado no pedido, `estudio_midia_cache`,
+  `estudio_avisos`, `estudio_config.humanizar/atraso_max_s`; zera o TEXTO
+  personalizado das chaves reescritas (áudios ficam)
+- CAUSA RAIZ das fotos: cada webhook rodava a Ana sozinho (corrida) e copiava
+  pela ordem → 2 respostas iguais e rosto sobrescrito. Agora `ana/fila.ts`
+  (1 execução por conversa, espera 8 s sem mídia nova, fotos em lote),
+  classificação Haiku 5.5 (`classificarFoto`) e escolha pura `ana/fotos.ts`
+  (mais fechada = rosto, mais aberta = corpo, nunca o mesmo arquivo, recorte
+  só como último recurso). "Parou depois das 2 fotos": `avaliarFotosPoses`
+  não devolvia pergunta quando faltavam as poses → `oQueFalta` sempre pergunta
+- `envio.ts`: voz nativa (`audio.id` + `voice:true`, media_id em cache 29 d),
+  "digitando…" (read + typing_indicator) na chegada, atraso 1,2 s + 35 ms/letra
+  ±20% [1,5 s; 6 s], áudio 3–5 s, mídia 1,5–2,5 s, descontando o que já passou;
+  reação ❤️ (1/10 min) no lugar de texto para "ok"/👍 sem pergunta pendente
+- Webhook meta-wa responde 200 na hora e processa com `after()` (maxDuration 300)
+- Pacotes: `escolhaDePacote` ("5"=opção 5, "5 fotos"/"o de 5"=qtd, preço,
+  ordinal; por extenso confirma); tabela termina com "Responda só com o
+  NÚMERO"; IA não lembra, o sistema manda `lembreteDaEtapa`
+- Preferências uma por vez (maquiagem → decote → cores → idade), extração
+  estruturada (`extrairPreferencias`), cabelo vem da foto
+- Avisos: `avisos.ts` (wa_id canônico com/sem 9, modelo `novo_pedido`, push),
+  tudo em `estudio_avisos`; Painel com "pedidos na fila" + lista + teste
+- Tempos por mensagem (`tempos.ts`) no chat; fotos recebidas no pedido com
+  "usar como rosto/corpo"; chave "Digitando e atraso humano" no Atendente
+- Bateria: **1098/1098**
+
 **2026-10-29 — Estúdio IA, Fase 5 (fila, produção, ENTREGA AUTOMÁTICA, ajuste)**
 - Migration `20261029000000_estudio_ia_producao.sql` (PENDENTE no Studio):
   motor/aprovacao_manual/gemini_api_key/prazo_min/ajustes_gratis/upsell_* em

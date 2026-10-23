@@ -6,7 +6,7 @@
 // Campo vazio = volta para o padrão.
 // ============================================================================
 import { useEffect, useMemo, useState } from 'react'
-import { listarTextosAna, salvarTextoAna } from '@/lib/estudio/client'
+import { listarTextosAna, salvarTextoAna, lerHumanizarAna, salvarHumanizarAna } from '@/lib/estudio/client'
 import { BaseConhecimento } from './base-conhecimento'
 
 type Linha = Awaited<ReturnType<typeof listarTextosAna>>['linhas'][number]
@@ -46,6 +46,7 @@ export function AbaAtendente() {
           Variáveis: {'{nome} {tema} {link} {tabela} {qtd} {faltam} {valor} {poses} {prazo} {recebedor}'}. Campo vazio = texto padrão.
         </p>
       </div>
+      <CartaoHumanizar />
       <BaseConhecimento />
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1">
@@ -84,5 +85,38 @@ function CampoTexto({ l, onErro }: { l: Linha; onErro: (e: string) => void }) {
         }}
         className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:outline-none" />
     </label>
+  )
+}
+
+/** "Digitando…" + atraso humano antes de cada mensagem (ligado por padrão). */
+function CartaoHumanizar() {
+  const [v, setV] = useState<{ humanizar: boolean; atraso_max_s: number } | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => {
+    let vivo = true
+    lerHumanizarAna().then(r => { if (!vivo) return; setV({ humanizar: r.humanizar, atraso_max_s: r.atraso_max_s }); if (r.error) setMsg(r.error) })
+    return () => { vivo = false }
+  }, [])
+  if (!v) return null
+  const salvar = async (n: { humanizar: boolean; atraso_max_s: number }) => {
+    setV(n)
+    const r = await salvarHumanizarAna(n.humanizar, n.atraso_max_s)
+    setMsg(r.success ? 'Salvo.' : (r.error ?? 'falhou'))
+  }
+  return (
+    <section className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <label className="flex items-center gap-2 text-sm font-medium text-slate-900">
+        <input type="checkbox" checked={v.humanizar} onChange={e => void salvar({ ...v, humanizar: e.target.checked })} />
+        ✍️ Digitando e atraso humano
+      </label>
+      <label className="flex items-center gap-2 text-sm text-slate-600">
+        atraso máximo
+        <input type="number" min={2} max={15} value={v.atraso_max_s} disabled={!v.humanizar}
+          onChange={e => setV({ ...v, atraso_max_s: Number(e.target.value) })} onBlur={() => void salvar(v)}
+          className="w-16 rounded-lg border border-slate-200 p-1.5 text-sm" /> s
+      </label>
+      <p className="text-xs text-slate-500">Texto: 1,2 s + 35 ms por letra (±20%), entre 1,5 s e o máximo · áudio 3–5 s · foto/PDF 1,5–2,5 s. Conta da chegada da mensagem: se já demorou, envia na hora.</p>
+      {msg && <span className="text-xs text-slate-500">{msg}</span>}
+    </section>
   )
 }

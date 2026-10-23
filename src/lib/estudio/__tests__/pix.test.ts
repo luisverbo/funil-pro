@@ -38,21 +38,26 @@ function respostaApi(obj: unknown, usage = { input_tokens: 1000, output_tokens: 
 const tests: Record<string, () => void | Promise<void>> = {
   'conversa até o PAGO: fechamento manda chave Pix + valor + A5 + pede comprovante; comprovante → ação de conferir': () => {
     let etapa: Etapa = 'inicio'; let d: Dados = {}; const log: string[][] = []
-    for (const e of [txt('Olá'), txt('Maria'), txt('1'), txt('3'), img(), img(), txt('03, 07, 12, 15 e 19'), txt('35 anos, cabelo castanho'), { tipo: 'imagem', texto: '' }]) {
-      const r = proximoPasso(etapa, d, e, ctx); etapa = r.etapa; d = r.dados; log.push(chaves(r.acoes))
+    let n = 0
+    for (const e of [txt('Olá'), txt('Maria'), txt('1'), txt('3'), img(), img(), txt('03, 07, 12, 15 e 19'), txt('não'), txt('com decote'), txt('vestido azul'), txt('35'), { tipo: 'imagem', texto: '' }]) {
+      if (e.tipo === 'imagem' && etapa !== 'aguardando_pagamento') n++
+      const r = proximoPasso(etapa, d, e, { ...ctx, fotos: { tem_rosto: n >= 1, tem_corpo: n >= 2, rosto_recortado: false, unica: false } }); etapa = r.etapa; d = r.dados; log.push(chaves(r.acoes))
     }
-    assert.deepEqual(log[7], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'pix', 'audio:a5', 'texto:pede_comprovante'])
-    assert.deepEqual(log[8], ['comprovante'])
+    assert.deepEqual(log[10], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'pix', 'audio:a5', 'texto:pede_comprovante'])
+    assert.deepEqual(log[11], ['comprovante'])
+    assert.equal(d.maquiagem, false); assert.equal(d.decote, true); assert.equal(d.cores, 'vestido azul')
     assert.equal(etapa, 'aguardando_pagamento'); assert.equal(d.valor_cents, 4990)
   },
   'sem Pix cadastrado (ou fora do Brasil) não manda chave; "paguei" pede o comprovante; PDF também é comprovante': () => {
-    const semPix = proximoPasso('idade_prefs', { tema: 'casual', pacote_qtd: 2, valor_cents: 1890, moeda: 'BRL', poses: ['01', '02'], tem_rosto: true, tem_corpo: true }, txt('30'), { ...ctx, pix: false })
+    const prefs = { maquiagem: true, decote: false, cores: 'a critério do estúdio' }
+    const semPix = proximoPasso('idade_prefs', { tema: 'casual', pacote_qtd: 2, valor_cents: 1890, moeda: 'BRL', poses: ['01', '02'], tem_rosto: true, tem_corpo: true, ...prefs }, txt('30'), { ...ctx, pix: false })
     assert.ok(!semPix.acoes.some(a => a.t === 'pix'))
-    const usd = proximoPasso('idade_prefs', { tema: 'casual', pacote_qtd: 2, valor_cents: 900, moeda: 'USD', poses: ['01', '02'], tem_rosto: true, tem_corpo: true }, txt('30'), ctx)
+    const usd = proximoPasso('idade_prefs', { tema: 'casual', pacote_qtd: 2, valor_cents: 900, moeda: 'USD', poses: ['01', '02'], tem_rosto: true, tem_corpo: true, ...prefs }, txt('30'), ctx)
     assert.ok(!usd.acoes.some(a => a.t === 'pix'))
     assert.deepEqual(chaves(proximoPasso('aguardando_pagamento', {}, txt('já paguei!'), ctx).acoes), ['texto:pede_comprovante'])
     assert.deepEqual(chaves(proximoPasso('aguardando_pagamento', {}, { tipo: 'documento', texto: 'comprovante.pdf' }, ctx).acoes), ['comprovante'])
-    assert.deepEqual(chaves(proximoPasso('aguardando_pagamento', {}, txt('é seguro?'), ctx).acoes), ['ia'])
+    // dúvida: a IA responde e o sistema repete o que a etapa espera
+    assert.deepEqual(chaves(proximoPasso('aguardando_pagamento', {}, txt('é seguro?'), ctx).acoes), ['ia', 'texto:pede_comprovante'])
   },
   'conferindo e pago: a Ana não cobra e não pede pagamento de novo; prévia não reabre': () => {
     assert.deepEqual(chaves(proximoPasso('conferindo', {}, txt('e aí?'), ctx).acoes), ['texto:conferindo'])

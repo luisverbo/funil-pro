@@ -20,31 +20,49 @@ const PRECOS = [[2, 1890], [3, 2990], [5, 4990], [10, 6990], [15, 9890]].map(([q
 const POSES = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0'))
 const ctx: Contexto = { idioma: 'pt-BR', precos: PRECOS, posesDoTema: () => POSES, temasAtivos: ['aniversario', 'corporativo', 'casual', 'sensual'] }
 const txt = (t: string): Entrada => ({ tipo: 'texto', texto: t })
-const foto = (r: 'ok' | 'ruim' | 'recusada' = 'ok', legenda = ''): Entrada => ({ tipo: 'imagem', texto: legenda, foto: r })
+// Foto já classificada pelo executor (Haiku): o papel vem da classificação, não da ordem.
+type Foto = Entrada & { papel?: 'rosto' | 'corpo' }
+const foto = (r: 'ok' | 'ruim' | 'recusada' = 'ok', legenda = '', papel?: 'rosto' | 'corpo'): Foto => ({
+  tipo: 'imagem', texto: legenda, papel: r === 'ok' ? papel : undefined,
+  fotos: { novas: 1, invalida: r === 'ruim' ? 'ficou borrada' : null, recusada: r === 'recusada' },
+})
 const chaves = (a: Acao[]) => a.map(x => x.t === 'texto' || x.t === 'audio' ? `${x.t}:${x.chave}` : x.t)
 
-function conversa(passos: Entrada[], c = ctx) {
+function conversa(passos: Foto[], c = ctx) {
   let etapa: Etapa = 'inicio'; let dados: Dados = {}; const log: string[][] = []
-  for (const p of passos) { const r = proximoPasso(etapa, dados, p, c); etapa = r.etapa; dados = r.dados; log.push(chaves(r.acoes)) }
+  const tem = { rosto: false, corpo: false }
+  for (const p of passos) {
+    if (p.papel === 'rosto') tem.rosto = true
+    if (p.papel === 'corpo') tem.corpo = true
+    const r = proximoPasso(etapa, dados, p, { ...c, fotos: { tem_rosto: tem.rosto, tem_corpo: tem.corpo, rosto_recortado: false, unica: false } })
+    etapa = r.etapa; dados = r.dados; log.push(chaves(r.acoes))
+  }
   return { etapa, dados, log }
 }
 
 const tests: Record<string, () => void | Promise<void>> = {
   'conversa completa: "Olá" → nome → tema → pacote → fotos+poses → idade → aguardando_pagamento': () => {
-    const r = conversa([txt('Olá'), txt('Maria'), txt('1'), txt('2'), foto(), foto(), txt('03, 12 e 15'), txt('35 anos, cabelo loiro, sorrindo')])
+    const r = conversa([txt('Olá'), txt('Maria'), txt('1'), txt('2'), foto('ok', '', 'rosto'), foto('ok', '', 'corpo'), txt('03, 12 e 15'),
+      txt('sim'), txt('sem decote'), txt('pode escolher'), txt('35')])
     assert.deepEqual(r.log[0], ['texto:boas_vindas', 'audio:a1', 'texto:pede_nome'])
     assert.deepEqual(r.log[1], ['menu_imagem', 'texto:menu'])
     assert.deepEqual(r.log[2], ['audio:a2', 'audio:a3', 'catalogo', 'audio:a4', 'texto:tabela_precos'])
     assert.deepEqual(r.log[3], ['criar_pedido', 'texto:pede_fotos_poses'])
-    assert.deepEqual(r.log[4], ['guardar_foto', 'texto:foto_rosto_ok'])
-    assert.deepEqual(r.log[5], ['guardar_foto', 'texto:foto_corpo_ok'])
-    assert.deepEqual(r.log[6], ['atualizar_pedido', 'texto:pede_idade_prefs'])
-    assert.deepEqual(r.log[7], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido'])
+    assert.deepEqual(r.log[4], ['fotos_escolher', 'texto:foto_rosto_ok'])
+    // 2 fotos → já pergunta a próxima coisa na MESMA resposta (nunca para calada)
+    assert.deepEqual(r.log[5], ['fotos_escolher', 'texto:foto_corpo_ok', 'texto:pede_poses'])
+    // preferências: uma pergunta curta por vez
+    assert.deepEqual(r.log[6], ['atualizar_pedido', 'texto:pref_maquiagem'])
+    assert.deepEqual(r.log[7], ['atualizar_pedido', 'texto:pref_decote'])
+    assert.deepEqual(r.log[8], ['atualizar_pedido', 'texto:pref_cores'])
+    assert.deepEqual(r.log[9], ['atualizar_pedido', 'texto:pref_idade'])
+    assert.deepEqual(r.log[10], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido'])
     assert.equal(r.etapa, 'aguardando_pagamento')
     assert.equal(r.dados.nome, 'Maria'); assert.equal(r.dados.tema, 'aniversario')
     assert.equal(r.dados.pacote_qtd, 3); assert.equal(r.dados.valor_cents, 2990)
     assert.deepEqual(r.dados.poses, ['03', '12', '15']); assert.equal(r.dados.idade, 35)
-    assert.match(r.dados.cabelo ?? '', /loiro/)
+    assert.equal(r.dados.maquiagem, true); assert.equal(r.dados.decote, false); assert.equal(r.dados.cores, 'a critério do estúdio')
+    assert.equal(r.dados.preferencias, 'com maquiagem · sem decote · cores/acessórios: a critério do estúdio')
   },
   'menu com só 4 temas; outro tema → "em breve"; sensual pede idade ANTES e barra menor': () => {
     assert.deepEqual(temaDoTexto('3', ctx.temasAtivos), { tema: 'casual' })
@@ -63,12 +81,14 @@ const tests: Record<string, () => void | Promise<void>> = {
     const pp = (e: Entrada, d = base.dados) => proximoPasso('fotos_poses', d, e, ctx)
     assert.deepEqual(chaves(pp({ tipo: 'video', texto: '' }).acoes), ['texto:video_nao'])
     assert.deepEqual(chaves(pp(foto('ruim')).acoes), ['texto:foto_ruim'])
+    assert.deepEqual(chaves(pp({ tipo: 'figurinha', texto: '' }).acoes), ['texto:figurinha_nao'])
+    assert.deepEqual(chaves(pp({ tipo: 'documento', texto: '[📎 a.zip]' }).acoes), ['texto:documento_nao'])
     assert.deepEqual(chaves(pp(foto('recusada')).acoes), ['texto:foto_recusada'])
     const inval = pp(txt('03 e 99'))
     assert.deepEqual(chaves(inval.acoes), ['texto:poses_invalidas']); assert.deepEqual(inval.dados.poses, [])
     assert.deepEqual(chaves(pp(txt('01, 02, 03')).acoes), ['texto:poses_demais'])
     const parcial = pp(txt('07'))
-    assert.deepEqual(parcial.dados.poses, ['07']); assert.deepEqual(chaves(parcial.acoes), ['texto:poses_faltam'])
+    assert.deepEqual(parcial.dados.poses, ['07']); assert.deepEqual(chaves(parcial.acoes), ['texto:poses_faltam', 'texto:lembrete_fotos'])
     const semFoto = pp(txt('07 e 08'))
     assert.deepEqual(chaves(semFoto.acoes), ['texto:falta_foto'])
   },
@@ -87,8 +107,8 @@ const tests: Record<string, () => void | Promise<void>> = {
     const d: Dados = { nome: 'Lu', tema: 'casual', previa_oferecida: true }
     const a = proximoPasso('pacote', d, txt('sim, quero'), ctx)
     assert.equal(a.etapa, 'previa_fotos'); assert.deepEqual(chaves(a.acoes), ['criar_pedido', 'texto:previa_pede_fotos'])
-    const b = proximoPasso('previa_fotos', a.dados, foto(), ctx)
-    const c = proximoPasso('previa_fotos', b.dados, foto(), ctx)
+    const b = proximoPasso('previa_fotos', a.dados, foto(), { ...ctx, fotos: { tem_rosto: true, tem_corpo: false, rosto_recortado: false, unica: false } })
+    const c = proximoPasso('previa_fotos', b.dados, foto(), { ...ctx, fotos: { tem_rosto: true, tem_corpo: true, rosto_recortado: false, unica: false } })
     const fim = proximoPasso('previa_fotos', c.dados, txt('05'), ctx)
     assert.equal(fim.etapa, 'pacote'); assert.equal(fim.dados.previa_feita, true)
     assert.ok(fim.acoes.some(x => x.t === 'fechar_pedido' && x.tipo === 'previa'))
@@ -156,7 +176,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const ex = ler('src/lib/estudio/ana/executor.ts')
     assert.ok(ex.includes("'dados'") && ex.includes("'cobrancas'"))
     assert.ok(ex.includes('catalogo-') && ex.includes('.pdf'))
-    assert.ok(ler('src/lib/estudio/entrada.ts').includes('rodarAna('))
+    assert.ok(ler('src/lib/estudio/entrada.ts').includes('processarConversa(') && ler('src/lib/estudio/ana/fila.ts').includes('rodarAna('))
     assert.ok(ler('public/sw-estudio.js').includes('/api/estudio/push/resumo'))
     assert.ok(ler('src/proxy.ts').includes("'/api/cron/estudio-cobrancas'"))
     const r = ler('src/app/api/estudio/route.ts').split('OPERACOES')[1]

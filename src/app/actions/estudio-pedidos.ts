@@ -190,3 +190,59 @@ export async function reenviarEntregaEstudio(id: string): Promise<{ success: boo
     return r.erro ? { success: false, error: r.erro } : { success: true, enviadas: r.enviadas }
   } catch (e) { return { success: false, error: String(e) } }
 }
+
+// ── Avisos e fila (Painel) ──────────────────────────────────────────────────
+
+export interface AvisoLinha { id: string; canal: string; destino: string | null; texto: string | null; status: string; erro: string | null; pedido_id: string | null; criado_em: string }
+
+export async function listarAvisosEstudio(): Promise<{ avisos: AvisoLinha[]; na_fila: number; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const [{ data, error }, { count }] = await Promise.all([
+      admin.from('estudio_avisos').select('id, canal, destino, texto, status, erro, pedido_id, criado_em').eq('tenant_id', tenantId).order('criado_em', { ascending: false }).limit(40),
+      admin.from('estudio_pedidos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['aguardando_producao', 'gerando', 'ajuste']),
+    ])
+    if (error) return { avisos: [], na_fila: count ?? 0, error: /estudio_avisos|does not exist/i.test(error.message) ? 'Falta rodar o SQL 20261030000000_estudio_ia_humano.sql no Supabase.' : error.message }
+    return { avisos: (data ?? []) as AvisoLinha[], na_fila: count ?? 0 }
+  } catch (e) { return { avisos: [], na_fila: 0, error: String(e) } }
+}
+
+// ── Fotos recebidas: trocar qual é rosto / corpo (um clique) ────────────────
+
+export async function fotosRecebidasDoPedido(id: string): Promise<{ fotos: { path: string; url: string | null; tipo: string; motivo: string | null; em: string | null; papel: 'rosto' | 'corpo' | null }[]; rosto_recortado: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: p } = await admin.from('estudio_pedidos').select('contato_id, rosto_origem, corpo_origem, rosto_recortado, fotos_recebidas').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
+    if (!p) return { fotos: [], rosto_recortado: false, error: 'Pedido não encontrado.' }
+    const { data: c } = p.contato_id ? await admin.from('estudio_contatos').select('fotos_recebidas').eq('id', p.contato_id).maybeSingle() : { data: null }
+    const lista = ((c?.fotos_recebidas as unknown[]) ?? (p.fotos_recebidas as unknown[]) ?? []) as { path: string; tipo: string; motivo?: string | null; em?: string }[]
+    const fotos = await Promise.all(lista.map(async f => ({
+      path: f.path, tipo: f.tipo, motivo: f.motivo ?? null, em: f.em ?? null,
+      url: (await admin.storage.from(BUCKET_CLIENTES).createSignedUrl(f.path, 3600)).data?.signedUrl ?? null,
+      papel: (f.path === p.rosto_origem ? 'rosto' : f.path === p.corpo_origem ? 'corpo' : null) as 'rosto' | 'corpo' | null,
+    })))
+    return { fotos, rosto_recortado: !!p.rosto_recortado }
+  } catch (e) { return { fotos: [], rosto_recortado: false, error: String(e) } }
+}
+
+export async function usarFotoComoEstudio(id: string, path: string, papel: 'rosto' | 'corpo'): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (papel !== 'rosto' && papel !== 'corpo') return { success: false, error: 'Papel inválido.' }
+    const admin = createAdminClient()
+    const { data: p } = await admin.from('estudio_pedidos').select('contato_id, rosto_origem, corpo_origem').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
+    if (!p?.contato_id) return { success: false, error: 'Pedido não encontrado.' }
+    if ((papel === 'rosto' ? p.corpo_origem : p.rosto_origem) === path) return { success: false, error: 'Essa foto já é a do outro papel — rosto e corpo nunca podem ser o mesmo arquivo.' }
+    const { data: c } = await admin.from('estudio_contatos').select('fotos_recebidas').eq('id', p.contato_id).single()
+    const lista = (c?.fotos_recebidas ?? []) as import('@/lib/estudio/ana/fotos').FotoRecebida[]
+    if (!lista.some(f => f.path === path)) return { success: false, error: 'Foto não é desta conversa.' }
+    // Escolha manual: vira a "origem" e a cópia rosto.jpg/corpo.jpg é refeita.
+    await admin.from('estudio_pedidos').update(papel === 'rosto' ? { rosto_origem: path, rosto_recortado: false } : { corpo_origem: path }).eq('id', id)
+    const { aplicarEscolhaDeFotos } = await import('@/lib/estudio/ana/executor')
+    await aplicarEscolhaDeFotos(admin, id, lista)
+    await admin.from('estudio_eventos').insert({ pedido_id: id, tipo: 'foto_trocada', detalhe: { papel, path } })
+    return { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}

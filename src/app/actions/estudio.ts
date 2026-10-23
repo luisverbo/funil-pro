@@ -21,7 +21,6 @@ import {
   type StatusDoNumero, type AppInscrito, type WebhookDoNumero,
 } from '@/lib/estudio/whatsapp'
 import { novoVerifyToken, URL_WEBHOOK_ESTUDIO } from '@/lib/estudio/assinatura'
-import { enviarEstudio } from '@/lib/estudio/entrada'
 
 async function getTenantId(): Promise<string> {
   const cookieStore = await cookies()
@@ -297,17 +296,20 @@ export async function inscreverAppNaWaba(): Promise<{ success: boolean; error?: 
  * Manda um texto de teste para o WhatsApp dos avisos. Pela regra da Meta só
  * sai se esse número falou com o estúdio nas últimas 24h.
  */
-export async function enviarTesteAvisos(): Promise<{ success: boolean; error?: string }> {
+export async function enviarTesteAvisos(): Promise<{ success: boolean; error?: string; detalhe?: string }> {
   try {
     const tenantId = await getTenantId()
     const c = await exigirConexao(tenantId)
     if (!c.whatsapp_avisos) return { success: false, error: 'Preencha o seu WhatsApp para avisos.' }
-    const r = await enviarEstudio(createAdminClient(), { tenant_id: tenantId, phone_number_id: c.phone_number_id, access_token: c.access_token },
-      null, c.whatsapp_avisos, '✅ Teste do Estúdio IA: os avisos de novo pedido vão chegar aqui.')
-    if (r.ok) return { success: true }
+    // Mesmo caminho dos avisos de verdade (WhatsApp → modelo → push), registrado no Painel.
+    const { avisarLuisRegistrado } = await import('@/lib/estudio/avisos')
+    const r = await avisarLuisRegistrado(createAdminClient(), { tenant_id: tenantId, phone_number_id: c.phone_number_id, access_token: c.access_token, whatsapp_avisos: c.whatsapp_avisos },
+      '✅ Teste do Estúdio IA: os avisos de novo pedido vão chegar aqui.\n💰 Novo pedido para produzir … gera o pedido <id>', null)
+    const detalhe = `WhatsApp: ${r.whatsapp ? 'enviado' : 'não'}${r.modelo ? ' · modelo: enviado' : ''} · push: ${r.push} celular(es)`
+    if (r.whatsapp || r.modelo) return { success: true, detalhe }
     const fora = /24|window|re-engage|131047/i.test(r.erro ?? '')
-    return { success: false, error: fora
-      ? 'A Meta só deixa o estúdio te escrever se você mandou mensagem para o número do estúdio nas últimas 24h. Mande um "oi" do seu WhatsApp para o estúdio e tente de novo.'
+    return { success: false, detalhe, error: fora
+      ? 'A Meta só deixa o estúdio te escrever se você mandou mensagem para o número do estúdio nas últimas 24h (ou com o modelo aprovado "novo_pedido"). Mande um "oi" do seu WhatsApp para o estúdio e tente de novo.'
       : limparErro(r.erro ?? 'falhou') }
   } catch (err) { return { success: false, error: err instanceof Error ? err.message : String(err) } }
 }

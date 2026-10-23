@@ -358,6 +358,7 @@ function Bolha({ m }: { m: Msg }) {
           {hora(m.criado_em)}
           {minha && <span className={t.azul ? 'text-sky-500' : t.falhou ? 'text-red-600' : ''}>{t.simbolo}</span>}
         </p>
+        {!minha && m.tempos && <p className="mt-0.5 border-t border-slate-100 pt-0.5 text-[10px] text-slate-400" title="Tempo da resposta da Ana a esta mensagem">{m.tempos}</p>}
       </div>
     </div>
   )
@@ -366,6 +367,8 @@ function Bolha({ m }: { m: Msg }) {
 function Conteudo({ m }: { m: Msg }) {
   const url = m.media_url
   switch (m.tipo) {
+    case 'reacao':
+      return <p className="text-slate-500">{m.texto && !m.texto.startsWith('[') ? m.texto : '👍 reação'}</p>
     case 'imagem':
       // eslint-disable-next-line @next/next/no-img-element
       return url ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="" className="max-h-72 rounded-md" /></a> : <p className="text-slate-500">📷 Foto</p>

@@ -74,7 +74,7 @@ ${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE �
 PROIBIDO: inventar preço, valor, desconto, cupom, brinde, prazo, garantia ou qualquer promessa que não esteja acima. Nada de currículo, depoimentos ou anos de experiência.
 
 AGORA a etapa precisa de: ${c.objetivo}.
-Responda a dúvida e, no fim, lembre com carinho o que falta para seguir.
+Responda SÓ a dúvida, curto. NÃO termine repetindo o que falta: o sistema já manda o lembrete da etapa logo depois.
 
 Campos:
 - intencao: duvida | objecao (caro, desconfiança, "é golpe?") | reclamacao | reembolso | quer_humano | compra | fora_da_base | nao_entendi | outro
@@ -317,5 +317,109 @@ export async function lerComprovante(bytes: Uint8Array, mime: string, f: Fetch =
   } catch (err) {
     console.error('[estudio/ana] leitura do comprovante falhou:', String(err).slice(0, 200))
     return { leitura: LEITURA_VAZIA }
+  }
+}
+
+// ── Classificação das fotos da cliente (Haiku 5.5, visão) ───────────────────
+// rosto (de frente, ocupa boa parte) · corpo_inteiro (cabeça aos pés) ·
+// rosto_e_corpo (uma foto só serve para os dois) · invalida (sem pessoa,
+// várias pessoas, escura/borrada, print, famosa). A ESCOLHA de qual vira
+// rosto.jpg/corpo.jpg é feita depois, sobre todas as fotos (ana/fotos.ts).
+
+export interface ClasseFoto {
+  tipo: 'rosto' | 'corpo_inteiro' | 'rosto_e_corpo' | 'invalida'
+  motivo: string | null              // por que é inválida (curto, pt-BR)
+  recusada: boolean                  // parece menor / famosa / print de outra pessoa
+  fracao_corpo: number               // 0 = só rosto … 1 = corpo inteiro
+  rosto_caixa: { x: number; y: number; w: number; h: number } | null   // normalizado 0–1
+  cabelo: string | null              // "loiro, longo"
+}
+
+const SCHEMA_CLASSE = {
+  type: 'object', additionalProperties: false,
+  required: ['tipo', 'motivo', 'pessoas', 'nitida', 'parece_menor', 'famosa_ou_print', 'fracao_corpo', 'rosto_caixa', 'cabelo'],
+  properties: {
+    tipo: { type: 'string', enum: ['rosto', 'corpo_inteiro', 'rosto_e_corpo', 'invalida'] },
+    motivo: { type: ['string', 'null'] },
+    pessoas: { type: 'integer' }, nitida: { type: 'boolean' }, parece_menor: { type: 'boolean' }, famosa_ou_print: { type: 'boolean' },
+    fracao_corpo: { type: 'number' },
+    rosto_caixa: { anyOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, required: ['x', 'y', 'w', 'h'], properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } } }] },
+    cabelo: { type: ['string', 'null'] },
+  },
+} as const
+
+export const CLASSE_DESCONHECIDA: ClasseFoto = { tipo: 'rosto_e_corpo', motivo: null, recusada: false, fracao_corpo: 0.5, rosto_caixa: null, cabelo: null }
+
+export function lerClasse(bruto: string): ClasseFoto | null {
+  const m = (bruto ?? '').match(/\{[\s\S]*\}/)
+  if (!m) return null
+  try {
+    const j = JSON.parse(m[0]) as { tipo?: string; motivo?: string | null; pessoas?: number; nitida?: boolean; parece_menor?: boolean; famosa_ou_print?: boolean; fracao_corpo?: number; rosto_caixa?: ClasseFoto['rosto_caixa']; cabelo?: string | null }
+    const recusada = !!(j.parece_menor || j.famosa_ou_print)
+    let tipo = (['rosto', 'corpo_inteiro', 'rosto_e_corpo', 'invalida'].includes(String(j.tipo)) ? j.tipo : 'invalida') as ClasseFoto['tipo']
+    let motivo = j.motivo ?? null
+    if ((j.pessoas ?? 1) !== 1 && tipo !== 'invalida') { tipo = 'invalida'; motivo = motivo ?? ((j.pessoas ?? 0) === 0 ? 'não aparece ninguém' : 'tem mais de uma pessoa') }
+    if (j.nitida === false && tipo !== 'invalida') { tipo = 'invalida'; motivo = motivo ?? 'ficou escura ou borrada' }
+    const fr = Number(j.fracao_corpo)
+    return { tipo, motivo: tipo === 'invalida' ? (motivo ?? 'não deu para usar') : null, recusada, fracao_corpo: Number.isFinite(fr) ? Math.max(0, Math.min(1, fr)) : 0.5, rosto_caixa: j.rosto_caixa ?? null, cabelo: j.cabelo ?? null }
+  } catch { return null }
+}
+
+/** Sem chave/erro: aceita como "rosto_e_corpo" (o Luís confere no painel). */
+export async function classificarFoto(bytes: Uint8Array, mime: string, f: Fetch = fetch): Promise<{ classe: ClasseFoto; uso?: UsoIa }> {
+  if (!process.env.ANTHROPIC_API_KEY) return { classe: CLASSE_DESCONHECIDA }
+  try {
+    const { texto, uso } = await chamarClaude(MODELO_RAPIDO, {
+      max_tokens: 1024,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_CLASSE } },
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: tipoImagem(mime), data: Buffer.from(bytes).toString('base64') } },
+        { type: 'text', text: 'Foto enviada por uma cliente para um ensaio fotográfico feito com IA. Classifique: tipo = "rosto" (rosto de frente ocupando boa parte), "corpo_inteiro" (da cabeça aos pés), "rosto_e_corpo" (corpo inteiro E rosto nítido o bastante para servir de referência), "invalida" (sem pessoa, mais de uma pessoa, escura/borrada, print de tela, desenho). fracao_corpo = quanto do corpo aparece (0 só rosto, 1 corpo inteiro). rosto_caixa = caixa do rosto normalizada 0–1 (x,y do canto superior esquerdo). cabelo = cor e comprimento em português (ex.: "loiro, longo"). motivo = por que é inválida, curto, em português.' },
+      ] }],
+    }, f)
+    return { classe: lerClasse(texto) ?? CLASSE_DESCONHECIDA, uso }
+  } catch (err) {
+    console.error('[estudio/ana] classificação de foto falhou:', String(err).slice(0, 200))
+    return { classe: CLASSE_DESCONHECIDA }
+  }
+}
+
+// ── Preferências: cada campo separado (Haiku 5.5, saída estruturada) ────────
+
+export interface Preferencias { maquiagem: boolean | null; decote: boolean | null; cores_acessorios: string | null; idade: number | null; cabelo_mudar: string | null }
+
+const SCHEMA_PREFS = {
+  type: 'object', additionalProperties: false,
+  required: ['maquiagem', 'decote', 'cores_acessorios', 'idade', 'cabelo_mudar'],
+  properties: {
+    maquiagem: { type: ['boolean', 'null'] }, decote: { type: ['boolean', 'null'] },
+    cores_acessorios: { type: ['string', 'null'] }, idade: { type: ['integer', 'null'] }, cabelo_mudar: { type: ['string', 'null'] },
+  },
+} as const
+
+export function lerPreferencias(bruto: string): Preferencias | null {
+  const m = (bruto ?? '').match(/\{[\s\S]*\}/)
+  if (!m) return null
+  try {
+    const j = JSON.parse(m[0]) as Partial<Preferencias>
+    const idade = typeof j.idade === 'number' && j.idade >= 5 && j.idade <= 120 ? Math.round(j.idade) : null
+    return { maquiagem: typeof j.maquiagem === 'boolean' ? j.maquiagem : null, decote: typeof j.decote === 'boolean' ? j.decote : null,
+      cores_acessorios: j.cores_acessorios?.trim() || null, idade, cabelo_mudar: j.cabelo_mudar?.trim() || null }
+  } catch { return null }
+}
+
+/** Uma resposta pode trazer várias coisas ("42 loiros sem decote"): separa cada campo. */
+export async function extrairPreferencias(texto: string, pergunta: string, f: Fetch = fetch): Promise<{ prefs: Preferencias | null; uso?: UsoIa }> {
+  if (!process.env.ANTHROPIC_API_KEY) return { prefs: null }
+  try {
+    const { texto: bruto, uso } = await chamarClaude(MODELO_RAPIDO, {
+      max_tokens: 512,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_PREFS } },
+      messages: [{ role: 'user', content: `A atendente perguntou: "${pergunta}"\nA cliente respondeu: "${texto.slice(0, 500)}"\n\nExtraia SÓ o que a cliente disse (null no que ela não falou): maquiagem (quer maquiagem?), decote (quer decote?), cores_acessorios (cores/acessórios/roupa pedidos; "pode escolher" = "a critério do estúdio"), idade (número), cabelo_mudar (só se ela pediu para MUDAR o cabelo; descrever o cabelo dela não conta). Não repita a idade em outro campo.` }],
+    }, f)
+    return { prefs: lerPreferencias(bruto), uso }
+  } catch (err) {
+    console.error('[estudio/ana] extração de preferências falhou:', String(err).slice(0, 200))
+    return { prefs: null }
   }
 }

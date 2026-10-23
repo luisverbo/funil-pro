@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix,
-  recusarPagamentoPix, cancelarPedidoEstudio, custoIaDaConversa, custoIaDoDia,
+  recusarPagamentoPix, cancelarPedidoEstudio, custoIaDaConversa, custoIaDoDia, listarAvisosEstudio, enviarTesteAvisos,
 } from '@/lib/estudio/client'
 
 type PedidoPix = Awaited<ReturnType<typeof listarConferenciasPix>>['pedidos'][number]
@@ -149,6 +149,7 @@ export function AbaPainelPix() {
   return (
     <div className="mt-5 space-y-5">
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      <PainelAvisos versao={versao} />
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">🧾 Comprovantes para conferir {pend.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{pend.length}</span>}</h2>
         {pend.length === 0 ? <p className="mt-2 text-sm text-slate-500">Nada pendente. 🎉</p>
@@ -195,5 +196,51 @@ export function AbaPainelPix() {
       </section>
       <p className="text-xs text-slate-400">O painel completo de vendas (faturamento por período e moeda, rankings, funil, origem, custos e lucro) chega na Fase 6 — os dados já estão sendo gravados em cada pedido pago.</p>
     </div>
+  )
+}
+
+type Avisos = Awaited<ReturnType<typeof listarAvisosEstudio>>
+
+/** "Pedidos na fila" bem visível + cada aviso ao Luís (enviado/erro com o motivo) + teste. */
+function PainelAvisos({ versao }: { versao: number }) {
+  const [a, setA] = useState<Avisos | null>(null)
+  const [teste, setTeste] = useState<{ ok: boolean; t: string } | null>(null)
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    let vivo = true
+    const carregar = () => listarAvisosEstudio().then(r => { if (vivo) setA(r) }).catch(() => {})
+    carregar()
+    const t = setInterval(carregar, 20000)
+    return () => { vivo = false; clearInterval(t) }
+  }, [versao, n])
+  const cor = (s: string) => s === 'enviado' ? 'text-emerald-700' : s === 'pulado' ? 'text-slate-500' : 'text-red-600'
+  return (
+    <section className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <a href="/estudio-ia?aba=pedidos" className={`flex flex-col items-center justify-center rounded-xl border p-5 text-center shadow-sm ${a && a.na_fila > 0 ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white'}`}>
+        <span className="text-5xl font-bold tabular-nums text-slate-900">{a?.na_fila ?? '—'}</span>
+        <span className="mt-1 text-sm font-semibold text-slate-700">pedidos na fila</span>
+        <span className="text-[11px] text-slate-500">aguardando produção · gerando · ajuste</span>
+      </a>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold text-slate-900">🔔 Avisos para você</h2>
+          <button onClick={async () => { setTeste(null); const r = await enviarTesteAvisos(); setTeste({ ok: r.success, t: [r.success ? 'Enviado.' : r.error, (r as { detalhe?: string }).detalhe].filter(Boolean).join(' · ') }); setN(x => x + 1) }}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Enviar aviso de teste</button>
+        </div>
+        {teste && <p className={`mt-1 text-xs ${teste.ok ? 'text-emerald-700' : 'text-red-600'}`}>{teste.t}</p>}
+        {a?.error && <p className="mt-2 text-xs text-red-600">{a.error}</p>}
+        <ul className="mt-2 max-h-56 divide-y divide-slate-100 overflow-y-auto text-xs">
+          {(a?.avisos ?? []).length === 0 && <li className="py-2 text-slate-500">Nenhum aviso registrado ainda.</li>}
+          {(a?.avisos ?? []).map(v => (
+            <li key={v.id} className="flex gap-2 py-1.5">
+              <span className="w-24 shrink-0 text-slate-500">{hora(v.criado_em)}</span>
+              <span className="w-16 shrink-0 font-medium text-slate-700">{v.canal === 'whatsapp' ? 'WhatsApp' : v.canal === 'modelo' ? 'Modelo' : 'Push'}</span>
+              <span className={`w-16 shrink-0 font-semibold ${cor(v.status)}`}>{v.status}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-700" title={v.texto ?? ''}>{(v.texto ?? '').split('\n')[0]}{v.erro ? <span className="text-red-600"> — {v.erro}</span> : null}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   )
 }
