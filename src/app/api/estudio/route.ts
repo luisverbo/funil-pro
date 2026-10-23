@@ -23,6 +23,9 @@ import {
 import {
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
 } from '@/app/actions/estudio-pix'
+import {
+  lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
+} from '@/app/actions/estudio-pedidos'
 
 // Envio de várias fotos do pedido pela Meta pode levar alguns segundos.
 export const maxDuration = 60
@@ -38,6 +41,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna,
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
+  lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

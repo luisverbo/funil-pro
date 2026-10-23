@@ -8,7 +8,7 @@ import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
 import { extensaoDoMime } from '../chat'
 import { avisarAparelhos } from '../push'
-import { proximoPasso, idiomaDaMensagem, cobrancaDevida, type Acao, type Dados, type Etapa, type Preco } from './maquina'
+import { proximoPasso, idiomaDaMensagem, cobrancaDevida, type Acao, type Contexto, type Dados, type Etapa, type Preco } from './maquina'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
 import { responderDuvida, conferirFoto, type ItemBase } from './ia'
 import { linhasDoPix } from '../pix'
@@ -39,7 +39,7 @@ export function tabelaDePrecos(precos: Preco[], idioma: IdiomaAna): string {
 }
 
 /** Preços do país; senão os de '*'; senão os do Brasil. */
-async function precosDoPais(admin: SupabaseClient, tenantId: string, pais: string | null): Promise<Preco[]> {
+export async function precosDoPais(admin: SupabaseClient, tenantId: string, pais: string | null): Promise<Preco[]> {
   const { data, error } = await admin.from('estudio_precos').select('pais, pacote_qtd, valor_cents, moeda').eq('tenant_id', tenantId)
   if (error || !data?.length) return PRECOS_PADRAO_BR
   const de = (p: string) => data.filter(x => x.pais === p).map(x => ({ pacote_qtd: x.pacote_qtd, valor_cents: x.valor_cents, moeda: x.moeda }))
@@ -47,7 +47,7 @@ async function precosDoPais(admin: SupabaseClient, tenantId: string, pais: strin
   return lista.length ? lista : (de('*').length ? de('*') : (de('BR').length ? de('BR') : PRECOS_PADRAO_BR))
 }
 
-async function sobrescritas(admin: SupabaseClient, tenantId: string): Promise<{ textos: Map<string, string>; audios: Map<string, string> }> {
+export async function sobrescritas(admin: SupabaseClient, tenantId: string): Promise<{ textos: Map<string, string>; audios: Map<string, string> }> {
   const textos = new Map<string, string>(); const audios = new Map<string, string>()
   const { data } = await admin.from('estudio_textos').select('chave, idioma, texto, audio_path').eq('tenant_id', tenantId)
   for (const r of data ?? []) {
@@ -128,8 +128,22 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     }
   }
 
+  // Pós-entrega: o que a cliente pode fazer com o pedido entregue (ajuste / +5 fotos).
+  let ctxEntrega: Contexto['entrega']
+  if (['entregue', 'ajuste_detalhe'].includes(etapaAtual) && pedidoId) {
+    const [{ data: ped }, { configProducao }, { podeAjustar, valorComDesconto }] = await Promise.all([
+      admin.from('estudio_pedidos').select('poses, entregue_em, ajustes_usados, status').eq('id', pedidoId).single(),
+      import('../producao-servidor'), import('../producao'),
+    ])
+    const cfg = await configProducao(admin, c.tenant_id)
+    const cheio = precos.find(x => x.pacote_qtd === cfg.upsell_qtd)
+    ctxEntrega = {
+      pode_ajustar: !!ped && podeAjustar(ped, cfg.ajustes_gratis), poses: ped?.poses ?? [],
+      upsell_qtd: cfg.upsell_qtd, upsell_valor_cents: cheio ? valorComDesconto(cheio.valor_cents, cfg.upsell_desconto_pct) : 0, moeda: cheio?.moeda ?? 'BRL',
+    }
+  }
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', foto }, {
-    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk,
+    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega,
   })
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
@@ -234,9 +248,11 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
         case 'fechar_pedido':
           if (!pedidoId) break
           if (a.tipo === 'previa') {
-            await admin.from('estudio_pedidos').update({ status: 'aguardando_producao', pago_em: new Date().toISOString() }).eq('id', pedidoId)
+            await admin.from('estudio_pedidos').update({ status: 'pago', pago_em: new Date().toISOString(), valor_pago_cents: 0 }).eq('id', pedidoId)
             await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'previa_na_fila', detalhe: {} })
-            await avisarLuis(admin, con, `✨ Prévia grátis pedida: ${dados.nome ?? c.nome ?? `+${c.wa_id}`} · ${nomeDoTema(dados.tema, 'pt-BR')} · pose ${(dados.poses ?? []).join(', ')}.\nAbra o Claude Code e peça: gera o pedido ${pedidoId}`)
+            const { entrarNaFila } = await import('../producao-servidor')
+            await entrarNaFila(admin, pedidoId)
+            // A prévia segue o próprio caminho; a conversa volta para onde estava.
             pedidoId = null
             await admin.from('estudio_contatos').update({ pedido_atual_id: null }).eq('id', c.id)
           } else {
@@ -258,8 +274,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           const valor = vars().valor
           if (res.resultado === 'pago') {
             etapa = 'pago'
-            await enviarTexto(renderTexto('pago_ok', idioma, vars(), sob.textos))
-            await avisarLuis(admin, con, `💰 Pedido PAGO (Pix conferido pelo comprovante): ${quem} · ${valor} · ${dados.pacote_qtd ?? ''} fotos ${nomeDoTema(dados.tema, 'pt-BR')}.\nAbra o Claude Code e peça: gera o pedido ${pedidoId}`)
+            await enviarTexto(renderTexto('pago_ok', idioma, vars(), sob.textos))   // o aviso "💰 Novo pedido para produzir" sai de entrarNaFila
           } else if (res.resultado === 'nao_e_comprovante') {
             await enviarTexto(renderTexto('pede_comprovante', idioma, vars(), sob.textos))
           } else {
@@ -268,6 +283,20 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             await admin.from('estudio_contatos').update({ precisa_humano: true }).eq('id', c.id)
             await avisarLuis(admin, con, `🧾 Comprovante para conferir: ${quem} · ${valor}\nMotivo: ${res.motivos.join('; ')}\nAprovar ou recusar: ${APP_URL()}/estudio-ia?aba=conversas&c=${c.id}`)
           }
+          break
+        }
+        case 'ajuste': {
+          if (!pedidoId) break
+          const { registrarAjuste } = await import('../producao-servidor')
+          const r2 = await registrarAjuste(admin, pedidoId, a.poses, a.obs)
+          if (!r2.ok) console.error('[estudio/ana] ajuste:', r2.erro)
+          break
+        }
+        case 'upsell': {
+          if (!pedidoId || !ctxEntrega) break
+          const { criarUpsell } = await import('../producao-servidor')
+          const novo = await criarUpsell(admin, pedidoId, c.id, ctxEntrega.upsell_qtd, ctxEntrega.upsell_valor_cents, ctxEntrega.moeda)
+          if (novo) { pedidoId = novo; await admin.from('estudio_contatos').update({ pedido_atual_id: novo }).eq('id', c.id) }
           break
         }
         case 'ia': {
