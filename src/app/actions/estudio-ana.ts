@@ -105,7 +105,7 @@ export async function salvarAudioAna(chave: string, idioma: string, path: string
 }
 
 /** O que já existe: imagem do menu e PDF de cada tema ativo. */
-export async function statusMidiasAna(): Promise<{ menu: string | null; pdfs: { slug: string; nome: string; url: string | null }[]; error?: string }> {
+export async function statusMidiasAna(): Promise<{ menu: string | null; pdfs: { slug: string; nome: string; url: string | null; es: string | null; en: string | null }[]; error?: string }> {
   try {
     const tenantId = await getTenantId()
     const admin = createAdminClient()
@@ -115,9 +115,29 @@ export async function statusMidiasAna(): Promise<{ menu: string | null; pdfs: { 
       try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok ? url : null } catch { return null }
     }
     const { data: temas } = await admin.from('estudio_temas').select('slug, nome').eq('tenant_id', tenantId).eq('ativo', true).order('ordem')
-    const pdfs = await Promise.all((temas ?? []).map(async t => ({ slug: t.slug, nome: t.nome, url: await existe(`${t.slug}/catalogo-${t.slug}.pdf`) })))
+    const { caminhoPdfIdioma } = await import('@/lib/estudio/catalogo-idiomas')
+    const pdfs = await Promise.all((temas ?? []).map(async t => ({
+      slug: t.slug, nome: t.nome, url: await existe(`${t.slug}/catalogo-${t.slug}.pdf`),
+      es: await existe(caminhoPdfIdioma(t.slug, 'es')), en: await existe(caminhoPdfIdioma(t.slug, 'en')),
+    })))
     return { menu: await existe('midias/menu.jpg'), pdfs }
   } catch (err) { return { menu: null, pdfs: [], error: String(err) } }
+}
+
+/** Gera de novo os PDFs em espanhol e inglês de todos os temas ativos (fotos atuais). */
+export async function gerarPdfsCatalogo(): Promise<{ success: boolean; gerados: number; erros: string[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: temas } = await admin.from('estudio_temas').select('slug, nome').eq('tenant_id', tenantId).eq('ativo', true).order('ordem')
+    const { gerarPdfCatalogo } = await import('@/lib/estudio/pdf-catalogo')
+    let gerados = 0; const erros: string[] = []
+    for (const t of temas ?? []) for (const idioma of ['es', 'en'] as const) {
+      const r = await gerarPdfCatalogo(admin, t.slug, idioma)
+      if (r.url) gerados++; else erros.push(`${t.nome} (${idioma}): ${r.erro ?? 'falhou'}`)
+    }
+    return { success: erros.length === 0, gerados, erros }
+  } catch (err) { return { success: false, gerados: 0, erros: [], error: String(err) } }
 }
 
 // ── Web Push ────────────────────────────────────────────────────────────────

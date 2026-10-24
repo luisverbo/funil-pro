@@ -122,13 +122,13 @@ export function caminhosDaCliente(pedidoId: string): { rosto: string; corpo: str
 
 // ── Escolha das poses na página pública ─────────────────────────────────────
 
-/** "Quero as poses 03, 12, 45" — ordenadas, sem repetir. */
-export function mensagemDeEscolha(numeros: readonly string[], nomeTema?: string): string {
+/** "Quero as poses 03, 12, 45" — ordenadas, sem repetir; frase no idioma do catálogo. */
+export function mensagemDeEscolha(numeros: readonly string[], nomeTema?: string, querer?: (lista: string[]) => string): string {
   const lista = [...new Set(numeros.map(normalizarNumero).filter((n): n is string => !!n))]
     .sort((a, b) => Number(a) - Number(b))
   if (lista.length === 0) return ''
-  const rotulo = lista.length === 1 ? 'a pose' : 'as poses'
-  return `Quero ${rotulo} ${lista.join(', ')}${nomeTema ? ` (${nomeTema})` : ''}`
+  const frase = querer ? querer(lista) : `Quero ${lista.length === 1 ? 'a pose' : 'as poses'} ${lista.join(', ')}`
+  return `${frase}${nomeTema ? ` (${nomeTema})` : ''}`
 }
 
 /** wa.me com a mensagem pronta; null sem número válido. */

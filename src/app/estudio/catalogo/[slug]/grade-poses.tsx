@@ -6,11 +6,14 @@ import { useState } from 'react'
 import { mensagemDeEscolha, linkWhatsApp } from '@/lib/estudio/catalogo'
 import { FotoOuPlaceholder } from '@/lib/estudio/foto'
 import type { PosePublica } from '../dados'
+import { textosDoCatalogo } from '@/lib/estudio/catalogo-idiomas'
+import type { IdiomaAna } from '@/lib/estudio/ana/textos'
 
-export function GradePoses({ poses, nomeTema, whatsapp }: { poses: PosePublica[]; nomeTema: string; whatsapp?: string | null }) {
+export function GradePoses({ poses, nomeTema, whatsapp, idioma = 'pt-BR' }: { poses: PosePublica[]; nomeTema: string; whatsapp?: string | null; idioma?: IdiomaAna }) {
+  const tx = textosDoCatalogo(idioma)
   const [sel, setSel] = useState<string[]>([])
   const [copiado, setCopiado] = useState(false)
-  const msg = mensagemDeEscolha(sel, nomeTema)
+  const msg = mensagemDeEscolha(sel, nomeTema, tx.querer)
   const wa = linkWhatsApp(whatsapp, msg)
 
   const alternar = (n: string) => { setCopiado(false); setSel(s => s.includes(n) ? s.filter(x => x !== n) : [...s, n]) }
@@ -18,7 +21,7 @@ export function GradePoses({ poses, nomeTema, whatsapp }: { poses: PosePublica[]
   return (
     <>
       {poses.length === 0 ? (
-        <p className="mt-12 text-center text-sm text-neutral-500">As poses deste tema estão sendo preparadas.</p>
+        <p className="mt-12 text-center text-sm text-neutral-500">{tx.preparando}</p>
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {poses.map(p => {
@@ -26,11 +29,11 @@ export function GradePoses({ poses, nomeTema, whatsapp }: { poses: PosePublica[]
             return (
               <button key={p.numero} onClick={() => alternar(p.numero)}
                 className={`group overflow-hidden rounded-2xl border text-left transition ${on ? 'border-amber-300 ring-2 ring-amber-300' : 'border-white/10 hover:border-white/30'}`}
-                aria-pressed={on} aria-label={`Pose ${p.numero}`}>
+                aria-pressed={on} aria-label={`${tx.pose} ${p.numero}`}>
                 <div className="relative aspect-[4/5] bg-neutral-800">
-                  <FotoOuPlaceholder src={p.foto} alt={`Pose ${p.numero}`} className="h-full w-full object-cover"
+                  <FotoOuPlaceholder src={p.foto} alt={`${tx.pose} ${p.numero}`} className="h-full w-full object-cover"
                     placeholder={<div className="flex h-full flex-col items-center justify-center gap-1 text-neutral-600">
-                      <span className="text-3xl">📷</span><span className="text-[11px]">foto em breve</span>
+                      <span className="text-3xl">📷</span><span className="text-[11px]">{tx.fotoEmBreve}</span>
                     </div>} />
                   {on && <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-amber-300 text-sm font-bold text-neutral-950">✓</span>}
                 </div>
@@ -44,14 +47,14 @@ export function GradePoses({ poses, nomeTema, whatsapp }: { poses: PosePublica[]
       {sel.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-neutral-950/95 px-4 py-3 backdrop-blur">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
-            <p className="min-w-0 flex-1 truncate text-sm"><span className="text-neutral-400">{sel.length} escolhida(s):</span> {msg.replace(/^Quero (a pose|as poses) /, '')}</p>
-            <button onClick={() => setSel([])} className="rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-neutral-100">Limpar</button>
+            <p className="min-w-0 flex-1 truncate text-sm"><span className="text-neutral-400">{tx.escolhidas(sel.length)}</span> {[...sel].sort((a, b) => Number(a) - Number(b)).join(', ')}</p>
+            <button onClick={() => setSel([])} className="rounded-lg px-3 py-2 text-xs text-neutral-400 hover:text-neutral-100">{tx.limpar}</button>
             {wa ? (
-              <a href={wa} className="rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-emerald-400">Escolher estas no WhatsApp</a>
+              <a href={wa} className="rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-emerald-400">{tx.escolherWa}</a>
             ) : (
               <button onClick={async () => { try { await navigator.clipboard.writeText(msg); setCopiado(true) } catch { setCopiado(false) } }}
                 className="rounded-xl bg-amber-300 px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-amber-200">
-                {copiado ? 'Copiado! Cole no WhatsApp' : 'Copiar números'}
+                {copiado ? tx.copiado : tx.copiar}
               </button>
             )}
           </div>
