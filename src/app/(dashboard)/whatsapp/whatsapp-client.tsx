@@ -14,6 +14,7 @@
 //   • "/" no composer abre as respostas rápidas
 // ============================================================================
 
+import { tick } from '@/lib/estudio/chat'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   enviarWaMensagem, enviarWaTemplate, getWaConversa, listarWaConversas,
@@ -1045,8 +1046,9 @@ export default function WhatsappClient({ contas, erroContas, agentes }: Props) {
                       <p className={`mt-0.5 text-right text-[10px] ${minha ? 'text-white/70' : 'text-slate-400'}`}>
                         {horaCurta(m.createdAt)}
                         {minha && (
-                          <span className={m.statusEntrega === 'read' ? 'ml-1 text-sky-200' : 'ml-1'}>
-                            {m.statusEntrega === 'failed' ? ' ⚠' : ' ✓✓'}
+                          <span className={tick(m.statusEntrega).azul ? 'ml-1 font-bold text-sky-300' : tick(m.statusEntrega).falhou ? 'ml-1 text-red-200' : 'ml-1'}
+                            title={m.statusEntrega === 'read' || m.statusEntrega === 'played' ? 'Visto' : m.statusEntrega === 'delivered' ? 'Entregue (não visto)' : m.statusEntrega === 'failed' ? 'Não entregue' : m.statusEntrega === 'sent' ? 'Enviado' : 'Enviando'}>
+                            {' '}{tick(m.statusEntrega).falhou ? '⚠' : tick(m.statusEntrega).simbolo}
                           </span>
                         )}
                       </p>
