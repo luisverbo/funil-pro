@@ -120,6 +120,9 @@ export interface MensagemDaCliente {
   cronometro?: Cronometro
 }
 
+/** Lembretes que a máquina põe depois da IA (pulados se a IA já perguntou). */
+const LEMBRETES_DA_IA = new Set(['lembrete_nome', 'lembrete_tema', 'pacote_de_novo', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete'])
+
 /** Lembretes da etapa: nunca saem duas vezes seguidas iguais. */
 const LEMBRETES = new Set(['pacote_de_novo', 'lembrete_nome', 'lembrete_tema', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete', 'pede_nome', 'tabela_precos'])
 
@@ -262,6 +265,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
   let falou = false
+  let iaPerguntou = false
   let naoEntendeu = Number(c.nao_entendeu ?? 0)
   let entendeu = true
 
@@ -304,6 +308,8 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           await admin.from('estudio_contatos').update({ idioma: a.idioma, idioma_fixo: true }).eq('id', c.id)
           break
         case 'texto':
+          // A IA já terminou com uma pergunta: o lembrete da etapa seria a 2ª pergunta seguida.
+          if (iaPerguntou && LEMBRETES_DA_IA.has(a.chave)) break
           await enviarTexto(renderTexto(a.chave, idioma, vars(a.vars), sob.textos), a.chave)
           break
         case 'audio': {
@@ -492,7 +498,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           if (resp.tipo === 'confirmar_equipe') {
             await enviarTexto(renderTexto('resposta_segura', idioma, vars(), sob.textos))
             await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'ia_resposta_bloqueada', detalhe: { motivo: resp.motivo, mensagem: msg.texto.slice(0, 300) } }).then(() => {}, () => {})
-          } else if (resp.tipo === 'texto') await enviarTexto(resp.texto)
+          } else if (resp.tipo === 'texto') { await enviarTexto(resp.texto); if (/\?\s*\S{0,3}\s*$/.test(resp.texto.trim())) iaPerguntou = true }
           else if (resp.tipo === 'humano') { await enviarTexto(renderTexto('humano', idioma, vars(), sob.textos)); await passarParaHumano('reclamação, reembolso ou pediu para falar com uma pessoa') }
           else {
             // Não entendeu: pede de outro jeito e repete a pergunta da etapa (nunca para a conversa).
@@ -513,6 +519,8 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
 
   const agora = new Date().toISOString()
   if (falou) dados.aguardando_desde = agora
+  // A cliente respondeu: o ciclo de retomadas recomeça (sem lembrar das antigas).
+  dados.retomadas = undefined
   // "Depois te falo": a 1ª retomada só depois do tempo pedido (não 10 min).
   if (dados.adiar_retomada_min) {
     dados.aguardando_desde = new Date(Date.now() + (dados.adiar_retomada_min - 10) * 60e3).toISOString()
@@ -536,7 +544,7 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
     const d = (c.dados ?? {}) as Dados
     const chave = cobrancaDevida({
       etapa: (c.etapa as Etapa) || 'inicio', modo: c.modo, cobrancas: c.cobrancas, janela_ate: c.janela_ate,
-      aguardando_desde: d.aguardando_desde ?? null, ultima_cliente_em: c.ultima_cliente_em, tema: d.tema, previa_feita: d.previa_feita,
+      aguardando_desde: d.aguardando_desde ?? null, ultima_cliente_em: c.ultima_cliente_em, tema: d.tema, previa_feita: d.previa_feita, aguardando_previa: d.aguardando_previa,
     }, agora)
     if (!chave) continue
     if (!conexoes.has(c.tenant_id)) {
@@ -567,8 +575,10 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
       if (!r.ok) break
     }
     if (plano.oferecePrevia) d.previa_oferecida = true
+    d.retomadas = [...new Set([...(d.retomadas ?? []), ...plano.chaves])]
+    if (plano.encerrar) d.pausa_longa = false
     await admin.from('estudio_contatos').update({
-      cobrancas: chave === 'cobranca_3' ? 3 : c.cobrancas + 1, dados: d, ultima_ana_em: agora.toISOString(), ultima_msg: t.slice(0, 120),
+      cobrancas: chave === 'cobranca_3' || plano.encerrar ? 3 : c.cobrancas + 1, dados: d, ultima_ana_em: agora.toISOString(), ultima_msg: t.slice(0, 120),
     }).eq('id', c.id)
     if (s.ok) enviadas++
   }

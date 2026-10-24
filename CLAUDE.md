@@ -522,6 +522,21 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-09 — Estúdio IA: 1ª rodada do Supervisor aplicada**
+- (1, 2, 7 já estavam corrigidos: nome do anúncio, Pix fora do BR, pagamento
+  antes das fotos — as conversas revisadas eram de antes)
+- nº 3: IA que termina com pergunta não recebe o lembrete da etapa logo atrás
+  (`iaPerguntou` + `LEMBRETES_DA_IA`)
+- nº 4/8: depois do tema só A2 + catálogo + tabela (A3/A4 fora do automático)
+- nº 5: `retomadas` (nunca a mesma 2×; repetida → `rmk_duvida`, que só sai 1×;
+  zera quando a cliente responde)
+- nº 6: prévia na fila → sem tabela depois de `previa_na_fila` e sem retomada
+  (`aguardando_previa`, zerado na entrega da prévia)
+- nº 9: `consultaAlguem` ("voy a hablar con mi hija") → `pausa_ok` + 1
+  retomada suave (`rmk_suave`) ~20 h depois, sem prévia, e encerra
+- nº 10: perfis de loja/flores/tienda não viram nome
+- Bateria: **1177/1177**
+
 **2026-11-08 — Estúdio IA: Supervisor da Ana**
 - Migration `20261108000000_estudio_ia_supervisor.sql` (PENDENTE no Studio):
   `estudio_contatos.revisado_ate`, `estudio_revisoes` (nota, resumo, parou_em,

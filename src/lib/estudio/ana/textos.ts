@@ -522,6 +522,12 @@ export const TEXTOS: Tabela = {
     es: '¡Claro, sin apuro! 💖 Acá te espero, solo escribime.',
     en: "Of course, no rush! 💖 I'll be right here, just message me.",
   },
+  rmk_suave: {
+    'pt-BR': 'Oi, {nome}! Passando só pra saber se conseguiram conversar 😊 Qualquer dúvida, estou por aqui. Sem pressa nenhuma 💖',
+    'pt-PT': 'Olá, {nome}! Só a passar para saber se conseguiram conversar 😊 Qualquer dúvida, estou por aqui. Sem pressa nenhuma 💖',
+    es: '¡Hola, {nome}! Solo paso a saber si pudieron conversar 😊 Cualquier duda, acá estoy. Sin ningún apuro 💖',
+    en: "Hi {nome}! Just checking whether you got a chance to talk it over 😊 Any questions, I'm here. No rush at all 💖",
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',

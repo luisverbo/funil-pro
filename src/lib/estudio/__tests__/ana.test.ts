@@ -46,7 +46,7 @@ const tests: Record<string, () => void | Promise<void>> = {
       txt('sim'), txt('sem decote'), txt('pode escolher'), txt('35')])
     assert.deepEqual(r.log[0], ['texto:boas_vindas', 'audio:a1', 'texto:pede_nome'])
     assert.deepEqual(r.log[1], ['menu_imagem', 'texto:menu'])
-    assert.deepEqual(r.log[2], ['audio:a2', 'audio:a3', 'catalogo', 'audio:a4', 'texto:tabela_precos'])
+    assert.deepEqual(r.log[2], ['audio:a2', 'catalogo', 'texto:tabela_precos'])
     assert.deepEqual(r.log[3], ['criar_pedido', 'texto:pede_fotos_poses', 'texto:catalogo_de_novo'])
     assert.deepEqual(r.log[4], ['fotos_escolher', 'texto:foto_rosto_ok'])
     // 2 fotos → já pergunta a próxima coisa na MESMA resposta (nunca para calada)
