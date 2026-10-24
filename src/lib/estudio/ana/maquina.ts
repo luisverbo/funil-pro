@@ -362,6 +362,23 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, ...(temFotos ? [{ t: 'fotos_escolher' } as Acao] : []), { t: 'texto', chave: temFotos ? 'previa_pede_pose' : 'previa_pede_fotos' }])
   }
 
+  // Prévia oferecida e a cliente responde MANDANDO A FOTO: é o "sim" — já começa a prévia.
+  if (e.tipo === 'imagem' && d.previa_oferecida && !d.previa_feita && !ctx.pago && d.tema && (e.fotos?.novas ?? 0) > 0
+    && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa)) {
+    if (e.fotos?.recusada) return fim(etapa, [{ t: 'texto', chave: 'foto_recusada' }])
+    if (e.fotos?.invalida) return fim(etapa, [{ t: 'texto', chave: 'foto_ruim', vars: { motivo: e.fotos.invalida } }])
+    d.etapa_antes_previa = etapa
+    d.previa_oferecida = false
+    d.poses_antes_previa = d.poses ?? []
+    d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo; d.rosto_recortado = !!ctx.fotos?.rosto_recortado
+    const pronta = d.tem_rosto && d.tem_corpo
+    return fim('previa_fotos', [
+      { t: 'criar_pedido', tipo: 'previa' }, { t: 'fotos_escolher' },
+      // Falta uma das fotos: diz qual (a pose é pedida quando as 2 chegarem).
+      { t: 'texto', chave: pronta ? 'previa_pede_pose' : d.tem_rosto ? 'foto_rosto_ok' : 'foto_so_corpo' },
+    ])
+  }
+
   // Foto fora da etapa das fotos: o executor já guardou e classificou; aqui
   // só segue a pergunta da etapa atual (não vai pedir de novo depois).
   if (['imagem', 'video', 'documento', 'figurinha'].includes(e.tipo) && ['nome', 'tema', 'idade_sensual', 'pacote'].includes(etapa)) {
