@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { proximoPasso, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { proximoPasso, nomeDoPerfil, nomeDoTexto, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
 import { decidirResposta, bloqueioDaResposta, promptDaAna, type RespostaEstruturada } from '@/lib/estudio/ana/ia'
 import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
 
@@ -140,8 +140,33 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(chaves(r.acoes).includes('texto:catalogo_de_novo'))
     assert.match(TEXTOS.catalogo_de_novo['pt-BR'], /\{link\}/)
   },
+  'conversas reais: "¡Hola! Quiero más información" não é nome; nome do perfil pula a pergunta': () => {
+    assert.equal(nomeDoTexto('¡Hola! Quiero más información'), null)
+    assert.equal(nomeDoTexto('¡Hola! Quiero Más'), null)
+    assert.equal(nomeDoTexto('Olá! Posso ter mais informações sobre isso?'), null)
+    assert.equal(nomeDoTexto('me llamo Guadalupe'), 'Guadalupe')
+    assert.equal(nomeDoPerfil('Dulce Encanto'), 'Dulce')
+    assert.equal(nomeDoPerfil('Andrea Nuňez'), 'Andrea')
+    for (const ruim of ['🍀💫', 'Mi Quitito 🥰', 'Academia Azul', 'andreaadelmavelazquez', 'selmasolange2026@gmail.co', null]) assert.equal(nomeDoPerfil(ruim), null, String(ruim))
+    const r = proximoPasso('inicio', {}, txt('¡Hola! Quiero más información'), { ...ctx, idioma: 'es', nomePerfil: 'Guadalupe' })
+    assert.equal(r.etapa, 'tema'); assert.equal(r.dados.nome, 'Guadalupe')
+    assert.deepEqual(chaves(r.acoes), ['texto:boas_vindas', 'audio:a1', 'menu_imagem', 'texto:menu'])
+    assert.equal(proximoPasso('inicio', {}, txt('hola'), { ...ctx, nomePerfil: '🍀💫' }).etapa, 'nome')
+  },
+  'conversa real: "22" (pose) na etapa do pacote → anota a pose e pede o pacote; depois vale no pedido': () => {
+    const r = proximoPasso('pacote', { tema: 'casual' }, txt('22'), { ...ctx, posesDoTema: () => Array.from({ length: 30 }, (_, i) => String(i + 1).padStart(2, '0')) })
+    assert.deepEqual(chaves(r.acoes), ['texto:poses_antes_pacote', 'texto:tabela_precos'])
+    assert.deepEqual(r.dados.poses_cedo, ['22'])
+    const p = proximoPasso('pacote', r.dados, txt('3'), ctx)
+    assert.equal(p.dados.pacote_qtd, 5); assert.deepEqual(p.dados.poses, ['22'])
+    // "2" continua sendo a opção 2 do pacote
+    assert.equal(proximoPasso('pacote', { tema: 'casual' }, txt('2'), ctx).dados.pacote_qtd, 3)
+  },
+  'respostas de venda sempre no Sonnet 5.5': () => {
+    assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)
+  },
   'textos novos nos 4 idiomas': () => {
-    for (const k of ['catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
+    for (const k of ['poses_antes_pacote', 'catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
       for (const i of IDIOMAS) assert.ok(TEXTOS[k]?.[i]?.trim(), `${k}/${i}`)
   },
 }

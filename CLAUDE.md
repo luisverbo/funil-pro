@@ -534,7 +534,15 @@ APP_SECRET=
   e o pedido do pacote (`pedido_antes_previa`)
 - Visualização única: a Cloud API não envia (a prévia já sai com a marca
   "PRÉVIA · Studio Fotografico")
-- Bateria: **1156/1156**
+- **Análise das 42 conversas reais (CSV do dono)**: ~15 pararam na etapa
+  `nome` — anúncio manda "¡Hola! Quiero más información", a Ana pedia o nome
+  e a cliente sumia; "¡Hola! Quiero Más" virava NOME (`nomeDoTexto`); "22"
+  (pose) na etapa do pacote caía na IA. Agora: `nomeDoPerfil` (nome do
+  WhatsApp utilizável → pula a pergunta e vai direto aos temas), `NAO_E_NOME`,
+  `poses_cedo` (pose antes do pacote é anotada e vale no pedido)
+- Modelo: resposta livre de venda SEMPRE `claude-sonnet-5-5`
+  (`modeloParaMensagem`); Haiku 5.5 só classifica foto e separa preferências
+- Bateria: **1159/1159**
 
 **2026-11-04 — Estúdio IA: a Ana resolve (não trava, não chama o Luís à toa)**
 - Sem acesso ao banco (MCP sem permissão): análise pelo código; causas das

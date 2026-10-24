@@ -254,7 +254,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     const { data: st } = await admin.from('estudio_pedidos').select('status').eq('id', pedidoId).maybeSingle()
     pedidoPago = ['pago', 'aguardando_fotos'].includes(String(st?.status ?? ''))
   }
-  const ctxAna = { idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
+  const ctxAna = { nomePerfil: c.nome ?? null, idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, ctxAna)
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa

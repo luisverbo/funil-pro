@@ -462,6 +462,12 @@ export const TEXTOS: Tabela = {
     es: '¡Genial! 💖 Ya tengo tus fotos. Dime el número de 1 pose del catálogo para la previa:\n{link}',
     en: 'Yay! 💖 I already have your photos. Tell me the number of 1 pose from the catalog for the preview:\n{link}',
   },
+  poses_antes_pacote: {
+    'pt-BR': 'Anotei a(s) pose(s) {poses} ✅ Agora me diz qual pacote você quer 👇',
+    'pt-PT': 'Anotei a(s) pose(s) {poses} ✅ Agora diz-me qual pacote queres 👇',
+    es: 'Anoté la(s) pose(s) {poses} ✅ Ahora dime qué paquete quieres 👇',
+    en: 'Got pose(s) {poses} ✅ Now tell me which package you want 👇',
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',
