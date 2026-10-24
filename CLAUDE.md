@@ -536,7 +536,10 @@ APP_SECRET=
   genial/of course" contam como sim
 - IA: `pagamento` da cliente no prompt (Hotmart fora do Brasil) — ela
   respondia "pagas por Pix" para a Argentina
-- Bateria: **1161/1161**
+- Conversa da Andrea: prévia oferecida e a cliente MANDA A FOTO → era
+  ignorado (tabela de novo). Agora a foto é o aceite: `previa_fotos` +
+  `fotos_escolher` + pede a pose (ou a foto que falta)
+- Bateria: **1162/1162**
 
 **2026-11-05 — Estúdio IA: catálogo de novo na escolha + retomada pelo ponto da conversa**
 - Escolheu o pacote → `catalogo_de_novo` (link) antes do Pix

@@ -185,6 +185,17 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(p, /Nunca fale de Pix com quem paga com cartão pela Hotmart/)
     assert.match(ler('src/lib/estudio/ana/executor.ts'), /pagamento: \(c\.pais && c\.pais !== 'BR'\)/)
   },
+  'conversa da Andrea: prévia oferecida e ela MANDA A FOTO → começa a prévia (não manda a tabela)': () => {
+    const foto: Entrada = { tipo: 'imagem', texto: '', fotos: { novas: 1 } }
+    const r = proximoPasso('pacote', { tema: 'corporativo', previa_oferecida: true }, foto, { ...ctx, idioma: 'es', fotos: FOTOS })
+    assert.equal(r.etapa, 'previa_fotos')
+    assert.deepEqual(chaves(r.acoes), ['criar_pedido', 'fotos_escolher', 'texto:previa_pede_pose'])
+    // só o rosto: confirma e pede a de corpo (a pose vem depois)
+    const so = proximoPasso('pacote', { tema: 'corporativo', previa_oferecida: true }, foto, { ...ctx, fotos: { tem_rosto: true, tem_corpo: false, rosto_recortado: false, unica: false } })
+    assert.deepEqual(chaves(so.acoes), ['criar_pedido', 'fotos_escolher', 'texto:foto_rosto_ok'])
+    // sem oferta de prévia: segue como antes (guarda e repete o passo)
+    assert.equal(proximoPasso('pacote', { tema: 'corporativo' }, foto, { ...ctx, fotos: FOTOS }).etapa, 'pacote')
+  },
   'respostas de venda sempre no Sonnet 5.5': () => {
     assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)
   },
