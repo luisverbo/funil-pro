@@ -1,0 +1,124 @@
+// ============================================================================
+// Estúdio IA — a Ana RESOLVE (não trava, não chama o Luís em coisa simples):
+// pacote que não existe, mais poses que o pacote, pagamento logo na escolha,
+// comprovante no meio das fotos, pagou antes → fila sozinha, IA sem
+// "vou confirmar com a equipe", humano só para reclamação/reembolso/pessoa.
+// ============================================================================
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { proximoPasso, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { decidirResposta, bloqueioDaResposta, promptDaAna, type RespostaEstruturada } from '@/lib/estudio/ana/ia'
+import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
+
+const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
+const PRECOS = [[2, 1890], [3, 2990], [5, 4990], [10, 6990], [15, 9890]].map(([q, v]) => ({ pacote_qtd: q, valor_cents: v, moeda: 'BRL' }))
+const POSES = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0'))
+const ctx: Contexto = { idioma: 'pt-BR', precos: PRECOS, posesDoTema: () => POSES, temasAtivos: ['aniversario', 'corporativo', 'casual', 'sensual'], pix: true }
+const txt = (t: string): Entrada => ({ tipo: 'texto', texto: t })
+const chaves = (a: Acao[]) => a.map(x => x.t === 'texto' || x.t === 'audio' ? `${x.t}:${x.chave}` : x.t)
+const coleta = (extra: Partial<Dados> = {}): Dados => ({ tema: 'casual', pacote_qtd: 10, valor_cents: 6990, moeda: 'BRL', poses: [], tem_rosto: true, tem_corpo: true, pagamento_enviado: true, ...extra })
+const FOTOS = { tem_rosto: true, tem_corpo: true, rosto_recortado: false, unica: false }
+const PERMITIDO = { tabelaPrecos: '2 fotos R$ 18,90; 3 fotos R$ 29,90; 5 fotos R$ 49,90; 10 fotos R$ 69,90; 15 fotos R$ 98,90', prazoMin: 60 }
+const est = (o: Partial<RespostaEstruturada>): RespostaEstruturada => ({ intencao: 'duvida', dados: { nome: null, tema: null, pacote_qtd: null, poses: null, idade: null }, resposta: 'ok 💖', precisa_humano: false, na_base: true, ...o })
+
+const tests: Record<string, () => void | Promise<void>> = {
+  'pacote que não existe ("quero 11 fotos") → diz na hora os mais próximos, sem IA e sem humano': () => {
+    assert.equal(pacoteInexistente('quero 11 fotos', PRECOS), 11)
+    assert.equal(pacoteInexistente('tem pacote de 8?', PRECOS), 8)
+    assert.equal(pacoteInexistente('quero 10 fotos', PRECOS), null)
+    assert.deepEqual(opcoesProximas(11, PRECOS).map(o => [o.opcao, o.preco.pacote_qtd]), [[4, 10], [5, 15]])
+    const r = proximoPasso('pacote', { tema: 'casual' }, txt('queria 11 fotos'), ctx)
+    assert.equal(r.etapa, 'pacote')
+    assert.deepEqual(chaves(r.acoes), ['texto:pacote_inexistente'])
+    assert.equal((r.acoes[0] as { vars: Record<string, string> }).vars.opcoes, '4️⃣ 10 · 5️⃣ 15')
+  },
+  '"o mais completo" / "o mais barato" escolhem o pacote': () => {
+    assert.equal(escolhaDePacote('quero o mais completo', PRECOS)?.preco.pacote_qtd, 15)
+    assert.equal(escolhaDePacote('vou de o mais barato', PRECOS)?.preco.pacote_qtd, 2)
+  },
+  'escolheu o pacote → Pix sai NA HORA junto do pedido das fotos': () => {
+    const r = proximoPasso('pacote', { tema: 'casual' }, txt('4'), ctx)
+    assert.equal(r.etapa, 'fotos_poses'); assert.equal(r.dados.pagamento_enviado, true)
+    assert.deepEqual(chaves(r.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    // sem Pix cadastrado: não promete pagamento
+    const sem = proximoPasso('pacote', { tema: 'casual' }, txt('4'), { ...ctx, pix: false })
+    assert.ok(!sem.acoes.some(a => a.t === 'pix')); assert.ok(!sem.dados.pagamento_enviado)
+  },
+  '"manda o pix" no meio da coleta (conversa antiga, sem pagamento enviado) → manda já': () => {
+    const r = proximoPasso('fotos_poses', coleta({ pagamento_enviado: false }), txt('manda o pix que eu já pago'), { ...ctx, fotos: FOTOS })
+    assert.deepEqual(chaves(r.acoes).slice(0, 4), ['fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    assert.ok(r.acoes.some(a => a.t === 'texto' && a.chave === 'pede_poses'), 'e repete o que falta')
+    assert.ok(querPagar('como pago?') && querPagar('how do I pay') && querPagar('cómo puedo pagar') && !querPagar('quero a pose 3'))
+  },
+  'mais poses que o pacote → fica com as primeiras e oferece o pacote maior (2 = troca, 1 = fica)': () => {
+    const nums = '01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11'
+    const r = proximoPasso('fotos_poses', coleta(), txt(nums), { ...ctx, fotos: FOTOS })
+    assert.deepEqual(chaves(r.acoes), ['texto:poses_demais_maior'])
+    assert.equal(r.dados.poses?.length, 10); assert.equal(r.dados.troca_pacote?.qtd, 15)
+    const troca = proximoPasso('fotos_poses', r.dados, txt('2'), { ...ctx, fotos: FOTOS })
+    assert.equal(troca.dados.pacote_qtd, 15); assert.equal(troca.dados.valor_cents, 9890); assert.equal(troca.dados.poses?.length, 11)
+    assert.deepEqual(chaves(troca.acoes).slice(0, 4), ['trocar_pacote', 'texto:pacote_trocado', 'fechar_pedido', 'texto:pagar_ja'])
+    assert.ok(troca.acoes.some(a => a.t === 'pix'), 'Pix de novo com o valor novo')
+    assert.ok(troca.acoes.some(a => a.t === 'texto' && a.chave === 'poses_faltam'), 'e pede as 4 que faltam')
+    const fica = proximoPasso('fotos_poses', r.dados, txt('1'), { ...ctx, fotos: FOTOS })
+    assert.equal(fica.dados.pacote_qtd, 10); assert.equal(fica.dados.troca_pacote, undefined)
+    assert.equal(fica.etapa, 'idade_prefs', 'as 10 bastam: segue para as preferências')
+  },
+  'mais poses que o MAIOR pacote → fica com as primeiras e segue (sem travar)': () => {
+    const muitas = Array.from({ length: 18 }, (_, i) => String(i + 1).padStart(2, '0')).join(', ')
+    const r = proximoPasso('fotos_poses', coleta({ pacote_qtd: 15, valor_cents: 9890 }), txt(muitas), { ...ctx, fotos: FOTOS })
+    assert.equal(r.dados.poses?.length, 15)
+    assert.deepEqual(chaves(r.acoes), ['texto:poses_demais_corte', 'atualizar_pedido', 'texto:pref_maquiagem'])
+  },
+  'comprovante no meio das fotos (imagem que não é pessoa / PDF) → confere o Pix': () => {
+    const img = proximoPasso('fotos_poses', coleta(), { tipo: 'imagem', texto: '', fotos: { novas: 1, invalida: 'não é uma pessoa' } }, { ...ctx, fotos: FOTOS })
+    assert.deepEqual(chaves(img.acoes), ['comprovante'])
+    const pdf = proximoPasso('idade_prefs', coleta({ poses: POSES.slice(0, 10) }), { tipo: 'documento', texto: 'comprovante.pdf' }, { ...ctx, fotos: FOTOS })
+    assert.deepEqual(chaves(pdf.acoes), ['comprovante'])
+    // sem pagamento enviado, PDF continua sendo "preciso de foto"
+    assert.deepEqual(chaves(proximoPasso('fotos_poses', coleta({ pagamento_enviado: false }), { tipo: 'documento', texto: 'x.pdf' }, ctx).acoes), ['texto:documento_nao'])
+  },
+  'pagou antes de mandar tudo → ao completar vai DIRETO para a fila (sem pedir pagamento de novo)': () => {
+    const d = coleta({ poses: POSES.slice(0, 10), maquiagem: true, decote: false, cores: 'azul' })
+    const r = proximoPasso('idade_prefs', d, txt('35'), { ...ctx, fotos: FOTOS, pago: true })
+    assert.equal(r.etapa, 'pago')
+    assert.deepEqual(chaves(r.acoes), ['atualizar_pedido', 'fila', 'texto:tudo_certo_producao'])
+    const naoPago = proximoPasso('idade_prefs', d, txt('35'), { ...ctx, fotos: FOTOS })
+    assert.deepEqual(chaves(naoPago.acoes), ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'texto:pede_comprovante'])
+  },
+  'IA: fora da base e objeção RESPONDEM; "vou confirmar com a equipe" é bloqueado; humano só reclamação/reembolso/pessoa': () => {
+    assert.equal(decidirResposta(est({ intencao: 'fora_da_base', na_base: false, resposta: 'Ensaio de casal ainda não temos 😊 Temos Casual, que fica lindo!' }), PERMITIDO).tipo, 'texto')
+    assert.equal(decidirResposta(est({ intencao: 'objecao', precisa_humano: true }), PERMITIDO).tipo, 'texto')
+    assert.equal(decidirResposta(est({ intencao: 'reclamacao' }), PERMITIDO).tipo, 'humano')
+    assert.match(bloqueioDaResposta('Deixa eu verificar com a equipe e já te respondo!', PERMITIDO) ?? '', /adia/)
+    assert.match(bloqueioDaResposta("I'll check with the team and get back to you", PERMITIDO) ?? '', /adia/)
+    const p = promptDaAna({ idioma: 'pt-BR', objetivo: 'x', tabelaPrecos: 'y', prazoMin: 60, temas: 'Casual', historico: [] })
+    assert.match(p, /PROIBIDO dizer que vai "confirmar com a equipe"/)
+    assert.match(p, /não temos e ofereça a opção mais próxima/)
+  },
+  'executor: não-entendi nunca passa para humano; pausa não é fixa; fila calada durante a coleta': () => {
+    const ex = ler('src/lib/estudio/ana/executor.ts')
+    assert.doesNotMatch(ex, /naoEntendeu >= 2/)
+    assert.doesNotMatch(ex, /renderTexto\('confirmar_equipe'/)
+    assert.match(ex, /humano_fixo: fixo/)
+    assert.match(ex, /case 'trocar_pacote'/); assert.match(ex, /case 'fila'/)
+    assert.match(ex, /chave = 'pago_ok_coleta'/)
+    assert.match(ler('src/lib/estudio/producao-servidor.ts'), /\['fotos_poses', 'idade_prefs'\]\.includes\(String\(ct\.etapa\)\)\) return \{ ok: false, falta \}/)
+  },
+  'textos novos nos 4 idiomas': () => {
+    for (const k of ['pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
+      for (const i of IDIOMAS) assert.ok(TEXTOS[k]?.[i]?.trim(), `${k}/${i}`)
+  },
+}
+
+;(async () => {
+  let passed = 0
+  const nomes = Object.keys(tests)
+  for (const nome of nomes) {
+    try { await tests[nome](); passed++; console.log(`  ok   ${nome}`) }
+    catch (e) { console.log(` FALHA ${nome}\n        → ${e instanceof Error ? e.message : String(e)}`) }
+  }
+  console.log(`\n${passed}/${nomes.length} testes passaram`)
+  if (passed !== nomes.length) process.exit(1)
+})()

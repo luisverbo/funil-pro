@@ -144,10 +144,14 @@ const tests: Record<string, () => void | Promise<void>> = {
   'Ana (fora do Brasil): tabela em US$, link da Hotmart no lugar do Pix, sem pedir comprovante': () => {
     const pac = proximoPasso('pacote', { tema: 'casual' }, txt('3'), ctxEs)
     assert.equal(pac.dados.moeda, 'USD'); assert.equal(pac.dados.valor_cents, 1190); assert.equal(pac.dados.pagar_link, LINKS[5])
+    // Escolheu o pacote → o link da Hotmart já sai (sem Pix)
+    assert.deepEqual(chaves(pac.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'hotmart'])
     const d: Dados = { ...pac.dados, tem_rosto: true, tem_corpo: true, poses: ['01', '02', '03', '04', '05'], maquiagem: true, decote: false, cores: 'x' }
     const fim = proximoPasso('idade_prefs', d, txt('30'), ctxEs)
     assert.equal(fim.etapa, 'aguardando_pagamento')
-    assert.deepEqual(chaves(fim.acoes), ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'hotmart'])
+    assert.deepEqual(chaves(fim.acoes), ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'texto:hotmart_lembrete'])
+    // Quem não recebeu o link antes (conversa antiga) recebe no fechamento
+    assert.deepEqual(chaves(proximoPasso('idade_prefs', { ...d, pagamento_enviado: false }, txt('30'), ctxEs).acoes), ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'hotmart'])
     assert.ok(!fim.acoes.some(a => a.t === 'pix' || (a.t === 'texto' && a.chave === 'pede_comprovante')))
     assert.ok(pagaPelaHotmart(fim.dados))
     // print/“ya pagué”: a confirmação chega sozinha; dúvida → IA + o link de novo
@@ -155,7 +159,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.deepEqual(chaves(proximoPasso('aguardando_pagamento', fim.dados, txt('ya pagué'), ctxEs).acoes), ['texto:hotmart_print'])
     assert.deepEqual(chaves(proximoPasso('aguardando_pagamento', fim.dados, txt('¿es seguro?'), ctxEs).acoes), ['ia', 'texto:hotmart_lembrete'])
     // Brasil continua no Pix
-    const br = proximoPasso('idade_prefs', { ...d, moeda: 'BRL', pagar_link: null, valor_cents: 4990 }, txt('30'), { ...ctxEs, idioma: 'pt-BR' })
+    const br = proximoPasso('idade_prefs', { ...d, moeda: 'BRL', pagar_link: null, valor_cents: 4990, pagamento_enviado: false }, txt('30'), { ...ctxEs, idioma: 'pt-BR' })
     assert.ok(br.acoes.some(a => a.t === 'pix') && !br.acoes.some(a => a.t === 'hotmart'))
   },
   'textos da Hotmart nos 4 idiomas, com {pagar} (o link com o pedido)': () => {

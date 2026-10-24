@@ -86,7 +86,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.deepEqual(chaves(pp(foto('recusada')).acoes), ['texto:foto_recusada'])
     const inval = pp(txt('03 e 99'))
     assert.deepEqual(chaves(inval.acoes), ['texto:poses_invalidas']); assert.deepEqual(inval.dados.poses, [])
-    assert.deepEqual(chaves(pp(txt('01, 02, 03')).acoes), ['texto:poses_demais'])
+    assert.deepEqual(chaves(pp(txt('01, 02, 03')).acoes), ['texto:poses_demais_maior'])
     const parcial = pp(txt('07'))
     assert.deepEqual(parcial.dados.poses, ['07']); assert.deepEqual(chaves(parcial.acoes), ['texto:poses_faltam', 'texto:lembrete_fotos'])
     const semFoto = pp(txt('07 e 08'))

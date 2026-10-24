@@ -43,7 +43,10 @@ const tests: Record<string, () => void | Promise<void>> = {
       if (e.tipo === 'imagem' && etapa !== 'aguardando_pagamento') n++
       const r = proximoPasso(etapa, d, e, { ...ctx, fotos: { tem_rosto: n >= 1, tem_corpo: n >= 2, rosto_recortado: false, unica: false } }); etapa = r.etapa; d = r.dados; log.push(chaves(r.acoes))
     }
-    assert.deepEqual(log[10], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'pix', 'audio:a5', 'texto:pede_comprovante'])
+    // Escolheu o pacote → Pix + A5 já saem, junto do pedido das fotos/poses.
+    assert.deepEqual(log[3], ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    // No fim: resumo e lembrete do comprovante (sem repetir a chave).
+    assert.deepEqual(log[10], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'texto:pede_comprovante'])
     assert.deepEqual(log[11], ['comprovante'])
     assert.equal(d.maquiagem, false); assert.equal(d.decote, true); assert.equal(d.cores, 'vestido azul')
     assert.equal(etapa, 'aguardando_pagamento'); assert.equal(d.valor_cents, 4990)
@@ -121,7 +124,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.equal(custoDoUso(MODELO_FORTE, { cache_read_input_tokens: 1_000_000 }).custo_usd, 0.2)
     assert.equal(custoDoUso(MODELO_FORTE, { cache_creation_input_tokens: 1_000_000 }).custo_usd, 2.5)
   },
-  'trava: a IA nunca inventa preço, desconto/brinde ou prazo — vira "vou confirmar com a equipe"': () => {
+  'trava: a IA nunca inventa preço, desconto/brinde ou prazo — vira resposta segura com a tabela': () => {
     assert.equal(bloqueioDaResposta('O pacote de 5 sai por R$ 49,90 💖', PERMITIDO), null)
     assert.match(bloqueioDaResposta('Faço por R$ 39,90 pra você!', PERMITIDO) ?? '', /valor/)
     assert.match(bloqueioDaResposta('Hoje tem desconto especial!', PERMITIDO) ?? '', /promessa/)
@@ -133,9 +136,14 @@ const tests: Record<string, () => void | Promise<void>> = {
   'resposta estruturada → sistema decide: texto, humano, fora da base, não entendi': () => {
     assert.deepEqual(decidirResposta(est({}), PERMITIDO), { tipo: 'texto', texto: 'Claro! 💖' })
     assert.equal(decidirResposta(est({ intencao: 'reembolso' }), PERMITIDO).tipo, 'humano')
-    assert.equal(decidirResposta(est({ precisa_humano: true }), PERMITIDO).tipo, 'humano')
-    assert.equal(decidirResposta(est({ na_base: false }), PERMITIDO).tipo, 'confirmar_equipe')
-    assert.equal(decidirResposta(est({ intencao: 'fora_da_base' }), PERMITIDO).tipo, 'confirmar_equipe')
+    assert.equal(decidirResposta(est({ intencao: 'quer_humano' }), PERMITIDO).tipo, 'humano')
+    // Ana resolve: "precisa_humano" solto, fora da base e objeção NÃO chamam o Luís — a resposta sai.
+    assert.equal(decidirResposta(est({ precisa_humano: true }), PERMITIDO).tipo, 'texto')
+    assert.equal(decidirResposta(est({ na_base: false }), PERMITIDO).tipo, 'texto')
+    assert.equal(decidirResposta(est({ intencao: 'fora_da_base' }), PERMITIDO).tipo, 'texto')
+    assert.equal(decidirResposta(est({ intencao: 'objecao', resposta: 'O de 15 sai bem mais em conta por foto 💖' }), PERMITIDO).tipo, 'texto')
+    // "Vou confirmar com a equipe" nunca sai.
+    assert.equal(decidirResposta(est({ resposta: 'Vou confirmar com a equipe e já te respondo!' }), PERMITIDO).tipo, 'confirmar_equipe')
     assert.equal(decidirResposta(null, PERMITIDO).tipo, 'nao_entendi')
     assert.equal(lerEstruturada('lixo'), null)
     assert.equal(lerEstruturada(JSON.stringify(est({ intencao: 'compra' })))?.intencao, 'compra')
@@ -188,7 +196,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(sv.includes("status: 'aguardando_conferencia'") && sv.includes("pago_por: 'comprovante'"))
     assert.ok(sv.includes('custo_ia_usd') && sv.includes('dadosDeVenda('))
     const ex = ler('src/lib/estudio/ana/executor.ts')
-    assert.ok(ex.includes("case 'comprovante'") && ex.includes("case 'pix'") && ex.includes("renderTexto('confirmar_equipe'"))
+    assert.ok(ex.includes("case 'comprovante'") && ex.includes("case 'pix'") && ex.includes("renderTexto('resposta_segura'"))
     assert.ok(ex.includes("usou('resposta'") && ex.includes("usou('foto'"))
     const r = ler('src/app/api/estudio/route.ts').split('OPERACOES')[1]
     for (const op of ['aprovarPagamentoPix', 'recusarPagamentoPix', 'cancelarPedidoEstudio', 'listarPixDoDia', 'listarConferenciasPix', 'salvarPixConfig', 'salvarConhecimento', 'custoIaDaConversa']) assert.ok(r.includes(op), op)

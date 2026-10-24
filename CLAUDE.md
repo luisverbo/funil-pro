@@ -522,6 +522,28 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-04 — Estúdio IA: a Ana resolve (não trava, não chama o Luís à toa)**
+- Sem acesso ao banco (MCP sem permissão): análise pelo código; causas das
+  travas: (1) `confirmar_equipe` em toda pergunta fora da base → "vou
+  confirmar com a equipe" + aviso + precisa_humano; (2) 2× "não entendi" →
+  humano FIXO (Ana muda para sempre); (3) `precisa_humano` da IA em qualquer
+  objeção → humano fixo; (4) quantidade inexistente ("11 fotos") caía na IA;
+  (5) poses além do pacote só dizia "escolha menos"; (6) pagamento só depois
+  de fotos + poses + 4 preferências
+- Agora: humano só reclamação/reembolso/pede pessoa (pausa NÃO fixa, volta
+  sozinha; menor de idade fixo); fora da base responde honesto; trava ADIA
+  bloqueia "vou confirmar/verificar"; bloqueio → `resposta_segura` sem aviso;
+  prompt com playbook de objeções (caro/golpe/prazo/não existe)
+- Máquina: `pacoteInexistente` + `opcoesProximas`, "mais completo/mais
+  barato"; poses demais → fica com as primeiras + oferta 1/2 do pacote maior
+  (`troca_pacote` → ação `trocar_pacote`, Pix de novo); **Pix/Hotmart sai na
+  escolha do pacote** (`pagamento_enviado`); `querPagar` manda na hora;
+  comprovante (imagem não-pessoa/PDF) no meio da coleta → confere; pagou
+  antes → `ctx.pago` → ao completar `fila` + `tudo_certo_producao`;
+  `entrarNaFila` calado durante a coleta; `falarComCliente` troca pago_ok
+  por `pago_ok_coleta` na coleta
+- Bateria: **1153/1153**
+
 **2026-11-03 — Estúdio IA: catálogo (página + PDF) no idioma do atendimento**
 - `src/lib/estudio/catalogo-idiomas.ts` (puro): textos da vitrine nos 4
   idiomas, `?l=pt|pt-pt|es|en` (pt-BR sem parâmetro = links antigos iguais),

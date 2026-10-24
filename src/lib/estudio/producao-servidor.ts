@@ -72,6 +72,13 @@ export async function entrarNaFila(admin: SupabaseClient, pedidoId: string): Pro
   const cfg = await configProducao(admin, ped.tenant_id)
   if (falta.length) {
     await admin.from('estudio_pedidos').update({ status: 'aguardando_fotos' }).eq('id', pedidoId)
+    // Pagou antes de mandar tudo e a Ana ainda está pedindo fotos/poses: ela mesma
+    // coloca na fila quando completar — não precisa avisar o Luís.
+    const contatoId = (p as { contato_id?: string | null }).contato_id
+    if (contatoId) {
+      const { data: ct } = await admin.from('estudio_contatos').select('etapa, modo').eq('id', contatoId).maybeSingle()
+      if (ct && ct.modo !== 'humano' && ['fotos_poses', 'idade_prefs'].includes(String(ct.etapa))) return { ok: false, falta }
+    }
     await avisar(admin, cfg, ped.tenant_id, `⚠️ Pedido ${pedidoId} pago, mas falta: ${falta.join(', ')}. Confira a conversa: ${APP_URL()}/estudio-ia?aba=pedidos&p=${pedidoId}`)
     return { ok: false, falta }
   }

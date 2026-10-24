@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
-import { proximoPasso, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
+import { proximoPasso, lembreteDaEtapa, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
 import { caminhoPdfIdioma, linkDoCatalogo, nomeDoPdf } from '../catalogo-idiomas'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
 import { responderDuvida, classificarFoto, extrairPreferencias, type ItemBase } from './ia'
@@ -248,9 +248,14 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     await usou('preferencias', r0.uso)
   }
 
-  const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, {
-    idioma, precos, temasAtivos, posesDoTema: slug => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos,
-  })
+  // Pagou antes de mandar tudo? (Pix aprovado / Hotmart confirmada no meio da coleta.)
+  let pedidoPago = false
+  if (pedidoId && ['fotos_poses', 'idade_prefs'].includes(etapaAtual)) {
+    const { data: st } = await admin.from('estudio_pedidos').select('status').eq('id', pedidoId).maybeSingle()
+    pedidoPago = ['pago', 'aguardando_fotos'].includes(String(st?.status ?? ''))
+  }
+  const ctxAna = { idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
+  const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, ctxAna)
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
   let falou = false
@@ -273,8 +278,13 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     depoisDeEnviar()
     falou = true
   }
-  const passarParaHumano = async (motivo: string) => {
-    await admin.from('estudio_contatos').update({ modo: 'humano', precisa_humano: true, humano_fixo: true, humano_desde: new Date().toISOString() }).eq('id', c.id)
+  /**
+   * Só reclamação, reembolso, pedido explícito de pessoa ou menor de idade.
+   * Pausa NÃO fixa: a Ana volta sozinha depois das horas de pausa (Configurações),
+   * para a conversa nunca ficar parada esperando. Menor de idade é fixo.
+   */
+  const passarParaHumano = async (motivo: string, fixo = false) => {
+    await admin.from('estudio_contatos').update({ modo: 'humano', precisa_humano: true, humano_fixo: fixo, humano_desde: new Date().toISOString() }).eq('id', c.id)
     await avisarLuis(admin, con, `🙋 ${dados.nome ?? c.nome ?? `+${c.wa_id}`} precisa de você no Estúdio IA.\nMotivo: ${motivo}\n${APP_URL()}/estudio-ia?aba=conversas&c=${c.id}`)
   }
 
@@ -407,13 +417,18 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           const res = await processarComprovante(admin, c, pedidoId, { path: msg.media_path, mime: msg.media_mime ?? 'image/jpeg' })
           const quem = dados.nome ?? c.nome ?? `+${c.wa_id}`
           const valor = vars().valor
-          if (res.resultado === 'pago') {
+          const coletando = ['fotos_poses', 'idade_prefs'].includes(etapaAtual)
+          if (res.resultado === 'pago' && coletando) {
+            // Pagou antes de mandar tudo: confirma e segue pedindo o que falta.
+            await enviarTexto(renderTexto('pago_ok_coleta', idioma, vars(), sob.textos))
+            for (const l of lembreteDaEtapa(etapaAtual, dados, { ...ctxAna, pago: true })) if (l.t === 'texto') await enviarTexto(renderTexto(l.chave, idioma, vars(l.vars), sob.textos), l.chave)
+          } else if (res.resultado === 'pago') {
             etapa = 'pago'
             await enviarTexto(renderTexto('pago_ok', idioma, vars(), sob.textos))   // o aviso "💰 Novo pedido para produzir" sai de entrarNaFila
           } else if (res.resultado === 'nao_e_comprovante') {
             await enviarTexto(renderTexto('pede_comprovante', idioma, vars(), sob.textos))
           } else {
-            etapa = 'conferindo'
+            if (!coletando) etapa = 'conferindo'
             await enviarTexto(renderTexto('conferindo', idioma, vars(), sob.textos))
             await admin.from('estudio_contatos').update({ precisa_humano: true }).eq('id', c.id)
             await avisarLuis(admin, con, `🧾 Comprovante para conferir: ${quem} · ${valor}\nMotivo: ${res.motivos.join('; ')}\nAprovar ou recusar: ${APP_URL()}/estudio-ia?aba=conversas&c=${c.id}`)
@@ -425,6 +440,20 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           const { registrarAjuste } = await import('../producao-servidor')
           const r2 = await registrarAjuste(admin, pedidoId, a.poses, a.obs)
           if (!r2.ok) console.error('[estudio/ana] ajuste:', r2.erro)
+          break
+        }
+        case 'trocar_pacote': {
+          // Escolheu mais poses que o pacote e aceitou o pacote maior.
+          if (!pedidoId) break
+          await admin.from('estudio_pedidos').update({ pacote_qtd: dados.pacote_qtd, valor_cents: dados.valor_cents, moeda: dados.moeda ?? 'BRL', poses: dados.poses ?? [] }).eq('id', pedidoId)
+          await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'pacote_trocado', detalhe: { pacote_qtd: dados.pacote_qtd, valor_cents: dados.valor_cents } })
+          dados.hotmart_link = null
+          break
+        }
+        case 'fila': {
+          if (!pedidoId) break
+          const { entrarNaFila } = await import('../producao-servidor')
+          await entrarNaFila(admin, pedidoId)
           break
         }
         case 'upsell': {
@@ -444,22 +473,23 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           }, msg.texto)
           for (const u of out.usos) await usou('resposta', u, out.estruturada?.intencao)
           const resp = out.resposta
+          // Nunca "vou confirmar com a equipe": a Ana responde com o que existe e segue a venda.
+          // (O lembrete da etapa sai logo depois, pela própria máquina.)
           if (resp.tipo === 'confirmar_equipe') {
-            await enviarTexto(renderTexto('confirmar_equipe', idioma, vars(), sob.textos))
-            await admin.from('estudio_contatos').update({ precisa_humano: true }).eq('id', c.id)
-            await avisarLuis(admin, con, `❓ ${dados.nome ?? c.nome ?? `+${c.wa_id}`} perguntou algo fora da base da Ana: "${msg.texto.slice(0, 200)}"\n(${resp.motivo})\nResponda e, se quiser, cadastre na base (Atendente): ${APP_URL()}/estudio-ia?aba=conversas&c=${c.id}`)
+            await enviarTexto(renderTexto('resposta_segura', idioma, vars(), sob.textos))
+            await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'ia_resposta_bloqueada', detalhe: { motivo: resp.motivo, mensagem: msg.texto.slice(0, 300) } }).then(() => {}, () => {})
           } else if (resp.tipo === 'texto') await enviarTexto(resp.texto)
-          else if (resp.tipo === 'humano') { await enviarTexto(renderTexto('humano', idioma, vars(), sob.textos)); await passarParaHumano('a IA identificou reclamação/reembolso/fora das regras') }
+          else if (resp.tipo === 'humano') { await enviarTexto(renderTexto('humano', idioma, vars(), sob.textos)); await passarParaHumano('reclamação, reembolso ou pediu para falar com uma pessoa') }
           else {
+            // Não entendeu: pede de outro jeito e repete a pergunta da etapa (nunca para a conversa).
             entendeu = false
             naoEntendeu++
-            if (naoEntendeu >= 2) { await enviarTexto(renderTexto('humano', idioma, vars(), sob.textos)); await passarParaHumano('a Ana não entendeu 2 mensagens seguidas'); naoEntendeu = 0 }
-            else await enviarTexto(renderTexto('nao_entendi', idioma, vars(), sob.textos))
+            await enviarTexto(renderTexto('nao_entendi', idioma, vars(), sob.textos))
           }
           break
         }
         case 'humano':
-          await passarParaHumano(a.motivo)
+          await passarParaHumano(a.motivo, /idade/.test(a.motivo))
           break
       }
     } catch (err) {
@@ -523,8 +553,11 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
  * texto no idioma da cliente, registrado no chat, e etapa nova da conversa.
  */
 export async function falarComCliente(admin: SupabaseClient, tenantId: string, contatoId: string, chave: string, novaEtapa?: Etapa, extra: Record<string, string | number> = {}): Promise<{ ok: boolean; erro?: string }> {
-  const { data: c } = await admin.from('estudio_contatos').select('id, tenant_id, wa_id, nome, idioma, dados').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
+  const { data: c } = await admin.from('estudio_contatos').select('id, tenant_id, wa_id, nome, idioma, dados, etapa').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
   if (!c) return { ok: false, erro: 'Conversa não encontrada.' }
+  // Pagou (Hotmart / aprovado na tela) enquanto ainda manda fotos e poses: a conversa
+  // continua na coleta; o pedido entra na fila quando ela completar.
+  if (chave === 'pago_ok' && ['fotos_poses', 'idade_prefs'].includes(String(c.etapa))) { chave = 'pago_ok_coleta'; novaEtapa = undefined }
   const { data: cfg } = await admin.from('estudio_config').select('tenant_id, phone_number_id, access_token').eq('tenant_id', tenantId).maybeSingle()
   if (!cfg?.access_token) return { ok: false, erro: 'Número do estúdio não conectado.' }
   const d = (c.dados ?? {}) as Dados

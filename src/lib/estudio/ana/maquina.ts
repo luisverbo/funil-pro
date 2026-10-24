@@ -52,6 +52,10 @@ export interface Dados {
   hotmart_link?: string | null
   /** Quando a Ana fez a última pergunta (base das cobranças). */
   aguardando_desde?: string
+  /** Pix/link da Hotmart já enviado (logo depois da escolha do pacote). */
+  pagamento_enviado?: boolean
+  /** Escolheu mais poses que o pacote: oferta de trocar para o pacote maior (1 = fica, 2 = troca). */
+  troca_pacote?: { qtd: number; valor_cents: number; moeda: string; link: string | null; poses: string[] }
 }
 
 export interface Entrada {
@@ -79,6 +83,8 @@ export interface Contexto {
   entrega?: { pode_ajustar: boolean; poses: string[]; upsell_qtd: number; upsell_valor_cents: number; moeda: string }
   /** Fotos que a cliente JÁ mandou (todas, classificadas) — vale em qualquer etapa. */
   fotos?: { tem_rosto: boolean; tem_corpo: boolean; rosto_recortado: boolean; unica: boolean }
+  /** O pedido atual já está pago (pagou antes de mandar tudo). */
+  pago?: boolean
   agoraMs?: number
 }
 
@@ -100,6 +106,8 @@ export type Acao =
   | { t: 'ajuste'; poses: string[]; obs: string }
   | { t: 'upsell' }
   | { t: 'hotmart' }
+  | { t: 'trocar_pacote' }
+  | { t: 'fila' }
 
 export interface Resultado { etapa: Etapa; dados: Dados; acoes: Acao[] }
 
@@ -161,6 +169,8 @@ export function escolhaDePacote(texto: string, precos: Preco[]): { preco: Preco;
   const porQtd = (n: number) => ord.find(p => p.pacote_qtd === n)
   const porOpcao = (n: number) => (n >= 1 && n <= ord.length ? ord[n - 1] : undefined)
   const certo = (p: Preco | undefined) => (p ? { preco: p, confirmar: false } : null)
+  if (ord.length && /\b(mais completo|completao|o maior|maior pacote|o mais caro|todas as fotos|biggest|largest|the most|mas completo|el mayor|el mas grande)\b/.test(t)) return certo(ord[ord.length - 1])
+  if (ord.length && /\b(mais barato|o menor|menor pacote|mais simples|basico|cheapest|smallest|mas barato|el menor|el mas chico)\b/.test(t)) return certo(ord[0])
   // preço: "49,90", "R$ 49.90", "o de 18,90"
   const preco = t.match(/(\d{1,4})[,.](\d{2})\b/)
   if (preco) return certo(ord.find(p => p.valor_cents === Number(preco[1]) * 100 + Number(preco[2])))
@@ -184,6 +194,28 @@ export function escolhaDePacote(texto: string, precos: Preco[]): { preco: Preco;
   if (solto) { const p = porOpcao(Number(solto[1])) ?? porQtd(Number(solto[1])); return p ? { preco: p, confirmar: true } : null }
   return null
 }
+
+/**
+ * Pediu uma QUANTIDADE que não existe ("quero 11 fotos", "pacote de 8") →
+ * o número pedido, para a Ana dizer na hora o que existe (nunca trava).
+ */
+export function pacoteInexistente(texto: string, precos: Preco[]): number | null {
+  const t = sem(texto)
+  const m = t.match(/\b(\d{1,3})\s*(?:fotos?|photos?|poses?|imagens?|imagenes?)\b/) ?? t.match(/\b(?:pacote|plano|paquete|package)\s*(?:de|of|com|con)?\s*(\d{1,3})\b/)
+  if (!m) return null
+  const n = Number(m[1])
+  return n > 0 && !precos.some(p => p.pacote_qtd === n) ? n : null
+}
+
+/** "opção 3 (10 fotos) ou opção 4 (15 fotos)" — os 2 pacotes mais próximos do pedido. */
+export function opcoesProximas(n: number, precos: Preco[]): { opcao: number; preco: Preco }[] {
+  const ord = [...precos].sort((a, b) => a.pacote_qtd - b.pacote_qtd).map((preco, i) => ({ opcao: i + 1, preco }))
+  return [...ord].sort((a, b) => Math.abs(a.preco.pacote_qtd - n) - Math.abs(b.preco.pacote_qtd - n) || b.preco.pacote_qtd - a.preco.pacote_qtd)
+    .slice(0, 2).sort((a, b) => a.opcao - b.opcao)
+}
+
+const QUER_PAGAR = /\b(quero pagar|como (eu )?pago|como faco (o|para|pra) pag|manda (o |a )?(pix|chave|link)|qual (e )?(o |a )?(pix|chave)|passa (o |a )?(pix|chave)|link de pagamento|pagar agora|ja quero pagar|forma de pagamento|how (do i|can i|to) pay|payment link|send (me )?the link|como pago|quiero pagar|link de pago|como puedo pagar)\b/
+export function querPagar(texto: string): boolean { return QUER_PAGAR.test(sem(texto)) }
 
 /** Compatível: só a escolha certa (sem precisar confirmar). */
 export function pacoteDoTexto(texto: string, precos: Preco[]): Preco | null {
@@ -291,6 +323,12 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     return fim(etapa, [{ t: 'texto', chave: 'sou_assistente' }, ...repetirPergunta(etapa, d)])
   }
 
+  // Quer pagar já (escolheu o pacote, ainda mandando fotos/poses): manda o pagamento na hora.
+  if (e.tipo === 'texto' && querPagar(txt) && ['fotos_poses', 'idade_prefs'].includes(etapa) && d.pacote_qtd && !ctx.pago) {
+    const pag = acoesDePagamento(d, ctx)
+    if (pag.length) { d.pagamento_enviado = true; return fim(etapa, [...pag, ...lembreteDaEtapa(etapa, d, ctx)]) }
+  }
+
   // Aceitou a prévia oferecida na cobrança.
   if (d.previa_oferecida && !d.previa_feita && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
     d.etapa_antes_previa = etapa
@@ -349,6 +387,11 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       }
       if (!p) {
         const esc = e.tipo === 'texto' ? escolhaDePacote(txt, ctx.precos) : null
+        const pediu = !esc && e.tipo === 'texto' ? pacoteInexistente(txt, ctx.precos) : null
+        if (pediu !== null) {
+          const opcoes = opcoesProximas(pediu, ctx.precos).map(o => `${o.opcao}️⃣ ${o.preco.pacote_qtd}`).join(' · ')
+          return fim('pacote', [{ t: 'texto', chave: 'pacote_inexistente', vars: { pedido: pediu, opcoes } }])
+        }
         if (!esc) return fim('pacote', ia('pacote', d, 'a cliente escolher um pacote pelo número da opção (1 a 5)'))
         if (esc.confirmar) {
           d.pacote_confirmar = esc.preco.pacote_qtd
@@ -363,10 +406,14 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       // Fotos que ela já mandou antes continuam valendo (não pede de novo).
       d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo
       const jaTemFotos = d.tem_rosto && d.tem_corpo
+      // Escolheu o pacote = já recebe o pagamento (Pix ou link), junto do pedido das fotos/poses.
+      const pagamento = acoesDePagamento(d, ctx)
+      if (pagamento.length) d.pagamento_enviado = true
       return fim('fotos_poses', [
         { t: 'criar_pedido', tipo: 'pacote' },
         ...(jaTemFotos ? [{ t: 'fotos_escolher' } as Acao, { t: 'texto', chave: 'pede_poses', vars: { qtd: p.pacote_qtd } } as Acao]
           : [{ t: 'texto', chave: 'pede_fotos_poses', vars: { qtd: p.pacote_qtd } } as Acao]),
+        ...pagamento,
       ])
     }
 
@@ -376,9 +423,28 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       const qtd = previa ? 1 : (d.pacote_qtd ?? 0)
       const acoes: Acao[] = []
 
+      // Comprovante no meio das fotos (o pagamento já foi enviado): confere na hora.
+      const comprov = comprovanteNaColeta(etapa, d, e, ctx)
+      if (comprov) return fim(etapa, comprov)
       if (e.tipo === 'video') return fim(etapa, [{ t: 'texto', chave: 'video_nao' }])
       if (e.tipo === 'figurinha') return fim(etapa, [{ t: 'texto', chave: 'figurinha_nao' }])
       if (e.tipo === 'documento') return fim(etapa, [{ t: 'texto', chave: 'documento_nao' }])
+
+      // Resposta à oferta "1 = fico com as primeiras · 2 = pacote maior".
+      if (d.troca_pacote && e.tipo === 'texto') {
+        const op = numeroDaOpcao(txt)
+        const quer = op === 2 || (op === null && (afirmativo(txt) || /\b(maior|todas|upgrade|bigger|all|mayor|todas)\b/.test(sem(txt))) && !negativo(txt))
+        const fica = op === 1 || negativo(txt)
+        if (quer) {
+          const tr = d.troca_pacote
+          d.pacote_qtd = tr.qtd; d.valor_cents = tr.valor_cents; d.moeda = tr.moeda; d.pagar_link = tr.link; d.poses = tr.poses
+          d.troca_pacote = undefined
+          acoes.push({ t: 'trocar_pacote' }, { t: 'texto', chave: 'pacote_trocado', vars: { qtd: tr.qtd, valor_cents: tr.valor_cents } })
+          if (d.pagamento_enviado) acoes.push(...acoesDePagamento(d, ctx))
+          return seguirColeta(etapa, d, acoes, ctx, previa)
+        }
+        if (fica) { d.troca_pacote = undefined; return seguirColeta(etapa, d, acoes, ctx, previa) }
+      }
 
       if (e.tipo === 'imagem') {
         const antes = { rosto: !!d.tem_rosto, corpo: !!d.tem_corpo }
@@ -403,37 +469,31 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         if (invalidas.length > 0) { acoes.push({ t: 'texto', chave: 'poses_invalidas', vars: { poses: invalidas.join(', ') } }); falou = true }
         else {
           const juntas = [...new Set([...(d.poses ?? []), ...nums])]
-          if (juntas.length > qtd) { acoes.push({ t: 'texto', chave: 'poses_demais', vars: { qtd } }); falou = true }
-          else d.poses = juntas
+          if (juntas.length > qtd) {
+            // Nunca trava: fica com as primeiras e, se existir, oferece o pacote que cabe todas.
+            d.poses = juntas.slice(0, qtd)
+            const maior = previa || ctx.pago ? undefined : [...ctx.precos].sort((a, b) => a.pacote_qtd - b.pacote_qtd).find(x => x.pacote_qtd >= juntas.length && x.pacote_qtd > qtd)
+            if (maior) {
+              d.troca_pacote = { qtd: maior.pacote_qtd, valor_cents: maior.valor_cents, moeda: maior.moeda, link: maior.link_pagamento ?? null, poses: juntas.slice(0, maior.pacote_qtd) }
+              acoes.push({ t: 'texto', chave: 'poses_demais_maior', vars: { n: juntas.length, qtd, primeiras: d.poses.join(', '), prox_qtd: maior.pacote_qtd, valor_cents: maior.valor_cents } })
+              falou = true
+            } else acoes.push({ t: 'texto', chave: 'poses_demais_corte', vars: { n: juntas.length, qtd, primeiras: d.poses.join(', ') } })
+          } else d.poses = juntas
         }
       } else if (e.tipo === 'texto' && txt) {
         acoes.push(...ia(etapa, d, `receber as 2 fotos e os números de ${qtd} pose(s)`))
         return fim(etapa, acoes)
       }
 
-      // A frase da foto ("Recebi a do rosto ✅ Falta só a de corpo") já diz o que falta de foto.
-      const jaDisseFoto = acoes.some(a => a.t === 'texto' && ['foto_rosto_ok', 'foto_so_corpo'].includes(a.chave))
-      const faltaReal = oQueFalta(d, qtd, ctx)
-      const falta = faltaReal.filter(a => !(jaDisseFoto && a.t === 'texto' && a.chave === 'lembrete_fotos'))
-      if (falta.length && !falou) acoes.push(...falta)
-      if (faltaReal.length || falou) return fim(etapa, acoes)
-
-      acoes.push({ t: 'atualizar_pedido' })
-      if (previa) {
-        d.previa_feita = true
-        const volta = d.etapa_antes_previa ?? 'pacote'
-        d.etapa_antes_previa = undefined
-        return fim(volta, [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }, ...repetirPergunta(volta, d)])
-      }
-      // Toda transição já manda a pergunta da etapa nova (preferências, uma por vez).
-      const prox = proximaPreferencia(d)
-      if (!prox) return fechar(d, acoes, ctx)
-      return fim('idade_prefs', [...acoes, { t: 'texto', chave: prox }])
+      if (falou) return fim(etapa, acoes)
+      return seguirColeta(etapa, d, acoes, ctx, previa)
     }
 
     case 'idade_prefs': {
       const pergunta = proximaPreferencia(d)
       if (!pergunta) return fechar(d, [{ t: 'atualizar_pedido' }], ctx)
+      const comprov = comprovanteNaColeta(etapa, d, e, ctx)
+      if (comprov) return fim('idade_prefs', comprov)
       if (e.tipo !== 'texto') return fim('idade_prefs', [{ t: 'texto', chave: pergunta }])
       const capt = aplicarPreferencias(d, pergunta, txt, e.prefs ?? null)
       if (d.idade !== undefined && d.idade !== null && d.idade < 18) return fim('humano', [{ t: 'texto', chave: 'foto_recusada' }, { t: 'humano', motivo: `cliente informou idade ${d.idade}` }])
@@ -503,8 +563,53 @@ export function pagaPelaHotmart(d: Dados): boolean {
 
 const FALA_DE_PAGAMENTO = /\b(paguei|ja paguei|pago|pagamento|pix|comprovante|transferi|fiz a transferencia|i paid|paid|pague|ya pague)\b/
 
+/** Pagamento do pacote escolhido: Pix (Brasil) ou link da Hotmart (fora). Vazio se não houver forma cadastrada. */
+function acoesDePagamento(d: Dados, ctx: Contexto): Acao[] {
+  if (ctx.pix && (d.moeda ?? 'BRL') === 'BRL') return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'pagar_ja' }, { t: 'pix' }, { t: 'audio', chave: 'a5' }]
+  if (pagaPelaHotmart(d)) return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'hotmart' }]
+  return []
+}
+
+/** Imagem/PDF que NÃO é foto de pessoa, depois do pagamento enviado = comprovante. */
+function comprovanteNaColeta(etapa: Etapa, d: Dados, e: Entrada, ctx: Contexto): Acao[] | null {
+  if (!d.pagamento_enviado || ctx.pago || etapa === 'previa_fotos') return null
+  const naoEPessoa = e.tipo === 'documento' || (e.tipo === 'imagem' && !!e.fotos?.invalida && !e.fotos?.recusada)
+  if (!naoEPessoa) return null
+  if (pagaPelaHotmart(d)) return [{ t: 'texto', chave: 'hotmart_print' }, ...lembreteDaEtapa(etapa, d, ctx).filter(a => !(a.t === 'texto' && a.chave === 'hotmart_lembrete'))]
+  return [{ t: 'comprovante' }]
+}
+
+/** Depois de anotar fotos/poses: pergunta o que falta ou avança (preferências → fechamento). */
+function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, previa: boolean): Resultado {
+  const qtd = previa ? 1 : (d.pacote_qtd ?? 0)
+  // A frase da foto ("Recebi a do rosto ✅ Falta só a de corpo") já diz o que falta de foto.
+  const jaDisseFoto = acoes.some(a => a.t === 'texto' && ['foto_rosto_ok', 'foto_so_corpo'].includes(a.chave))
+  const faltaReal = oQueFalta(d, qtd, ctx)
+  const falta = faltaReal.filter(a => !(jaDisseFoto && a.t === 'texto' && a.chave === 'lembrete_fotos'))
+  if (faltaReal.length) return { etapa, dados: d, acoes: [...acoes, ...falta] }
+
+  acoes.push({ t: 'atualizar_pedido' })
+  if (previa) {
+    d.previa_feita = true
+    const volta = d.etapa_antes_previa ?? 'pacote'
+    d.etapa_antes_previa = undefined
+    return { etapa: volta, dados: d, acoes: [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }, ...repetirPergunta(volta, d)] }
+  }
+  // Toda transição já manda a pergunta da etapa nova (preferências, uma por vez).
+  const prox = proximaPreferencia(d)
+  if (!prox) return fechar(d, acoes, ctx)
+  return { etapa: 'idade_prefs', dados: d, acoes: [...acoes, { t: 'texto', chave: prox }] }
+}
+
 function fechar(d: Dados, acoes: Acao[], ctx: Contexto): Resultado {
+  // Já pagou antes de mandar tudo: vai direto para a fila.
+  if (ctx.pago) return { etapa: 'pago', dados: d, acoes: [...acoes, { t: 'fila' }, { t: 'texto', chave: 'tudo_certo_producao' }] }
   const fechamento: Acao[] = [...acoes, { t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'resumo_pedido' }]
+  // O pagamento já foi enviado na escolha do pacote: só lembra (sem repetir a chave/link).
+  if (d.pagamento_enviado) {
+    fechamento.push(pagaPelaHotmart(d) ? { t: 'texto', chave: 'hotmart_lembrete' } : { t: 'texto', chave: 'pede_comprovante' })
+    return { etapa: 'aguardando_pagamento', dados: d, acoes: fechamento }
+  }
   // Brasil: a Ana manda a chave Pix + o valor exato e pede o comprovante.
   if (ctx.pix && (d.moeda ?? 'BRL') === 'BRL') fechamento.push({ t: 'pix' }, { t: 'audio', chave: 'a5' }, { t: 'texto', chave: 'pede_comprovante' })
   // Fora do Brasil: link da Hotmart com o pedido (sck) no lugar do Pix.
