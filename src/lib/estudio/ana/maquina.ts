@@ -311,6 +311,7 @@ const FALTA: Record<IdiomaAna, { rosto: string; corpo: string; ambas: string }> 
   'pt-BR': { rosto: 'a foto do rosto', corpo: 'a foto de corpo inteiro', ambas: 'as 2 fotos (rosto e corpo inteiro)' },
   'pt-PT': { rosto: 'a foto do rosto', corpo: 'a foto de corpo inteiro', ambas: 'as 2 fotos (rosto e corpo inteiro)' },
   es: { rosto: 'la foto de la cara', corpo: 'la foto de cuerpo entero', ambas: 'las 2 fotos (cara y cuerpo entero)' },
+  'es-ES': { rosto: 'la foto de la cara', corpo: 'la foto de cuerpo entero', ambas: 'las 2 fotos (cara y cuerpo entero)' },
   en: { rosto: 'the face photo', corpo: 'the full-body photo', ambas: 'the 2 photos (face and full body)' },
 }
 
@@ -358,7 +359,8 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     return fim('humano', [{ t: 'texto', chave: 'humano' }, { t: 'humano', motivo: `pedido da cliente: "${txt.slice(0, 120)}"` }])
   }
   const novoIdioma = e.tipo === 'texto' ? idiomaPedido(txt) : null
-  if (novoIdioma && novoIdioma !== ctx.idioma) {
+  // "en español" com quem já é da Espanha não troca para o espanhol geral.
+  if (novoIdioma && novoIdioma !== ctx.idioma && !(novoIdioma === 'es' && ctx.idioma === 'es-ES')) {
     return fim(etapa, [{ t: 'idioma', idioma: novoIdioma }, { t: 'texto', chave: 'idioma_trocado' }, ...repetirPergunta(etapa, d)])
   }
   if (e.tipo === 'texto' && perguntaSeERobo(txt)) {
@@ -380,9 +382,14 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     if (pag.length) { d.pagamento_enviado = true; return fim(etapa, [...pag, ...lembreteDaEtapa(etapa, d, ctx)]) }
   }
 
+  // A cliente PEDIU a prévia ("tem prévia grátis?", "¿puedo ver una muestra?"): vale como aceite.
+  if (e.tipo === 'texto' && pedePrevia(txt) && d.tema && !d.previa_feita && !ctx.pago && !['previa_fotos', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe', 'inicio', 'nome', 'tema'].includes(etapa)) {
+    d.previa_oferecida = true
+  }
+
   // Aceitou a prévia oferecida na cobrança.
   // Vale também para quem já recebeu o Pix e sumiu: a prévia ajuda a fechar.
-  if (d.previa_oferecida && !d.previa_feita && !ctx.pago && !['previa_fotos', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
+  if (d.previa_oferecida && !d.previa_feita && !ctx.pago && !['previa_fotos', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && (afirmativo(txt) || pedePrevia(txt)) && d.tema) {
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
     d.poses_antes_previa = d.poses ?? []
@@ -915,7 +922,9 @@ export function cobrancaDevida(c: {
  * 2ª prévia grátis (antes do Pix) ou "ficou alguma dúvida?" (depois);
  * 3ª prévia grátis como última cartada se ainda não fez, senão a vaga reservada.
  */
-export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, d: Dados): { chaves: string[]; oferecePrevia: boolean; encerrar?: boolean } {
+export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, dIn: Dados, opts: { semPrevia?: boolean } = {}): { chaves: string[]; oferecePrevia: boolean; encerrar?: boolean } {
+  // Espanha: a prévia grátis NÃO é oferecida (só se a cliente pedir) — as retomadas viram dúvida/link.
+  const d: Dados = opts.semPrevia ? { ...dIn, previa_feita: true } : dIn
   // Prévia na fila: nada até ela ser entregue. Foi consultar a família: 1 mensagem suave e para.
   if (d.aguardando_previa) return { chaves: [], oferecePrevia: false }
   if (d.pausa_longa) return { chaves: ['rmk_suave'], oferecePrevia: false, encerrar: true }
@@ -963,4 +972,8 @@ export function pausaPedida(texto: string): boolean {
   const t = sem(texto).trim()
   return PAUSA.test(t) && !/\?|\d/.test(t) && t.split(/\s+/).length <= 12
 }
+
+const PEDE_PREVIA = /\b(previa|preview|amostra|muestra|demo|prueba gratis|teste gratis|foto de teste|foto de prueba|ver como (fica|queda)|ver como quedaria|ver uma antes|ver una antes)\b/
+/** A cliente pede para ver uma prévia/amostra antes de comprar. */
+export function pedePrevia(texto: string): boolean { return PEDE_PREVIA.test(sem(texto)) }
 

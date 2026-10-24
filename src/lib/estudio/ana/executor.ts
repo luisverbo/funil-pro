@@ -37,10 +37,10 @@ interface Contato {
 /** Tabela de preços em texto, na moeda do país (5 = 🔥 mais vendido). */
 export function tabelaDePrecos(precos: Preco[], idioma: IdiomaAna): string {
   const fotos = idioma === 'en' ? 'photos' : 'fotos'
-  const mais = { 'pt-BR': 'MAIS VENDIDO', 'pt-PT': 'MAIS VENDIDO', es: 'MÁS VENDIDO', en: 'BEST SELLER' }[idioma]
-  void mais
+  // Euro (Espanha): o valor já é o FINAL do checkout da Hotmart, com IVA.
+  const iva = (m: string) => (m === 'EUR' ? ' (IVA incluido)' : '')
   return [...precos].sort((a, b) => a.pacote_qtd - b.pacote_qtd)
-    .map((p, i) => `${i + 1}️⃣ ${p.pacote_qtd} ${fotos} — ${dinheiro(p.valor_cents, p.moeda, idioma)}`).join('\n')
+    .map((p, i) => `${i + 1}️⃣ ${p.pacote_qtd} ${fotos} — ${dinheiro(p.valor_cents, p.moeda, idioma)}${iva(p.moeda)}`).join('\n')
 }
 
 /** Preços do país; senão os de '*'; senão os do Brasil. */
@@ -144,7 +144,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   // 1ª mensagem claramente em outro idioma: segue o idioma da mensagem.
   if (primeiraMensagem && !c.idioma_fixo && msg.tipo === 'texto') {
     const detectado = idiomaDaMensagem(msg.texto)
-    if (detectado && detectado !== idioma) { idioma = detectado; await admin.from('estudio_contatos').update({ idioma: detectado }).eq('id', c.id) }
+    if (detectado && detectado !== idioma && !(detectado === 'es' && idioma === 'es-ES')) { idioma = detectado; await admin.from('estudio_contatos').update({ idioma: detectado }).eq('id', c.id) }
   }
 
   const [precos, sob, temasQ, posesQ, pix, baseQ] = await Promise.all([
@@ -313,7 +313,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           await enviarTexto(renderTexto(a.chave, idioma, vars(a.vars), sob.textos), a.chave)
           break
         case 'audio': {
-          const path = sob.audios.get(`${a.chave}|${idioma}`)
+          const path = sob.audios.get(`${a.chave}|${idioma}`) ?? (idioma === 'es-ES' ? sob.audios.get(`${a.chave}|es`) : undefined)
           const url = path ? urlPublicaDoCatalogo(path, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '') : null
           if (path && url) {
             // Mensagem de VOZ (bolinha de play + onda), não arquivo: media_id em cache + voice:true.
@@ -536,7 +536,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
 /** Rodada das cobranças (cron a cada 5 min). Devolve quantas saíram. */
 export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new Date()): Promise<number> {
   const { data: contatos } = await admin.from('estudio_contatos')
-    .select('id, tenant_id, wa_id, nome, idioma, etapa, dados, modo, cobrancas, janela_ate, ultima_cliente_em')
+    .select('id, tenant_id, wa_id, nome, idioma, pais, etapa, dados, modo, cobrancas, janela_ate, ultima_cliente_em')
     .eq('modo', 'ana').lt('cobrancas', 3).gt('janela_ate', agora.toISOString()).limit(200)
   let enviadas = 0
   const conexoes = new Map<string, Conexao | null>()
@@ -556,7 +556,7 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
     const { textos } = await sobrescritas(admin, c.tenant_id)
     // A retomada fala do ponto onde a conversa parou (catálogo, pagamento, prévia…).
     const idioma = idiomaDaAna(c.idioma)
-    const plano = mensagensDaRetomada(chave, (c.etapa as Etapa) || 'inicio', d)
+    const plano = mensagensDaRetomada(chave, (c.etapa as Etapa) || 'inicio', d, { semPrevia: c.pais === 'ES' })
     const v = {
       nome: d.nome ?? c.nome ?? '', link: linkDoCatalogo(APP_URL(), d.tema, idioma), pagar: d.hotmart_link ?? d.pagar_link ?? '',
       valor: d.valor_cents !== undefined ? dinheiro(d.valor_cents, d.moeda ?? 'BRL', idioma) : '',
@@ -683,6 +683,7 @@ export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string,
     'pt-BR': { rosto: '1 foto do seu ROSTO, de frente e nítida (tipo selfie)', corpo: '1 foto de corpo inteiro' },
     'pt-PT': { rosto: '1 foto do teu ROSTO, de frente e nítida (tipo selfie)', corpo: '1 foto de corpo inteiro' },
     es: { rosto: '1 foto de tu CARA, de frente y nítida (tipo selfie)', corpo: '1 foto de cuerpo entero' },
+    'es-ES': { rosto: '1 foto de tu CARA, de frente y nítida (tipo selfie)', corpo: '1 foto de cuerpo entero' },
     en: { rosto: '1 FACE photo, from the front and sharp (like a selfie)', corpo: '1 full-body photo' },
   }
   const faltam = fotos.map(f => (/rosto/.test(f) ? F[idioma].rosto : F[idioma].corpo)).join(' + ')

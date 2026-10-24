@@ -257,7 +257,7 @@ export async function lerHotmartConfig(): Promise<{ tem_hottok: boolean; produto
 export async function salvarHotmartConfig(hottok: string | null, produtoId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
-    const linha: Record<string, unknown> = { hotmart_produto_id: String(produtoId ?? '').replace(/\D/g, '').slice(0, 20) || '8794754' }
+    const linha: Record<string, unknown> = { hotmart_produto_id: String(produtoId ?? '').split(/[^\d]+/).filter(Boolean).slice(0, 5).join(',').slice(0, 80) || '8794754,8801266' }
     const t = String(hottok ?? '').trim()
     if (t) linha.hotmart_hottok = t.slice(0, 200)
     const { error } = await createAdminClient().from('estudio_config').update(linha).eq('tenant_id', tenantId)

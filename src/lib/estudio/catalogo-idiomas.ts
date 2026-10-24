@@ -26,7 +26,7 @@ const PT_BR: TextosCatalogo = {
   pdfTitulo: t => `Catálogo · ${t}`, pdfInstrucao: 'Cada foto tem um número. Mande no WhatsApp só os números das que você mais gostou.',
 }
 
-const TEXTOS: Record<IdiomaAna, TextosCatalogo> = {
+const TEXTOS: Record<Exclude<IdiomaAna, 'es-ES'>, TextosCatalogo> = {
   'pt-BR': PT_BR,
   'pt-PT': {
     ...PT_BR, html: 'pt-PT', titulo: 'Escolha a sua sessão', tocar: 'Toque no número para escolher as suas fotos.',
@@ -66,11 +66,13 @@ export function idiomaDoCatalogo(l: string | string[] | null | undefined): Idiom
 }
 
 export function textosDoCatalogo(idioma: IdiomaAna): TextosCatalogo {
+  if (idioma === 'es-ES') return TEXTOS.es
   return TEXTOS[idioma] ?? PT_BR
 }
 
 /** Código curto que vai na URL e no nome do PDF. */
 export function codigoDoIdioma(idioma: IdiomaAna): 'pt' | 'pt-pt' | 'es' | 'en' {
+  if (idioma === 'es-ES') return 'es'   // Espanha usa o catálogo/PDF em espanhol (já em "tú")
   return idioma === 'pt-PT' ? 'pt-pt' : idioma === 'es' ? 'es' : idioma === 'en' ? 'en' : 'pt'
 }
 
@@ -107,7 +109,8 @@ const TITULOS: Record<string, Partial<Record<IdiomaAna, string>>> = {
   sensual: { es: 'Sesión sensual', en: 'Sensual Photoshoot' },
 }
 
-export function tituloDoTema(slug: string, nomeCadastrado: string, idioma: IdiomaAna): string {
+export function tituloDoTema(slug: string, nomeCadastrado: string, idiomaIn: IdiomaAna): string {
+  const idioma: IdiomaAna = idiomaIn === 'es-ES' ? 'es' : idiomaIn
   if (idioma === 'pt-BR') return nomeCadastrado
   if (idioma === 'pt-PT') return nomeCadastrado.replace(/^Ensaio\b/, 'Sessão')
   const n = NOMES_TEMA[slug]?.[idioma]

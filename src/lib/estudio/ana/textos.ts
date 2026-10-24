@@ -9,20 +9,22 @@
 // ============================================================================
 
 export const IDIOMAS = ['pt-BR', 'pt-PT', 'es', 'en'] as const
-export type IdiomaAna = (typeof IDIOMAS)[number]
+/** 'es-ES' = espanhol DE ESPANHA (tú, euro): variação do 'es' — herda o texto do 'es' quando não tem o seu. */
+export type IdiomaAna = (typeof IDIOMAS)[number] | 'es-ES'
 
 /** pt-BR/pt-PT ficam; es-* → es; en-* e o resto → en. */
 export function idiomaDaAna(idioma: string | null | undefined): IdiomaAna {
   const i = (idioma ?? '').toLowerCase()
   if (i === 'pt-pt') return 'pt-PT'
   if (i.startsWith('pt')) return 'pt-BR'
+  if (i === 'es-es') return 'es-ES'
   if (i.startsWith('es')) return 'es'
   return 'en'
 }
 
 export const CHAVES_AUDIO = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'] as const
 
-type Tabela = Record<string, Record<IdiomaAna, string>>
+type Tabela = Record<string, Record<(typeof IDIOMAS)[number], string> & Partial<Record<'es-ES', string>>>
 
 export const TEXTOS: Tabela = {
   boas_vindas: {
@@ -583,7 +585,7 @@ export const TEXTOS: Tabela = {
     en: "Sure! I'll speak English 😊",
   },
   // Áudios A1–A6: texto no lugar do áudio quando não há arquivo no idioma.
-  a1: { 'pt-BR': '', 'pt-PT': '', es: '', en: '' },
+  a1: { 'pt-BR': '', 'pt-PT': '', es: '', en: '', 'es-ES': '' },
   a2: {
     'pt-BR': 'O ensaio é 100% on-line! Você não precisa sair de casa: nada de Uber, maquiadora, cabeleireiro nem roupa nova. Recebe um ensaio lindo, com cara de estúdio ✨',
     'pt-PT': 'A sessão é 100% online! Não precisas de sair de casa: nada de táxi, maquilhadora, cabeleireiro nem roupa nova. Recebes uma sessão linda, com ar de estúdio ✨',
@@ -596,8 +598,8 @@ export const TEXTOS: Tabela = {
     es: 'Solo necesito 2 fotos tuyas: una de la cara y una de cuerpo entero. La de la cara es la más importante: nítida, de frente, con buena luz y sin filtro 📸',
     en: "I only need 2 photos of you: one of your face and one full-body. The face one matters most: sharp, front-facing, good light, no filter 📸",
   },
-  a4: { 'pt-BR': '', 'pt-PT': '', es: '', en: '' },
-  a5: { 'pt-BR': '', 'pt-PT': '', es: '', en: '' },
+  a4: { 'pt-BR': '', 'pt-PT': '', es: '', en: '', 'es-ES': '' },
+  a5: { 'pt-BR': '', 'pt-PT': '', es: '', en: '', 'es-ES': '' },
   a6: {
     'pt-BR': 'Seu ensaio ficou lindo! Dá uma olhada e me conta o que achou! 💖',
     'pt-PT': 'A tua sessão ficou linda! Vê e diz-me o que achaste! 💖',
@@ -607,10 +609,10 @@ export const TEXTOS: Tabela = {
 }
 
 export const NOMES_TEMA: Record<string, Record<IdiomaAna, string>> = {
-  aniversario: { 'pt-BR': 'Aniversário', 'pt-PT': 'Aniversário', es: 'Cumpleaños', en: 'Birthday' },
-  corporativo: { 'pt-BR': 'Corporativo', 'pt-PT': 'Corporativo', es: 'Corporativo', en: 'Corporate' },
-  casual: { 'pt-BR': 'Casual', 'pt-PT': 'Casual', es: 'Casual', en: 'Casual' },
-  sensual: { 'pt-BR': 'Sensual', 'pt-PT': 'Sensual', es: 'Sensual', en: 'Sensual' },
+  aniversario: { 'pt-BR': 'Aniversário', 'pt-PT': 'Aniversário', es: 'Cumpleaños', en: 'Birthday', 'es-ES': 'Cumpleaños' },
+  corporativo: { 'pt-BR': 'Corporativo', 'pt-PT': 'Corporativo', es: 'Corporativo', en: 'Corporate', 'es-ES': 'Corporativo' },
+  casual: { 'pt-BR': 'Casual', 'pt-PT': 'Casual', es: 'Casual', en: 'Casual', 'es-ES': 'Casual' },
+  sensual: { 'pt-BR': 'Sensual', 'pt-PT': 'Sensual', es: 'Sensual', en: 'Sensual', 'es-ES': 'Sensual' },
 }
 
 export function nomeDoTema(slug: string | null | undefined, idioma: IdiomaAna): string {
@@ -619,7 +621,10 @@ export function nomeDoTema(slug: string | null | undefined, idioma: IdiomaAna): 
 
 /** Texto final: sobrescrita da tela (se houver) ou padrão; troca {variáveis}. */
 export function texto(chave: string, idioma: IdiomaAna, vars: Record<string, string | number> = {}, sobrescritas?: Map<string, string>): string {
-  const base = sobrescritas?.get(`${chave}|${idioma}`)?.trim() || TEXTOS[chave]?.[idioma] || TEXTOS[chave]?.['pt-BR'] || ''
+  // es-ES: o texto da Espanha (tela → padrão); sem ele, o do espanhol geral.
+  const base = sobrescritas?.get(`${chave}|${idioma}`)?.trim() || TEXTOS[chave]?.[idioma]
+    || (idioma === 'es-ES' ? sobrescritas?.get(`${chave}|es`)?.trim() || TEXTOS[chave]?.es : '')
+    || TEXTOS[chave]?.['pt-BR'] || ''
   // {nombre} no espanhol = {nome}
   return base.replace(/\{(\w+)\}/g, (_, k: string) => {
     const v = vars[k === 'nombre' ? 'nome' : k]
@@ -633,3 +638,30 @@ export function dinheiro(cents: number, moeda: string, idioma: IdiomaAna): strin
   try { return new Intl.NumberFormat(loc, { style: 'currency', currency: moeda || 'BRL' }).format(cents / 100) }
   catch { return `${(cents / 100).toFixed(2)} ${moeda}` }
 }
+
+// ── Espanha (es-ES): tú (nunca vos), "retoque", "móvil", prazo "en menos de 1 hora" ──
+// Só as chaves que mudam; as outras vêm do 'es' (que já usa tú).
+const ES_ES: Record<string, string> = {
+  tabela_precos: '✨ Sesión Premium Natural ✨\n\nEntrega en menos de 1 hora ⏱️  ·  1 retoque gratis\n\nElige tu paquete 👇\n{tabela}\n\nPago con tarjeta, en euros 💳\n*Responde solo con el NÚMERO del paquete* (ej.: 3) 😉',
+  pago_ok: '¡Pago confirmado! ✅ Tu sesión ya está en la cola de producción. En menos de 1 hora te envío las fotos 📸✨',
+  tudo_certo_producao: '¡Todo listo, {nome}! ✅ Pago, fotos y poses recibidos. Tu sesión ya está en producción y en menos de 1 hora te envío las fotos 📸✨',
+  hotmart_link: '¡Perfecto! 💖 Puedes pagar aquí de forma segura (tarjeta, en euros, IVA incluido): {pagar}\nEn cuanto se confirme el pago, seguimos por aquí 😉',
+  hotmart_link_coleta: '💳 Pago con tarjeta, en euros (IVA incluido), para asegurar tu sesión: {pagar}\nPuedes pagar ahora o después de elegir las poses — yo te sigo ayudando por aquí 😉',
+  hotmart_print: 'No hace falta que me envíes el justificante 😊 ¡La confirmación llega aquí sola en unos minutos!',
+  hotmart_lembrete: 'Cuando quieras, puedes pagar aquí: {pagar} 😉',
+  explico_passo: 'Tranquila, te lo explico 😊',
+  explica_pagamento_pix: 'El Pix es para asegurar tu sesión: en cuanto pagues y tenga las poses y las fotos, entra en producción 📸 Después envíame el justificante aquí.',
+  explica_pagamento_hotmart: 'El enlace de pago es para asegurar tu sesión: pagas con tarjeta y, en cuanto tenga las poses y las fotos, tu sesión entra en producción 📸',
+  pausa_ok: '¡Claro, sin prisa! 💖 Aquí te espero, escríbeme cuando quieras.',
+  rmk_suave: '¡Hola, {nome}! Solo quería saber si habéis podido hablarlo 😊 Cualquier duda, aquí estoy. Sin ninguna prisa 💖',
+  entrega_ajuste: '💖 Tienes *1 retoque gratis* durante 24 h: dime el *número de la foto* y qué quieres cambiar (ej.: "foto 03, pelo más claro").',
+  ajuste_pede_numero: '¡Claro! Dime el *número de la foto* que quieres retocar y qué cambiar 💖',
+  ajuste_pede_o_que: 'Apunto la foto {poses} ✍️ ¿Qué quieres cambiar?',
+  ajuste_registrado: '¡Perfecto! El retoque de la foto {poses} ya está en producción 🔁 ¡Te lo envío en cuanto esté listo!',
+  ajuste_expirado: 'El retoque gratis vale 24 h después de la entrega (o ya se ha usado) 🥺 Aviso al equipo para ver qué podemos hacer.',
+  upsell_poses: '¡Genial! 🎉 Usaré las mismas fotos que ya me enviaste. Mándame los números de *{qtd} poses* del catálogo:\n{link}',
+  rmk_duvida: '¿Te ha quedado alguna duda, {nome}? Te ayudo a elegir 😊',
+  cobranca_1: '¿Sigues por ahí? ¿Te ha quedado alguna duda? 😊',
+}
+for (const [k, v] of Object.entries(ES_ES)) if (TEXTOS[k]) TEXTOS[k]['es-ES'] = v
+

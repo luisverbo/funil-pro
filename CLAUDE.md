@@ -522,6 +522,27 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-10 — Estúdio IA: Espanha (teste)**
+- Migration `20261110000000_estudio_ia_espanha.sql` (PENDENTE no Studio):
+  5 linhas `estudio_precos` pais='ES' EUR com o valor FINAL (IVA 4% somado
+  pela Hotmart): 2/3/5/10/15 = 8,22/10,30/15,50/22,78/31,10 €, link
+  `https://pay.hotmart.com/M108178486V?off=<oferta>`; `hotmart_produto_id`
+  = '8794754,8801266'
+- `IdiomaAna` ganhou 'es-ES' (variação do 'es': `texto()` cai no es quando
+  não há es-ES; tela/sobrescrita es-ES → padrão es-ES → tela es → padrão es).
+  `ES_ES` em textos.ts: tú (nunca voseo), "retoque", "en menos de 1 hora",
+  euro + IVA incluido; teste varre TODAS as chaves contra voseo
+- `tabelaDePrecos`: EUR → "(IVA incluido)"; prompt da IA com instrução
+  es-ES; catálogo/PDF usam o 'es' (`codigoDoIdioma`); áudio es-ES cai no es;
+  detecção de "es" na 1ª mensagem/"en español" não rebaixa es-ES
+- Hotmart: `produtosAceitos` (config com vírgula + 8794754 + 8801266),
+  `valorPagoNaMoeda` (pago com IVA na moeda do pacote vale; senão oferta) na
+  conferência e no `valor_pago_cents`; salvar o cartão Hotmart preserva a lista
+- Prévia: `mensagensDaRetomada(..., { semPrevia: pais==='ES' })` — sem oferta
+  nas retomadas; `pedePrevia` ("vista previa", "muestra", "prévia") = aceite
+  em qualquer país
+- Bateria: **1188/1188**
+
 **2026-11-09 — Ajuste depois da entrega não era registrado**
 - Causas: `AJUSTE` só pegava ajustar/mudar/trocar/refazer/corrigir → "arrumar",
   "melhorar", "retocar", "o cabelo ficou estranho", "no se parece a mí" iam
