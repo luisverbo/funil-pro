@@ -316,7 +316,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
               chave: `${BUCKET_CATALOGO}/${path}`, link: url,
               baixar: async () => { const { data } = await admin.storage.from(BUCKET_CATALOGO).download(path); return data ? { bytes: new Uint8Array(await data.arrayBuffer()), mime: data.type || 'audio/ogg' } : null },
             }))
-            await registrar(admin, c, s, 'audio', `[🎙 ${a.chave.toUpperCase()}]`, { media_mime: 'audio/ogg' })
+            await registrar(admin, c, s, 'audio', `[🎙 ${a.chave.toUpperCase()}]`, { media_mime: 'audio/ogg', media_path: `catalogo:${path}` })
             depoisDeEnviar()
             falou = true
           } else {
