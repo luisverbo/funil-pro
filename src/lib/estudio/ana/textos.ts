@@ -468,6 +468,30 @@ export const TEXTOS: Tabela = {
     es: 'Anoté la(s) pose(s) {poses} ✅ Ahora dime qué paquete quieres 👇',
     en: 'Got pose(s) {poses} ✅ Now tell me which package you want 👇',
   },
+  foto_cedo_ambas: {
+    'pt-BR': 'Recebi suas fotos ✅ Já guardei aqui!',
+    'pt-PT': 'Recebi as tuas fotos ✅ Já guardei aqui!',
+    es: '¡Recibí tus fotos ✅ Ya las guardé!',
+    en: 'Got your photos ✅ Saved them!',
+  },
+  foto_cedo_rosto: {
+    'pt-BR': 'Recebi a foto do rosto ✅ Depois vou precisar também de 1 de corpo inteiro.',
+    'pt-PT': 'Recebi a foto do rosto ✅ Depois vou precisar também de 1 de corpo inteiro.',
+    es: 'Recibí la foto de tu cara ✅ Después también voy a necesitar 1 de cuerpo entero.',
+    en: "Got the face photo ✅ Later I'll also need 1 full-body photo.",
+  },
+  foto_cedo_corpo: {
+    'pt-BR': 'Recebi sua foto ✅ Depois vou precisar também de 1 foto do ROSTO, de frente e bem nítida (tipo selfie).',
+    'pt-PT': 'Recebi a tua foto ✅ Depois vou precisar também de 1 foto do ROSTO, de frente e bem nítida (tipo selfie).',
+    es: 'Recibí tu foto ✅ Después también voy a necesitar 1 foto de tu CARA, de frente y bien nítida (tipo selfie).',
+    en: "Got your photo ✅ Later I'll also need 1 FACE photo, from the front and sharp (like a selfie).",
+  },
+  falta_foto_cliente: {
+    'pt-BR': 'Pra eu fazer as suas fotos, falta {faltam} 📸 Pode me mandar aqui?',
+    'pt-PT': 'Para fazer as tuas fotos, falta {faltam} 📸 Podes enviar-me aqui?',
+    es: 'Para hacer tus fotos, me falta {faltam} 📸 ¿Me la envías por aquí?',
+    en: 'To make your photos, I still need {faltam} 📸 Could you send it here?',
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',

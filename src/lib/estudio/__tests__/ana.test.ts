@@ -52,7 +52,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     // 2 fotos → já pergunta a próxima coisa na MESMA resposta (nunca para calada)
     assert.deepEqual(r.log[5], ['fotos_escolher', 'texto:foto_corpo_ok', 'texto:pede_poses'])
     // preferências: uma pergunta curta por vez
-    assert.deepEqual(r.log[6], ['atualizar_pedido', 'texto:pref_maquiagem'])
+    assert.deepEqual(r.log[6], ['fotos_escolher', 'atualizar_pedido', 'texto:pref_maquiagem'])
     assert.deepEqual(r.log[7], ['atualizar_pedido', 'texto:pref_decote'])
     assert.deepEqual(r.log[8], ['atualizar_pedido', 'texto:pref_cores'])
     assert.deepEqual(r.log[9], ['atualizar_pedido', 'texto:pref_idade'])

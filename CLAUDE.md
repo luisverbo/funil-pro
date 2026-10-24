@@ -522,6 +522,22 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-06 — Estúdio IA: prévia "faltando rosto" (conversa da Margarita)**
+- CAUSA RAIZ: foto mandada ANTES do pedido da prévia existir nunca era
+  copiada para ele (`fotos_escolher` só rodava quando a foto chegava) →
+  `faltaParaFila` = "foto do rosto" → aviso ao Luís. Agora: aceite da prévia
+  com fotos já guardadas roda `fotos_escolher`, e `seguirColeta` sempre roda
+  `fotos_escolher` antes de fechar (prévia e pacote)
+- Falta foto na fila → `pedirFotoQueFalta` (executor): a Ana pede à CLIENTE
+  (`falta_foto_cliente`) e abre `previa_fotos`/`fotos_poses` no mesmo pedido;
+  o aviso ao Luís só sai se não der (humano, sem contato)
+- Foto antes da hora (nome/tema/pacote): `foto_cedo_ambas|rosto|corpo`
+  (diz o que recebeu e que vai precisar do rosto); "Bueno/bien/perfecto/
+  genial/of course" contam como sim
+- IA: `pagamento` da cliente no prompt (Hotmart fora do Brasil) — ela
+  respondia "pagas por Pix" para a Argentina
+- Bateria: **1161/1161**
+
 **2026-11-05 — Estúdio IA: catálogo de novo na escolha + retomada pelo ponto da conversa**
 - Escolheu o pacote → `catalogo_de_novo` (link) antes do Pix
 - `mensagensDaRetomada` (puro): 1ª retomada por etapa (`rmk_tema`,

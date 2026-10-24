@@ -264,7 +264,7 @@ export function nomeDoTexto(texto: string): string | null {
   return palavras.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
 }
 
-const AFIRMATIVO = /^(sim+|s|quero|pode( ser)?|claro|bora|vamos|ok|okay|yes|yeah|sure|si|sí|vale|dale|isso|aceito|por favor)\b/
+const AFIRMATIVO = /^(sim+|s|quero|pode( ser)?|claro|bora|vamos|ok|okay|yes|yeah|yep|sure|of course|si+|sí|vale|dale|bueno|buenisimo|bien|perfecto|genial|me parece|de una|isso|aceito|fechado|beleza|por favor|please)\b/
 export function afirmativo(texto: string): boolean { return AFIRMATIVO.test(sem(texto).trim()) }
 
 const PEDE_HUMANO = /\b(atendente|humano|human|pessoa real|persona real|real person|falar com (alguem|voce|uma pessoa)|hablar con (alguien|una persona)|talk to (someone|a person)|gerente|manager|reembolso|estorno|devolu(cao|ção)|refund|reclama|queja|complain|procon|processo|processar|advogad|abogad|lawyer|denunci|policia|police)\b/
@@ -358,12 +358,19 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     // Já tem as 2 fotos: só falta escolher 1 pose.
     const temFotos = !!ctx.fotos?.tem_rosto && !!ctx.fotos?.tem_corpo
     if (temFotos) { d.tem_rosto = true; d.tem_corpo = true }
-    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: temFotos ? 'previa_pede_pose' : 'previa_pede_fotos' }])
+    // As fotos chegaram ANTES de existir o pedido da prévia: copia para ele já.
+    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, ...(temFotos ? [{ t: 'fotos_escolher' } as Acao] : []), { t: 'texto', chave: temFotos ? 'previa_pede_pose' : 'previa_pede_fotos' }])
   }
 
   // Foto fora da etapa das fotos: o executor já guardou e classificou; aqui
   // só segue a pergunta da etapa atual (não vai pedir de novo depois).
   if (['imagem', 'video', 'documento', 'figurinha'].includes(e.tipo) && ['nome', 'tema', 'idade_sensual', 'pacote'].includes(etapa)) {
+    // Foto antes da hora: guarda (o executor já classificou) e diz o que recebeu, sem perder o passo.
+    if (e.tipo === 'imagem' && (e.fotos?.novas ?? 0) > 0 && !e.fotos?.recusada && !e.fotos?.invalida) {
+      const f = ctx.fotos
+      const chave = f?.tem_rosto && f?.tem_corpo && !f.rosto_recortado ? 'foto_cedo_ambas' : f?.tem_rosto && !f?.tem_corpo ? 'foto_cedo_rosto' : 'foto_cedo_corpo'
+      return fim(etapa, [{ t: 'texto', chave }, ...repetirPergunta(etapa, d)])
+    }
     return fim(etapa, repetirPergunta(etapa, d))
   }
 
@@ -631,6 +638,8 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
   const falta = faltaReal.filter(a => !(jaDisseFoto && a.t === 'texto' && a.chave === 'lembrete_fotos'))
   if (faltaReal.length) return { etapa, dados: d, acoes: [...acoes, ...falta] }
 
+  // Garante rosto.jpg/corpo.jpg no pedido antes de fechar (fotos podem ter vindo antes dele).
+  if (!acoes.some(a => a.t === 'fotos_escolher')) acoes.push({ t: 'fotos_escolher' })
   acoes.push({ t: 'atualizar_pedido' })
   if (previa) {
     d.previa_feita = true
