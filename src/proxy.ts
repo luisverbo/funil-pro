@@ -17,7 +17,7 @@ const PUBLIC_PREFIXES = [
   // Cron dos Conteúdos Instagram: sem sessão, protegido por CRON_SECRET.
   '/api/cron/publicar-instagram',
   // Cobranças da Ana (Estúdio IA): sem sessão, protegida pelo segredo do pg_cron.
-  '/api/cron/estudio-cobrancas', '/api/cron/estudio-producao',
+  '/api/cron/estudio-cobrancas', '/api/cron/estudio-producao', '/api/cron/estudio-supervisor',
   '/api/agents/meetings/remind',
   '/privacidade',
   '/api/track',

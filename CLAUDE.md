@@ -522,6 +522,25 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-08 — Estúdio IA: Supervisor da Ana**
+- Migration `20261108000000_estudio_ia_supervisor.sql` (PENDENTE no Studio):
+  `estudio_contatos.revisado_ate`, `estudio_revisoes` (nota, resumo, parou_em,
+  venda, custo), `estudio_achados` (gravidade, tipo, trecho, problema,
+  deveria, correcao {destino regra|faq|nao_dizer|codigo}, status), pg_cron
+  'estudio-supervisor' no minuto 17 de cada hora → `/api/cron/estudio-supervisor`
+- `src/lib/estudio/supervisor.ts` (puro): `precisaRevisar` (msg nova, parada
+  ≥20 min, ≤3 dias), `transcricao`, `promptSupervisor` (nunca sugerir mentir),
+  `SCHEMA_SUPERVISOR`, `lerAnalise`, `linhaDaBase`, `textoParaClaude`
+- `supervisor-servidor.ts::revisarConversas` (Sonnet 5.5, effort medium,
+  orçamento 4 min, custo em estudio_ia_uso 'supervisor'); revisão nova troca
+  os achados 'novo' da anterior
+- Subaba **Supervisor**: nota média, vendeu/perdeu, problemas por gravidade
+  com trecho + "deveria", **Aplicar** (edita e grava na Base de
+  conhecimento), Ignorar, Revisar agora, "Levar para o Claude Code" (copiar)
+- Ana: fato "de onde somos" (100% on-line, nunca dizer que fica no país da
+  cliente); prévia mandada à mão pela aba Conversas agora sai COM marca d'água
+- Bateria: **1176/1176**
+
 **2026-11-08 — Chat do estúdio: áudios tocam**
 - CAUSA RAIZ do "play e pausa": polling de 3 s gerava link assinado NOVO a
   cada vez → src do <audio> mudava → player reiniciava. Agora `linksMidia`

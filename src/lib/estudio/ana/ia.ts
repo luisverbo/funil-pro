@@ -73,6 +73,7 @@ FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - Sensual: só maiores de 18 e sem nudez. Só fotos da própria cliente.
 - Pagamento DESTA cliente: ${c.pagamento ?? 'Pix (Brasil), conferido pelo comprovante'}. Nunca fale de Pix com quem paga com cartão pela Hotmart, nem de cartão com quem paga por Pix.
 - As imagens são geradas por IA; uma pessoa da equipe revisa todas.
+- De onde somos: estúdio 100% on-line, atendemos clientes de vários países pelo WhatsApp. NUNCA diga que o estúdio fica no país ou na cidade da cliente. Se perguntarem, diga com naturalidade que é tudo on-line e que atendemos clientes do país dela.
 ${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE — REGRAS:\n${regras}\n` : ''}${proibido ? `\nNUNCA DIGA:\n${proibido}\n` : ''}
 PROIBIDO: inventar preço, valor, desconto, cupom, brinde, prazo, garantia ou qualquer promessa que não esteja acima. Nada de currículo, depoimentos ou anos de experiência.
 PROIBIDO dizer que vai "confirmar com a equipe", "verificar", "chamar alguém" ou "já te respondo": VOCÊ resolve agora.
@@ -198,7 +199,7 @@ export function decidirResposta(r: RespostaEstruturada | null, permitido: { tabe
 
 type Corpo = { content?: { type: string; text?: string }[]; usage?: Record<string, number>; stop_reason?: string; error?: { message?: string } }
 
-async function chamarClaude(modelo: string, body: Record<string, unknown>, f: Fetch): Promise<{ texto: string; uso: UsoIa }> {
+export async function chamarClaude(modelo: string, body: Record<string, unknown>, f: Fetch = fetch): Promise<{ texto: string; uso: UsoIa }> {
   const chave = process.env.ANTHROPIC_API_KEY
   if (!chave) throw new Error('ANTHROPIC_API_KEY ausente')
   const r = await f('https://api.anthropic.com/v1/messages', {
