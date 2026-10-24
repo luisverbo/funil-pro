@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { proximoPasso, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { proximoPasso, nomeDoPerfil, nomeDoTexto, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
 import { decidirResposta, bloqueioDaResposta, promptDaAna, type RespostaEstruturada } from '@/lib/estudio/ana/ia'
 import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
 
@@ -40,7 +40,7 @@ const tests: Record<string, () => void | Promise<void>> = {
   'escolheu o pacote → Pix sai NA HORA junto do pedido das fotos': () => {
     const r = proximoPasso('pacote', { tema: 'casual' }, txt('4'), ctx)
     assert.equal(r.etapa, 'fotos_poses'); assert.equal(r.dados.pagamento_enviado, true)
-    assert.deepEqual(chaves(r.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    assert.deepEqual(chaves(r.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'texto:catalogo_de_novo', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
     // sem Pix cadastrado: não promete pagamento
     const sem = proximoPasso('pacote', { tema: 'casual' }, txt('4'), { ...ctx, pix: false })
     assert.ok(!sem.acoes.some(a => a.t === 'pix')); assert.ok(!sem.dados.pagamento_enviado)
@@ -106,8 +106,67 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(ex, /chave = 'pago_ok_coleta'/)
     assert.match(ler('src/lib/estudio/producao-servidor.ts'), /\['fotos_poses', 'idade_prefs'\]\.includes\(String\(ct\.etapa\)\)\) return \{ ok: false, falta \}/)
   },
+  'retomada fala do ponto da conversa: catálogo, pagamento, dúvida e prévia no fim': () => {
+    assert.deepEqual(mensagensDaRetomada('cobranca_1', 'pacote', { tema: 'casual' }), { chaves: ['rmk_pacote'], oferecePrevia: false })
+    assert.deepEqual(mensagensDaRetomada('cobranca_1', 'fotos_poses', { tema: 'casual' }).chaves, ['rmk_coleta'])
+    assert.deepEqual(mensagensDaRetomada('cobranca_1', 'aguardando_pagamento', { tema: 'casual' }).chaves, ['rmk_pagamento'])
+    assert.deepEqual(mensagensDaRetomada('cobranca_1', 'aguardando_pagamento', { tema: 'casual', moeda: 'USD', hotmart_link: 'https://pay' }).chaves, ['rmk_duvida', 'hotmart_lembrete'])
+    assert.deepEqual(mensagensDaRetomada('cobranca_2', 'pacote', { tema: 'casual' }), { chaves: ['cobranca_2'], oferecePrevia: true })
+    assert.deepEqual(mensagensDaRetomada('cobranca_2', 'aguardando_pagamento', { tema: 'casual' }), { chaves: ['rmk_duvida'], oferecePrevia: false })
+    assert.deepEqual(mensagensDaRetomada('cobranca_3', 'aguardando_pagamento', { tema: 'casual' }), { chaves: ['rmk_previa_final'], oferecePrevia: true })
+    assert.deepEqual(mensagensDaRetomada('cobranca_3', 'aguardando_pagamento', { tema: 'casual', previa_feita: true }).chaves, ['cobranca_3'])
+    // quem recebeu o Pix e sumiu: 10 min → 30 min (dúvida) → 3 h (prévia)
+    const h = (min: number) => new Date(Date.parse('2026-11-04T12:00:00Z') - min * 60e3).toISOString()
+    const base = { etapa: 'aguardando_pagamento' as const, modo: 'ana', janela_ate: '2099-01-01T00:00:00Z', ultima_cliente_em: null, tema: 'casual' }
+    const agora = new Date('2026-11-04T12:00:00Z')
+    assert.equal(cobrancaDevida({ ...base, cobrancas: 1, aguardando_desde: h(31) }, agora), 'cobranca_2')
+    assert.equal(cobrancaDevida({ ...base, cobrancas: 2, aguardando_desde: h(181) }, agora), 'cobranca_3')
+  },
+  'prévia aceita DEPOIS do Pix: com as fotos já enviadas pede só 1 pose e volta ao pagamento sem perder as poses': () => {
+    const d = coleta({ poses: POSES.slice(0, 10), previa_oferecida: true })
+    const r = proximoPasso('aguardando_pagamento', d, txt('sim'), { ...ctx, fotos: FOTOS })
+    assert.equal(r.etapa, 'previa_fotos')
+    assert.deepEqual(chaves(r.acoes), ['criar_pedido', 'texto:previa_pede_pose'])
+    const p = proximoPasso('previa_fotos', { ...r.dados, poses: [] }, txt('07'), { ...ctx, fotos: FOTOS })
+    assert.equal(p.etapa, 'aguardando_pagamento')
+    assert.equal(p.dados.poses?.length, 10, 'as 10 poses do pacote voltam')
+    assert.ok(chaves(p.acoes).includes('fechar_pedido') && chaves(p.acoes).includes('texto:previa_na_fila'))
+    const ex = ler('src/lib/estudio/ana/executor.ts')
+    assert.match(ex, /dados\.pedido_antes_previa = pedidoId/)
+    assert.match(ex, /pedidoId = dados\.pedido_antes_previa \?\? null/)
+  },
+  'escolheu o pacote → o catálogo vai de novo (o link ficou lá em cima)': () => {
+    const r = proximoPasso('pacote', { tema: 'casual' }, txt('3'), ctx)
+    assert.ok(chaves(r.acoes).includes('texto:catalogo_de_novo'))
+    assert.match(TEXTOS.catalogo_de_novo['pt-BR'], /\{link\}/)
+  },
+  'conversas reais: "¡Hola! Quiero más información" não é nome; nome do perfil pula a pergunta': () => {
+    assert.equal(nomeDoTexto('¡Hola! Quiero más información'), null)
+    assert.equal(nomeDoTexto('¡Hola! Quiero Más'), null)
+    assert.equal(nomeDoTexto('Olá! Posso ter mais informações sobre isso?'), null)
+    assert.equal(nomeDoTexto('me llamo Guadalupe'), 'Guadalupe')
+    assert.equal(nomeDoPerfil('Dulce Encanto'), 'Dulce')
+    assert.equal(nomeDoPerfil('Andrea Nuňez'), 'Andrea')
+    for (const ruim of ['🍀💫', 'Mi Quitito 🥰', 'Academia Azul', 'andreaadelmavelazquez', 'selmasolange2026@gmail.co', null]) assert.equal(nomeDoPerfil(ruim), null, String(ruim))
+    const r = proximoPasso('inicio', {}, txt('¡Hola! Quiero más información'), { ...ctx, idioma: 'es', nomePerfil: 'Guadalupe' })
+    assert.equal(r.etapa, 'tema'); assert.equal(r.dados.nome, 'Guadalupe')
+    assert.deepEqual(chaves(r.acoes), ['texto:boas_vindas', 'audio:a1', 'menu_imagem', 'texto:menu'])
+    assert.equal(proximoPasso('inicio', {}, txt('hola'), { ...ctx, nomePerfil: '🍀💫' }).etapa, 'nome')
+  },
+  'conversa real: "22" (pose) na etapa do pacote → anota a pose e pede o pacote; depois vale no pedido': () => {
+    const r = proximoPasso('pacote', { tema: 'casual' }, txt('22'), { ...ctx, posesDoTema: () => Array.from({ length: 30 }, (_, i) => String(i + 1).padStart(2, '0')) })
+    assert.deepEqual(chaves(r.acoes), ['texto:poses_antes_pacote', 'texto:tabela_precos'])
+    assert.deepEqual(r.dados.poses_cedo, ['22'])
+    const p = proximoPasso('pacote', r.dados, txt('3'), ctx)
+    assert.equal(p.dados.pacote_qtd, 5); assert.deepEqual(p.dados.poses, ['22'])
+    // "2" continua sendo a opção 2 do pacote
+    assert.equal(proximoPasso('pacote', { tema: 'casual' }, txt('2'), ctx).dados.pacote_qtd, 3)
+  },
+  'respostas de venda sempre no Sonnet 5.5': () => {
+    assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)
+  },
   'textos novos nos 4 idiomas': () => {
-    for (const k of ['pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
+    for (const k of ['poses_antes_pacote', 'catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
       for (const i of IDIOMAS) assert.ok(TEXTOS[k]?.[i]?.trim(), `${k}/${i}`)
   },
 }

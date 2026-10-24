@@ -56,6 +56,11 @@ export interface Dados {
   pagamento_enviado?: boolean
   /** Escolheu mais poses que o pacote: oferta de trocar para o pacote maior (1 = fica, 2 = troca). */
   troca_pacote?: { qtd: number; valor_cents: number; moeda: string; link: string | null; poses: string[] }
+  /** Prévia pedida no meio da venda: o que volta quando ela termina. */
+  poses_antes_previa?: string[]
+  pedido_antes_previa?: string | null
+  /** Poses mandadas antes de escolher o pacote. */
+  poses_cedo?: string[]
 }
 
 export interface Entrada {
@@ -83,6 +88,8 @@ export interface Contexto {
   entrega?: { pode_ajustar: boolean; poses: string[]; upsell_qtd: number; upsell_valor_cents: number; moeda: string }
   /** Fotos que a cliente JÁ mandou (todas, classificadas) — vale em qualquer etapa. */
   fotos?: { tem_rosto: boolean; tem_corpo: boolean; rosto_recortado: boolean; unica: boolean }
+  /** Nome do perfil do WhatsApp (a Ana não pergunta o nome quando dá para usar). */
+  nomePerfil?: string | null
   /** O pedido atual já está pago (pagou antes de mandar tudo). */
   pago?: boolean
   agoraMs?: number
@@ -233,12 +240,25 @@ export function posesDoTexto(texto: string): string[] {
   return [...new Set(nums)]
 }
 
+const NAO_E_NOME = /\b(quero|quiero|queria|quisiera|informac\w*|info|mais|mas|gostaria|gustaria|posso|puedo|saber|preco|precio|price|valor|quanto|cuanto|want|more|information|fotos?|ensaio|sesion|catalogo|ola|hola|oi|hello|hi|obrigad\w*|gracias|thanks|sim|si|yes|nao|no)\b/
+
+/** Nome do perfil do WhatsApp utilizável ("Dulce Encanto" → "Dulce"); null se não parecer nome de pessoa. */
+export function nomeDoPerfil(perfil: string | null | undefined): string | null {
+  const p = (perfil ?? '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, ' ').trim()
+  const primeira = p.split(/\s+/)[0] ?? ''
+  if (!/^[\p{L}'’-]{2,14}$/u.test(primeira)) return null
+  if (/\b(mi|la|el|sr|sra|dona|dra|academia|assessoria|loja|studio|estudio|empresa|null)\b/.test(sem(primeira))) return null
+  return primeira.charAt(0).toUpperCase() + primeira.slice(1).toLowerCase()
+}
+
 /** "meu nome é Maryana Silva" → "Maryana Silva". Vazio se não parecer nome. */
 export function nomeDoTexto(texto: string): string | null {
   let t = texto.trim().replace(/[!.,;:]+$/g, '')
   t = t.replace(/^(?:oi+|ol[aá]|hola|hi|hello|hey|bom dia|boa tarde|boa noite|buenas)[,!\s]+/i, '')
   t = t.replace(/^(?:(?:o\s+)?meu nome [eé]|me chamo|sou (?:a|o)|eu sou|aqui [eé] (?:a|o)?|my name is|i'?m|i am|me llamo|mi nombre es|soy)\s+/i, '')
   if (!t || /\d|@|http/.test(t) || t.length > 40) return null
+  // "¡Hola! Quiero más información" (texto pronto do anúncio) não é nome.
+  if (NAO_E_NOME.test(sem(t))) return null
   const palavras = t.split(/\s+/).filter(Boolean).slice(0, 3)
   if (palavras.length === 0) return null
   return palavras.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
@@ -330,10 +350,15 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   // Aceitou a prévia oferecida na cobrança.
-  if (d.previa_oferecida && !d.previa_feita && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
+  // Vale também para quem já recebeu o Pix e sumiu: a prévia ajuda a fechar.
+  if (d.previa_oferecida && !d.previa_feita && !ctx.pago && !['previa_fotos', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
-    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_pede_fotos' }])
+    d.poses_antes_previa = d.poses ?? []
+    // Já tem as 2 fotos: só falta escolher 1 pose.
+    const temFotos = !!ctx.fotos?.tem_rosto && !!ctx.fotos?.tem_corpo
+    if (temFotos) { d.tem_rosto = true; d.tem_corpo = true }
+    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: temFotos ? 'previa_pede_pose' : 'previa_pede_fotos' }])
   }
 
   // Foto fora da etapa das fotos: o executor já guardou e classificou; aqui
@@ -343,8 +368,16 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   switch (etapa) {
-    case 'inicio':
+    case 'inicio': {
+      // Perguntar o nome logo de cara fazia muita gente de anúncio sumir:
+      // com um nome de perfil usável, vai direto para os temas.
+      const nome = nomeDoPerfil(ctx.nomePerfil)
+      if (nome) {
+        d.nome = nome
+        return fim('tema', [{ t: 'texto', chave: 'boas_vindas' }, { t: 'audio', chave: 'a1' }, { t: 'menu_imagem' }, { t: 'texto', chave: 'menu', vars: { nome } }])
+      }
       return fim('nome', [{ t: 'texto', chave: 'boas_vindas' }, { t: 'audio', chave: 'a1' }, { t: 'texto', chave: 'pede_nome' }])
+    }
 
     case 'nome': {
       const nome = e.tipo === 'texto' ? nomeDoTexto(txt) : null
@@ -386,6 +419,13 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         else if (negativo(txt)) { d.pacote_confirmar = undefined; return fim('pacote', [{ t: 'texto', chave: 'tabela_precos' }]) }
       }
       if (!p) {
+        // Mandou número(s) de POSE em vez do pacote ("22"): anota e pede o pacote.
+        const nPoses = e.tipo === 'texto' && d.tema ? posesDoTexto(txt) : []
+        const validas = d.tema ? new Set(ctx.posesDoTema(d.tema)) : new Set<string>()
+        if (nPoses.length && nPoses.every(n => validas.has(n)) && (nPoses.length > 1 || Number(nPoses[0]) > ctx.precos.length) && !/fotos?|photos?|pacote|paquete|package/.test(sem(txt))) {
+          d.poses_cedo = [...new Set([...(d.poses_cedo ?? []), ...nPoses])]
+          return fim('pacote', [{ t: 'texto', chave: 'poses_antes_pacote', vars: { poses: d.poses_cedo.join(', ') } }, { t: 'texto', chave: 'tabela_precos' }])
+        }
         const esc = e.tipo === 'texto' ? escolhaDePacote(txt, ctx.precos) : null
         const pediu = !esc && e.tipo === 'texto' ? pacoteInexistente(txt, ctx.precos) : null
         if (pediu !== null) {
@@ -402,7 +442,8 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       d.pacote_confirmar = undefined
       d.pacote_qtd = p.pacote_qtd; d.valor_cents = p.valor_cents; d.moeda = p.moeda
       d.pagar_link = p.link_pagamento ?? null; d.hotmart_link = null
-      d.poses = []
+      // Poses que ela já mandou antes de escolher o pacote continuam valendo.
+      d.poses = (d.poses_cedo ?? []).slice(0, p.pacote_qtd); d.poses_cedo = undefined
       // Fotos que ela já mandou antes continuam valendo (não pede de novo).
       d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo
       const jaTemFotos = d.tem_rosto && d.tem_corpo
@@ -413,6 +454,8 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         { t: 'criar_pedido', tipo: 'pacote' },
         ...(jaTemFotos ? [{ t: 'fotos_escolher' } as Acao, { t: 'texto', chave: 'pede_poses', vars: { qtd: p.pacote_qtd } } as Acao]
           : [{ t: 'texto', chave: 'pede_fotos_poses', vars: { qtd: p.pacote_qtd } } as Acao]),
+        // O catálogo ficou lá em cima na conversa: manda o link de novo para escolher as poses.
+        { t: 'texto', chave: 'catalogo_de_novo' },
         ...pagamento,
       ])
     }
@@ -593,6 +636,9 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
     d.previa_feita = true
     const volta = d.etapa_antes_previa ?? 'pacote'
     d.etapa_antes_previa = undefined
+    // Volta a venda como estava (as poses do pacote não se perdem).
+    d.poses = d.poses_antes_previa ?? []
+    d.poses_antes_previa = undefined
     return { etapa: volta, dados: d, acoes: [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }, ...repetirPergunta(volta, d)] }
   }
   // Toda transição já manda a pergunta da etapa nova (preferências, uma por vez).
@@ -765,8 +811,33 @@ export function cobrancaDevida(c: {
   if (c.cobrancas === 1 && min >= 30) {
     // A prévia só faz sentido com tema escolhido e antes de ter pedido fechado.
     const podePrevia = !!c.tema && !c.previa_feita && c.etapa !== 'aguardando_pagamento'
-    return podePrevia ? 'cobranca_2' : (min >= 180 ? 'cobranca_3' : null)
+    // Quem já recebeu o Pix ganha uma 2ª retomada (dúvida); a prévia fica para o fim.
+    return podePrevia ? 'cobranca_2' : c.etapa === 'aguardando_pagamento' ? 'cobranca_2' : (min >= 180 ? 'cobranca_3' : null)
   }
   if (c.cobrancas === 2 && min >= 180) return 'cobranca_3'
   return null
+}
+
+/**
+ * O que a Ana manda em cada retomada, conforme ONDE a conversa parou:
+ * 1ª "e aí, já viu?" da etapa (com o link do catálogo / o valor do Pix);
+ * 2ª prévia grátis (antes do Pix) ou "ficou alguma dúvida?" (depois);
+ * 3ª prévia grátis como última cartada se ainda não fez, senão a vaga reservada.
+ */
+export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, d: Dados): { chaves: string[]; oferecePrevia: boolean } {
+  const pagamento = etapa === 'aguardando_pagamento'
+  const podePrevia = !!d.tema && !d.previa_feita
+  if (chave === 'cobranca_1') {
+    const k = pagamento ? 'rmk_pagamento'
+      : ['fotos_poses', 'idade_prefs', 'previa_fotos'].includes(etapa) ? 'rmk_coleta'
+      : ['pacote', 'idade_sensual'].includes(etapa) ? 'rmk_pacote'
+      : etapa === 'tema' ? 'rmk_tema' : 'cobranca_1'
+    return { chaves: pagamento && pagaPelaHotmart(d) ? ['rmk_duvida', 'hotmart_lembrete'] : [k], oferecePrevia: false }
+  }
+  if (chave === 'cobranca_2') {
+    if (!pagamento && podePrevia) return { chaves: ['cobranca_2'], oferecePrevia: true }
+    return { chaves: pagamento && pagaPelaHotmart(d) ? ['rmk_duvida', 'hotmart_lembrete'] : ['rmk_duvida'], oferecePrevia: false }
+  }
+  if (podePrevia) return { chaves: ['rmk_previa_final'], oferecePrevia: true }
+  return { chaves: ['cobranca_3'], oferecePrevia: false }
 }

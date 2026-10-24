@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
-import { proximoPasso, lembreteDaEtapa, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
+import { proximoPasso, lembreteDaEtapa, mensagensDaRetomada, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
 import { caminhoPdfIdioma, linkDoCatalogo, nomeDoPdf } from '../catalogo-idiomas'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
 import { responderDuvida, classificarFoto, extrairPreferencias, type ItemBase } from './ia'
@@ -254,7 +254,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     const { data: st } = await admin.from('estudio_pedidos').select('status').eq('id', pedidoId).maybeSingle()
     pedidoPago = ['pago', 'aguardando_fotos'].includes(String(st?.status ?? ''))
   }
-  const ctxAna = { idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
+  const ctxAna = { nomePerfil: c.nome ?? null, idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, ctxAna)
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
@@ -353,6 +353,8 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           // SQL do rastreio ainda não rodou: cria o pedido mesmo assim (sem a origem).
           if (primeira.error && /ctwa_clid|ad_id|origem|column|schema cache/i.test(primeira.error.message)) p = (await admin.from('estudio_pedidos').insert(basePedido).select('id').single()).data
           if (p) {
+            // Prévia no meio da venda: guarda o pedido do pacote para voltar a ele depois.
+            if (previa) dados.pedido_antes_previa = pedidoId ?? null
             pedidoId = p.id
             if (previa) dados.poses = []   // as fotos que ela já mandou continuam valendo
             await admin.from('estudio_contatos').update({ pedido_atual_id: p.id }).eq('id', c.id)
@@ -385,9 +387,10 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'previa_na_fila', detalhe: {} })
             const { entrarNaFila } = await import('../producao-servidor')
             await entrarNaFila(admin, pedidoId)
-            // A prévia segue o próprio caminho; a conversa volta para onde estava.
-            pedidoId = null
-            await admin.from('estudio_contatos').update({ pedido_atual_id: null }).eq('id', c.id)
+            // A prévia segue o próprio caminho; a conversa volta para onde estava (e para o pedido do pacote, se havia).
+            pedidoId = dados.pedido_antes_previa ?? null
+            dados.pedido_antes_previa = undefined
+            await admin.from('estudio_contatos').update({ pedido_atual_id: pedidoId }).eq('id', c.id)
           } else {
             await admin.from('estudio_pedidos').update({ status: 'aguardando_pagamento' }).eq('id', pedidoId)
             await admin.from('estudio_eventos').insert({ pedido_id: pedidoId, tipo: 'pedido_registrado', detalhe: { valor_cents: dados.valor_cents, poses: dados.poses } })
@@ -527,19 +530,27 @@ export async function rodadaDeCobrancas(admin: SupabaseClient, agora: Date = new
     const con = conexoes.get(c.tenant_id)
     if (!con) continue
     const { textos } = await sobrescritas(admin, c.tenant_id)
-    const t = renderTexto(chave, idiomaDaAna(c.idioma), { nome: d.nome ?? c.nome ?? '' }, textos)
-    const s = await enviarTextoCloud(con, c.wa_id, t)
-    await admin.from('estudio_mensagens').insert({
-      tenant_id: c.tenant_id, contato_id: c.id, wamid: s.ok ? s.wamid ?? null : null, direcao: 'saida', autor: 'ana',
-      tipo: 'texto', texto: t, status_entrega: s.ok ? 'sent' : 'failed', erro: s.ok ? null : (s.erro ?? '').slice(0, 300),
-    })
-    // Hotmart: a cobrança volta com o link de pagamento.
-    if (c.etapa === 'aguardando_pagamento' && d.hotmart_link && s.ok) {
-      const l = renderTexto('hotmart_lembrete', idiomaDaAna(c.idioma), { pagar: d.hotmart_link }, textos)
-      const s2 = await enviarTextoCloud(con, c.wa_id, l)
-      await admin.from('estudio_mensagens').insert({ tenant_id: c.tenant_id, contato_id: c.id, wamid: s2.ok ? s2.wamid ?? null : null, direcao: 'saida', autor: 'ana', tipo: 'texto', texto: l, status_entrega: s2.ok ? 'sent' : 'failed' })
+    // A retomada fala do ponto onde a conversa parou (catálogo, pagamento, prévia…).
+    const idioma = idiomaDaAna(c.idioma)
+    const plano = mensagensDaRetomada(chave, (c.etapa as Etapa) || 'inicio', d)
+    const v = {
+      nome: d.nome ?? c.nome ?? '', link: linkDoCatalogo(APP_URL(), d.tema, idioma), pagar: d.hotmart_link ?? d.pagar_link ?? '',
+      valor: d.valor_cents !== undefined ? dinheiro(d.valor_cents, d.moeda ?? 'BRL', idioma) : '',
     }
-    if (chave === 'cobranca_2') d.previa_oferecida = true
+    let s: { ok: boolean; wamid?: string | null; erro?: string } = { ok: false }
+    let t = ''
+    for (const k of plano.chaves) {
+      const texto = renderTexto(k, idioma, v, textos)
+      if (!texto.trim()) continue
+      const r = await enviarTextoCloud(con, c.wa_id, texto)
+      await admin.from('estudio_mensagens').insert({
+        tenant_id: c.tenant_id, contato_id: c.id, wamid: r.ok ? r.wamid ?? null : null, direcao: 'saida', autor: 'ana',
+        tipo: 'texto', texto, status_entrega: r.ok ? 'sent' : 'failed', erro: r.ok ? null : (r.erro ?? '').slice(0, 300),
+      })
+      if (!t) { s = r; t = texto }
+      if (!r.ok) break
+    }
+    if (plano.oferecePrevia) d.previa_oferecida = true
     await admin.from('estudio_contatos').update({
       cobrancas: chave === 'cobranca_3' ? 3 : c.cobrancas + 1, dados: d, ultima_ana_em: agora.toISOString(), ultima_msg: t.slice(0, 120),
     }).eq('id', c.id)

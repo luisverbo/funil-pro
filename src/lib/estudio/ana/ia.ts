@@ -7,8 +7,9 @@
 //      está na base?) — o sistema decide o que fazer com ela;
 //   2) confere a foto do rosto (pessoa real, de frente, nítida, adulta);
 //   3) lê o comprovante do Pix (valor, data, recebedor, pagador, E2E).
-// Modelos: Haiku 5.5 no dia a dia; Sonnet 5.5 em objeção, reclamação, caso
-// ambíguo e em toda leitura de imagem/PDF. Cada chamada devolve o uso de
+// Modelos: Sonnet 5.5 em toda resposta livre de venda e em toda leitura de
+// comprovante/foto do rosto; Haiku 5.5 só no mecânico (classificar foto,
+// separar preferências). Cada chamada devolve o uso de
 // tokens e o custo em US$ (gravado em estudio_ia_uso).
 // `fetchFn` injetável: os testes nunca chamam a API de verdade.
 // ============================================================================
@@ -131,9 +132,15 @@ export type RespostaIa =
 const OBJECAO = /\b(caro|cara demais|desconto|cupom|promo|golpe|confi[aá]ve|confian|seguro|garantia|medo|desconfi|nao confio|demor|atras|reclama|horr[ií]vel|p[eé]ssim|nao gostei|feio|estorn|reembols|devolv|procon|advogad|expensive|scam|trust|refund|estafa)/i
 
 /** Haiku no dia a dia; Sonnet em objeção/reclamação ou mensagem longa (ambígua). */
+/**
+ * Resposta livre de venda = Sonnet 5.5 SEMPRE (objeção, dúvida, "não existe",
+ * conduzir até o pagamento: é onde a qualidade decide a venda; ~US$ 0,005 por
+ * resposta). O Haiku 5.5 fica no que é mecânico: classificar foto e separar
+ * preferências. `OBJECAO` segue marcando a intenção no custo de IA.
+ */
 export function modeloParaMensagem(texto: string): string {
-  const t = (texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-  return OBJECAO.test(t) || t.length > 280 ? MODELO_FORTE : MODELO_RAPIDO
+  void OBJECAO.test(texto ?? '')
+  return MODELO_FORTE
 }
 
 const VALOR = /(?:R\$|€|US\$|\$|USD|EUR|BRL)\s*\d+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?\s*(?:reais|euros?|d[oó]lares?|dollars?)/gi

@@ -522,6 +522,28 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-05 — Estúdio IA: catálogo de novo na escolha + retomada pelo ponto da conversa**
+- Escolheu o pacote → `catalogo_de_novo` (link) antes do Pix
+- `mensagensDaRetomada` (puro): 1ª retomada por etapa (`rmk_tema`,
+  `rmk_pacote` + link, `rmk_coleta` + link, `rmk_pagamento` com o valor;
+  Hotmart: dúvida + link); 2ª = prévia (antes do Pix) ou `rmk_duvida`;
+  3ª = `rmk_previa_final` se não fez prévia, senão `cobranca_3`.
+  `aguardando_pagamento` agora tem 3 retomadas (10 min / 30 min / 3 h)
+- Prévia aceita também DEPOIS do Pix: com as 2 fotos pede só 1 pose
+  (`previa_pede_pose`), volta com as poses do pacote (`poses_antes_previa`)
+  e o pedido do pacote (`pedido_antes_previa`)
+- Visualização única: a Cloud API não envia (a prévia já sai com a marca
+  "PRÉVIA · Studio Fotografico")
+- **Análise das 42 conversas reais (CSV do dono)**: ~15 pararam na etapa
+  `nome` — anúncio manda "¡Hola! Quiero más información", a Ana pedia o nome
+  e a cliente sumia; "¡Hola! Quiero Más" virava NOME (`nomeDoTexto`); "22"
+  (pose) na etapa do pacote caía na IA. Agora: `nomeDoPerfil` (nome do
+  WhatsApp utilizável → pula a pergunta e vai direto aos temas), `NAO_E_NOME`,
+  `poses_cedo` (pose antes do pacote é anotada e vale no pedido)
+- Modelo: resposta livre de venda SEMPRE `claude-sonnet-5-5`
+  (`modeloParaMensagem`); Haiku 5.5 só classifica foto e separa preferências
+- Bateria: **1159/1159**
+
 **2026-11-04 — Estúdio IA: a Ana resolve (não trava, não chama o Luís à toa)**
 - Sem acesso ao banco (MCP sem permissão): análise pelo código; causas das
   travas: (1) `confirmar_equipe` em toda pergunta fora da base → "vou

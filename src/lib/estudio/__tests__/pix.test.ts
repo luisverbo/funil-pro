@@ -44,7 +44,7 @@ const tests: Record<string, () => void | Promise<void>> = {
       const r = proximoPasso(etapa, d, e, { ...ctx, fotos: { tem_rosto: n >= 1, tem_corpo: n >= 2, rosto_recortado: false, unica: false } }); etapa = r.etapa; d = r.dados; log.push(chaves(r.acoes))
     }
     // Escolheu o pacote → Pix + A5 já saem, junto do pedido das fotos/poses.
-    assert.deepEqual(log[3], ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    assert.deepEqual(log[3], ['criar_pedido', 'texto:pede_fotos_poses', 'texto:catalogo_de_novo', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
     // No fim: resumo e lembrete do comprovante (sem repetir a chave).
     assert.deepEqual(log[10], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'texto:pede_comprovante'])
     assert.deepEqual(log[11], ['comprovante'])
@@ -112,7 +112,7 @@ const tests: Record<string, () => void | Promise<void>> = {
   },
   'modelo: Haiku 5.5 no dia a dia, Sonnet 5.5 em objeção/reclamação/mensagem longa': () => {
     assert.equal(MODELO_RAPIDO, 'claude-haiku-5-5'); assert.equal(MODELO_FORTE, 'claude-sonnet-5-5')
-    assert.equal(modeloParaMensagem('qual o prazo?'), MODELO_RAPIDO)
+    assert.equal(modeloParaMensagem('qual o prazo?'), MODELO_FORTE, 'resposta de venda sempre no Sonnet 5.5')
     assert.equal(modeloParaMensagem('achei caro'), MODELO_FORTE)
     assert.equal(modeloParaMensagem('isso é golpe?'), MODELO_FORTE)
     assert.equal(modeloParaMensagem('quero reembolso'), MODELO_FORTE)
@@ -148,7 +148,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.equal(lerEstruturada('lixo'), null)
     assert.equal(lerEstruturada(JSON.stringify(est({ intencao: 'compra' })))?.intencao, 'compra')
   },
-  'responderDuvida: Haiku primeiro, caso ambíguo sobe para o Sonnet; JSON schema; base e custo de cada chamada': async () => {
+  'responderDuvida: Sonnet 5.5 direto (uma chamada); JSON schema; base e custo da chamada': async () => {
     const antes = process.env.ANTHROPIC_API_KEY; process.env.ANTHROPIC_API_KEY = 'teste-falso'
     const corpos: Record<string, unknown>[] = []
     const f = (async (url: string, i: RequestInit) => {
@@ -159,13 +159,13 @@ const tests: Record<string, () => void | Promise<void>> = {
     const r = await responderDuvida({ idioma: 'pt-BR', objetivo: 'escolher pacote', tabelaPrecos: PERMITIDO.tabelaPrecos, prazoMin: 60, temas: 'Casual', historico: [{ de: 'ana', texto: 'oi' }],
       base: [{ tipo: 'faq', pergunta: 'Posso usar no LinkedIn?', resposta: 'Pode sim!' }, { tipo: 'nao_dizer', resposta: 'que somos fotógrafos' }] }, 'hmm sei lá', f)
     if (antes === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = antes
-    assert.deepEqual(corpos.map(c => c.model), [MODELO_RAPIDO, MODELO_FORTE])
+    assert.deepEqual(corpos.map(c => c.model), [MODELO_FORTE])
     const oc = corpos[0].output_config as { format: { type: string } }
     assert.equal(oc.format.type, 'json_schema')
     const sys = JSON.stringify(corpos[0].system)
     assert.ok(sys.includes('Posso usar no LinkedIn?') && sys.includes('NUNCA DIGA') && sys.includes('PROIBIDO: inventar preço'))
     assert.deepEqual(r.resposta, { tipo: 'texto', texto: 'É 100% on-line! 💖' })
-    assert.equal(r.usos.length, 2); assert.equal(r.usos[0].custo_usd, 0.0002); assert.equal(r.usos[1].custo_usd, 0.004)
+    assert.equal(r.usos.length, 1); assert.equal(r.usos[0].custo_usd, 0.004)
   },
   'lerComprovante: Sonnet 5.5 com visão; PDF vai como document; sem chave não chama a rede': async () => {
     const antes = process.env.ANTHROPIC_API_KEY
