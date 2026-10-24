@@ -228,11 +228,12 @@ export async function responderDuvida(c: ContextoIa, mensagem: string, f: Fetch 
   }
   const permitido = { tabelaPrecos: c.tabelaPrecos, prazoMin: c.prazoMin, base: c.base }
   const usos: UsoIa[] = []
-  const rodar = async (modelo: string) => {
+  const rodar = async (modelo: string, nota?: string) => {
+    const msgs = nota ? [...alternadas.slice(0, -1), { role: 'user', content: `${alternadas[alternadas.length - 1]?.content ?? ''}\n\n[SISTEMA: sua resposta anterior foi bloqueada (${nota}). Responda de novo SEM isso: use só valores da tabela, sem desconto/promoção/brinde e sem adiar. Se pediram promoção, diga com carinho que não há e mostre o pacote que sai mais em conta por foto.]` }] : alternadas
     const { texto, uso } = await chamarClaude(modelo, {
       max_tokens: 1024,
       system: [{ type: 'text', text: promptDaAna(c), cache_control: { type: 'ephemeral' } }],
-      messages: alternadas,
+      messages: msgs,
       output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_RESPOSTA } },
     }, f)
     usos.push(uso)
@@ -245,7 +246,14 @@ export async function responderDuvida(c: ContextoIa, mensagem: string, f: Fetch 
     if (primeiro === MODELO_RAPIDO && (!est || ['nao_entendi', 'objecao', 'fora_da_base', 'reclamacao'].includes(est.intencao))) {
       est = (await rodar(MODELO_FORTE)) ?? est
     }
-    return { resposta: decidirResposta(est, permitido), estruturada: est, usos }
+    let resposta = decidirResposta(est, permitido)
+    // Bloqueada (valor/promessa/"vou confirmar"): uma 2ª tentativa sabendo o motivo, antes da frase segura.
+    if (resposta.tipo === 'confirmar_equipe') {
+      const est2 = await rodar(MODELO_FORTE, resposta.motivo)
+      const r2 = decidirResposta(est2, permitido)
+      if (r2.tipo === 'texto') { resposta = r2; est = est2 }
+    }
+    return { resposta, estruturada: est, usos }
   } catch (err) {
     console.error('[estudio/ana] IA falhou:', String(err).slice(0, 200))
     return { resposta: { tipo: 'nao_entendi' }, estruturada: null, usos }

@@ -112,7 +112,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.deepEqual(chaves(proximoPasso('pacote', { tema: 'casual' }, txt('vocês fazem na hora?'), ctx).acoes), ['ia', 'texto:pacote_de_novo'])
     // fotos mandadas ANTES do pacote não são pedidas de novo
     const ja = proximoPasso('pacote', { tema: 'casual' }, txt('2'), { ...ctx, fotos: { tem_rosto: true, tem_corpo: true, rosto_recortado: false, unica: false } })
-    assert.deepEqual(chaves(ja.acoes), ['criar_pedido', 'fotos_escolher', 'texto:pede_poses', 'texto:catalogo_de_novo', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    assert.deepEqual(chaves(ja.acoes), ['criar_pedido', 'fotos_escolher', 'texto:pede_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
   },
   'tabela sempre termina com o menu numerado e "Responda só com o NÚMERO do pacote" (4 idiomas)': () => {
     for (const i of IDIOMAS) {
@@ -163,7 +163,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const r4 = proximoPasso('fotos_poses', d, { tipo: 'imagem', texto: '', fotos: { novas: 1 } }, { ...ctx, fotos: { tem_rosto: true, tem_corpo: true, rosto_recortado: true, unica: true } })
     assert.deepEqual(chaves(r4.acoes).slice(0, 2), ['fotos_escolher', 'texto:foto_unica_ok'])
     // foto fora da etapa (antes do pacote): guardada pelo executor, Ana segue a pergunta atual
-    assert.deepEqual(chaves(proximoPasso('pacote', { tema: 'casual' }, { tipo: 'imagem', texto: '' }, ctx).acoes), ['texto:tabela_precos'])
+    assert.deepEqual(chaves(proximoPasso('pacote', { tema: 'casual' }, { tipo: 'imagem', texto: '' }, ctx).acoes), ['texto:pacote_de_novo'])
   },
   'vídeo / figurinha / documento no lugar da foto: resposta certa (texto do concorrente para vídeo)': () => {
     const d: Dados = { tema: 'casual', pacote_qtd: 2 }

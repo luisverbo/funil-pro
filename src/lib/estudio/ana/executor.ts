@@ -412,7 +412,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           const { linkComPedido } = await import('../hotmart')
           dados.hotmart_link = linkComPedido(dados.pagar_link, pedidoId)
           await admin.from('estudio_pedidos').update({ forma_pagamento: 'hotmart', moeda: dados.moeda ?? 'USD' }).eq('id', pedidoId)
-          await enviarTexto(renderTexto('hotmart_link', idioma, vars(), sob.textos), 'hotmart_link')
+          await enviarTexto(renderTexto(a.chave ?? 'hotmart_link', idioma, vars(), sob.textos), a.chave ?? 'hotmart_link')
           break
         }
         case 'comprovante': {
