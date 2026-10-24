@@ -58,9 +58,24 @@ export function tempoDaJanela(janelaAte: string | null | undefined, agora: Date 
 
 // ── Ticks de entrega ────────────────────────────────────────────────────────
 
+const ORDEM_STATUS = ['sent', 'delivered', 'read', 'played'] as const
+
+/**
+ * Status anteriores que este status pode substituir (nunca volta para trás:
+ * "entregue" que chega depois do "visto" não apaga o azul). Falha só vale
+ * enquanto a mensagem não foi entregue.
+ */
+export function statusQuePodeSubstituir(novo: string): string[] {
+  if (novo === 'failed') return ['sent']
+  const i = ORDEM_STATUS.indexOf(novo as (typeof ORDEM_STATUS)[number])
+  return i < 0 ? [] : ['failed', ...ORDEM_STATUS.slice(0, i)]
+}
+
 export function tick(status: string | null | undefined): { simbolo: string; azul: boolean; falhou: boolean } {
   switch (status) {
     case 'read': return { simbolo: '✓✓', azul: true, falhou: false }
+    // Áudio de voz ouvido: a Meta manda 'played' (depois de 'read').
+    case 'played': return { simbolo: '✓✓', azul: true, falhou: false }
     case 'delivered': return { simbolo: '✓✓', azul: false, falhou: false }
     case 'failed': return { simbolo: '!', azul: false, falhou: true }
     case 'sent': return { simbolo: '✓', azul: false, falhou: false }

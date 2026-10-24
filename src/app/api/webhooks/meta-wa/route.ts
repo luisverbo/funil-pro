@@ -25,6 +25,7 @@ import { foneChave, foneBate } from '@/lib/webhooks/contato-match'
 import { escolherAtendente, modoDistribuicaoValido } from '@/lib/whatsapp-cloud/distribuicao'
 import { configDoNumero, processarEntradaEstudio, type ConfigEstudio } from '@/lib/estudio/entrada'
 import { assinaturaConfere, tokenConfere } from '@/lib/estudio/assinatura'
+import { statusQuePodeSubstituir } from '@/lib/estudio/chat'
 
 // Estúdio IA: responde 200 para a Meta NA HORA e a Ana trabalha em segundo
 // plano (after) — "digitando…", espera das fotos juntas (8 s) e o atraso
@@ -104,9 +105,14 @@ export async function POST(request: NextRequest) {
   // ── Status de entrega (✓✓ de verdade) ────────────────────────────────────
   for (const st of statuses) {
     const tabela = (await doEstudio(st.phoneNumberId)) ? 'estudio_mensagens' : 'wa_messages'
+    const novo = st.erro ? 'failed' : st.status
+    // Só avança (sent → delivered → read → played): status atrasado não apaga o azul.
+    const antes = statusQuePodeSubstituir(novo)
+    if (!antes.length) continue
     await admin.from(tabela)
-      .update({ status_entrega: st.erro ? 'failed' : st.status })
+      .update({ status_entrega: novo })
       .eq('wamid', st.wamid)
+      .or(`status_entrega.is.null,status_entrega.in.(${antes.join(',')})`)
   }
 
   // ── Mensagens recebidas ───────────────────────────────────────────────────

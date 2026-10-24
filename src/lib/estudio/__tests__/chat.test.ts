@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  paisDoWaId, bandeira, devolveParaAna, tempoDaJanela, tick, tipoCloudDoMime, tipoDoHistorico,
+  paisDoWaId, bandeira, devolveParaAna, tempoDaJanela, tick, statusQuePodeSubstituir, tipoCloudDoMime, tipoDoHistorico,
   extensaoDoMime, caminhoMidiaDaConversa, previaDaMensagem, LIMITE_ENVIO,
 } from '@/lib/estudio/chat'
 import { baixarMidiaDaMeta } from '@/lib/estudio/midia'
@@ -45,6 +45,11 @@ const tests: Record<string, () => void | Promise<void>> = {
   'ticks: ✓ enviado, ✓✓ entregue, ✓✓ azul lido, ! falhou': () => {
     assert.equal(tick('sent').simbolo, '✓'); assert.equal(tick('delivered').simbolo, '✓✓')
     assert.ok(tick('read').azul); assert.ok(!tick('delivered').azul); assert.ok(tick('failed').falhou)
+    // áudio ouvido ('played') também é azul; status nunca volta para trás
+    assert.ok(tick('played').azul); assert.equal(tick(null).simbolo, '🕓')
+    assert.deepEqual(statusQuePodeSubstituir('read'), ['failed', 'sent', 'delivered'])
+    assert.ok(!statusQuePodeSubstituir('delivered').includes('read'), '"entregue" atrasado não apaga o azul')
+    assert.deepEqual(statusQuePodeSubstituir('failed'), ['sent'])
   },
   'mídia: tipo da Cloud API, extensão, limites e caminho no bucket privado': () => {
     assert.equal(tipoCloudDoMime('image/jpeg'), 'image'); assert.equal(tipoCloudDoMime('image/webp'), 'document')

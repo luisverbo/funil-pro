@@ -522,6 +522,15 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-07 — Risquinhos do WhatsApp (✓ / ✓✓ cinza / ✓✓ azul)**
+- Áudio de voz ficava 🕓 para sempre: a Meta manda 'played' quando ouvem →
+  `tick('played')` = ✓✓ azul
+- Status nunca volta para trás (`statusQuePodeSubstituir`: sent → delivered
+  → read → played; 'delivered' atrasado não apaga o azul; falha só antes de
+  entregar) no webhook meta-wa (estúdio e inbox)
+- Inbox `/whatsapp` mostrava ✓✓ em tudo: agora usa `tick()` (✓ enviado,
+  ✓✓ cinza entregue, ✓✓ azul visto, ⚠ não entregue) com legenda no hover
+
 **2026-11-07 — Estúdio IA: conversa do "Ok" (menos robô)**
 - "Ok" virava NOME → `NAO_E_NOME` com ok/vale/dale/bueno/listo/buenos días…
 - "dos"/"tres" no meio de frase longa pedia "Só pra confirmar…" → número por
