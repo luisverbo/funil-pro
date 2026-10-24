@@ -473,6 +473,9 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             temas: temasAtivos.map(t => nomeDoTema(t, idioma)).join(', '),
             historico: [...(hist ?? [])].reverse().slice(0, -1).map(h => ({ de: h.direcao === 'entrada' ? 'cliente' as const : 'ana' as const, texto: h.texto ?? '' })),
             base,
+            pagamento: (c.pais && c.pais !== 'BR') || (precos[0]?.moeda ?? 'BRL') !== 'BRL'
+              ? `cartão de crédito/débito pelo link seguro da Hotmart, em ${precos[0]?.moeda ?? 'USD'} (a Hotmart converte para a moeda dela); a confirmação chega sozinha`
+              : 'Pix (Brasil) para a chave do estúdio, conferido pelo comprovante',
           }, msg.texto)
           for (const u of out.usos) await usou('resposta', u, out.estruturada?.intencao)
           const resp = out.resposta
@@ -626,3 +629,38 @@ export async function aplicarEscolhaDeFotos(admin: SupabaseClient, pedidoId: str
     await admin.from('estudio_pedidos').update({ ...(upd.foto_rosto_path ? { foto_rosto_path: upd.foto_rosto_path } : {}), ...(upd.foto_corpo_path ? { foto_corpo_path: upd.foto_corpo_path } : {}) }).eq('id', pedidoId)
   }
 }
+
+/**
+ * A produção viu que falta foto: em vez de avisar o Luís, a Ana pede para a
+ * CLIENTE e abre a etapa certa — a foto que chegar completa o mesmo pedido
+ * (prévia: `previa_fotos`; pacote: `fotos_poses`). Devolve false se não deu
+ * (conversa com humano, sem número, etc.), e aí o aviso ao Luís continua.
+ */
+export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string, falta: string[]): Promise<boolean> {
+  const fotos = falta.filter(f => /foto/.test(f))
+  if (!fotos.length || fotos.length !== falta.filter(f => f !== 'idade').length) return false
+  const { data: p } = await admin.from('estudio_pedidos').select('tenant_id, contato_id, tipo, poses').eq('id', pedidoId).maybeSingle()
+  if (!p?.contato_id) return false
+  const { data: c } = await admin.from('estudio_contatos').select('modo, etapa, dados, idioma, pedido_atual_id').eq('id', p.contato_id).maybeSingle()
+  if (!c || c.modo === 'humano') return false
+  const idioma = idiomaDaAna(c.idioma)
+  const F: Record<IdiomaAna, { rosto: string; corpo: string }> = {
+    'pt-BR': { rosto: '1 foto do seu ROSTO, de frente e nítida (tipo selfie)', corpo: '1 foto de corpo inteiro' },
+    'pt-PT': { rosto: '1 foto do teu ROSTO, de frente e nítida (tipo selfie)', corpo: '1 foto de corpo inteiro' },
+    es: { rosto: '1 foto de tu CARA, de frente y nítida (tipo selfie)', corpo: '1 foto de cuerpo entero' },
+    en: { rosto: '1 FACE photo, from the front and sharp (like a selfie)', corpo: '1 full-body photo' },
+  }
+  const faltam = fotos.map(f => (/rosto/.test(f) ? F[idioma].rosto : F[idioma].corpo)).join(' + ')
+  const d = (c.dados ?? {}) as Dados
+  const previa = p.tipo === 'previa'
+  const etapaAtual = (c.etapa as Etapa) || 'pacote'
+  if (previa && etapaAtual !== 'previa_fotos') {
+    d.etapa_antes_previa = etapaAtual; d.poses_antes_previa = d.poses ?? []; d.pedido_antes_previa = c.pedido_atual_id ?? null
+    d.poses = (p.poses ?? []) as string[]; d.previa_feita = false
+  }
+  d.tem_rosto = !fotos.some(f => /rosto/.test(f)); d.tem_corpo = !fotos.some(f => /corpo/.test(f))
+  await admin.from('estudio_contatos').update({ dados: d, pedido_atual_id: pedidoId, ...(previa ? { etapa: 'previa_fotos' } : { etapa: 'fotos_poses' }) }).eq('id', p.contato_id)
+  const r = await falarComCliente(admin, p.tenant_id, p.contato_id, 'falta_foto_cliente', undefined, { faltam })
+  return r.ok
+}
+

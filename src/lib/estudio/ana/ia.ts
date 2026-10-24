@@ -52,6 +52,8 @@ export interface ContextoIa {
   temas: string               // "Aniversário, Corporativo, Casual, Sensual"
   historico: { de: 'cliente' | 'ana'; texto: string }[]
   base?: ItemBase[]
+  /** Como ESTA cliente paga (Pix no Brasil / cartão pela Hotmart, na moeda dela). */
+  pagamento?: string
 }
 
 export function promptDaAna(c: ContextoIa): string {
@@ -69,7 +71,7 @@ FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - Prazo: até ${c.prazoMin} minutos após o pagamento e as fotos, no horário de produção.
 - 1 ajuste grátis por pacote, em até 24 h após a entrega.
 - Sensual: só maiores de 18 e sem nudez. Só fotos da própria cliente.
-- Pagamento no Brasil: Pix, conferido pelo comprovante.
+- Pagamento DESTA cliente: ${c.pagamento ?? 'Pix (Brasil), conferido pelo comprovante'}. Nunca fale de Pix com quem paga com cartão pela Hotmart, nem de cartão com quem paga por Pix.
 - As imagens são geradas por IA; uma pessoa da equipe revisa todas.
 ${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE — REGRAS:\n${regras}\n` : ''}${proibido ? `\nNUNCA DIGA:\n${proibido}\n` : ''}
 PROIBIDO: inventar preço, valor, desconto, cupom, brinde, prazo, garantia ou qualquer promessa que não esteja acima. Nada de currículo, depoimentos ou anos de experiência.

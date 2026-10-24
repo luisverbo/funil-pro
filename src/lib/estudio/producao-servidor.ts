@@ -79,6 +79,11 @@ export async function entrarNaFila(admin: SupabaseClient, pedidoId: string): Pro
       const { data: ct } = await admin.from('estudio_contatos').select('etapa, modo').eq('id', contatoId).maybeSingle()
       if (ct && ct.modo !== 'humano' && ['fotos_poses', 'idade_prefs'].includes(String(ct.etapa))) return { ok: false, falta }
     }
+    // Falta FOTO: a Ana pede para a cliente (não para o Luís) e a foto que chegar completa este pedido.
+    try {
+      const { pedirFotoQueFalta } = await import('./ana/executor')
+      if (await pedirFotoQueFalta(admin, pedidoId, falta)) return { ok: false, falta }
+    } catch (err) { console.warn('[estudio/producao] pedir foto à cliente:', String(err).slice(0, 200)) }
     await avisar(admin, cfg, ped.tenant_id, `⚠️ Pedido ${pedidoId} pago, mas falta: ${falta.join(', ')}. Confira a conversa: ${APP_URL()}/estudio-ia?aba=pedidos&p=${pedidoId}`)
     return { ok: false, falta }
   }
