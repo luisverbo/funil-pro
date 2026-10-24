@@ -55,7 +55,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(texto('hotmart_link', 'es-ES', { pagar: 'x' }), /Puedes pagar aquí .*IVA incluido/)
   },
   'prazo: "en menos de 1 hora" (nunca 30 min) e tabela em euro com IVA incluido': () => {
-    assert.match(texto('tabela_precos', 'es-ES', { tabela: 'T' }), /en menos de 1 hora.*1 retoque gratis/s)
+    assert.match(texto('tabela_precos', 'es-ES', { tabela: 'T' }), /en menos de 1 hora[\s\S]*1 retoque gratis/)
     assert.match(texto('pago_ok', 'es-ES'), /en menos de 1 hora/i)
     assert.equal(dinheiro(822, 'EUR', 'es-ES').replace(/ /g, ' '), '8,22 €')
     const tab = tabelaDePrecos(PRECOS_ES, 'es-ES').replace(/ /g, ' ')
