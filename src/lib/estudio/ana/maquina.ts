@@ -112,7 +112,7 @@ export type Acao =
   | { t: 'criar_pedido'; tipo: 'pacote' | 'previa' }
   | { t: 'fotos_escolher' }
   | { t: 'reagir'; emoji: string }
-  | { t: 'atualizar_pedido' }
+  | { t: 'atualizar_pedido'; poses?: string[] }
   | { t: 'fechar_pedido'; tipo: 'pacote' | 'previa' }
   | { t: 'ia'; objetivo: string }
   | { t: 'humano'; motivo: string }
@@ -688,7 +688,9 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
 
   // Garante rosto.jpg/corpo.jpg no pedido antes de fechar (fotos podem ter vindo antes dele).
   if (!acoes.some(a => a.t === 'fotos_escolher')) acoes.push({ t: 'fotos_escolher' })
-  acoes.push({ t: 'atualizar_pedido' })
+  // As poses vão FIXAS na ação: na prévia, `d.poses` volta a ser a do pacote logo abaixo
+  // (antes da ação rodar) — sem isso a prévia ia para a fila sem a pose escolhida.
+  acoes.push({ t: 'atualizar_pedido', poses: [...(d.poses ?? [])] })
   if (previa) {
     d.previa_feita = true
     const volta = d.etapa_antes_previa ?? 'pacote'

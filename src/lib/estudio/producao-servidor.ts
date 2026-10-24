@@ -84,7 +84,9 @@ export async function entrarNaFila(admin: SupabaseClient, pedidoId: string): Pro
       const { pedirFotoQueFalta } = await import('./ana/executor')
       if (await pedirFotoQueFalta(admin, pedidoId, falta)) return { ok: false, falta }
     } catch (err) { console.warn('[estudio/producao] pedir foto à cliente:', String(err).slice(0, 200)) }
-    await avisar(admin, cfg, ped.tenant_id, `⚠️ Pedido ${pedidoId} pago, mas falta: ${falta.join(', ')}. Confira a conversa: ${APP_URL()}/estudio-ia?aba=pedidos&p=${pedidoId}`)
+    // Prévia é grátis: o aviso diz "PRÉVIA", nunca "pago".
+    const oQue = ped.tipo === 'previa' ? `✨ PRÉVIA grátis de ${ped.cliente_nome ?? 'cliente'} (não é pedido pago)` : `💰 Pedido PAGO de ${ped.cliente_nome ?? 'cliente'}`
+    await avisar(admin, cfg, ped.tenant_id, `⚠️ ${oQue} — falta: ${falta.join(', ')}.\n🆔 ${pedidoId}\nConfira a conversa: ${APP_URL()}/estudio-ia?aba=pedidos&p=${pedidoId}`)
     return { ok: false, falta }
   }
   const agora = new Date().toISOString()

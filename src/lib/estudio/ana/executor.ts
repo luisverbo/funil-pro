@@ -384,13 +384,13 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           break
         case 'atualizar_pedido':
           if (pedidoId) await admin.from('estudio_pedidos').update({
-            poses: dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null,
+            poses: a.poses ?? dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null,
             preferencias: dados.preferencias ?? null, cliente_nome: dados.nome ?? c.nome, tema_slug: dados.tema ?? null,
             maquiagem: dados.maquiagem ?? null, decote: dados.decote ?? null, cores_acessorios: dados.cores ?? null,
           }).eq('id', pedidoId).then(async res => {
             // SQL da rodada humanizada pendente: grava ao menos o que já existia.
             if (res.error && /maquiagem|decote|cores_acessorios|column/i.test(res.error.message)) await admin.from('estudio_pedidos').update({
-              poses: dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null, preferencias: dados.preferencias ?? null,
+              poses: a.poses ?? dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null, preferencias: dados.preferencias ?? null,
             }).eq('id', pedidoId!)
           })
           break
@@ -661,9 +661,21 @@ export async function aplicarEscolhaDeFotos(admin: SupabaseClient, pedidoId: str
  */
 export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string, falta: string[]): Promise<boolean> {
   const fotos = falta.filter(f => /foto/.test(f))
-  if (!fotos.length || fotos.length !== falta.filter(f => f !== 'idade').length) return false
-  const { data: p } = await admin.from('estudio_pedidos').select('tenant_id, contato_id, tipo, poses').eq('id', pedidoId).maybeSingle()
+  const { data: p } = await admin.from('estudio_pedidos').select('tenant_id, contato_id, tipo, poses, tema_slug').eq('id', pedidoId).maybeSingle()
   if (!p?.contato_id) return false
+  // Prévia sem a pose: a Ana pede a pose para a cliente (e não avisa o Luís).
+  if (p.tipo === 'previa' && !fotos.length && falta.includes('poses')) {
+    const { data: c0 } = await admin.from('estudio_contatos').select('modo, etapa, dados, idioma, pedido_atual_id').eq('id', p.contato_id).maybeSingle()
+    if (!c0 || c0.modo === 'humano') return false
+    const d0 = (c0.dados ?? {}) as Dados
+    if (c0.etapa !== 'previa_fotos') { d0.etapa_antes_previa = (c0.etapa as Etapa) || 'pacote'; d0.poses_antes_previa = d0.poses ?? []; d0.pedido_antes_previa = c0.pedido_atual_id ?? null }
+    d0.poses = []; d0.tem_rosto = true; d0.tem_corpo = true; d0.previa_feita = false; d0.aguardando_previa = false
+    await admin.from('estudio_contatos').update({ dados: d0, pedido_atual_id: pedidoId, etapa: 'previa_fotos' }).eq('id', p.contato_id)
+    const idioma0 = idiomaDaAna(c0.idioma)
+    const r0 = await falarComCliente(admin, p.tenant_id, p.contato_id, 'previa_pede_pose', undefined, { link: linkDoCatalogo(APP_URL(), p.tema_slug, idioma0) })
+    return r0.ok
+  }
+  if (!fotos.length || fotos.length !== falta.filter(f => f !== 'idade').length) return false
   const { data: c } = await admin.from('estudio_contatos').select('modo, etapa, dados, idioma, pedido_atual_id').eq('id', p.contato_id).maybeSingle()
   if (!c || c.modo === 'humano') return false
   const idioma = idiomaDaAna(c.idioma)
