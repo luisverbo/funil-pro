@@ -105,14 +105,14 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.equal(c.etapa, 'pacote'); assert.deepEqual(chaves(c.acoes), ['texto:pacote_confirmar']); assert.equal(c.dados.pacote_confirmar, 5)
     assert.match(TEXTOS.pacote_confirmar['pt-BR'], /Só pra confirmar: é o pacote de \{qtd\} fotos por \{valor\}\?/)
     const sim = proximoPasso('pacote', c.dados, txt('sim'), ctx)
-    assert.equal(sim.etapa, 'fotos_poses'); assert.equal(sim.dados.pacote_qtd, 5); assert.deepEqual(chaves(sim.acoes), ['criar_pedido', 'texto:pede_fotos_poses'])
+    assert.equal(sim.etapa, 'fotos_poses'); assert.equal(sim.dados.pacote_qtd, 5); assert.deepEqual(chaves(sim.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
     const nao = proximoPasso('pacote', c.dados, txt('não'), ctx)
     assert.equal(nao.etapa, 'pacote'); assert.deepEqual(chaves(nao.acoes), ['texto:tabela_precos'])
     // dúvida no meio: a IA responde e repete "me manda só o número do pacote"
     assert.deepEqual(chaves(proximoPasso('pacote', { tema: 'casual' }, txt('vocês fazem na hora?'), ctx).acoes), ['ia', 'texto:pacote_de_novo'])
     // fotos mandadas ANTES do pacote não são pedidas de novo
     const ja = proximoPasso('pacote', { tema: 'casual' }, txt('2'), { ...ctx, fotos: { tem_rosto: true, tem_corpo: true, rosto_recortado: false, unica: false } })
-    assert.deepEqual(chaves(ja.acoes), ['criar_pedido', 'fotos_escolher', 'texto:pede_poses'])
+    assert.deepEqual(chaves(ja.acoes), ['criar_pedido', 'fotos_escolher', 'texto:pede_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
   },
   'tabela sempre termina com o menu numerado e "Responda só com o NÚMERO do pacote" (4 idiomas)': () => {
     for (const i of IDIOMAS) {

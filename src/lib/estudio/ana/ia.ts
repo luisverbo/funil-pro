@@ -72,14 +72,23 @@ FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - As imagens são geradas por IA; uma pessoa da equipe revisa todas.
 ${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE — REGRAS:\n${regras}\n` : ''}${proibido ? `\nNUNCA DIGA:\n${proibido}\n` : ''}
 PROIBIDO: inventar preço, valor, desconto, cupom, brinde, prazo, garantia ou qualquer promessa que não esteja acima. Nada de currículo, depoimentos ou anos de experiência.
+PROIBIDO dizer que vai "confirmar com a equipe", "verificar", "chamar alguém" ou "já te respondo": VOCÊ resolve agora.
+
+COMO RESOLVER (você é vendedora, conduz até a compra):
+- Pediu algo que não existe (tema, pacote, quantidade de fotos/poses, formato, prazo menor): diga com carinho que não temos e ofereça a opção mais próxima que EXISTE.
+- Quer comprar / "como pago": diga que é só escolher o pacote (ou que o pagamento já foi enviado logo acima) — o sistema manda o Pix ou o link.
+- Objeção de preço ("caro"): mostre o valor por foto do pacote maior, que é ensaio de estúdio sem sair de casa, 1 ajuste grátis e que a equipe revisa todas. Sem desconto.
+- Desconfiança ("é golpe?", "é confiável?"): ensaio 100% on-line, ajuste grátis, revisão humana de todas as fotos, pagamento conferido pelo comprovante.
+- Demora / prazo: até ${c.prazoMin} minutos depois do pagamento e das fotos.
+- Assunto fora do ensaio ou que você não sabe: responda curto o que sabe dos FATOS e volte para o passo da venda.
 
 AGORA a etapa precisa de: ${c.objetivo}.
 Responda SÓ a dúvida, curto. NÃO termine repetindo o que falta: o sistema já manda o lembrete da etapa logo depois.
 
 Campos:
 - intencao: duvida | objecao (caro, desconfiança, "é golpe?") | reclamacao | reembolso | quer_humano | compra | fora_da_base | nao_entendi | outro
-- na_base: false se a resposta exigiria um fato que NÃO está nos FATOS nem na BASE (nesse caso intencao = fora_da_base)
-- precisa_humano: true para reclamação, reembolso, ameaça, pedido de falar com pessoa, ou algo fora das regras
+- na_base: false se a pergunta pede um fato que NÃO está nos FATOS nem na BASE (mesmo assim escreva a melhor resposta honesta, sem inventar)
+- precisa_humano: true SÓ para reclamação de pedido, reembolso, ameaça ou pedido explícito de falar com uma pessoa
 - dados: o que a cliente informou nesta mensagem (null quando não disse)`
 }
 
@@ -136,7 +145,10 @@ const TEMPO = /(\d+)\s*(min(?:utos?)?|minutes?|h(?:oras?)?|hours?|dias?|days?)\b
  * promessa (desconto/brinde/garantia) que não esteja na base, nem prazo
  * diferente do prometido. Devolve o motivo do bloqueio ou null.
  */
+const ADIA = /\b(confirm\w* com a equip|verific\w* com a equip|vou (ver|verificar|checar|confirmar)|ja te (respondo|retorno)|check with (the )?team|get back to you|confirm\w* con el equipo|te (respondo|aviso) enseguida|lo confirmo)/i
+
 export function bloqueioDaResposta(texto: string, permitido: { tabelaPrecos: string; prazoMin: number; base?: ItemBase[] }): string | null {
+  if (ADIA.test(texto.normalize('NFD').replace(/[̀-ͯ]/g, ''))) return 'resposta que adia ("vou confirmar")'
   const baseTxt = [permitido.tabelaPrecos, ...(permitido.base ?? []).map(b => `${b.pergunta ?? ''} ${b.resposta}`)].join(' ')
   const norm = (v: string) => v.replace(/[^\d.,]/g, '').replace(',', '.').replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1')
   const valoresOk = new Set((baseTxt.match(VALOR) ?? []).map(norm))
@@ -167,8 +179,9 @@ export function lerEstruturada(bruto: string): RespostaEstruturada | null {
 /** Decisão do sistema sobre a resposta estruturada (pura). */
 export function decidirResposta(r: RespostaEstruturada | null, permitido: { tabelaPrecos: string; prazoMin: number; base?: ItemBase[] }): RespostaIa {
   if (!r || r.intencao === 'nao_entendi' || !r.resposta.trim()) return { tipo: 'nao_entendi' }
-  if (r.precisa_humano || ['reclamacao', 'reembolso', 'quer_humano'].includes(r.intencao)) return { tipo: 'humano' }
-  if (!r.na_base || r.intencao === 'fora_da_base') return { tipo: 'confirmar_equipe', motivo: 'pergunta fora da base de conhecimento' }
+  // Só passa para o Luís o que é dele: reclamação, reembolso ou pedido de pessoa.
+  if (['reclamacao', 'reembolso', 'quer_humano'].includes(r.intencao)) return { tipo: 'humano' }
+  // Fora da base NÃO trava: a resposta honesta sai, desde que passe pela trava de valores/promessas.
   const bloqueio = bloqueioDaResposta(r.resposta, permitido)
   if (bloqueio) return { tipo: 'confirmar_equipe', motivo: `a IA tentou responder com ${bloqueio}` }
   return { tipo: 'texto', texto: r.resposta.trim().slice(0, 900) }
