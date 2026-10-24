@@ -120,6 +120,9 @@ export interface MensagemDaCliente {
   cronometro?: Cronometro
 }
 
+/** Lembretes da etapa: nunca saem duas vezes seguidas iguais. */
+const LEMBRETES = new Set(['pacote_de_novo', 'lembrete_nome', 'lembrete_tema', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete', 'pede_nome', 'tabela_precos'])
+
 /** Textos de informação: não repetir em menos de 30 min. */
 const INFO_SEM_REPETIR = new Set(['pedido_pago_duvida', 'pago_ok', 'conferindo', 'previa_na_fila', 'aguardando_pagamento', 'entrega_ajuste'])
 
@@ -272,6 +275,11 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   const enviarTexto = async (t: string, chave?: string) => {
     if (!t.trim()) return
     if (await repetido(t, chave)) return
+    // Lembrete igual à ÚLTIMA mensagem da Ana: não manda de novo (sem eco robótico).
+    if (chave && LEMBRETES.has(chave)) {
+      const { data: ult } = await admin.from('estudio_mensagens').select('texto').eq('contato_id', c.id).eq('direcao', 'saida').order('criado_em', { ascending: false }).limit(1)
+      if (ult?.[0]?.texto === t) return
+    }
     await pausar(atrasoDeTexto(t, atrasoMax))
     const s = await crono.medir('envio', () => enviarTextoCloud(con, c.wa_id, t))
     await registrar(admin, c, s, 'texto', t)
@@ -505,6 +513,11 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
 
   const agora = new Date().toISOString()
   if (falou) dados.aguardando_desde = agora
+  // "Depois te falo": a 1ª retomada só depois do tempo pedido (não 10 min).
+  if (dados.adiar_retomada_min) {
+    dados.aguardando_desde = new Date(Date.now() + (dados.adiar_retomada_min - 10) * 60e3).toISOString()
+    dados.adiar_retomada_min = undefined
+  }
   await admin.from('estudio_contatos').update({
     etapa, dados, nao_entendeu: entendeu ? 0 : naoEntendeu, cobrancas: 0,
     ...(falou ? { ultima_ana_em: agora } : {}),

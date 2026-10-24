@@ -522,6 +522,16 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-08 — Estúdio IA: fim do "ok" infinito**
+- `semPerguntaPendente` vale também em nome/tema/pacote/fotos: "ok"/👍/
+  figurinha → no máximo ❤️ (1/10 min), nunca repete a pergunta; com sim/não
+  pendente (pacote a confirmar, prévia oferecida, pacote maior, preferências)
+  "ok" = SIM; "ok, 3" escolhe o pacote
+- `pausaPedida` ("depois te falo", "vou pensar", "luego te escribo") →
+  `pausa_ok` UMA vez (3 h) + 1ª retomada só em 3 h (`adiar_retomada_min`)
+- Lembretes (`LEMBRETES`) nunca saem iguais à última mensagem da Ana
+- Bateria: **1166/1166**
+
 **2026-11-07 — Risquinhos do WhatsApp (✓ / ✓✓ cinza / ✓✓ azul)**
 - Áudio de voz ficava 🕓 para sempre: a Meta manda 'played' quando ouvem →
   `tick('played')` = ✓✓ azul

@@ -61,6 +61,9 @@ export interface Dados {
   pedido_antes_previa?: string | null
   /** Poses mandadas antes de escolher o pacote. */
   poses_cedo?: string[]
+  /** "Depois te falo": quando respondeu e por quantos minutos adiar a retomada. */
+  pausa_em?: string
+  adiar_retomada_min?: number
 }
 
 export interface Entrada {
@@ -172,7 +175,8 @@ const ORDINAL: Record<string, number> = {
  */
 export function escolhaDePacote(texto: string, precos: Preco[]): { preco: Preco; confirmar: boolean } | null {
   const ord = [...precos].sort((a, b) => a.pacote_qtd - b.pacote_qtd)
-  const t = sem(texto).replace(/[️⃣]/g, '').trim()
+  // "ok, quero o 3" / "bueno, el 2": a confirmação na frente não atrapalha a escolha.
+  const t = sem(texto).replace(/[️⃣]/g, '').trim().replace(/^(ok+|okay|ta bom|ta|bom|bueno|vale|dale|sim|si|beleza|perfeito|perfecto|claro)[\s,.!]+/, '')
   const porQtd = (n: number) => ord.find(p => p.pacote_qtd === n)
   const porOpcao = (n: number) => (n >= 1 && n <= ord.length ? ord[n - 1] : undefined)
   const certo = (p: Preco | undefined) => (p ? { preco: p, confirmar: false } : null)
@@ -188,7 +192,7 @@ export function escolhaDePacote(texto: string, precos: Preco[]): { preco: Preco;
   const de = t.match(/\b(?:o|a|pacote|plano|el|the)?\s*(?:de|of)\s+(\d{1,2}|[a-z]+)\b/)
   if (de && extenso(de[1]) !== undefined && porQtd(extenso(de[1])!)) return certo(porQtd(extenso(de[1])!))
   for (const [w, n] of Object.entries(ORDINAL)) if (new RegExp(`\\b${w}\\b`).test(t)) return certo(porOpcao(n))
-  const n = numeroDaOpcao(texto)
+  const n = numeroDaOpcao(t)
   if (n !== null) return certo(porOpcao(n) ?? porQtd(n))
   // só o número por extenso ("três", "quero o cinco"): pode ser opção ou quantidade → confirma
   const palavra = t.split(/\s+/).length <= 4 ? t.match(/\b(um|uma|dois|duas|tres|quatro|cinco|dez|quinze|one|two|three|four|five|ten|fifteen|dos|cuatro|diez|quince)\b/) : null
@@ -330,6 +334,15 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     if (d.ultima_reacao_em && agora - new Date(d.ultima_reacao_em).getTime() < 10 * 60e3) return fim(etapa, [])
     d.ultima_reacao_em = new Date(agora).toISOString()
     return fim(etapa, [{ t: 'reagir', emoji: '❤️' }])
+  }
+
+  // "Depois te falo" / "vou pensar" / "te aviso": responde UMA vez e adia a retomada para 3 h.
+  if (e.tipo === 'texto' && pausaPedida(txt) && !['inicio', 'humano', 'pago', 'conferindo', 'entregue', 'ajuste_detalhe'].includes(etapa)) {
+    const agora = ctx.agoraMs ?? Date.now()
+    d.adiar_retomada_min = 180
+    if (d.pausa_em && agora - new Date(d.pausa_em).getTime() < 3 * 3600e3) return fim(etapa, [])
+    d.pausa_em = new Date(agora).toISOString()
+    return fim(etapa, [{ t: 'texto', chave: 'pausa_ok' }])
   }
 
   // ── Regras globais (valem em qualquer etapa) ─────────────────────────────
@@ -817,6 +830,9 @@ export function aplicarPreferencias(d: Dados, pergunta: string, txt: string, pre
 /** Etapas em que a Ana NÃO está esperando resposta (confirmação solta não recebe texto). */
 export function semPerguntaPendente(etapa: Etapa, d: Dados): boolean {
   if (['pago', 'conferindo'].includes(etapa)) return true
+  // Na venda, "ok"/👍 não responde nome/tema/pacote/poses: não repete a pergunta (evita ok ↔ Ana sem fim).
+  // Pergunta de sim/não pendente (pacote a confirmar, prévia oferecida, pacote maior) → "ok" vale como SIM.
+  if (['nome', 'tema', 'pacote', 'fotos_poses', 'previa_fotos'].includes(etapa)) return !d.pacote_confirmar && !d.previa_oferecida && !d.troca_pacote
   if (etapa === 'aguardando_pagamento') return true      // espera comprovante, não "ok"
   if (etapa === 'entregue') return !d.upsell_oferecido
   return false
@@ -885,5 +901,12 @@ export function confusa(texto: string): boolean { return CONFUSA.test(sem(texto)
 function lembreteCurto(etapa: Etapa, d: Dados): Acao[] {
   if (etapa === 'pacote') return [{ t: 'texto', chave: 'pacote_de_novo' }]
   return repetirPergunta(etapa, d)
+}
+
+const PAUSA = /\b(depois (eu )?(te )?(falo|chamo|vejo|respondo|mando|aviso)|falo (contigo|com voce) depois|vou pensar|vou ver( e te (falo|aviso))?|te aviso|te dou retorno|mais tarde (eu )?(te )?(falo|chamo|vejo)?|amanha (eu )?(te )?(falo|chamo|vejo|mando|aviso)|agora nao (posso|da)|estou ocupad[ao]|despues (te )?(hablo|escribo|aviso|veo|respondo)|luego (te )?(hablo|escribo|aviso)|lo (voy a )?pens\w*|te aviso|mas tarde|manana te (hablo|escribo|aviso)|ahora no puedo|estoy ocupad[ao]|i'?ll (think|let you know|get back)|let me think|talk (to you )?later|later today|not now|busy now)\b/
+/** "Depois te falo", "vou pensar", "te aviso", "luego te escribo" — e sem pergunta/escolha junto. */
+export function pausaPedida(texto: string): boolean {
+  const t = sem(texto).trim()
+  return PAUSA.test(t) && !/\?|\d/.test(t) && t.split(/\s+/).length <= 12
 }
 

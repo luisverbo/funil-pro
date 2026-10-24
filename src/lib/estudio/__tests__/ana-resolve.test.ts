@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { proximoPasso, nomeDoPerfil, nomeDoTexto, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { proximoPasso, pausaPedida, nomeDoPerfil, nomeDoTexto, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
 import { decidirResposta, bloqueioDaResposta, promptDaAna, type RespostaEstruturada } from '@/lib/estudio/ana/ia'
 import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
 
@@ -213,11 +213,40 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(ia, /const est2 = await rodar\(MODELO_FORTE, resposta\.motivo\)/)
     assert.match(ia, /sua resposta anterior foi bloqueada/)
   },
+  '"ok" infinito: ok/👍 na venda vira só ❤️ (1×) e depois silêncio; ok depois de pergunta sim/não é SIM': () => {
+    const agora = Date.parse('2026-11-07T12:00:00Z')
+    // pacote sem pergunta de sim/não: 1º ok = ❤️, 2º ok logo depois = nada (nunca repete a tabela)
+    const r1 = proximoPasso('pacote', { tema: 'casual' }, txt('ok'), { ...ctx, agoraMs: agora })
+    assert.deepEqual(chaves(r1.acoes), ['reagir'])
+    const r2 = proximoPasso('pacote', r1.dados, txt('👍'), { ...ctx, agoraMs: agora + 60e3 })
+    assert.deepEqual(chaves(r2.acoes), [])
+    for (const etapa of ['nome', 'tema', 'fotos_poses'] as const) assert.deepEqual(chaves(proximoPasso(etapa, coleta(), txt('tá bom'), { ...ctx, agoraMs: agora, fotos: FOTOS }).acoes), ['reagir'], etapa)
+    // ok = SIM quando há pergunta de sim/não
+    assert.equal(proximoPasso('pacote', { tema: 'casual', pacote_confirmar: 5 }, txt('ok'), ctx).dados.pacote_qtd, 5)
+    assert.equal(proximoPasso('pacote', { tema: 'casual', previa_oferecida: true }, txt('ok'), { ...ctx, fotos: FOTOS }).etapa, 'previa_fotos')
+    // ok na pergunta da maquiagem = sim (preferência é sim/não)
+    assert.equal(proximoPasso('idade_prefs', coleta({ poses: POSES.slice(0, 10) }), txt('ok'), { ...ctx, fotos: FOTOS }).dados.maquiagem, true)
+    // mensagem com conteúdo segue normal
+    assert.equal(proximoPasso('pacote', r2.dados, txt('ok, 3'), ctx).etapa, 'fotos_poses')
+    assert.equal(proximoPasso('pacote', r2.dados, txt('ok, quero o 3'), ctx).dados.pacote_confirmar, 5, '"o 3" é ambíguo (opção 3 ou 3 fotos): confirma')
+  },
+  '"depois te falo" / "vou pensar": responde UMA vez e adia a retomada para 3 h': () => {
+    assert.ok(pausaPedida('depois te falo') && pausaPedida('vou pensar e te aviso') && pausaPedida('luego te escribo') && pausaPedida("I'll let you know"))
+    assert.ok(!pausaPedida('Sí mañana es mi cumpleaños') && !pausaPedida('vou pensar, quanto custa o de 10?'))
+    const agora = Date.parse('2026-11-07T12:00:00Z')
+    const r = proximoPasso('pacote', { tema: 'casual' }, txt('depois te falo'), { ...ctx, agoraMs: agora })
+    assert.deepEqual(chaves(r.acoes), ['texto:pausa_ok']); assert.equal(r.dados.adiar_retomada_min, 180)
+    const de_novo = proximoPasso('pacote', { ...r.dados, adiar_retomada_min: undefined }, txt('vou pensar'), { ...ctx, agoraMs: agora + 5 * 60e3 })
+    assert.deepEqual(chaves(de_novo.acoes), [], 'não repete o "sem pressa"')
+    const ex = ler('src/lib/estudio/ana/executor.ts')
+    assert.match(ex, /dados\.adiar_retomada_min - 10\) \* 60e3/)
+    assert.match(ex, /if \(ult\?\.\[0\]\?\.texto === t\) return/)
+  },
   'respostas de venda sempre no Sonnet 5.5': () => {
     assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)
   },
   'textos novos nos 4 idiomas': () => {
-    for (const k of ['hotmart_link_coleta', 'explico_passo', 'explica_pagamento_hotmart', 'explica_pagamento_pix', 'foto_cedo_ambas', 'foto_cedo_rosto', 'foto_cedo_corpo', 'falta_foto_cliente', 'poses_antes_pacote', 'catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
+    for (const k of ['pausa_ok', 'hotmart_link_coleta', 'explico_passo', 'explica_pagamento_hotmart', 'explica_pagamento_pix', 'foto_cedo_ambas', 'foto_cedo_rosto', 'foto_cedo_corpo', 'falta_foto_cliente', 'poses_antes_pacote', 'catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
       for (const i of IDIOMAS) assert.ok(TEXTOS[k]?.[i]?.trim(), `${k}/${i}`)
   },
 }
