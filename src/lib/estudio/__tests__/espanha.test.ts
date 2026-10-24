@@ -22,7 +22,7 @@ const POSES = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0'
 const ctx: Contexto = { idioma: 'es-ES', precos: PRECOS_ES, posesDoTema: () => POSES, temasAtivos: ['aniversario', 'corporativo', 'casual', 'sensual'], pix: true }
 const txt = (t: string): Entrada => ({ tipo: 'texto', texto: t })
 const chaves = (a: Acao[]) => a.map(x => x.t === 'texto' || x.t === 'audio' ? `${x.t}:${x.chave}` : x.t)
-const VOSEO = /(?<![\p{L}])(podés|pagás|tenés|elegí|escribime|enviame|mandame|acá|querés|decime|contame|avisame|vos|recibís|fijate|sabés|tranqui)(?![\p{L}])/iu
+const VOSEO = /(?<![A-Za-zÀ-ÿ])(podés|pagás|tenés|elegí|escribime|enviame|mandame|acá|querés|decime|contame|avisame|vos|recibís|fijate|sabés|tranqui)(?![A-Za-zÀ-ÿ])/i
 
 const payload = (o: { produto?: number; oferta?: string; valor?: number; moeda?: string; oferta_valor?: number } = {}) => ({
   event: 'PURCHASE_APPROVED', version: '2.0.0',
