@@ -620,7 +620,9 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     case 'entregue':
     case 'ajuste_detalhe': {
       const ent = ctx.entrega
-      if (e.tipo !== 'texto' || !ent) return fim(etapa, [{ t: 'texto', chave: 'entrega_ajuste' }])
+      // Foto com legenda ("essa aqui, o cabelo") conta como texto do ajuste.
+      const comTexto = e.tipo === 'texto' || (e.tipo === 'imagem' && !!txt && !txt.startsWith('['))
+      if (!comTexto || !ent) return fim(etapa, [{ t: 'texto', chave: 'entrega_ajuste' }])
       const t = sem(txt)
       // "+5 fotos com desconto" (resposta à oferta enviada na entrega)
       if (etapa === 'entregue' && (QUER_MAIS.test(t) || (d.upsell_oferecido && afirmativo(txt) && !AJUSTE.test(t)))) {
@@ -629,9 +631,11 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         d.poses = []; d.tem_rosto = true; d.tem_corpo = true
         return fim('fotos_poses', [{ t: 'upsell' }, { t: 'texto', chave: 'upsell_poses', vars: { qtd: ent.upsell_qtd } }])
       }
-      const nums = posesDoTexto(txt).filter(n => ent.poses.includes(n))
+      const nums = fotosCitadas(txt, ent.poses)
       const descricao = txt.replace(/\b\d{1,3}\b/g, '').replace(/\b(foto|fotos|photo|photos|numero|número|n[ºo°]|a|o|e|and|y)\b/gi, '').replace(/[\s,.;:-]+/g, ' ').trim()
-      const falaDeAjuste = etapa === 'ajuste_detalhe' || AJUSTE.test(t) || nums.length > 0
+      // Elogio ("amei meu cabelo!") não é ajuste — a menos que venha com "mas"/"só que"/"não".
+      const soElogio = ELOGIO.test(t) && !/\b(nao|não|no|mas|pero|but|so que|só que|porem|aunque|however)\b/.test(t)
+      const falaDeAjuste = etapa === 'ajuste_detalhe' || ((AJUSTE.test(t) || nums.length > 0) && !soElogio)
       if (!falaDeAjuste) return fim(etapa, [{ t: 'ia', objetivo: 'pós-venda: o ensaio já foi entregue; ajuste grátis em até 24 h dizendo o número da foto e o que mudar; oferta de mais fotos com desconto' }])
       if (!ent.pode_ajustar) return fim('entregue', [{ t: 'texto', chave: 'ajuste_expirado' }, { t: 'humano', motivo: 'cliente pediu ajuste fora do prazo/limite' }])
       const poses = nums.length ? nums : (d.ajuste_poses ?? [])
@@ -651,7 +655,29 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   return fim(etapa, [])
 }
 
-const AJUSTE = /\b(ajust|mud[ae]|trocar|troca|refaz|corrig|nao gostei|nao ficou|ficou estranh|nao parece|nao sou eu|change|fix|redo|adjust|cambiar|arreglar|no me gust)/
+const AJUSTE = /\b(ajust|mud[ae]|mudar|trocar|troca|refaz|refazer|corrig|arrum|ajeit|melhor|retoc|modific|alter|edit|tirar|tira |colocar|deixar mais|deixa mais|mais (magra|jovem|nova|clara|escura|bonita|natural)|menos (gorda|velha|maquiagem)|nao gostei|nao ficou|ficou estranh|ficou feio|ficou diferente|nao parece|nao sou eu|nao pareco|diferente de mim|cabelo|olho|nariz|boca|sorriso|dente|rosto|pele|maquiagem|roupa|vestido|fundo|mao|maos|dedo|change|fix|redo|adjust|edit|retouch|doesn'?t look like me|not me|cambiar|cambia|arreglar|arregla|retocar|mejorar|modificar|corregir|no me gust|no se parece|no soy yo|no parezco|pelo|ojos|nariz|cara|piel|maquillaje|ropa|fondo|manos)/
+
+const ELOGIO = /\b(amei|adorei|ameii+|lind[ao]s?|perfeit[ao]s?|maravilh\w*|incrivel|me encant\w*|hermos[ao]s?|precios[ao]s?|me gusto|me gustaron|love it|loved|beautiful|amazing|perfect)\b/
+
+const ORD_FOTO: Record<string, number> = { primeira: 1, primeiro: 1, segunda: 2, segundo: 2, terceira: 3, terceiro: 3, quarta: 4, quarto: 4, quinta: 5, quinto: 5, sexta: 6, setima: 7, oitava: 8, nona: 9, decima: 10, primera: 1, tercera: 3, cuarta: 4, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 }
+
+/**
+ * Fotos citadas no pedido de ajuste: o número da POSE (07) se ela estiver no
+ * pedido; senão a POSIÇÃO na entrega ("foto 2", "a segunda", "la última",
+ * "todas") — a cliente não sabe o número da pose, sabe a ordem em que recebeu.
+ */
+export function fotosCitadas(texto: string, poses: string[]): string[] {
+  const t = sem(texto)
+  const diretas = posesDoTexto(texto).filter(n => poses.includes(n))
+  if (diretas.length) return diretas
+  if (/\b(todas|todos|all of them|all photos|all the photos)\b/.test(t)) return [...poses]
+  const out: string[] = []
+  for (const m of t.matchAll(/\b(\d{1,2})\b/g)) { const i = Number(m[1]); if (i >= 1 && i <= poses.length) out.push(poses[i - 1]) }
+  for (const [w, i] of Object.entries(ORD_FOTO)) if (new RegExp(`\\b${w}\\b`).test(t) && i <= poses.length) out.push(poses[i - 1])
+  if (/\b(ultima|ultimo|last)\b/.test(t) && poses.length) out.push(poses[poses.length - 1])
+  if (poses.length === 1 && !out.length && /\b(foto|photo|essa|esta|ela|that|this)\b/.test(t)) out.push(poses[0])
+  return [...new Set(out)]
+}
 const QUER_MAIS = /(\+\s*\d+\s*fotos?|mais \d+ fotos|quero mais|mais fotos|more photos|\d+ more|quiero mas|mas fotos)/
 
 /** Cliente internacional: pacote em outra moeda com link da Hotmart. */
