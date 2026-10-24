@@ -39,6 +39,7 @@ const NOME_IDIOMA: Record<IdiomaAna, string> = {
   'pt-BR': 'português do Brasil (informal, carinhoso, "amiga")',
   'pt-PT': 'português de Portugal (tratamento por "tu", sem gírias brasileiras)',
   es: 'espanhol neutro (cercano, cariñoso)',
+  'es-ES': 'espanhol DE ESPANHA (sempre "tú" — escríbeme, elige, recibes, tienes, puedes; NUNCA voseo como podés/tenés/elegí/escribime/acá; vocabulário de Espanha: "sesión de fotos", "retoque" em vez de "ajuste", "móvil", "vale"; preços em euros com IVA incluido; prazo: "en menos de 1 hora")',
   en: 'English (warm, friendly)',
 }
 

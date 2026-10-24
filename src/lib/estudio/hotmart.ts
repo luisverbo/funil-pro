@@ -7,6 +7,12 @@
 // ============================================================================
 
 export const PRODUTO_HOTMART_PADRAO = '8794754'
+/** "Sesión de Fotos con IA - España" (euro, IVA somado no checkout). */
+export const PRODUTO_HOTMART_ES = '8801266'
+/** Produtos aceitos: o configurado (pode ter vários, separados por vírgula) + os do estúdio. */
+export function produtosAceitos(config: string | null | undefined): string[] {
+  return [...new Set([...(config ?? '').split(/[,\s]+/).filter(Boolean), PRODUTO_HOTMART_PADRAO, PRODUTO_HOTMART_ES])]
+}
 
 export type AcaoHotmart = 'pago' | 'estorno' | 'registrar' | 'ignorar'
 
@@ -86,15 +92,17 @@ export const sckEhPedido = (sck: string | null): sck is string => !!sck && UUID.
  * Confere a compra com o pedido: produto, oferta do pacote, valor e moeda.
  * Lista vazia = bate e pode aprovar sozinho.
  */
-export function conferirCompra(c: CompraHotmart, esperado: { produto_id: string; oferta: string | null; valor_cents: number | null; moeda: string | null }): string[] {
+export function conferirCompra(c: CompraHotmart, esperado: { produto_id: string | string[]; oferta: string | null; valor_cents: number | null; moeda: string | null }): string[] {
   const motivos: string[] = []
-  if (c.produto_id !== esperado.produto_id) motivos.push(`produto ${c.produto_id ?? '?'} ≠ ${esperado.produto_id}`)
+  const produtos = Array.isArray(esperado.produto_id) ? esperado.produto_id : [esperado.produto_id]
+  if (!c.produto_id || !produtos.includes(c.produto_id)) motivos.push(`produto ${c.produto_id ?? '?'} ≠ ${produtos.join(' / ')}`)
   if (esperado.oferta && c.oferta && c.oferta !== esperado.oferta) motivos.push(`oferta ${c.oferta} não é a do pacote (${esperado.oferta})`)
   if (!c.oferta && esperado.oferta) motivos.push('compra sem código de oferta')
   const moeda = (esperado.moeda ?? 'USD').toUpperCase()
   // A Hotmart converte para a moeda local do comprador: compara na MESMA moeda
   // (o preço da oferta em USD, ou o valor pago se veio em USD).
-  const usd = valorNaMoeda(c, moeda)
+  // O pago (com imposto, ex.: IVA da Espanha) vale se veio na moeda do pacote; senão o preço da oferta.
+  const usd = valorPagoNaMoeda(c, moeda)
   if (esperado.valor_cents !== null && usd !== null && usd < esperado.valor_cents) {
     motivos.push(`valor ${(usd / 100).toFixed(2)} ${moeda} menor que ${(esperado.valor_cents / 100).toFixed(2)} do pacote`)
   }
@@ -106,6 +114,16 @@ export function mesmoTelefone(a: string | null | undefined, b: string | null | u
   const x = (a ?? '').replace(/\D/g, ''); const y = (b ?? '').replace(/\D/g, '')
   if (x.length < 8 || y.length < 8) return false
   return x === y || x.endsWith(y) || y.endsWith(x)
+}
+
+/**
+ * O que a cliente PAGOU na moeda do pacote: o valor pago se veio nessa moeda
+ * (Espanha: 8,22 € com IVA — é o que ela vê no link e o que a Ana cobra);
+ * senão o preço da oferta nessa moeda (Argentina paga em ARS, a oferta é USD).
+ */
+export function valorPagoNaMoeda(c: CompraHotmart, moeda: string): number | null {
+  if (c.moeda === moeda && c.valor_cents !== null) return Math.max(c.valor_cents, c.moeda_oferta === moeda ? c.valor_oferta_cents ?? 0 : 0)
+  return valorNaMoeda(c, moeda)
 }
 
 /** Valor da compra na moeda pedida (USD): oferta original ou o pago, se for a mesma moeda. */

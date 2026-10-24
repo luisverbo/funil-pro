@@ -12,7 +12,7 @@
 // ============================================================================
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { timingSafeEqual } from 'node:crypto'
-import { acaoDoEvento, conferirCompra, lerCompraHotmart, mesmoTelefone, ofertaDoLink, sckEhPedido, valorNaMoeda, PRODUTO_HOTMART_PADRAO, type CompraHotmart } from './hotmart'
+import { acaoDoEvento, conferirCompra, lerCompraHotmart, mesmoTelefone, ofertaDoLink, sckEhPedido, valorPagoNaMoeda, produtosAceitos, type CompraHotmart } from './hotmart'
 import { marcarPago } from './pix-servidor'
 import { avisarLuis, falarComCliente, type Conexao } from './ana/executor'
 
@@ -116,14 +116,14 @@ export async function processarHotmart(admin: SupabaseClient, cfg: ConfigHotmart
     return { status: 'repetido', pedido_id: pedido.id }
   }
   const esperado = await esperadoDoPedido(admin, cfg.tenant_id, pedido)
-  const motivos = conferirCompra(c, { produto_id: cfg.hotmart_produto_id || PRODUTO_HOTMART_PADRAO, oferta: esperado.oferta, valor_cents: esperado.valor_cents, moeda: esperado.moeda })
+  const motivos = conferirCompra(c, { produto_id: produtosAceitos(cfg.hotmart_produto_id), oferta: esperado.oferta, valor_cents: esperado.valor_cents, moeda: esperado.moeda })
   if (motivos.length) {
     await admin.from('estudio_pedidos').update({ status: 'aguardando_conferencia', forma_pagamento: 'hotmart', conferencia_motivo: `Hotmart: ${motivos.join('; ')}`.slice(0, 500) }).eq('id', pedido.id)
     await avisar(`🧾 Hotmart aprovou, mas não bate com o pedido ${pedido.id}: ${motivos.join('; ')}\n👤 ${quem}\nConfira e aprove/recuse: ${APP_URL()}/estudio-ia?aba=painel`, pedido.id)
     return { status: 'conferencia', pedido_id: pedido.id, motivos }
   }
   const r = await marcarPago(admin, pedido.id, {
-    pago_por: 'hotmart', forma_pagamento: 'hotmart', valor_pago_cents: valorNaMoeda(c, esperado.moeda) ?? c.valor_cents,
+    pago_por: 'hotmart', forma_pagamento: 'hotmart', valor_pago_cents: valorPagoNaMoeda(c, esperado.moeda) ?? c.valor_cents,
     moeda: esperado.moeda, pago_em: c.aprovada_em, hotmart_transacao: c.transacao,
   })
   if (r.duplicado) return { status: 'repetido', pedido_id: pedido.id }
