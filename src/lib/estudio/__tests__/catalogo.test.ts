@@ -106,8 +106,9 @@ const tests: Record<string, () => void> = {
     const d = ler('src/app/estudio/catalogo/dados.ts')
     assert.ok(!/select\([^)]*prompt/.test(d), 'a vitrine não lê prompts')
     assert.ok(d.includes(".eq('ativo', true)") && d.includes(".eq('ativa', true)"))
-    assert.ok(d.includes('As cenas são recriadas com o rosto e o corpo da cliente.'))
-    assert.ok(ler('src/app/estudio/catalogo/[slug]/page.tsx').includes('Toque no número para escolher suas fotos.'))
+    const tx = ler('src/lib/estudio/catalogo-idiomas.ts')
+    assert.ok(tx.includes('As cenas são recriadas com o rosto e o corpo da cliente.'))
+    assert.ok(tx.includes('Toque no número para escolher suas fotos.'))
   },
   'painel: menu, despachante de lista fechada e sem export type em use server': () => {
     assert.ok(ler('src/components/layout/sidebar.tsx').includes("{ href: '/estudio-ia',    label: 'Estúdio IA',"))

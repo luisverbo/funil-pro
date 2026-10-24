@@ -17,7 +17,7 @@ import {
   enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
 } from '@/app/actions/estudio-chat'
 import {
-  listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna,
+  listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna, gerarPdfsCatalogo,
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio, lerHumanizarAna, salvarHumanizarAna,
 } from '@/app/actions/estudio-ana'
 import {
@@ -28,7 +28,7 @@ import {
 } from '@/app/actions/estudio-pedidos'
 
 // Envio de várias fotos do pedido pela Meta pode levar alguns segundos.
-export const maxDuration = 60
+export const maxDuration = 300   // gerar os PDFs do catálogo (es/en) leva mais que 1 min
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
@@ -38,7 +38,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   webhookDoNumeroEstudio, apontarWebhookEstudio,
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
   enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
-  listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna,
+  listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna, gerarPdfsCatalogo,
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
   lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,

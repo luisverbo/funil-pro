@@ -7,9 +7,6 @@ import { urlPublicaDoCatalogo } from '@/lib/estudio/catalogo'
 export interface TemaPublico { slug: string; nome: string; capa: string | null; qtd: number }
 export interface PosePublica { numero: string; foto: string | null }
 
-/** Rodapé obrigatório (seção 3.2 e 7): avisa que as imagens são geradas por IA. */
-export const RODAPE = 'Imagens ilustrativas, geradas por IA. As cenas são recriadas com o rosto e o corpo da cliente.'
-
 const SUPA = () => process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
 export async function temasPublicos(): Promise<TemaPublico[]> {

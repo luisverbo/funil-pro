@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
 import { proximoPasso, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
+import { caminhoPdfIdioma, linkDoCatalogo, nomeDoPdf } from '../catalogo-idiomas'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
 import { responderDuvida, classificarFoto, extrairPreferencias, type ItemBase } from './ia'
 import { escolherFotos, resumoDasFotos, caixaDoRecorte, type FotoRecebida } from './fotos'
@@ -64,6 +65,27 @@ export async function sobrescritas(admin: SupabaseClient, tenantId: string): Pro
     if (r.audio_path) audios.set(`${r.chave}|${r.idioma}`, r.audio_path)
   }
   return { textos, audios }
+}
+
+/**
+ * PDF do catálogo no idioma da conversa. Português: o PDF do PC
+ * (catalogo-<tema>.pdf), senão o gerado. Espanhol/inglês: só o do idioma
+ * (gera na hora se ainda não existe) — nunca manda o PDF em português.
+ */
+async function pdfDoCatalogo(admin: SupabaseClient, tema: string, idioma: IdiomaAna): Promise<string | null> {
+  const supa = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  if (idioma === 'pt-BR' || idioma === 'pt-PT') {
+    const doPc = urlPublicaDoCatalogo(`${tema}/catalogo-${tema}.pdf`, supa)
+    if (doPc && await existe(doPc)) return doPc
+  }
+  const pronto = urlPublicaDoCatalogo(caminhoPdfIdioma(tema, idioma), supa)
+  if (pronto && await existe(pronto)) return pronto
+  try {
+    const { gerarPdfCatalogo } = await import('../pdf-catalogo')
+    const r = await gerarPdfCatalogo(admin, tema, idioma)
+    if (r.erro) console.warn('[estudio/ana] PDF do catálogo:', r.erro)
+    return r.url
+  } catch (err) { console.warn('[estudio/ana] PDF do catálogo:', String(err).slice(0, 200)); return null }
 }
 
 /** Arquivo público existe? (HEAD no Storage público) */
@@ -212,7 +234,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
       valor: vc !== undefined ? dinheiro(Number(vc), dados.moeda ?? precos[0]?.moeda ?? 'BRL', idioma)
         : dados.valor_cents !== undefined ? dinheiro(dados.valor_cents, dados.moeda ?? 'BRL', idioma) : '',
       poses: (dados.poses ?? []).join(', '), tabela: tabelaDePrecos(precos, idioma), prazo: PRAZO_MIN,
-      link: dados.tema ? `${APP_URL()}/estudio/catalogo/${dados.tema}` : `${APP_URL()}/estudio/catalogo`,
+      link: linkDoCatalogo(APP_URL(), dados.tema, idioma),
       pagar: dados.hotmart_link ?? dados.pagar_link ?? '', ...resto,
     }
   }
@@ -296,9 +318,9 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
         }
         case 'catalogo': {
           await enviarTexto(renderTexto('catalogo_link', idioma, vars(), sob.textos), 'catalogo_link')
-          const pdf = urlPublicaDoCatalogo(`${a.tema}/catalogo-${a.tema}.pdf`, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
-          if (pdf && await existe(pdf)) {
-            const nome = `Catálogo ${nomeDoTema(a.tema, idioma)}.pdf`
+          const pdf = await pdfDoCatalogo(admin, a.tema, idioma)
+          if (pdf) {
+            const nome = nomeDoPdf(nomeDoTema(a.tema, idioma), idioma)
             await pausar(atrasoDeMidia())
             const s = await crono.medir('envio', () => enviarMidiaCloud(con, c.wa_id, 'document', pdf, undefined, nome))
             await registrar(admin, c, s, 'documento', null, { media_mime: 'application/pdf', media_nome: nome })

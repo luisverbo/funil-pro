@@ -522,6 +522,21 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-03 — Estúdio IA: catálogo (página + PDF) no idioma do atendimento**
+- `src/lib/estudio/catalogo-idiomas.ts` (puro): textos da vitrine nos 4
+  idiomas, `?l=pt|pt-pt|es|en` (pt-BR sem parâmetro = links antigos iguais),
+  `tituloDoTema` traduzido, frase do WhatsApp no idioma ("I want poses 03,
+  12" — `posesDoTexto` lê os números em qualquer idioma)
+- Páginas `/estudio/catalogo` e `/[slug]` leem `?l=`; Ana manda
+  `linkDoCatalogo(..., idioma)`
+- `src/lib/estudio/pdf-catalogo.ts`: gerador de PDF próprio (sem lib nova;
+  JPEG via sharp, Helvetica WinAnsi), 4 poses/página + rodapé "geradas por
+  IA"; grava `estudio-catalogo/<tema>/catalogo-<tema>-<es|en>.pdf`. Ana:
+  português = PDF do PC (senão gerado); es/en = só o do idioma (gera na 1ª
+  vez), nunca o PDF em português. Mídias: status PT/ES/EN + "Refazer PDFs"
+  (`gerarPdfsCatalogo`); `/api/estudio` maxDuration 300
+- Bateria: **1142/1142**
+
 **2026-11-02 — Estúdio IA: Painel de resultado (lucro, custos, anúncio, país)**
 - `src/lib/estudio/painel.ts` (puro): KPIs em R$ (USD pela cotação),
   lucro = faturamento − gasto em anúncio − custo de IA (fotos Gemini +
