@@ -56,6 +56,9 @@ export interface Dados {
   pagamento_enviado?: boolean
   /** Escolheu mais poses que o pacote: oferta de trocar para o pacote maior (1 = fica, 2 = troca). */
   troca_pacote?: { qtd: number; valor_cents: number; moeda: string; link: string | null; poses: string[] }
+  /** Prévia pedida no meio da venda: o que volta quando ela termina. */
+  poses_antes_previa?: string[]
+  pedido_antes_previa?: string | null
 }
 
 export interface Entrada {
@@ -330,10 +333,15 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   // Aceitou a prévia oferecida na cobrança.
-  if (d.previa_oferecida && !d.previa_feita && !['previa_fotos', 'aguardando_pagamento', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
+  // Vale também para quem já recebeu o Pix e sumiu: a prévia ajuda a fechar.
+  if (d.previa_oferecida && !d.previa_feita && !ctx.pago && !['previa_fotos', 'conferindo', 'pago', 'entregue', 'ajuste_detalhe'].includes(etapa) && e.tipo === 'texto' && afirmativo(txt) && d.tema) {
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
-    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_pede_fotos' }])
+    d.poses_antes_previa = d.poses ?? []
+    // Já tem as 2 fotos: só falta escolher 1 pose.
+    const temFotos = !!ctx.fotos?.tem_rosto && !!ctx.fotos?.tem_corpo
+    if (temFotos) { d.tem_rosto = true; d.tem_corpo = true }
+    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'texto', chave: temFotos ? 'previa_pede_pose' : 'previa_pede_fotos' }])
   }
 
   // Foto fora da etapa das fotos: o executor já guardou e classificou; aqui
@@ -413,6 +421,8 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         { t: 'criar_pedido', tipo: 'pacote' },
         ...(jaTemFotos ? [{ t: 'fotos_escolher' } as Acao, { t: 'texto', chave: 'pede_poses', vars: { qtd: p.pacote_qtd } } as Acao]
           : [{ t: 'texto', chave: 'pede_fotos_poses', vars: { qtd: p.pacote_qtd } } as Acao]),
+        // O catálogo ficou lá em cima na conversa: manda o link de novo para escolher as poses.
+        { t: 'texto', chave: 'catalogo_de_novo' },
         ...pagamento,
       ])
     }
@@ -593,6 +603,9 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
     d.previa_feita = true
     const volta = d.etapa_antes_previa ?? 'pacote'
     d.etapa_antes_previa = undefined
+    // Volta a venda como estava (as poses do pacote não se perdem).
+    d.poses = d.poses_antes_previa ?? []
+    d.poses_antes_previa = undefined
     return { etapa: volta, dados: d, acoes: [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }, ...repetirPergunta(volta, d)] }
   }
   // Toda transição já manda a pergunta da etapa nova (preferências, uma por vez).
@@ -765,8 +778,33 @@ export function cobrancaDevida(c: {
   if (c.cobrancas === 1 && min >= 30) {
     // A prévia só faz sentido com tema escolhido e antes de ter pedido fechado.
     const podePrevia = !!c.tema && !c.previa_feita && c.etapa !== 'aguardando_pagamento'
-    return podePrevia ? 'cobranca_2' : (min >= 180 ? 'cobranca_3' : null)
+    // Quem já recebeu o Pix ganha uma 2ª retomada (dúvida); a prévia fica para o fim.
+    return podePrevia ? 'cobranca_2' : c.etapa === 'aguardando_pagamento' ? 'cobranca_2' : (min >= 180 ? 'cobranca_3' : null)
   }
   if (c.cobrancas === 2 && min >= 180) return 'cobranca_3'
   return null
+}
+
+/**
+ * O que a Ana manda em cada retomada, conforme ONDE a conversa parou:
+ * 1ª "e aí, já viu?" da etapa (com o link do catálogo / o valor do Pix);
+ * 2ª prévia grátis (antes do Pix) ou "ficou alguma dúvida?" (depois);
+ * 3ª prévia grátis como última cartada se ainda não fez, senão a vaga reservada.
+ */
+export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, d: Dados): { chaves: string[]; oferecePrevia: boolean } {
+  const pagamento = etapa === 'aguardando_pagamento'
+  const podePrevia = !!d.tema && !d.previa_feita
+  if (chave === 'cobranca_1') {
+    const k = pagamento ? 'rmk_pagamento'
+      : ['fotos_poses', 'idade_prefs', 'previa_fotos'].includes(etapa) ? 'rmk_coleta'
+      : ['pacote', 'idade_sensual'].includes(etapa) ? 'rmk_pacote'
+      : etapa === 'tema' ? 'rmk_tema' : 'cobranca_1'
+    return { chaves: pagamento && pagaPelaHotmart(d) ? ['rmk_duvida', 'hotmart_lembrete'] : [k], oferecePrevia: false }
+  }
+  if (chave === 'cobranca_2') {
+    if (!pagamento && podePrevia) return { chaves: ['cobranca_2'], oferecePrevia: true }
+    return { chaves: pagamento && pagaPelaHotmart(d) ? ['rmk_duvida', 'hotmart_lembrete'] : ['rmk_duvida'], oferecePrevia: false }
+  }
+  if (podePrevia) return { chaves: ['rmk_previa_final'], oferecePrevia: true }
+  return { chaves: ['cobranca_3'], oferecePrevia: false }
 }

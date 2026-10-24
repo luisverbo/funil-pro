@@ -44,7 +44,7 @@ const tests: Record<string, () => void | Promise<void>> = {
       const r = proximoPasso(etapa, d, e, { ...ctx, fotos: { tem_rosto: n >= 1, tem_corpo: n >= 2, rosto_recortado: false, unica: false } }); etapa = r.etapa; d = r.dados; log.push(chaves(r.acoes))
     }
     // Escolheu o pacote → Pix + A5 já saem, junto do pedido das fotos/poses.
-    assert.deepEqual(log[3], ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
+    assert.deepEqual(log[3], ['criar_pedido', 'texto:pede_fotos_poses', 'texto:catalogo_de_novo', 'fechar_pedido', 'texto:pagar_ja', 'pix', 'audio:a5'])
     // No fim: resumo e lembrete do comprovante (sem repetir a chave).
     assert.deepEqual(log[10], ['atualizar_pedido', 'fechar_pedido', 'texto:resumo_pedido', 'texto:pede_comprovante'])
     assert.deepEqual(log[11], ['comprovante'])

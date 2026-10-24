@@ -145,7 +145,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const pac = proximoPasso('pacote', { tema: 'casual' }, txt('3'), ctxEs)
     assert.equal(pac.dados.moeda, 'USD'); assert.equal(pac.dados.valor_cents, 1190); assert.equal(pac.dados.pagar_link, LINKS[5])
     // Escolheu o pacote → o link da Hotmart já sai (sem Pix)
-    assert.deepEqual(chaves(pac.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'fechar_pedido', 'hotmart'])
+    assert.deepEqual(chaves(pac.acoes), ['criar_pedido', 'texto:pede_fotos_poses', 'texto:catalogo_de_novo', 'fechar_pedido', 'hotmart'])
     const d: Dados = { ...pac.dados, tem_rosto: true, tem_corpo: true, poses: ['01', '02', '03', '04', '05'], maquiagem: true, decote: false, cores: 'x' }
     const fim = proximoPasso('idade_prefs', d, txt('30'), ctxEs)
     assert.equal(fim.etapa, 'aguardando_pagamento')
