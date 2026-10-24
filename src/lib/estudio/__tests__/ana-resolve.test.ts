@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { proximoPasso, pausaPedida, nomeDoPerfil, nomeDoTexto, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { proximoPasso, fotosCitadas, pausaPedida, nomeDoPerfil, nomeDoTexto, cobrancaDevida, mensagensDaRetomada, escolhaDePacote, pacoteInexistente, opcoesProximas, querPagar, type Contexto, type Dados, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
 import { decidirResposta, bloqueioDaResposta, promptDaAna, type RespostaEstruturada } from '@/lib/estudio/ana/ia'
 import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
 
@@ -248,6 +248,28 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(tela, /preload="metadata"/)
     assert.match(ler('src/lib/estudio/midia.ts'), /path\.startsWith\('catalogo:'\)/)
     assert.match(ler('src/lib/estudio/ana/executor.ts'), /media_path: `catalogo:\$\{path\}`/)
+  },
+  'ajuste depois da entrega: entende "arrumar/melhorar/cabelo", "foto 2", "a segunda", foto com legenda; elogio não é ajuste': () => {
+    const ent = { pode_ajustar: true, poses: ['07', '12', '15'], upsell_qtd: 5, upsell_valor_cents: 3992, moeda: 'BRL' }
+    const c2 = { ...ctx, entrega: ent }
+    assert.deepEqual(fotosCitadas('a foto 2', ent.poses), ['12'])
+    assert.deepEqual(fotosCitadas('la segunda y la última', ent.poses), ['12', '15'])
+    assert.deepEqual(fotosCitadas('a 15', ent.poses), ['15'], 'número da pose vale direto')
+    assert.deepEqual(fotosCitadas('todas', ent.poses), ['07', '12', '15'])
+    // pedido completo → registra o ajuste (vai para Pedidos como ajuste)
+    const r = proximoPasso('entregue', { upsell_oferecido: true }, txt('dá pra arrumar o cabelo da foto 2? ficou estranho'), c2)
+    assert.equal(r.etapa, 'pago'); assert.deepEqual((r.acoes[0] as { poses: string[] }).poses, ['12'])
+    assert.equal(r.acoes[0].t, 'ajuste')
+    // espanhol, sem número → pede o número; depois "la segunda" → pede o que mudar ou registra
+    const es = proximoPasso('entregue', {}, txt('no se parece a mí, se puede mejorar?'), { ...c2, idioma: 'es' })
+    assert.equal(es.etapa, 'ajuste_detalhe'); assert.deepEqual(chaves(es.acoes), ['texto:ajuste_pede_numero'])
+    assert.equal(proximoPasso('ajuste_detalhe', es.dados, txt('la segunda, la cara no se parece'), c2).acoes[0].t, 'ajuste')
+    // foto com legenda
+    assert.equal(proximoPasso('entregue', {}, { tipo: 'imagem', texto: 'nessa aqui o nariz ficou diferente, foto 3' }, c2).acoes[0].t, 'ajuste')
+    // elogio NÃO é ajuste (vai para a IA de pós-venda)
+    assert.equal(proximoPasso('entregue', {}, txt('amei meu cabelo! ficou perfeito'), c2).acoes[0].t, 'ia')
+    // prazo vencido → avisa e chama humano (não fica mudo)
+    assert.deepEqual(chaves(proximoPasso('entregue', {}, txt('quero ajustar a foto 1'), { ...ctx, entrega: { ...ent, pode_ajustar: false } }).acoes), ['texto:ajuste_expirado', 'humano'])
   },
   'respostas de venda sempre no Sonnet 5.5': () => {
     assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)

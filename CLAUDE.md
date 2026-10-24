@@ -522,6 +522,17 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-09 — Ajuste depois da entrega não era registrado**
+- Causas: `AJUSTE` só pegava ajustar/mudar/trocar/refazer/corrigir → "arrumar",
+  "melhorar", "retocar", "o cabelo ficou estranho", "no se parece a mí" iam
+  para a IA (respondia, não registrava); e só aceitava o NÚMERO da pose —
+  "foto 2"/"a segunda" ficava pedindo o número
+- Agora: `AJUSTE` amplo (pt/es/en, partes do rosto/corpo/roupa/fundo),
+  `ELOGIO` sem "mas/não" não é ajuste, `fotosCitadas` (nº da pose → posição
+  "foto 2"/ordinal/"última"/"todas"/única foto), foto com legenda conta como
+  texto. Registrar = status 'ajuste' (aba Pedidos) + aviso "🔁 Ajuste grátis"
+- Bateria: **1179/1179**
+
 **2026-11-09 — Prévia ia para a fila sem a pose + aviso dizia "pago"**
 - CAUSA RAIZ (bug do 05/11): `seguirColeta` da prévia restaurava
   `d.poses = poses_antes_previa` ANTES do executor rodar `atualizar_pedido`
