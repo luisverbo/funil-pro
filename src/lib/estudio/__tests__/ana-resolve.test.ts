@@ -173,7 +173,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(c.indexOf('fotos_escolher') > -1 && c.indexOf('fotos_escolher') < c.indexOf('fechar_pedido'))
     // foto mandada antes da hora: confirma o que recebeu e pede o rosto se só veio corpo
     const so = proximoPasso('pacote', { tema: 'aniversario' }, { tipo: 'imagem', texto: '', fotos: { novas: 1 } }, { ...ctx, fotos: { tem_rosto: true, tem_corpo: true, rosto_recortado: true, unica: true } })
-    assert.deepEqual(chaves(so.acoes), ['texto:foto_cedo_corpo', 'texto:tabela_precos'])
+    assert.deepEqual(chaves(so.acoes), ['texto:foto_cedo_corpo', 'texto:pacote_de_novo'])
     const ex = ler('src/lib/estudio/ana/executor.ts')
     assert.match(ex, /export async function pedirFotoQueFalta/)
     assert.match(ex, /'falta_foto_cliente'/)
@@ -196,11 +196,28 @@ const tests: Record<string, () => void | Promise<void>> = {
     // sem oferta de prévia: segue como antes (guarda e repete o passo)
     assert.equal(proximoPasso('pacote', { tema: 'corporativo' }, foto, { ...ctx, fotos: FOTOS }).etapa, 'pacote')
   },
+  'conversa do "Ok": Ok não vira nome; "dos" no meio da frase não confirma pacote; "No entiendo" explica; Hotmart explica o link': () => {
+    assert.equal(nomeDoTexto('Ok'), null); assert.equal(nomeDoTexto('Bueno'), null); assert.equal(nomeDoTexto('Buenos días'), null)
+    assert.equal(escolhaDePacote('mañana es mi cumple y quiero las fotos de las dos', PRECOS), null)
+    assert.equal(escolhaDePacote('dos', PRECOS)?.confirmar, true)
+    const conf = proximoPasso('fotos_poses', coleta({ moeda: 'USD', pagar_link: 'https://pay', hotmart_link: 'https://pay&sck=1' }), txt('No entiendo'), { ...ctx, idioma: 'es', fotos: FOTOS })
+    assert.deepEqual(chaves(conf.acoes), ['texto:explico_passo', 'texto:pede_poses', 'texto:explica_pagamento_hotmart'])
+    assert.deepEqual(chaves(proximoPasso('pacote', { tema: 'aniversario' }, txt('Qqqq'), ctx).acoes), ['texto:explico_passo', 'texto:tabela_precos'])
+    const usd = { ...ctx, precos: PRECOS.map(p => ({ ...p, moeda: 'USD', link_pagamento: 'https://pay' })) }
+    const esc = proximoPasso('pacote', { tema: 'aniversario' }, txt('3'), { ...usd, fotos: FOTOS })
+    assert.deepEqual(chaves(esc.acoes), ['criar_pedido', 'fotos_escolher', 'texto:pede_poses', 'fechar_pedido', 'hotmart'])
+    assert.equal((esc.acoes.find(a => a.t === 'hotmart') as { chave?: string }).chave, 'hotmart_link_coleta')
+  },
+  'IA bloqueada tenta de novo sabendo o motivo antes da frase segura': () => {
+    const ia = ler('src/lib/estudio/ana/ia.ts')
+    assert.match(ia, /const est2 = await rodar\(MODELO_FORTE, resposta\.motivo\)/)
+    assert.match(ia, /sua resposta anterior foi bloqueada/)
+  },
   'respostas de venda sempre no Sonnet 5.5': () => {
     assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)
   },
   'textos novos nos 4 idiomas': () => {
-    for (const k of ['foto_cedo_ambas', 'foto_cedo_rosto', 'foto_cedo_corpo', 'falta_foto_cliente', 'poses_antes_pacote', 'catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
+    for (const k of ['hotmart_link_coleta', 'explico_passo', 'explica_pagamento_hotmart', 'explica_pagamento_pix', 'foto_cedo_ambas', 'foto_cedo_rosto', 'foto_cedo_corpo', 'falta_foto_cliente', 'poses_antes_pacote', 'catalogo_de_novo', 'rmk_tema', 'rmk_pacote', 'rmk_coleta', 'rmk_pagamento', 'rmk_duvida', 'rmk_previa_final', 'previa_pede_pose', 'pacote_inexistente', 'poses_demais_maior', 'poses_demais_corte', 'pacote_trocado', 'pagar_ja', 'pago_ok_coleta', 'tudo_certo_producao', 'resposta_segura'])
       for (const i of IDIOMAS) assert.ok(TEXTOS[k]?.[i]?.trim(), `${k}/${i}`)
   },
 }

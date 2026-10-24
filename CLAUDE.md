@@ -522,6 +522,20 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-07 — Estúdio IA: conversa do "Ok" (menos robô)**
+- "Ok" virava NOME → `NAO_E_NOME` com ok/vale/dale/bueno/listo/buenos días…
+- "dos"/"tres" no meio de frase longa pedia "Só pra confirmar…" → número por
+  extenso solto só confirma em mensagem de até 4 palavras
+- Foto antes da hora na etapa do pacote: lembrete CURTO (`pacote_de_novo`),
+  não a tabela inteira de novo (`lembreteCurto`)
+- Escolha do pacote: sem `catalogo_de_novo` quando `pede_poses` já traz o
+  link; Hotmart na coleta com `hotmart_link_coleta` (diz para que é o link)
+- "No entiendo"/"???"/"qqq" (`confusa`) → `explico_passo` + o passo atual
+  (+ `explica_pagamento_hotmart|pix`), nunca "não entendi"
+- IA bloqueada (valor/promoção/adiar) → 2ª tentativa no Sonnet com o motivo
+  antes da `resposta_segura`
+- Bateria: **1164/1164**
+
 **2026-11-06 — Estúdio IA: prévia "faltando rosto" (conversa da Margarita)**
 - CAUSA RAIZ: foto mandada ANTES do pedido da prévia existir nunca era
   copiada para ele (`fotos_escolher` só rodava quando a foto chegava) →

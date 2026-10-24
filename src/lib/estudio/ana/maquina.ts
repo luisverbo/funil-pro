@@ -112,7 +112,7 @@ export type Acao =
   | { t: 'comprovante' }
   | { t: 'ajuste'; poses: string[]; obs: string }
   | { t: 'upsell' }
-  | { t: 'hotmart' }
+  | { t: 'hotmart'; chave?: string }
   | { t: 'trocar_pacote' }
   | { t: 'fila' }
 
@@ -191,12 +191,13 @@ export function escolhaDePacote(texto: string, precos: Preco[]): { preco: Preco;
   const n = numeroDaOpcao(texto)
   if (n !== null) return certo(porOpcao(n) ?? porQtd(n))
   // só o número por extenso ("três", "quero o cinco"): pode ser opção ou quantidade → confirma
-  const palavra = t.match(/\b(um|uma|dois|duas|tres|quatro|cinco|dez|quinze|one|two|three|four|five|ten|fifteen|dos|cuatro|diez|quince)\b/)
+  const palavra = t.split(/\s+/).length <= 4 ? t.match(/\b(um|uma|dois|duas|tres|quatro|cinco|dez|quinze|one|two|three|four|five|ten|fifteen|dos|cuatro|diez|quince)\b/) : null
   if (palavra) {
     const v = NUM_EXTENSO[palavra[1]]
     const p = porOpcao(v) ?? porQtd(v)
     return p ? { preco: p, confirmar: true } : null
   }
+  if (t.split(/\s+/).length > 4) return null
   const solto = t.match(/^(?:quero|queria|vou de|pode ser|fico com|quiero|i want)?\s*(?:o|a|el)?\s*(\d{1,2})\b/)
   if (solto) { const p = porOpcao(Number(solto[1])) ?? porQtd(Number(solto[1])); return p ? { preco: p, confirmar: true } : null }
   return null
@@ -240,7 +241,7 @@ export function posesDoTexto(texto: string): string[] {
   return [...new Set(nums)]
 }
 
-const NAO_E_NOME = /\b(quero|quiero|queria|quisiera|informac\w*|info|mais|mas|gostaria|gustaria|posso|puedo|saber|preco|precio|price|valor|quanto|cuanto|want|more|information|fotos?|ensaio|sesion|catalogo|ola|hola|oi|hello|hi|obrigad\w*|gracias|thanks|sim|si|yes|nao|no)\b/
+const NAO_E_NOME = /\b(quero|quiero|queria|quisiera|informac\w*|info|mais|mas|gostaria|gustaria|posso|puedo|saber|preco|precio|price|valor|quanto|cuanto|want|more|information|fotos?|ensaio|sesion|catalogo|ola|hola|oi|hello|hi|obrigad\w*|gracias|thanks|sim|si|yes|nao|no|ok|okay|okey|oki|vale|dale|bueno|listo|claro|perfecto|perfeito|beleza|blz|ta|certo|genial|bien|bom|boa|buenas|buenos|dias|tardes|noches)\b/
 
 /** Nome do perfil do WhatsApp utilizável ("Dulce Encanto" → "Dulce"); null se não parecer nome de pessoa. */
 export function nomeDoPerfil(perfil: string | null | undefined): string | null {
@@ -343,6 +344,15 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     return fim(etapa, [{ t: 'texto', chave: 'sou_assistente' }, ...repetirPergunta(etapa, d)])
   }
 
+  // "No entiendo" / "???" / "qqq": explica o passo com calma (nunca "não entendi").
+  if (e.tipo === 'texto' && confusa(txt) && !['inicio', 'humano'].includes(etapa)) {
+    const extra: Acao[] = d.pagamento_enviado && !ctx.pago && ['fotos_poses', 'idade_prefs'].includes(etapa)
+      ? [{ t: 'texto', chave: pagaPelaHotmart(d) ? 'explica_pagamento_hotmart' : 'explica_pagamento_pix' }] : []
+    const passo = d.pacote_confirmar ? [{ t: 'texto', chave: 'pacote_confirmar', vars: { qtd: d.pacote_confirmar, valor_cents: ctx.precos.find(x => x.pacote_qtd === d.pacote_confirmar)?.valor_cents ?? 0 } } as Acao]
+      : etapa === 'pacote' ? [{ t: 'texto', chave: 'tabela_precos' } as Acao] : [...lembreteDaEtapa(etapa, d, ctx), ...repetirPergunta(etapa, d)].slice(0, 1)
+    return fim(etapa, [{ t: 'texto', chave: 'explico_passo' }, ...passo, ...extra])
+  }
+
   // Quer pagar já (escolheu o pacote, ainda mandando fotos/poses): manda o pagamento na hora.
   if (e.tipo === 'texto' && querPagar(txt) && ['fotos_poses', 'idade_prefs'].includes(etapa) && d.pacote_qtd && !ctx.pago) {
     const pag = acoesDePagamento(d, ctx)
@@ -386,9 +396,9 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     if (e.tipo === 'imagem' && (e.fotos?.novas ?? 0) > 0 && !e.fotos?.recusada && !e.fotos?.invalida) {
       const f = ctx.fotos
       const chave = f?.tem_rosto && f?.tem_corpo && !f.rosto_recortado ? 'foto_cedo_ambas' : f?.tem_rosto && !f?.tem_corpo ? 'foto_cedo_rosto' : 'foto_cedo_corpo'
-      return fim(etapa, [{ t: 'texto', chave }, ...repetirPergunta(etapa, d)])
+      return fim(etapa, [{ t: 'texto', chave }, ...lembreteCurto(etapa, d)])
     }
-    return fim(etapa, repetirPergunta(etapa, d))
+    return fim(etapa, lembreteCurto(etapa, d))
   }
 
   switch (etapa) {
@@ -478,8 +488,8 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         { t: 'criar_pedido', tipo: 'pacote' },
         ...(jaTemFotos ? [{ t: 'fotos_escolher' } as Acao, { t: 'texto', chave: 'pede_poses', vars: { qtd: p.pacote_qtd } } as Acao]
           : [{ t: 'texto', chave: 'pede_fotos_poses', vars: { qtd: p.pacote_qtd } } as Acao]),
-        // O catálogo ficou lá em cima na conversa: manda o link de novo para escolher as poses.
-        { t: 'texto', chave: 'catalogo_de_novo' },
+        // O catálogo ficou lá em cima na conversa: manda o link de novo (pede_poses já traz o link).
+        ...(jaTemFotos ? [] : [{ t: 'texto', chave: 'catalogo_de_novo' } as Acao]),
         ...pagamento,
       ])
     }
@@ -633,7 +643,7 @@ const FALA_DE_PAGAMENTO = /\b(paguei|ja paguei|pago|pagamento|pix|comprovante|tr
 /** Pagamento do pacote escolhido: Pix (Brasil) ou link da Hotmart (fora). Vazio se não houver forma cadastrada. */
 function acoesDePagamento(d: Dados, ctx: Contexto): Acao[] {
   if (ctx.pix && (d.moeda ?? 'BRL') === 'BRL') return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'pagar_ja' }, { t: 'pix' }, { t: 'audio', chave: 'a5' }]
-  if (pagaPelaHotmart(d)) return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'hotmart' }]
+  if (pagaPelaHotmart(d)) return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'hotmart', chave: 'hotmart_link_coleta' }]
   return []
 }
 
@@ -867,3 +877,13 @@ export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobran
   if (podePrevia) return { chaves: ['rmk_previa_final'], oferecePrevia: true }
   return { chaves: ['cobranca_3'], oferecePrevia: false }
 }
+
+const CONFUSA = /^(\?+|q+\?*|que\?+|qu[eé]\?*|como\?+|hein\?*|ahn\?*|what\?*|huh\?*)$|\b(no entiendo|no entendi|nao entendi|não entendi|nao entendo|não entendo|como assim|no comprendo|i don'?t understand|don'?t get it|confus[ao]|perdid[ao]|lost)\b/
+export function confusa(texto: string): boolean { return CONFUSA.test(sem(texto).trim()) }
+
+/** Lembrete curto (sem reenviar a tabela inteira): "me manda só o número do pacote". */
+function lembreteCurto(etapa: Etapa, d: Dados): Acao[] {
+  if (etapa === 'pacote') return [{ t: 'texto', chave: 'pacote_de_novo' }]
+  return repetirPergunta(etapa, d)
+}
+

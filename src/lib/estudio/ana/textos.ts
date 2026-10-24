@@ -492,6 +492,30 @@ export const TEXTOS: Tabela = {
     es: 'Para hacer tus fotos, me falta {faltam} 📸 ¿Me la envías por aquí?',
     en: 'To make your photos, I still need {faltam} 📸 Could you send it here?',
   },
+  hotmart_link_coleta: {
+    'pt-BR': '💳 Pagamento (cartão, na sua moeda) para garantir o seu ensaio: {pagar}\nVocê pode pagar agora ou depois de escolher as poses — eu sigo te ajudando aqui 😉',
+    'pt-PT': '💳 Pagamento (cartão, na tua moeda) para garantir a tua sessão: {pagar}\nPodes pagar agora ou depois de escolher as poses — continuo a ajudar-te aqui 😉',
+    es: '💳 Pago (tarjeta, en tu moneda) para asegurar tu sesión: {pagar}\nPodés pagar ahora o después de elegir las poses — yo te sigo ayudando acá 😉',
+    en: '💳 Payment (card, in your currency) to lock in your photoshoot: {pagar}\nYou can pay now or after picking the poses — I will keep helping you here 😉',
+  },
+  explico_passo: {
+    'pt-BR': 'Calma, te explico 😊',
+    'pt-PT': 'Calma, eu explico 😊',
+    es: 'Tranqui, te explico 😊',
+    en: 'No worries, let me explain 😊',
+  },
+  explica_pagamento_hotmart: {
+    'pt-BR': 'O link de pagamento é para garantir o ensaio: você paga com cartão, e assim que eu tiver as poses e as fotos, sua sessão entra em produção 📸',
+    'pt-PT': 'O link de pagamento é para garantir a sessão: pagas com cartão e, assim que tiver as poses e as fotos, a tua sessão entra em produção 📸',
+    es: 'El link de pago es para asegurar tu sesión: pagás con tarjeta y, apenas tenga las poses y las fotos, tu sesión entra en producción 📸',
+    en: 'The payment link is to lock in your photoshoot: you pay by card and, once I have the poses and photos, it goes into production 📸',
+  },
+  explica_pagamento_pix: {
+    'pt-BR': 'O Pix é para garantir o ensaio: assim que você pagar e eu tiver as poses e as fotos, sua sessão entra em produção 📸 Depois do Pix, me manda o comprovante aqui.',
+    'pt-PT': 'O Pix é para garantir a sessão: assim que pagares e eu tiver as poses e as fotos, a tua sessão entra em produção 📸 Depois envia-me o comprovativo aqui.',
+    es: 'El Pix es para asegurar tu sesión: apenas pagues y tenga las poses y las fotos, entra en producción 📸 Después enviame el comprobante acá.',
+    en: 'The Pix payment locks in your photoshoot: once you pay and I have the poses and photos, it goes into production 📸 Then send me the receipt here.',
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',
