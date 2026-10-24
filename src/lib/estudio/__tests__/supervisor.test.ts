@@ -113,6 +113,19 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(ex, /if \(iaPerguntou && LEMBRETES_DA_IA\.has\(a\.chave\)\) break/)
     assert.match(ler('src/lib/estudio/producao-servidor.ts'), /aguardando_previa: false/)
   },
+  'prévia: a pose escolhida vai para o pedido da prévia; aviso diz PRÉVIA (não "pago"); sem pose → Ana pede à cliente': () => {
+    const PRECOS = [[2, 1890]].map(([q, v]) => ({ pacote_qtd: q, valor_cents: v, moeda: 'BRL' }))
+    const ctx: Contexto = { idioma: 'pt-BR', precos: PRECOS, posesDoTema: () => ['07', '12'], temasAtivos: ['casual'], pix: true, fotos: { tem_rosto: true, tem_corpo: true, rosto_recortado: false, unica: false } }
+    // prévia aceita depois do Pix: pacote tinha as poses 01/02; a prévia é a 07
+    const r = proximoPasso('previa_fotos', { tema: 'casual', tem_rosto: true, tem_corpo: true, poses: [], poses_antes_previa: ['01', '02'], etapa_antes_previa: 'aguardando_pagamento' }, { tipo: 'texto', texto: '07' }, ctx)
+    const at = r.acoes.find(a => a.t === 'atualizar_pedido') as { poses?: string[] }
+    assert.deepEqual(at.poses, ['07'], 'o pedido da prévia grava a pose 07')
+    assert.deepEqual(r.dados.poses, ['01', '02'], 'a conversa volta com as poses do pacote')
+    assert.match(ler('src/lib/estudio/ana/executor.ts'), /poses: a\.poses \?\? dados\.poses \?\? \[\]/)
+    const prod = ler('src/lib/estudio/producao-servidor.ts')
+    assert.match(prod, /PRÉVIA grátis de \$\{ped\.cliente_nome \?\? 'cliente'\} \(não é pedido pago\)/)
+    assert.match(ler('src/lib/estudio/ana/executor.ts'), /p\.tipo === 'previa' && !fotos\.length && falta\.includes\('poses'\)/)
+  },
   'prévia mandada à mão pela aba Conversas sai com marca d\'água': () => {
     const c = ler('src/app/actions/estudio-chat.ts')
     assert.match(c, /if \(previas\.has\(e\.pedido_id\)\)/)

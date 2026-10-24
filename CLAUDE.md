@@ -522,6 +522,17 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-09 — Prévia ia para a fila sem a pose + aviso dizia "pago"**
+- CAUSA RAIZ (bug do 05/11): `seguirColeta` da prévia restaurava
+  `d.poses = poses_antes_previa` ANTES do executor rodar `atualizar_pedido`
+  → pedido da prévia gravado sem a pose → "falta: poses". Agora a ação leva
+  as poses fixas (`atualizar_pedido.poses`)
+- Prévia sem pose na fila → `pedirFotoQueFalta` pede a POSE à cliente
+  (`previa_pede_pose`, abre `previa_fotos` no mesmo pedido) em vez de avisar
+- Aviso de falta diz "✨ PRÉVIA grátis de X (não é pedido pago)" ou
+  "💰 Pedido PAGO de X" + nome + id
+- Bateria: **1178/1178**
+
 **2026-11-09 — Estúdio IA: 1ª rodada do Supervisor aplicada**
 - (1, 2, 7 já estavam corrigidos: nome do anúncio, Pix fora do BR, pagamento
   antes das fotos — as conversas revisadas eram de antes)
