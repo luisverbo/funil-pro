@@ -64,6 +64,12 @@ export interface Dados {
   /** "Depois te falo": quando respondeu e por quantos minutos adiar a retomada. */
   pausa_em?: string
   adiar_retomada_min?: number
+  /** Prévia na fila: as retomadas esperam ela ser entregue. */
+  aguardando_previa?: boolean
+  /** "Vou falar com a minha filha": uma retomada suave no dia seguinte, sem prévia. */
+  pausa_longa?: boolean
+  /** Retomadas já enviadas (nunca repete a mesma). */
+  retomadas?: string[]
 }
 
 export interface Entrada {
@@ -252,7 +258,7 @@ export function nomeDoPerfil(perfil: string | null | undefined): string | null {
   const p = (perfil ?? '').replace(/[\p{Extended_Pictographic}\u200d\ufe0f]/gu, ' ').trim()
   const primeira = p.split(/\s+/)[0] ?? ''
   if (!/^[\p{L}'’-]{2,14}$/u.test(primeira)) return null
-  if (/\b(mi|la|el|sr|sra|dona|dra|academia|assessoria|loja|studio|estudio|empresa|null)\b/.test(sem(primeira))) return null
+  if (/\b(mi|la|el|sr|sra|dona|dra|academia|assessoria|loja|studio|estudio|empresa|null|ramo|flor|flores|floreria|tienda|shop|store|boutique|salon|salao|beauty|bazar|kiosco|negocio|ventas|vendas|oficial)\b/.test(sem(primeira))) return null
   return primeira.charAt(0).toUpperCase() + primeira.slice(1).toLowerCase()
 }
 
@@ -309,11 +315,11 @@ const FALTA: Record<IdiomaAna, { rosto: string; corpo: string; ambas: string }> 
 }
 
 function explicarTema(tema: string): Acao[] {
+  // Menos é mais (Supervisor): 1 áudio de explicação, o catálogo e a tabela.
+  // As 2 fotos (A3) são pedidas na hora certa, depois do pacote.
   return [
     { t: 'audio', chave: 'a2' },
-    { t: 'audio', chave: 'a3' },
     { t: 'catalogo', tema },
-    { t: 'audio', chave: 'a4' },
     { t: 'texto', chave: 'tabela_precos' },
   ]
 }
@@ -337,9 +343,11 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   // "Depois te falo" / "vou pensar" / "te aviso": responde UMA vez e adia a retomada para 3 h.
-  if (e.tipo === 'texto' && pausaPedida(txt) && !['inicio', 'humano', 'pago', 'conferindo', 'entregue', 'ajuste_detalhe'].includes(etapa)) {
+  if (e.tipo === 'texto' && (pausaPedida(txt) || consultaAlguem(txt)) && !['inicio', 'humano', 'pago', 'conferindo', 'entregue', 'ajuste_detalhe'].includes(etapa)) {
     const agora = ctx.agoraMs ?? Date.now()
-    d.adiar_retomada_min = 180
+    const longa = consultaAlguem(txt)
+    d.adiar_retomada_min = longa ? 20 * 60 : 180
+    if (longa) d.pausa_longa = true
     if (d.pausa_em && agora - new Date(d.pausa_em).getTime() < 3 * 3600e3) return fim(etapa, [])
     d.pausa_em = new Date(agora).toISOString()
     return fim(etapa, [{ t: 'texto', chave: 'pausa_ok' }])
@@ -688,7 +696,9 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
     // Volta a venda como estava (as poses do pacote não se perdem).
     d.poses = d.poses_antes_previa ?? []
     d.poses_antes_previa = undefined
-    return { etapa: volta, dados: d, acoes: [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }, ...repetirPergunta(volta, d)] }
+    // Enquanto a prévia não chega, nada de tabela/retomada (ela vem com o convite para o pacote).
+    d.aguardando_previa = true
+    return { etapa: volta, dados: d, acoes: [...acoes, { t: 'fechar_pedido', tipo: 'previa' }, { t: 'texto', chave: 'previa_na_fila' }] }
   }
   // Toda transição já manda a pergunta da etapa nova (preferências, uma por vez).
   const prox = proximaPreferencia(d)
@@ -852,8 +862,9 @@ export const ETAPAS_SEM_COBRANCA: Etapa[] = ['inicio', 'humano', 'conferindo', '
 
 export function cobrancaDevida(c: {
   etapa: Etapa; modo: string; cobrancas: number; janela_ate: string | null
-  aguardando_desde: string | null; ultima_cliente_em: string | null; tema?: string | null; previa_feita?: boolean
+  aguardando_desde: string | null; ultima_cliente_em: string | null; tema?: string | null; previa_feita?: boolean; aguardando_previa?: boolean
 }, agora: Date = new Date()): 'cobranca_1' | 'cobranca_2' | 'cobranca_3' | null {
+  if (c.aguardando_previa) return null
   if (c.modo !== 'ana' || ETAPAS_SEM_COBRANCA.includes(c.etapa) || c.cobrancas >= 3) return null
   if (!c.janela_ate || new Date(c.janela_ate).getTime() <= agora.getTime()) return null
   if (!c.aguardando_desde) return null
@@ -876,7 +887,18 @@ export function cobrancaDevida(c: {
  * 2ª prévia grátis (antes do Pix) ou "ficou alguma dúvida?" (depois);
  * 3ª prévia grátis como última cartada se ainda não fez, senão a vaga reservada.
  */
-export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, d: Dados): { chaves: string[]; oferecePrevia: boolean } {
+export function mensagensDaRetomada(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, d: Dados): { chaves: string[]; oferecePrevia: boolean; encerrar?: boolean } {
+  // Prévia na fila: nada até ela ser entregue. Foi consultar a família: 1 mensagem suave e para.
+  if (d.aguardando_previa) return { chaves: [], oferecePrevia: false }
+  if (d.pausa_longa) return { chaves: ['rmk_suave'], oferecePrevia: false, encerrar: true }
+  const r = mensagensDaRetomadaBase(chave, etapa, d)
+  // Nunca a mesma retomada 2× na conversa: a repetida vira "ficou alguma dúvida?" (e essa, só 1×).
+  const ja = new Set(d.retomadas ?? [])
+  const chaves = r.chaves.map(k => (ja.has(k) && k !== 'hotmart_lembrete' ? (ja.has('rmk_duvida') ? '' : 'rmk_duvida') : k)).filter(Boolean)
+  return { ...r, chaves }
+}
+
+function mensagensDaRetomadaBase(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_3', etapa: Etapa, d: Dados): { chaves: string[]; oferecePrevia: boolean } {
   const pagamento = etapa === 'aguardando_pagamento'
   const podePrevia = !!d.tema && !d.previa_feita
   if (chave === 'cobranca_1') {
@@ -905,6 +927,10 @@ function lembreteCurto(etapa: Etapa, d: Dados): Acao[] {
 
 const PAUSA = /\b(depois (eu )?(te )?(falo|chamo|vejo|respondo|mando|aviso)|falo (contigo|com voce) depois|vou pensar|vou ver( e te (falo|aviso))?|te aviso|te dou retorno|mais tarde (eu )?(te )?(falo|chamo|vejo)?|amanha (eu )?(te )?(falo|chamo|vejo|mando|aviso)|agora nao (posso|da)|estou ocupad[ao]|despues (te )?(hablo|escribo|aviso|veo|respondo)|luego (te )?(hablo|escribo|aviso)|lo (voy a )?pens\w*|te aviso|mas tarde|manana te (hablo|escribo|aviso)|ahora no puedo|estoy ocupad[ao]|i'?ll (think|let you know|get back)|let me think|talk (to you )?later|later today|not now|busy now)\b/
 /** "Depois te falo", "vou pensar", "te aviso", "luego te escribo" — e sem pergunta/escolha junto. */
+const CONSULTA = /\b(vou (falar|conversar|ver) com (a |o |minha |meu )?(filha|filho|marido|esposa|esposo|mae|mãe|pai|familia|família|neta|neto|irma|irmã|amiga)|vou consultar|vou perguntar (pra|para|a)|(voy a |tengo que )?(hablar|consultar|preguntar)(le)? (con|a) (mi |la |el )?(hija|hijo|marido|esposo|esposa|mama|mamá|madre|papa|papá|familia|nieta|nieto|hermana|amiga)|lo consulto|lo hablo con|i'?ll (ask|talk to|check with) my|talk to my (husband|wife|daughter|son|family))\b/
+/** Vai consultar alguém / se despedindo para decidir com a família: retomada só no dia seguinte, suave. */
+export function consultaAlguem(texto: string): boolean { return CONSULTA.test(sem(texto)) }
+
 export function pausaPedida(texto: string): boolean {
   const t = sem(texto).trim()
   return PAUSA.test(t) && !/\?|\d/.test(t) && t.split(/\s+/).length <= 12

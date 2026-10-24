@@ -291,7 +291,7 @@ export async function entregarPedido(admin: SupabaseClient, pedidoId: string): P
   // Prévia: a conversa já voltou para a etapa de antes (a venda continua); só marca quando a Ana falou.
   // Pacote: etapa 'entregue' (ajuste grátis / +5 fotos), sem cobranças.
   await admin.from('estudio_contatos').update(previa
-    ? { ultima_ana_em: new Date().toISOString(), dados: { ...d, aguardando_desde: new Date().toISOString() }, cobrancas: 0 }
+    ? { ultima_ana_em: new Date().toISOString(), dados: { ...d, aguardando_previa: false, aguardando_desde: new Date().toISOString() }, cobrancas: 0 }
     : { etapa: 'entregue', pedido_atual_id: pedidoId, dados: { ...d, upsell_oferecido: !!cheio, aguardando_desde: new Date().toISOString() }, cobrancas: 3, ultima_ana_em: new Date().toISOString() },
   ).eq('id', c.id)
   return { enviadas }
