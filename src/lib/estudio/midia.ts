@@ -8,7 +8,7 @@
 // assinado de 1 dia.
 // ============================================================================
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { BUCKET_CLIENTES } from './catalogo'
+import { BUCKET_CLIENTES, urlPublicaDoCatalogo } from './catalogo'
 import { caminhoMidiaDaConversa, extensaoDoMime } from './chat'
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
@@ -45,6 +45,8 @@ export async function guardarMidiaRecebida(
 
 /** Link assinado para a tela (curto) ou para a Meta buscar no envio (1 dia). */
 export async function linkAssinado(admin: SupabaseClient, path: string, segundos: number): Promise<string | null> {
+  // Áudios da Ana (A1–A6) moram no catálogo público: "catalogo:<caminho>".
+  if (path.startsWith('catalogo:')) return urlPublicaDoCatalogo(path.slice('catalogo:'.length), process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
   const { data } = await admin.storage.from(BUCKET_CLIENTES).createSignedUrl(path, segundos)
   return data?.signedUrl ?? null
 }

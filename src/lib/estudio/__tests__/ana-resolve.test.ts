@@ -242,6 +242,13 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(ex, /dados\.adiar_retomada_min - 10\) \* 60e3/)
     assert.match(ex, /if \(ult\?\.\[0\]\?\.texto === t\) return/)
   },
+  'áudios no chat: link estável (não reinicia o player a cada 3 s) e áudio da Ana tocável': () => {
+    const tela = ler('src/app/(dashboard)/estudio-ia/aba-conversas.tsx')
+    assert.match(tela, /linksMidia\.current\.get\(m\.id\)/)
+    assert.match(tela, /preload="metadata"/)
+    assert.match(ler('src/lib/estudio/midia.ts'), /path\.startsWith\('catalogo:'\)/)
+    assert.match(ler('src/lib/estudio/ana/executor.ts'), /media_path: `catalogo:\$\{path\}`/)
+  },
   'respostas de venda sempre no Sonnet 5.5': () => {
     assert.match(ler('src/lib/estudio/ana/ia.ts'), /return MODELO_FORTE\n\}/)
   },

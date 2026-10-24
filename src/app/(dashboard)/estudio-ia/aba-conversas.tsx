@@ -96,10 +96,23 @@ export function AbaConversas() {
   }, [busca, notificar])
 
   // ── Conversa aberta (3 s) ─────────────────────────────────────────────────
+  // O link da mídia é assinado e muda a cada atualização (3 s): trocar o src do
+  // <audio>/<video> no meio reinicia o player ("play e pausa"). Guarda o 1º link
+  // de cada mensagem enquanto ele vale (assinado por 10 min → troca aos 8).
+  const linksMidia = useRef<Map<string, { url: string; em: number }>>(new Map())
   const recarregarAberta = useCallback(async (id: string) => {
     const r = await abrirConversaChat(id).catch(e => ({ mensagens: [], pedidos: [], error: String(e) }) as Aberta)
     if (r.error) setErro(r.error)
-    setAberta(a => (a?.contato?.id === id || !a || r.contato?.id === id) ? r : a)
+    const agora = Date.now()
+    const mensagens = (r.mensagens ?? []).map(m => {
+      if (!m.media_url) return m
+      const guardado = linksMidia.current.get(m.id)
+      if (guardado && agora - guardado.em < 8 * 60e3) return { ...m, media_url: guardado.url }
+      linksMidia.current.set(m.id, { url: m.media_url, em: agora })
+      return m
+    })
+    const r2 = { ...r, mensagens } as Aberta
+    setAberta(a => (a?.contato?.id === id || !a || r2.contato?.id === id) ? r2 : a)
   }, [])
   useEffect(() => {
     if (!abertaId) return
@@ -376,7 +389,13 @@ function Conteudo({ m }: { m: Msg }) {
       // eslint-disable-next-line @next/next/no-img-element
       return url ? <img src={url} alt="figurinha" className="h-32 w-32 object-contain" /> : <p className="text-slate-500">🩷 Figurinha</p>
     case 'audio':
-      return url ? <audio controls src={url} className="w-60 max-w-full" preload="none" /> : <p className="text-slate-500">🎙 Áudio</p>
+      // preload="metadata" mostra a duração; o link "baixar" serve no iPhone (Safari antigo não toca OGG).
+      return url ? (
+        <div>
+          <audio controls src={url} className="w-60 max-w-full" preload="metadata" />
+          <a href={url} target="_blank" rel="noreferrer" className="mt-0.5 block text-[10px] text-slate-500 underline">baixar áudio</a>
+        </div>
+      ) : <p className="text-slate-500">🎙 Áudio</p>
     case 'video':
       return url ? <video controls src={url} className="max-h-72 rounded-md" preload="none" /> : <p className="text-slate-500">🎬 Vídeo</p>
     case 'documento':

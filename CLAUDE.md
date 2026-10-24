@@ -522,6 +522,14 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-08 — Chat do estúdio: áudios tocam**
+- CAUSA RAIZ do "play e pausa": polling de 3 s gerava link assinado NOVO a
+  cada vez → src do <audio> mudava → player reiniciava. Agora `linksMidia`
+  (ref) guarda o 1º link por mensagem por 8 min (assinado 10 min)
+- Áudios da Ana (A1–A6) gravados com `media_path: catalogo:<path>` →
+  `linkAssinado` devolve a URL pública → tocam no chat (antes só "🎙 Áudio")
+- `preload="metadata"` + link "baixar áudio" (Safari antigo não toca OGG)
+
 **2026-11-08 — Estúdio IA: fim do "ok" infinito**
 - `semPerguntaPendente` vale também em nome/tema/pacote/fotos: "ok"/👍/
   figurinha → no máximo ❤️ (1/10 min), nunca repete a pergunta; com sim/não
