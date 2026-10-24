@@ -81,7 +81,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const pp = (e: Entrada, d = base.dados) => proximoPasso('fotos_poses', d, e, ctx)
     assert.deepEqual(chaves(pp({ tipo: 'video', texto: '' }).acoes), ['texto:video_nao'])
     assert.deepEqual(chaves(pp(foto('ruim')).acoes), ['texto:foto_ruim'])
-    assert.deepEqual(chaves(pp({ tipo: 'figurinha', texto: '' }).acoes), ['texto:figurinha_nao'])
+    assert.deepEqual(chaves(pp({ tipo: 'figurinha', texto: '' }).acoes), ['reagir'])
     assert.deepEqual(chaves(pp({ tipo: 'documento', texto: '[📎 a.zip]' }).acoes), ['texto:documento_nao'])
     assert.deepEqual(chaves(pp(foto('recusada')).acoes), ['texto:foto_recusada'])
     const inval = pp(txt('03 e 99'))

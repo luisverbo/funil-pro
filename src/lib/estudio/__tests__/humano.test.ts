@@ -169,7 +169,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const d: Dados = { tema: 'casual', pacote_qtd: 2 }
     assert.deepEqual(chaves(proximoPasso('fotos_poses', d, { tipo: 'video', texto: '' }, ctx).acoes), ['texto:video_nao'])
     assert.match(TEXTOS.video_nao['pt-BR'], /^Você me mandou um vídeo 😊 Para o ensaio eu preciso de FOTO/)
-    assert.deepEqual(chaves(proximoPasso('fotos_poses', d, { tipo: 'figurinha', texto: '' }, ctx).acoes), ['texto:figurinha_nao'])
+    assert.deepEqual(chaves(proximoPasso('fotos_poses', d, { tipo: 'figurinha', texto: '' }, ctx).acoes), ['reagir'])
     assert.ok(ehFoto({ tipo: 'documento', media_mime: 'image/jpeg' }) && ehFoto({ tipo: 'documento', media_mime: 'image/heic' }) && !ehFoto({ tipo: 'documento', media_mime: 'application/pdf' }))
     assert.equal(TEXTOS.audio_nao_ouvi['pt-BR'], 'Não consegui ouvir seu áudio aqui 🙈 pode me mandar por escrito?')
   },

@@ -516,6 +516,12 @@ export const TEXTOS: Tabela = {
     es: 'El Pix es para asegurar tu sesión: apenas pagues y tenga las poses y las fotos, entra en producción 📸 Después enviame el comprobante acá.',
     en: 'The Pix payment locks in your photoshoot: once you pay and I have the poses and photos, it goes into production 📸 Then send me the receipt here.',
   },
+  pausa_ok: {
+    'pt-BR': 'Claro, sem pressa! 💖 Fico aqui te esperando, é só me chamar.',
+    'pt-PT': 'Claro, sem pressa! 💖 Fico aqui à tua espera, é só dizeres.',
+    es: '¡Claro, sin apuro! 💖 Acá te espero, solo escribime.',
+    en: "Of course, no rush! 💖 I'll be right here, just message me.",
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',
