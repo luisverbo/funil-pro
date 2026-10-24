@@ -241,12 +241,24 @@ export async function enviarFotosDoPedidoChat(contatoId: string, entregaIds: str
     const admin = createAdminClient()
     const ids = (entregaIds ?? []).slice(0, 30)
     const { data: ents } = await admin.from('estudio_entregas').select('id, pedido_id, pose_numero, foto_path').in('id', ids)
-    const { data: meus } = await admin.from('estudio_pedidos').select('id').eq('tenant_id', tenantId).eq('contato_id', contatoId)
+    const { data: meus } = await admin.from('estudio_pedidos').select('id, tipo').eq('tenant_id', tenantId).eq('contato_id', contatoId)
     const permitidos = new Set((meus ?? []).map(p => p.id))
+    const previas = new Set((meus ?? []).filter(p => p.tipo === 'previa').map(p => p.id))
     const con = await conexao(tenantId)
     let enviadas = 0
     for (const e of (ents ?? []).filter(x => permitidos.has(x.pedido_id))) {
-      const { data: u } = await admin.storage.from(BUCKET_ENTREGAS).createSignedUrl(e.foto_path, 24 * 3600)
+      let link: string | null = null
+      if (previas.has(e.pedido_id)) {
+        // Prévia mandada à mão também sai COM a marca d'água (igual à entrega automática).
+        const { data: arq } = await admin.storage.from(BUCKET_ENTREGAS).download(e.foto_path)
+        if (!arq) continue
+        const { prepararEnvio } = await import('@/lib/estudio/producao-servidor')
+        const jpg = await prepararEnvio(Buffer.from(await arq.arrayBuffer()), true)
+        const destino = `${e.pedido_id}/envio/${e.pose_numero}.jpg`
+        await admin.storage.from(BUCKET_CLIENTES).upload(destino, jpg, { contentType: 'image/jpeg', upsert: true })
+        link = (await admin.storage.from(BUCKET_CLIENTES).createSignedUrl(destino, 24 * 3600)).data?.signedUrl ?? null
+      } else link = (await admin.storage.from(BUCKET_ENTREGAS).createSignedUrl(e.foto_path, 24 * 3600)).data?.signedUrl ?? null
+      const u = link ? { signedUrl: link } : null
       if (!u?.signedUrl) continue
       const r = await enviarMidiaCloud(con, c.wa_id, 'image', u.signedUrl)
       await registrarSaida(tenantId, contatoId, r, { tipo: 'imagem', texto: `Foto ${e.pose_numero}`, media_mime: 'image/png' })

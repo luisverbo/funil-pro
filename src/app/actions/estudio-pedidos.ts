@@ -370,3 +370,85 @@ export async function painelEstudio(de: string, ate: string): Promise<{
     }
   } catch (e) { return { ...vazio, error: String(e) } }
 }
+
+// ── Supervisor da Ana ───────────────────────────────────────────────────────
+
+const avisoSupervisor = (m: string) => /estudio_revisoes|estudio_achados|revisado_ate|does not exist|schema cache/i.test(m)
+  ? 'Falta rodar o SQL 20261108000000_estudio_ia_supervisor.sql no Supabase.' : m
+
+export interface AchadoTela {
+  id: string; contato_id: string; contato_nome: string | null; pais: string | null; gravidade: string; tipo: string
+  trecho: string | null; problema: string; deveria: string | null; correcao: { destino: string; pergunta: string | null; texto: string }
+  status: string; criado_em: string
+}
+
+export async function painelSupervisor(dias = 7): Promise<{
+  achados: AchadoTela[]; revisoes: number; nota_media: number | null; vendeu: number; perdeu: number
+  por_tipo: Record<string, number>; custo_usd: number; para_claude: string; error?: string
+}> {
+  const vazio = { achados: [], revisoes: 0, nota_media: null, vendeu: 0, perdeu: 0, por_tipo: {}, custo_usd: 0, para_claude: '' }
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const desde = new Date(Date.now() - Math.max(1, Math.min(90, dias)) * 86400e3).toISOString()
+    const [rv, ac] = await Promise.all([
+      admin.from('estudio_revisoes').select('nota, venda, custo_usd').eq('tenant_id', tenantId).gte('criado_em', desde).limit(5000),
+      admin.from('estudio_achados').select('id, contato_id, gravidade, tipo, trecho, problema, deveria, correcao, status, criado_em').eq('tenant_id', tenantId).eq('status', 'novo').order('criado_em', { ascending: false }).limit(300),
+    ])
+    if (rv.error) return { ...vazio, error: avisoSupervisor(rv.error.message) }
+    const ids = [...new Set((ac.data ?? []).map(a => a.contato_id))]
+    const { data: cts } = ids.length ? await admin.from('estudio_contatos').select('id, nome, pais').in('id', ids) : { data: [] }
+    const nomes = new Map((cts ?? []).map(c => [c.id, c]))
+    const ordem = { alta: 0, media: 1, baixa: 2 } as Record<string, number>
+    const achados = (ac.data ?? []).map(a => ({ ...a, contato_nome: nomes.get(a.contato_id)?.nome ?? null, pais: nomes.get(a.contato_id)?.pais ?? null }) as AchadoTela)
+      .sort((a, b) => (ordem[a.gravidade] ?? 3) - (ordem[b.gravidade] ?? 3))
+    const notas = (rv.data ?? []).map(r => r.nota).filter((n): n is number => typeof n === 'number')
+    const por_tipo: Record<string, number> = {}
+    for (const a of achados) por_tipo[a.tipo] = (por_tipo[a.tipo] ?? 0) + 1
+    const { textoParaClaude } = await import('@/lib/estudio/supervisor')
+    return {
+      achados, revisoes: (rv.data ?? []).length, nota_media: notas.length ? Math.round(notas.reduce((s, n) => s + n, 0) / notas.length * 10) / 10 : null,
+      vendeu: (rv.data ?? []).filter(r => r.venda === 'vendeu').length, perdeu: (rv.data ?? []).filter(r => r.venda === 'perdeu').length,
+      por_tipo, custo_usd: Math.round((rv.data ?? []).reduce((s, r) => s + Number(r.custo_usd ?? 0), 0) * 100) / 100,
+      para_claude: textoParaClaude(achados.filter(a => a.correcao?.destino === 'codigo')),
+    }
+  } catch (e) { return { ...vazio, error: String(e) } }
+}
+
+/** "Aplicar": regra/FAQ/não dizer vira item da Base de conhecimento (a Ana usa na próxima mensagem). */
+export async function aplicarAchado(id: string, textoEditado?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const { data: a, error } = await admin.from('estudio_achados').select('id, correcao, status').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
+    if (error) return { success: false, error: avisoSupervisor(error.message) }
+    if (!a) return { success: false, error: 'Não encontrado.' }
+    const { linhaDaBase } = await import('@/lib/estudio/supervisor')
+    const corr = { ...(a.correcao as { destino: 'regra' | 'faq' | 'nao_dizer' | 'codigo'; pergunta: string | null; texto: string }) }
+    if (textoEditado?.trim()) corr.texto = textoEditado.trim()
+    const linha = linhaDaBase(corr)
+    if (!linha) return { success: false, error: 'Este é de código: copie em "Levar para o Claude Code".' }
+    const { error: e2 } = await admin.from('estudio_conhecimento').insert({ tenant_id: tenantId, ...linha, ativo: true, ordem: 0 })
+    if (e2) return { success: false, error: e2.message }
+    await admin.from('estudio_achados').update({ status: 'aplicado', aplicado_em: new Date().toISOString(), correcao: corr }).eq('id', id)
+    return { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+export async function ignorarAchado(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { error } = await createAdminClient().from('estudio_achados').update({ status: 'ignorado' }).eq('id', id).eq('tenant_id', tenantId)
+    return error ? { success: false, error: avisoSupervisor(error.message) } : { success: true }
+  } catch (e) { return { success: false, error: String(e) } }
+}
+
+/** Revisa agora (sem esperar a hora cheia). Com contatoId, revisa só aquela conversa. */
+export async function revisarAgoraSupervisor(contatoId?: string): Promise<{ success: boolean; revisadas: number; achados: number; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const { revisarConversas } = await import('@/lib/estudio/supervisor-servidor')
+    const r = await revisarConversas(createAdminClient(), { tenantId, contatoId: contatoId || undefined, limite: contatoId ? 1 : 10, orcamentoMs: 240e3 })
+    return { success: r.erros.length === 0 || r.revisadas > 0, revisadas: r.revisadas, achados: r.achados, error: r.erros.length ? r.erros.slice(0, 3).join(' · ') : undefined }
+  } catch (e) { return { success: false, revisadas: 0, achados: 0, error: String(e) } }
+}

@@ -19,6 +19,7 @@ import { AbaPainelPix, CartaoPix } from './pix-ui'
 import { AbaPedidos, CartaoMotor } from './aba-pedidos'
 import { CartaoHotmart, CartaoPrecos } from './hotmart-ui'
 import { CartaoMetaCapi } from './anuncios-ui'
+import { AbaSupervisor } from './aba-supervisor'
 
 /** Fase em construção: subabas até ela já funcionam (sem selo). */
 const FASE_ATUAL = 5
@@ -30,6 +31,7 @@ const SUBABAS = [
   { chave: 'painel', rotulo: 'Painel', fase: 4, texto: 'Vendas do dia e da semana, ticket médio, pedidos por status e tempo médio de entrega.' },
   { chave: 'pedidos', rotulo: 'Pedidos', fase: 5, texto: 'A fila de produção: fotos da cliente, tema, poses, pagamento, fotos geradas e os botões Aprovar, Refazer e Cancelar.' },
   { chave: 'catalogo', rotulo: 'Catálogo', fase: 1, texto: '' },
+  { chave: 'supervisor', rotulo: 'Supervisor', fase: 5, texto: '' },
   { chave: 'atendente', rotulo: 'Atendente', fase: 3, texto: 'A Ana, do Estúdio: textos de cada etapa, áudios e cobranças.' },
   { chave: 'midias', rotulo: 'Mídias', fase: 3, texto: 'Áudios A1–A6, imagem do menu, PDFs dos catálogos e foto de perfil.' },
   { chave: 'config', rotulo: 'Configurações', fase: 2, texto: 'WhatsApp do estúdio, Pix e motor de produção.' },
@@ -65,7 +67,7 @@ export default function EstudioClient({ inicial, supabaseUrl }: { inicial: Catal
         ))}
       </nav>
 
-      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <><AbaConfig /><CartaoPix /><CartaoHotmart /><CartaoPrecos /><CartaoMetaCapi /><CartaoMotor /></> : aba === 'pedidos' ? <AbaPedidos /> : aba === 'painel' ? <AbaPainelPix /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : (
+      {aba === 'catalogo' ? <AbaCatalogo inicial={inicial} supabaseUrl={supabaseUrl} /> : aba === 'config' ? <><AbaConfig /><CartaoPix /><CartaoHotmart /><CartaoPrecos /><CartaoMetaCapi /><CartaoMotor /></> : aba === 'pedidos' ? <AbaPedidos /> : aba === 'painel' ? <AbaPainelPix /> : aba === 'conversas' ? <AbaConversas /> : aba === 'atendente' ? <AbaAtendente /> : aba === 'midias' ? <AbaMidias /> : aba === 'supervisor' ? <AbaSupervisor /> : (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
           <p className="text-3xl">🛠️</p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">{info.rotulo} chega na Fase {info.fase}</h2>
