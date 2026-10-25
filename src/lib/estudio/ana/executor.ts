@@ -5,7 +5,7 @@
 // ============================================================================
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
-import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo } from '../catalogo'
+import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo, poseLevaIdade as poseLevaIdadeCena } from '../catalogo'
 import { proximoPasso, lembreteDaEtapa, mensagensDaRetomada, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
 import { caminhoPdfIdioma, linkDoCatalogo, nomeDoPdf } from '../catalogo-idiomas'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
@@ -151,7 +151,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     precosDoPais(admin, c.tenant_id, c.pais),
     sobrescritas(admin, c.tenant_id),
     admin.from('estudio_temas').select('slug, nome').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem'),
-    admin.from('estudio_poses').select('tema_slug, numero').eq('tenant_id', c.tenant_id).eq('ativa', true).limit(5000),
+    admin.from('estudio_poses').select('tema_slug, numero, cena').eq('tenant_id', c.tenant_id).eq('ativa', true).limit(5000),
     pixDoTenant(admin, c.tenant_id),
     admin.from('estudio_conhecimento').select('tipo, pergunta, resposta').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem').limit(200),
   ])
@@ -161,7 +161,13 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     uso ? registrarUsoIa(admin, { tenant_id: c.tenant_id, contato_id: c.id, pedido_id: pedidoId, finalidade, intencao, uso }) : Promise.resolve()
   const temasAtivos = (temasQ.data ?? []).map(t => t.slug)
   const posesPorTema = new Map<string, string[]>()
-  for (const p of posesQ.data ?? []) posesPorTema.set(p.tema_slug, [...(posesPorTema.get(p.tema_slug) ?? []), p.numero])
+  // A Ana "conhece" cada foto: a cena de cada pose (o que tem nela) por tema.
+  const cenas = new Map<string, string>()
+  for (const p of posesQ.data ?? []) {
+    posesPorTema.set(p.tema_slug, [...(posesPorTema.get(p.tema_slug) ?? []), p.numero])
+    cenas.set(`${p.tema_slug}|${p.numero}`, String((p as { cena?: string | null }).cena ?? ''))
+  }
+  const poseLevaIdade = (slug: string, numero: string) => poseLevaIdadeCena(cenas.get(`${slug}|${numero}`))
 
   let dados: Dados = (c.dados ?? {}) as Dados
   const etapaAtual = ((c.etapa as Etapa) || 'inicio')
@@ -260,7 +266,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     const { data: st } = await admin.from('estudio_pedidos').select('status').eq('id', pedidoId).maybeSingle()
     pedidoPago = ['pago', 'aguardando_fotos'].includes(String(st?.status ?? ''))
   }
-  const ctxAna = { nomePerfil: c.nome ?? null, idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
+  const ctxAna = { poseLevaIdade, nomePerfil: c.nome ?? null, idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, ctxAna)
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
@@ -308,6 +314,11 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           await admin.from('estudio_contatos').update({ idioma: a.idioma, idioma_fixo: true }).eq('id', c.id)
           break
         case 'texto':
+          // Idade quando a pose escolhida mostra o número: a pergunta diz por quê.
+          if (a.chave === 'pref_idade' && dados.tema && (dados.poses ?? []).some(n => poseLevaIdade(dados.tema!, n))) {
+            await enviarTexto(renderTexto('pref_idade_numero', idioma, vars({ poses: (dados.poses ?? []).filter(n => poseLevaIdade(dados.tema!, n)).join(', ') }), sob.textos), 'pref_idade_numero')
+            break
+          }
           // A IA já terminou com uma pergunta: o lembrete da etapa seria a 2ª pergunta seguida.
           if (iaPerguntou && LEMBRETES_DA_IA.has(a.chave)) break
           await enviarTexto(renderTexto(a.chave, idioma, vars(a.vars), sob.textos), a.chave)
@@ -487,6 +498,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             temas: temasAtivos.map(t => nomeDoTema(t, idioma)).join(', '),
             historico: [...(hist ?? [])].reverse().slice(0, -1).map(h => ({ de: h.direcao === 'entrada' ? 'cliente' as const : 'ana' as const, texto: h.texto ?? '' })),
             base,
+            poses: dados.tema ? (posesPorTema.get(dados.tema) ?? []).map(n => `${n}: ${cenas.get(`${dados.tema}|${n}`) ?? ''}${poseLevaIdade(dados.tema!, n) ? ' [leva o NÚMERO da idade]' : ''}`).join('\n') : undefined,
             pagamento: (c.pais && c.pais !== 'BR') || (precos[0]?.moeda ?? 'BRL') !== 'BRL'
               ? `cartão de crédito/débito pelo link seguro da Hotmart, em ${precos[0]?.moeda ?? 'USD'} (a Hotmart converte para a moeda dela); a confirmação chega sozinha`
               : 'Pix (Brasil) para a chave do estúdio, conferido pelo comprovante',

@@ -145,3 +145,13 @@ export function preencherPrompt(prompt: string, v: { idade?: number | null; cabe
     .replaceAll('{cabelo}', v.cabelo?.trim() || 'igual ao da foto')
     .replaceAll('{preferencias}', v.preferencias?.trim() || 'sem preferências especiais')
 }
+
+/**
+ * A cena mostra a IDADE da cliente (bolo/velas/balões/número gigante "com a
+ * idade dela")? Então a foto precisa do número — sem ele a produção faz só
+ * com velas. Palavra inteira: "cidade" não conta.
+ */
+export function poseLevaIdade(cena: string | null | undefined): boolean {
+  return /(?<![a-zà-ú])(idade|n[uú]mero da idade|n[uú]meros da idade)(?![a-zà-ú])/i.test(cena ?? '')
+}
+
