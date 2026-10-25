@@ -47,7 +47,7 @@ export async function configProducao(admin: SupabaseClient, tenantId: string): P
     // Chave do Gemini: segredo do servidor se existir; senão a colada em Configurações (só service role lê).
     gemini_key: process.env.GEMINI_API_KEY || (c.gemini_api_key as string) || null,
     prazo_min: Number(c.prazo_min ?? 60) || 60,
-    ajustes_gratis: Number(c.ajustes_gratis ?? 1),
+    ajustes_gratis: Math.min(1, Number(c.ajustes_gratis ?? 1)),   // no máximo 1 ajuste
     upsell_qtd: Number(c.upsell_qtd ?? 5) || 5,
     upsell_desconto_pct: Number(c.upsell_desconto_pct ?? 20),
   }

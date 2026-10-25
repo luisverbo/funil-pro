@@ -748,7 +748,8 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
   if (!acoes.some(a => a.t === 'fotos_escolher')) acoes.push({ t: 'fotos_escolher' })
   // As poses vão FIXAS na ação: na prévia, `d.poses` volta a ser a do pacote logo abaixo
   // (antes da ação rodar) — sem isso a prévia ia para a fila sem a pose escolhida.
-  acoes.push({ t: 'atualizar_pedido', poses: [...(d.poses ?? [])] })
+  // Prévia = UMA foto só, mesmo que a cliente tenha mandado vários números.
+  acoes.push({ t: 'atualizar_pedido', poses: previa ? (d.poses ?? []).slice(0, 1) : [...(d.poses ?? [])] })
   if (previa) {
     d.previa_feita = true
     const volta = d.etapa_antes_previa ?? 'pacote'

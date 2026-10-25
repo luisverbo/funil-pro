@@ -522,6 +522,13 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — UM ajuste só e UMA foto de prévia**
+- IA dizia "qualquer ajuste é só pedir" depois do ajuste feito. Prompt: 1
+  ajuste SÓ, nunca oferecer 2º; prévia = 1 foto; `ContextoIa.ajusteUsado`
+  (pedido com ajuste usado) → não oferece outro e sugere pacote novo.
+  `ajustes_gratis` limitado a 1 (salvar e ler); prévia grava só a 1ª pose
+- Bateria: **1197/1197**
+
 **2026-11-11 — Prévia saía SEM marca d'água**
 - CAUSA RAIZ: marca era `<text>` em SVG; na Vercel não há fontes → texto
   invisível. Agora `textoEmTracos` desenha as letras como traços (sem fonte);
