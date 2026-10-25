@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { anuncioDoReferral, atualizacaoDeOrigem, corpoDoEvento, deveEnviar, eventIdDe, explicarErroMeta, idDoDataset, agruparPorAnuncio } from '@/lib/estudio/anuncios'
-import { enviarEventoPedido, buscarAnuncio, GRAPH_CAPI } from '@/lib/estudio/anuncios-servidor'
+import { enviarEventoPedido, buscarAnuncio, nomesDosAnuncios, GRAPH_CAPI } from '@/lib/estudio/anuncios-servidor'
 
 const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 const WABA = '2250778325757289'
@@ -41,6 +41,7 @@ function bancoFalso(tabelas: Record<string, Linha[]>) {
         update: (d: Linha) => { modo = 'update'; dados = d; return b },
         upsert: (d: Linha) => { modo = 'upsert'; dados = d; return b },
         eq: (c: string, v: unknown) => { filtros.push(r => String(r[c]) === String(v)); return b },
+        in: (c: string, v: unknown[]) => { filtros.push(r => v.map(String).includes(String(r[c]))); return b },
         not: (c: string) => { filtros.push(r => r[c] !== null && r[c] !== undefined); return b },
         lt: (c: string, v: number) => { filtros.push(r => Number(r[c] ?? 0) < v); return b },
         limit: () => b,
@@ -183,6 +184,33 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.ok(!/RENAME|DROP COLUMN|DROP TABLE/i.test(sql))
     for (const c of ['ad_id', 'ctwa_clid', 'ad_headline', 'ad_body', 'ad_media_url', 'origem_em', 'ad_id_primeiro', 'ctwa_clid_primeiro', 'meta_purchase_enviado_em', 'meta_lead_enviado_em', 'meta_tentativas', 'meta_dataset_id']) assert.ok(new RegExp(`ADD COLUMN IF NOT EXISTS ${c}\\b`).test(sql), c)
     assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS estudio_anuncios') && sql.includes('p.meta_tentativas < 3'))
+  },
+  'nome do anúncio no painel: vem da aba Tráfego (anúncio → conjunto → campanha) e, se faltar, da Graph com o token da conta de anúncios': async () => {
+    const T = 't1'
+    const db = bancoFalso({
+      estudio_anuncios: [],
+      ad_entities: [
+        { tenant_id: T, level: 'ad', external_id: '120257464533860211', parent_external_id: 'S1', name: 'AD 03 - Aniversário vídeo' },
+        { tenant_id: T, level: 'adset', external_id: 'S1', parent_external_id: 'C1', name: 'Mulheres 30-55 BR' },
+        { tenant_id: T, level: 'campaign', external_id: 'C1', name: '[VENDAS] Estúdio IA' },
+      ],
+      ad_accounts: [{ tenant_id: T, access_token: 'tok-ads' }],
+    })
+    const chamadas: string[] = []
+    const f = (async (url: string, init?: { headers?: Record<string, string> }) => {
+      chamadas.push(String(url) + ' ' + JSON.stringify(init?.headers ?? {}))
+      return new Response(JSON.stringify({ name: 'AD 07', adset: { name: 'Conj B' }, campaign: { name: 'Camp B' } }), { status: 200 })
+    }) as unknown as typeof fetch
+    const m = await nomesDosAnuncios(db as never, T, ['120257464533860211', '999'], f)
+    assert.deepEqual(m.get('120257464533860211'), { nome: 'AD 03 - Aniversário vídeo', conjunto: 'Mulheres 30-55 BR', campanha: '[VENDAS] Estúdio IA', headline: null })
+    assert.equal(m.get('999')?.campanha, 'Camp B')
+    assert.equal(chamadas.length, 1, 'só o que a Tráfego não tinha vai à Graph')
+    assert.ok(chamadas[0].includes('/999?fields=name,adset{name},campaign{name}'))
+    assert.equal(db.tabelas.estudio_anuncios.length, 2, 'grava no cache')
+    // 2ª vez: tudo do cache, sem rede
+    await nomesDosAnuncios(db as never, T, ['120257464533860211', '999'], f)
+    assert.equal(chamadas.length, 1)
+    assert.match(ler('src/app/(dashboard)/estudio-ia/painel-ui.tsx'), /l\.conjunto/)
   },
 }
 

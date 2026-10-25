@@ -126,3 +126,66 @@ export async function buscarAnuncio(admin: SupabaseClient, tenantId: string, adI
   }
   await admin.from('estudio_anuncios').upsert(linha, { onConflict: 'tenant_id,ad_id' }).then(() => {}, () => {})
 }
+
+// ── Nome do anúncio / conjunto / campanha para as telas ─────────────────────
+
+export interface NomeAnuncio { nome: string | null; conjunto: string | null; campanha: string | null; headline: string | null }
+
+/**
+ * Nomes para uma lista de ad_id, nesta ordem: cache do estúdio → o que a aba
+ * Tráfego já sincronizou (ad_entities: anúncio → conjunto → campanha) → Graph
+ * com o token da conta de anúncios (o token do WhatsApp quase nunca tem
+ * permissão de anúncios). O que achar fora do cache é gravado nele.
+ */
+export async function nomesDosAnuncios(admin: SupabaseClient, tenantId: string, adIds: string[], f?: Fetch): Promise<Map<string, NomeAnuncio>> {
+  const ids = [...new Set(adIds.filter(Boolean))]
+  const out = new Map<string, NomeAnuncio>()
+  if (!ids.length) return out
+  const { data: cache } = await admin.from('estudio_anuncios').select('ad_id, nome, conjunto, campanha, headline').eq('tenant_id', tenantId).in('ad_id', ids).then(r => r, () => ({ data: null }))
+  for (const c of cache ?? []) out.set(c.ad_id, { nome: c.nome ?? null, conjunto: c.conjunto ?? null, campanha: c.campanha ?? null, headline: c.headline ?? null })
+  const completo = (id: string) => { const n = out.get(id); return !!(n?.nome && n.campanha) }
+  let faltam = ids.filter(id => !completo(id))
+  const novos = new Set<string>()
+  const juntar = (id: string, n: Partial<NomeAnuncio>) => {
+    const a = out.get(id) ?? { nome: null, conjunto: null, campanha: null, headline: null }
+    out.set(id, { nome: a.nome ?? n.nome ?? null, conjunto: a.conjunto ?? n.conjunto ?? null, campanha: a.campanha ?? n.campanha ?? null, headline: a.headline })
+    novos.add(id)
+  }
+
+  // 2) Sincronização da aba Tráfego.
+  if (faltam.length) {
+    const { data: ads } = await admin.from('ad_entities').select('external_id, parent_external_id, name').eq('tenant_id', tenantId).eq('level', 'ad').in('external_id', faltam).then(r => r, () => ({ data: null }))
+    const conj = [...new Set((ads ?? []).map(a => a.parent_external_id).filter(Boolean))] as string[]
+    const { data: sets } = conj.length ? await admin.from('ad_entities').select('external_id, parent_external_id, name').eq('tenant_id', tenantId).eq('level', 'adset').in('external_id', conj).then(r => r, () => ({ data: null })) : { data: [] }
+    const camp = [...new Set((sets ?? []).map(s => s.parent_external_id).filter(Boolean))] as string[]
+    const { data: camps } = camp.length ? await admin.from('ad_entities').select('external_id, name').eq('tenant_id', tenantId).eq('level', 'campaign').in('external_id', camp).then(r => r, () => ({ data: null })) : { data: [] }
+    const mSet = new Map((sets ?? []).map(s => [s.external_id, s])); const mCamp = new Map((camps ?? []).map(c => [c.external_id, c.name]))
+    for (const a of ads ?? []) {
+      const s = a.parent_external_id ? mSet.get(a.parent_external_id) : undefined
+      juntar(a.external_id, { nome: a.name, conjunto: s?.name ?? null, campanha: s?.parent_external_id ? mCamp.get(s.parent_external_id) ?? null : null })
+    }
+    faltam = ids.filter(id => !completo(id))
+  }
+
+  // 3) Graph com o token da conta de anúncios (no máximo 20 por vez).
+  if (faltam.length) {
+    const { data: contas } = await admin.from('ad_accounts').select('access_token').eq('tenant_id', tenantId).not('access_token', 'is', null).then(r => r, () => ({ data: null }))
+    const tokens = [...new Set((contas ?? []).map(c => c.access_token as string).filter(Boolean))]
+    for (const id of faltam.slice(0, 20)) {
+      for (const t of tokens) {
+        const r = await graph(`${GRAPH_CAPI}/${id}?fields=name,adset{name},campaign{name}`, t, {}, f)
+        if (r.ok && r.json) {
+          juntar(id, { nome: (r.json.name as string) ?? null, conjunto: (r.json.adset as { name?: string } | undefined)?.name ?? null, campanha: (r.json.campaign as { name?: string } | undefined)?.name ?? null })
+          break
+        }
+      }
+    }
+  }
+
+  for (const id of novos) {
+    const n = out.get(id)!
+    if (!n.nome) continue
+    await admin.from('estudio_anuncios').upsert({ tenant_id: tenantId, ad_id: id, nome: n.nome, conjunto: n.conjunto, campanha: n.campanha, erro: null, buscado_em: new Date().toISOString() }, { onConflict: 'tenant_id,ad_id' }).then(() => {}, () => {})
+  }
+  return out
+}

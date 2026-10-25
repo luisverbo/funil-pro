@@ -522,6 +522,14 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Painel do Estúdio: nome do anúncio, conjunto e campanha**
+- Painel mostrava só "Anúncio <ID>": o nome vinha só da Graph com o token do
+  WhatsApp (sem permissão de anúncios). `nomesDosAnuncios` (anuncios-servidor):
+  cache `estudio_anuncios` → `ad_entities` da aba Tráfego (ad → adset →
+  campaign) → Graph com o token de `ad_accounts`; achado grava no cache.
+  Usado no Painel, em "De onde vem a venda" e no pedido (📁 campanha › 🎯 conjunto)
+- Bateria: **1195/1195**
+
 **2026-11-11 — Pix: recebedor com sobrenome abreviado no cadastro**
 - `nomeConfere` só aceitava abreviação no COMPROVANTE; cadastro "Mary Ellen
   S M da Silva" × comprovante com nome inteiro reprovava → Luís aprovava à

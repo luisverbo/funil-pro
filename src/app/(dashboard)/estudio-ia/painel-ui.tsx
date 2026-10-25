@@ -112,7 +112,7 @@ export function PainelResultado() {
             <tbody className="divide-y divide-slate-800">
               {r.anuncios.length === 0 ? <tr><td colSpan={8} className="p-4 text-center text-slate-400">Nenhuma conversa no período.</td></tr> : r.anuncios.map(l => (
                 <tr key={l.ad_id ?? 'org'}>
-                  <td className="p-2">{l.ad_id ? <><p className="font-medium text-white">{l.nome ?? `Anúncio ${l.ad_id}`}</p><p className="text-[11px] text-slate-400">{l.campanha ? `${l.campanha} · ` : ''}ID {l.ad_id}</p></> : <p className="font-medium">🌱 Orgânico</p>}</td>
+                  <td className="p-2">{l.ad_id ? <><p className="font-medium text-white">{l.nome ?? `Anúncio ${l.ad_id}`}</p>{l.campanha || l.conjunto ? <p className="text-[11px] text-slate-300">{l.campanha ? `📁 ${l.campanha}` : ''}{l.campanha && l.conjunto ? ' › ' : ''}{l.conjunto ? `🎯 ${l.conjunto}` : ''}</p> : null}<p className="text-[11px] text-slate-500">ID {l.ad_id}</p></> : <p className="font-medium">🌱 Orgânico</p>}</td>
                   <td className="p-2 text-right tabular-nums">{l.leads}</td>
                   <td className="p-2 text-right font-semibold tabular-nums">{l.vendas}</td>
                   <td className="p-2 text-right tabular-nums">{brl(l.faturamento_cents)}</td>
