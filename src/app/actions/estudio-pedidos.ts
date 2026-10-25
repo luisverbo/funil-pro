@@ -61,7 +61,7 @@ export async function salvarProducaoConfig(v: {
     if (!['chatgpt_site', 'api_gemini'].includes(v.motor)) return { success: false, error: 'Motor inválido.' }
     const n = (x: unknown, min: number, max: number, padrao: number) => { const k = Math.round(Number(x)); return Number.isFinite(k) ? Math.max(min, Math.min(max, k)) : padrao }
     const linha: Record<string, unknown> = {
-      motor: v.motor, aprovacao_manual: !!v.aprovacao_manual, prazo_min: n(v.prazo_min, 10, 1440, 60), ajustes_gratis: n(v.ajustes_gratis, 0, 5, 1),
+      motor: v.motor, aprovacao_manual: !!v.aprovacao_manual, prazo_min: n(v.prazo_min, 10, 1440, 60), ajustes_gratis: n(v.ajustes_gratis, 0, 1, 1) /* no máximo 1 ajuste */,
       upsell_qtd: n(v.upsell_qtd, 1, 30, 5), upsell_desconto_pct: n(v.upsell_desconto_pct, 0, 90, 20),
     }
     const chave = String(v.gemini_api_key ?? '').trim()

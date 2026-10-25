@@ -57,6 +57,8 @@ export interface ContextoIa {
   poses?: string
   /** Como ESTA cliente paga (Pix no Brasil / cartão pela Hotmart, na moeda dela). */
   pagamento?: string
+  /** A cliente já usou o (único) ajuste deste pedido. */
+  ajusteUsado?: boolean
 }
 
 export function promptDaAna(c: ContextoIa): string {
@@ -72,8 +74,9 @@ FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - Temas disponíveis: ${c.temas}. Outros temas: "em breve".
 - Preços: ${c.tabelaPrecos}
 - Prazo: até ${c.prazoMin} minutos após o pagamento e as fotos, no horário de produção.
-- 1 ajuste grátis por pacote, em até 24 h após a entrega.
-- Sensual: só maiores de 18 e sem nudez. Só fotos da própria cliente.
+- 1 ajuste grátis por pacote — UM SÓ, em até 24 h após a entrega. Nunca ofereça um 2º ajuste nem diga "qualquer ajuste é só pedir"/"se quiser mudar mais alguma coisa, me fala".
+- A prévia grátis é de UMA foto só (uma pose). Nunca ofereça uma 2ª prévia nem mais fotos de prévia.
+${c.ajusteUsado ? '- ESTA cliente JÁ USOU o ajuste grátis deste pedido: não ofereça outro ajuste. Se pedir mais mudanças, explique com carinho que o pacote inclui 1 ajuste e ofereça um pacote novo.\n' : ''}- Sensual: só maiores de 18 e sem nudez. Só fotos da própria cliente.
 - Pagamento DESTA cliente: ${c.pagamento ?? 'Pix (Brasil), conferido pelo comprovante'}. Nunca fale de Pix com quem paga com cartão pela Hotmart, nem de cartão com quem paga por Pix.
 - As imagens são geradas por IA; uma pessoa da equipe revisa todas.
 - De onde somos: estúdio 100% on-line, atendemos clientes de vários países pelo WhatsApp. NUNCA diga que o estúdio fica no país ou na cidade da cliente. Se perguntarem, diga com naturalidade que é tudo on-line e que atendemos clientes do país dela.

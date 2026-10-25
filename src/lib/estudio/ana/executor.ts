@@ -502,6 +502,11 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             pagamento: (c.pais && c.pais !== 'BR') || (precos[0]?.moeda ?? 'BRL') !== 'BRL'
               ? `cartão de crédito/débito pelo link seguro da Hotmart, em ${precos[0]?.moeda ?? 'USD'} (a Hotmart converte para a moeda dela); a confirmação chega sozinha`
               : 'Pix (Brasil) para a chave do estúdio, conferido pelo comprovante',
+            ajusteUsado: await (async () => {
+              if (!pedidoId) return false
+              const { data: pd } = await admin.from('estudio_pedidos').select('ajustes_usados, ajuste_em').eq('id', pedidoId).maybeSingle().then(r => r, () => ({ data: null }))
+              return !!pd && ((pd.ajustes_usados ?? 0) >= 1 || !!pd.ajuste_em)
+            })(),
           }, msg.texto)
           for (const u of out.usos) await usou('resposta', u, out.estruturada?.intencao)
           const resp = out.resposta

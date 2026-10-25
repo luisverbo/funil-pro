@@ -27,6 +27,14 @@ const PED = { id: 'a1b2c3d4-0000-4000-8000-000000000001', tipo: 'pacote', status
 const DADOS_ENTREGUE: Dados = { nome: 'Maryana', tema: 'aniversario', pacote_qtd: 3, valor_cents: 2990, moeda: 'BRL', poses: ['03', '07', '12'], tem_rosto: true, tem_corpo: true, idade: 42, cabelo: 'castanho', upsell_oferecido: true, maquiagem: true, decote: false, cores: 'rosa' }
 
 const tests: Record<string, () => void | Promise<void>> = {
+  'regra do estúdio: UM ajuste só e UMA foto de prévia (IA não oferece 2º ajuste)': () => {
+    const ia = ler('src/lib/estudio/ana/ia.ts')
+    assert.match(ia, /UM SÓ, em até 24 h/); assert.match(ia, /prévia grátis é de UMA foto só/); assert.match(ia, /JÁ USOU o ajuste grátis/)
+    assert.match(ler('src/lib/estudio/ana/executor.ts'), /ajusteUsado: await/)
+    assert.match(ler('src/app/actions/estudio-pedidos.ts'), /ajustes_gratis: n\(v\.ajustes_gratis, 0, 1, 1\)/)
+    assert.match(ler('src/lib/estudio/producao-servidor.ts'), /Math\.min\(1, Number\(c\.ajustes_gratis/)
+    assert.match(ler('src/lib/estudio/ana/maquina.ts'), /poses: previa \? \(d\.poses \?\? \[\]\)\.slice\(0, 1\)/)
+  },
   'Gemini: botão de teste gera 1 imagem; modelo "preview" como reserva se o nome principal não existir; sem chave não deixa ligar a API': async () => {
     const urls: string[] = []
     const png = Buffer.from('ok').toString('base64')
