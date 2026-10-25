@@ -295,15 +295,59 @@ export async function enviarModeloChat(contatoId: string, nome: string, idioma: 
 // ── Atendimento ─────────────────────────────────────────────────────────────
 
 /** Assumir: Luís atende e a Ana NÃO volta sozinha. Devolver: Ana volta já. */
-export async function definirAtendimentoChat(contatoId: string, quem: 'luis' | 'ana'): Promise<{ success: boolean; error?: string }> {
+export async function definirAtendimentoChat(contatoId: string, quem: 'luis' | 'ana'): Promise<{ success: boolean; error?: string; retomou?: 'respondeu' | 'perguntou' | 'nada' }> {
   try {
     const tenantId = await getTenantId()
     await contatoDoTenant(tenantId, contatoId)
     const upd = quem === 'luis'
       ? { modo: 'humano', humano_fixo: true, humano_desde: new Date().toISOString(), precisa_humano: false }
       : { modo: 'ana', humano_fixo: false, humano_desde: null, precisa_humano: false }
-    const { error } = await createAdminClient().from('estudio_contatos').update(upd).eq('id', contatoId).eq('tenant_id', tenantId)
-    return error ? { success: false, error: aviso(error.message) } : { success: true }
+    const admin = createAdminClient()
+    const { error } = await admin.from('estudio_contatos').update(upd).eq('id', contatoId).eq('tenant_id', tenantId)
+    if (error) return { success: false, error: aviso(error.message) }
+    // Devolveu: a Ana lê onde parou e continua sozinha (responde a cliente ou faz a próxima pergunta).
+    if (quem === 'ana') {
+      const { retomarConversa } = await import('@/lib/estudio/ana/executor')
+      const r = await retomarConversa(admin, tenantId, contatoId).catch(e => { console.error('[estudio] retomar:', String(e).slice(0, 200)); return 'nada' as const })
+      return { success: true, retomou: r }
+    }
+    return { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
+/** O que a tela precisa para o Luís criar pedido/prévia nesta conversa. */
+export async function opcoesPedidoManualChat(contatoId: string): Promise<{
+  temas: { slug: string; nome: string }[]; precos: { pacote_qtd: number; valor_cents: number; moeda: string }[]
+  tema: string | null; poses: string[]; pacote_qtd: number | null; tem_rosto: boolean; tem_corpo: boolean; previa_feita: boolean; error?: string
+}> {
+  const vazio = { temas: [], precos: [], tema: null, poses: [], pacote_qtd: null, tem_rosto: false, tem_corpo: false, previa_feita: false }
+  try {
+    const tenantId = await getTenantId()
+    const admin = createAdminClient()
+    const c = await contatoDoTenant(tenantId, contatoId) as unknown as { pais: string | null }
+    const { data: ct } = await admin.from('estudio_contatos').select('dados, fotos_recebidas, pais').eq('id', contatoId).single()
+    const [{ data: temas }, { precosDoPais }, { resumoDasFotos }] = await Promise.all([
+      admin.from('estudio_temas').select('slug, nome').eq('tenant_id', tenantId).eq('ativo', true).order('ordem'),
+      import('@/lib/estudio/ana/executor'), import('@/lib/estudio/ana/fotos'),
+    ])
+    const precos = await precosDoPais(admin, tenantId, ct?.pais ?? c.pais ?? null)
+    const d = (ct?.dados ?? {}) as { tema?: string; poses?: string[]; pacote_qtd?: number; previa_feita?: boolean }
+    const f = resumoDasFotos(Array.isArray(ct?.fotos_recebidas) ? ct!.fotos_recebidas : [])
+    return { temas: temas ?? [], precos, tema: d.tema ?? null, poses: d.poses ?? [], pacote_qtd: d.pacote_qtd ?? null, tem_rosto: f.tem_rosto, tem_corpo: f.tem_corpo, previa_feita: !!d.previa_feita }
+  } catch (err) { return { ...vazio, error: String(err) } }
+}
+
+/** Luís cria o pedido (ou a prévia) da cliente pela conversa. */
+export async function criarPedidoManualChat(contatoId: string, v: { tipo: 'previa' | 'pacote'; tema: string; poses: string[]; pacote_qtd?: number | null; pago?: boolean }): Promise<{ success: boolean; pedido_id?: string; falta?: string[]; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    await contatoDoTenant(tenantId, contatoId)
+    if (!['previa', 'pacote'].includes(v?.tipo)) return { success: false, error: 'Tipo inválido.' }
+    const { criarPedidoPeloLuis } = await import('@/lib/estudio/ana/executor')
+    const r = await criarPedidoPeloLuis(createAdminClient(), tenantId, contatoId, {
+      tipo: v.tipo, tema: String(v.tema ?? ''), poses: Array.isArray(v.poses) ? v.poses.map(String).slice(0, 30) : [], pacote_qtd: v.pacote_qtd ?? null, pago: !!v.pago,
+    })
+    return r.error ? { success: false, ...r } : { success: true, ...r }
   } catch (err) { return { success: false, error: String(err) } }
 }
 

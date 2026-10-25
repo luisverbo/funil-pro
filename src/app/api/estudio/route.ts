@@ -14,7 +14,7 @@ import {
 } from '@/app/actions/estudio'
 import {
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
-  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
+  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat, opcoesPedidoManualChat, criarPedidoManualChat,
 } from '@/app/actions/estudio-chat'
 import {
   listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna, gerarPdfsCatalogo,
@@ -37,7 +37,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   appsDaWaba, inscreverAppNaWaba, enviarTesteAvisos, ultimasConversasEstudio,
   webhookDoNumeroEstudio, apontarWebhookEstudio,
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
-  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
+  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat, opcoesPedidoManualChat, criarPedidoManualChat,
   listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna, gerarPdfsCatalogo,
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,

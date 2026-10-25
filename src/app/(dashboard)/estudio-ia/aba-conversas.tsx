@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { useSearchParams } from 'next/navigation'
 import {
   listarConversasChat, abrirConversaChat, enviarTextoChat, urlDeUploadChat, enviarMidiaChat,
-  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat,
+  enviarFotosDoPedidoChat, listarModelosChat, enviarModeloChat, definirAtendimentoChat, salvarNotasChat, opcoesPedidoManualChat, criarPedidoManualChat,
   chavePushEstudio, inscreverPushEstudio,
 } from '@/lib/estudio/client'
 import { ConferenciaPix, CustoDaConversa } from './pix-ui'
@@ -518,6 +518,7 @@ function Painel({ aberta, fechar, recarregar, setErro }: { aberta: Aberta; fecha
           {!salvo && <button onClick={async () => { const r = await salvarNotasChat(c.id, notas); if (r.error) setErro(r.error); else setSalvo(true) }}
             className="mt-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">Salvar notas</button>}
         </div>
+        <CriarPedido contatoId={c.id} onCriou={() => void recarregar()} />
         <ConferenciaPix contatoId={c.id} onMudou={() => void recarregar()} />
         <CustoDaConversa contatoId={c.id} />
         <div>
@@ -551,5 +552,76 @@ function Painel({ aberta, fechar, recarregar, setErro }: { aberta: Aberta; fecha
         </div>
       </div>
     </aside>
+  )
+}
+
+/** O Luís (com a conversa assumida ou não) cria o pedido ou a prévia da cliente. */
+function CriarPedido({ contatoId, onCriou }: { contatoId: string; onCriou: () => void }) {
+  const [aberto, setAberto] = useState(false)
+  const [op, setOp] = useState<Awaited<ReturnType<typeof opcoesPedidoManualChat>> | null>(null)
+  const [tipo, setTipo] = useState<'previa' | 'pacote'>('previa')
+  const [tema, setTema] = useState('')
+  const [poses, setPoses] = useState('')
+  const [qtd, setQtd] = useState<number | ''>('')
+  const [pago, setPago] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const [indo, setIndo] = useState(false)
+  const abrir = async () => {
+    setAberto(true); setMsg(null)
+    const r = await opcoesPedidoManualChat(contatoId)
+    setOp(r)
+    setTema(r.tema ?? r.temas[0]?.slug ?? ''); setPoses(r.poses.join(', ')); setQtd(r.pacote_qtd ?? '')
+    setTipo(r.previa_feita ? 'pacote' : 'previa')
+  }
+  if (!aberto) return (
+    <button onClick={() => void abrir()} className="w-full rounded-lg border border-violet-300 bg-violet-50 py-2 text-xs font-semibold text-violet-800">🧾 Criar pedido / prévia</button>
+  )
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+      <div className="flex items-center justify-between"><p className="text-xs font-semibold text-violet-900">🧾 Criar pedido / prévia</p>
+        <button onClick={() => setAberto(false)} className="text-xs text-slate-400">✕</button></div>
+      {!op ? <p className="mt-2 text-xs text-slate-500">Carregando…</p> : (
+        <div className="mt-2 space-y-2 text-xs">
+          <p className="text-slate-600">Fotos da cliente: {op.tem_rosto ? '✅ rosto' : '⚠️ sem rosto'} · {op.tem_corpo ? '✅ corpo' : '⚠️ sem corpo'}</p>
+          <div className="grid grid-cols-2 gap-1">
+            {(['previa', 'pacote'] as const).map(t => (
+              <button key={t} disabled={t === 'previa' && op.previa_feita} onClick={() => setTipo(t)}
+                className={`rounded-md border px-2 py-1.5 font-semibold disabled:opacity-40 ${tipo === t ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 bg-white text-slate-700'}`}>
+                {t === 'previa' ? '✨ Prévia grátis' : '💰 Pacote'}</button>
+            ))}
+          </div>
+          {op.previa_feita && <p className="text-[11px] text-slate-500">A prévia desta cliente já foi feita (é uma só).</p>}
+          <label className="block"><span className="text-slate-600">Tema</span>
+            <select value={tema} onChange={e => setTema(e.target.value)} className="mt-0.5 w-full rounded-md border border-slate-200 bg-white p-1.5">
+              {op.temas.map(t => <option key={t.slug} value={t.slug}>{t.nome}</option>)}
+            </select></label>
+          {tipo === 'pacote' && (
+            <label className="block"><span className="text-slate-600">Pacote</span>
+              <select value={qtd} onChange={e => setQtd(Number(e.target.value) || '')} className="mt-0.5 w-full rounded-md border border-slate-200 bg-white p-1.5">
+                <option value="">escolha…</option>
+                {op.precos.map(p => <option key={p.pacote_qtd} value={p.pacote_qtd}>{p.pacote_qtd} fotos — {(p.valor_cents / 100).toFixed(2).replace('.', ',')} {p.moeda}</option>)}
+              </select></label>
+          )}
+          <label className="block"><span className="text-slate-600">{tipo === 'previa' ? 'Pose (1 só)' : 'Poses (números, separados por vírgula)'}</span>
+            <input value={poses} onChange={e => setPoses(e.target.value)} placeholder={tipo === 'previa' ? 'ex.: 03' : 'ex.: 03, 07, 12'} className="mt-0.5 w-full rounded-md border border-slate-200 bg-white p-1.5" /></label>
+          {tipo === 'pacote' && (
+            <label className="flex items-center gap-2 text-slate-700"><input type="checkbox" checked={pago} onChange={e => setPago(e.target.checked)} />Já pagou (eu conferi o Pix) → vai direto para a produção</label>
+          )}
+          <button disabled={indo || !tema || !poses.trim() || (tipo === 'pacote' && !qtd)} onClick={async () => {
+            setIndo(true); setMsg(null)
+            const lista = poses.split(/[^0-9]+/).filter(Boolean)
+            const r = await criarPedidoManualChat(contatoId, { tipo, tema, poses: tipo === 'previa' ? lista.slice(0, 1) : lista, pacote_qtd: tipo === 'pacote' ? Number(qtd) : null, pago })
+            setIndo(false)
+            if (!r.success) { setMsg({ ok: false, t: r.error ?? 'falhou' }); return }
+            const falta = (r.falta ?? []).filter(Boolean)
+            setMsg({ ok: true, t: tipo === 'previa' ? (falta.length ? `Prévia criada, mas falta: ${falta.join(', ')}.` : '✅ Prévia na fila de produção.')
+              : pago ? (falta.length ? `Pedido pago criado, mas falta: ${falta.join(', ')}.` : '✅ Pedido pago e na fila de produção.')
+              : '✅ Pedido criado aguardando o Pix. Ao devolver para a Ana, ela cobra e confere o comprovante.' })
+            onCriou()
+          }} className="w-full rounded-lg bg-violet-600 py-2 font-semibold text-white disabled:opacity-50">{indo ? 'Criando…' : tipo === 'previa' ? 'Criar prévia e mandar produzir' : 'Criar pedido'}</button>
+          {msg && <p className={msg.ok ? 'text-emerald-700' : 'text-red-600'}>{msg.t}</p>}
+        </div>
+      )}
+    </div>
   )
 }
