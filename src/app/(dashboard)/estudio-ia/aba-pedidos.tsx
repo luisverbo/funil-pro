@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio,
-  reenviarEntregaEstudio, cancelarPedidoEstudio, lerProducaoConfig, salvarProducaoConfig, fotosRecebidasDoPedido, usarFotoComoEstudio,
+  reenviarEntregaEstudio, cancelarPedidoEstudio, lerProducaoConfig, salvarProducaoConfig, testarGeminiEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio,
 } from '@/lib/estudio/client'
 
 type Lista = Awaited<ReturnType<typeof listarPedidosEstudio>>['pedidos']
@@ -189,6 +189,8 @@ function DetalhePedido({ id, onMudou }: { id: string; onMudou: () => void }) {
 export function CartaoMotor() {
   const [c, setC] = useState<Cfg | null>(null)
   const [chave, setChave] = useState('')
+  const [testando, setTestando] = useState(false)
+  const [teste, setTeste] = useState<Awaited<ReturnType<typeof testarGeminiEstudio>> | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   useEffect(() => {
     let vivo = true
@@ -232,8 +234,15 @@ export function CartaoMotor() {
           const r = await salvarProducaoConfig({ ...c, gemini_api_key: chave || null })
           if (r.success) { setChave(''); setMsg({ ok: true, t: 'Salvo.' }); setC(await lerProducaoConfig()) } else setMsg({ ok: false, t: r.error ?? 'falhou' })
         }} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Salvar motor</button>
+        <button disabled={testando} onClick={async () => {
+          setTestando(true); setTeste(null)
+          try { setTeste(await testarGeminiEstudio(chave || null)) } finally { setTestando(false) }
+        }} className="rounded-lg border border-violet-300 px-4 py-2 text-sm font-semibold text-violet-700 disabled:opacity-50">{testando ? 'Gerando imagem de teste…' : '🧪 Testar o Gemini (1 imagem)'}</button>
         {msg && <span className={`text-sm ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.t}</span>}
       </div>
+      {teste && (teste.ok
+        ? <div className="mt-3 flex items-center gap-3"><img src={teste.imagem} alt="teste do Gemini" className="h-28 w-28 rounded-lg object-cover" /><p className="text-sm text-emerald-700">✅ O Gemini gerou a imagem em {Math.round((teste.ms ?? 0) / 1000)} s. A API automática vai funcionar{chave ? ' — clique em Salvar motor para guardar a chave' : ''}.</p></div>
+        : <p className="mt-3 text-sm text-red-600">❌ {teste.error}</p>)}
     </section>
   )
 }

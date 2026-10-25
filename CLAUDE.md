@@ -522,6 +522,15 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Motor API do Gemini: "sem chave" de madrugada**
+- CAUSA: motor trocado para API sem chave do Gemini salva → `gerarPorApi`
+  falhava "sem chave" e voltava para o modo site. Agora `salvarProducaoConfig`
+  recusa ligar a API sem chave; botão **🧪 Testar o Gemini (1 imagem)**
+  (`testarGeminiEstudio`, usa a chave colada ou a salva, mostra a imagem ou o
+  erro com dica: chave inválida / sem faturamento); `chamarImagem` tenta
+  `gemini-3-pro-image` e, se "not found", `-preview`
+- Bateria: **1196/1196**
+
 **2026-11-11 — Painel do Estúdio: nome do anúncio, conjunto e campanha**
 - Painel mostrava só "Anúncio <ID>": o nome vinha só da Graph com o token do
   WhatsApp (sem permissão de anúncios). `nomesDosAnuncios` (anuncios-servidor):

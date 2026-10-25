@@ -11,7 +11,7 @@ import {
   faltaParaFila, mensagemNovoPedido, atrasado, lerNota, melhorTentativa, precisaRefazer, posesPendentes,
   valorComDesconto, podeAjustar, svgMarcaDagua, MARCA_PREVIA,
 } from '@/lib/estudio/producao'
-import { gerarFotoGemini, notaDoRosto, imagemDaResposta, MODELO_IMAGEM, MODELO_NOTA, PERGUNTA_NOTA } from '@/lib/estudio/gemini'
+import { gerarFotoGemini, testarGemini, notaDoRosto, imagemDaResposta, MODELO_IMAGEM, MODELO_NOTA, PERGUNTA_NOTA } from '@/lib/estudio/gemini'
 import { prepararEnvio } from '@/lib/estudio/producao-servidor'
 import { proximoPasso, cobrancaDevida, type Contexto, type Dados, type Acao } from '@/lib/estudio/ana/maquina'
 import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
@@ -27,6 +27,24 @@ const PED = { id: 'a1b2c3d4-0000-4000-8000-000000000001', tipo: 'pacote', status
 const DADOS_ENTREGUE: Dados = { nome: 'Maryana', tema: 'aniversario', pacote_qtd: 3, valor_cents: 2990, moeda: 'BRL', poses: ['03', '07', '12'], tem_rosto: true, tem_corpo: true, idade: 42, cabelo: 'castanho', upsell_oferecido: true, maquiagem: true, decote: false, cores: 'rosa' }
 
 const tests: Record<string, () => void | Promise<void>> = {
+  'Gemini: botão de teste gera 1 imagem; modelo "preview" como reserva se o nome principal não existir; sem chave não deixa ligar a API': async () => {
+    const urls: string[] = []
+    const png = Buffer.from('ok').toString('base64')
+    const f = (async (url: string) => {
+      urls.push(String(url))
+      if (String(url).includes(`/${MODELO_IMAGEM}:`)) return new Response(JSON.stringify({ error: { message: `models/${MODELO_IMAGEM} is not found for API version v1beta` } }), { status: 404 })
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: png } }] } }] }), { status: 200 })
+    }) as unknown as typeof fetch
+    const img = await testarGemini('chave-falsa', f)
+    assert.equal(img.mime, 'image/png'); assert.equal(urls.length, 2); assert.ok(urls[1].includes(`/${MODELO_IMAGEM}-preview:`))
+    // chave inválida NÃO tenta o outro modelo (erro real aparece na tela)
+    const ruim = (async () => new Response(JSON.stringify({ error: { message: 'API key not valid' } }), { status: 400 })) as unknown as typeof fetch
+    await assert.rejects(testarGemini('x', ruim), /API key not valid/)
+    const act = ler('src/app/actions/estudio-pedidos.ts')
+    assert.match(act, /v\.motor === 'api_gemini' && !chave && !process\.env\.GEMINI_API_KEY/)
+    assert.match(act, /export async function testarGeminiEstudio/)
+    assert.match(ler('src/app/api/estudio/route.ts'), /testarGeminiEstudio/)
+  },
   'fila: pago + 2 fotos + poses + idade entra; o que faltar é dito (prévia não pede idade)': () => {
     assert.deepEqual(faltaParaFila(PED), [])
     assert.deepEqual(faltaParaFila({ ...PED, foto_corpo_path: null, poses: ['03'], idade: null }), ['foto de corpo inteiro', 'poses', 'idade'])

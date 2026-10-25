@@ -24,7 +24,7 @@ import {
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia, lerHotmartConfig, salvarHotmartConfig, listarPrecosEstudio, salvarPrecoEstudio, excluirPrecoEstudio, resumoFaturamento,
 } from '@/app/actions/estudio-pix'
 import {
-  lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio, origemDasVendas, painelEstudio, painelSupervisor, aplicarAchado, ignorarAchado, revisarAgoraSupervisor, estadoMetaCapi, obterDatasetMeta, salvarCodigoTesteMeta,
+  lerProducaoConfig, salvarProducaoConfig, testarGeminiEstudio, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio, origemDasVendas, painelEstudio, painelSupervisor, aplicarAchado, ignorarAchado, revisarAgoraSupervisor, estadoMetaCapi, obterDatasetMeta, salvarCodigoTesteMeta,
 } from '@/app/actions/estudio-pedidos'
 
 // Envio de várias fotos do pedido pela Meta pode levar alguns segundos.
@@ -41,7 +41,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   listarTextosAna, salvarTextoAna, urlUploadMidiaAna, salvarAudioAna, statusMidiasAna, gerarPdfsCatalogo,
   chavePushEstudio, inscreverPushEstudio, testarPushEstudio,
   lerPixConfig, salvarPixConfig, listarConferenciasPix, listarPixDoDia, aprovarPagamentoPix, recusarPagamentoPix, cancelarPedidoEstudio, listarConhecimento, salvarConhecimento, excluirConhecimento, custoIaDaConversa, custoIaDoDia,
-  lerProducaoConfig, salvarProducaoConfig, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
+  lerProducaoConfig, salvarProducaoConfig, testarGeminiEstudio, listarPedidosEstudio, abrirPedidoEstudio, gerarPorApiAgora, aprovarEntregaEstudio, refazerPedidoEstudio, reenviarEntregaEstudio,
   lerHumanizarAna, salvarHumanizarAna, listarAvisosEstudio, fotosRecebidasDoPedido, usarFotoComoEstudio,
   lerHotmartConfig, salvarHotmartConfig, listarPrecosEstudio, salvarPrecoEstudio, excluirPrecoEstudio, resumoFaturamento,
   origemDasVendas, painelEstudio, painelSupervisor, aplicarAchado, ignorarAchado, revisarAgoraSupervisor, estadoMetaCapi, obterDatasetMeta, salvarCodigoTesteMeta,
