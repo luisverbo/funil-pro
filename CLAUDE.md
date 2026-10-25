@@ -522,6 +522,12 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Pix: recebedor com sobrenome abreviado no cadastro**
+- `nomeConfere` só aceitava abreviação no COMPROVANTE; cadastro "Mary Ellen
+  S M da Silva" × comprovante com nome inteiro reprovava → Luís aprovava à
+  mão. Agora abreviação dos dois lados (em ordem; só o 1º nome não basta)
+- Bateria: **1194/1194**
+
 **2026-11-11 — Produção só depois das preferências (pagou no meio da conversa)**
 - Problema: cliente pagou antes de responder maquiagem/decote/acessórios →
   `marcarPago` → `entrarNaFila` (fotos+poses+idade ok) → fila + aviso ao
