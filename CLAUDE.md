@@ -522,6 +522,12 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Risquinhos mais grossos**
+- `src/components/risquinhos.tsx`: ✓/✓✓ desenhados em SVG (traço 2,4,
+  dois vês separados), cinza #64748b / azul #0ea5e9, ⚠ e 🕓; no balão
+  colorido do inbox vão numa pílula branca (azul visível no verde/roxo);
+  legenda no hover. Usado no chat do Estúdio e no inbox /whatsapp
+
 **2026-11-11 — A Ana conhece cada foto do catálogo (idade na pose)**
 - Problema: prévia de pose com a idade na cena (ex.: Aniversário 01, bolo com
   a idade) ia para a fila sem idade → saía só com vela
