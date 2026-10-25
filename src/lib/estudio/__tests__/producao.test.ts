@@ -158,7 +158,7 @@ const tests: Record<string, () => void | Promise<void>> = {
     const [a, b] = await Promise.all([sharp(normal).raw().toBuffer(), sharp(previa).raw().toBuffer()])
     let dif = 0; for (let i = 0; i < a.length; i += 97) if (Math.abs(a[i] - b[i]) > 20) dif++
     assert.ok(dif > 50, 'a marca d\'água precisa aparecer')
-    assert.equal(MARCA_PREVIA, 'PRÉVIA · Studio Fotografico'); assert.ok(svgMarcaDagua(100, 120).includes('PRÉVIA · Studio Fotografico'))
+    assert.equal(MARCA_PREVIA, 'PRÉVIA · Studio Fotografico'); assert.ok(svgMarcaDagua(100, 120).includes('PRÉVIA · Studio Fotografico')); assert.ok(!/<text/.test(svgMarcaDagua(800, 1000)), 'sem <text>: o servidor não tem fontes'); assert.match(svgMarcaDagua(800, 1000), /<path d="M/)
   },
   'contrato com o producao.py: caminhos, status e entrega automática por trava': () => {
     const sv = ler('src/lib/estudio/producao-servidor.ts')

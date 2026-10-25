@@ -91,14 +91,52 @@ export function podeAjustar(p: { entregue_em?: string | null; ajustes_usados?: n
 }
 
 /** SVG da marca d'água da prévia (faixas diagonais repetidas + selo embaixo). */
-export function svgMarcaDagua(w: number, h: number, texto = MARCA_PREVIA): string {
-  const esc = texto.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-  const fs = Math.round(Math.max(w, h) / 22)
-  const linhas: string[] = []
-  for (let y = -h; y < h * 2; y += fs * 5) {
-    linhas.push(`<text x="${-w}" y="${y}" font-size="${fs}" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="white" fill-opacity="0.28" stroke="black" stroke-opacity="0.12" stroke-width="1">${Array(8).fill(esc).join('   ·   ')}</text>`)
+// Letras desenhadas como traços (grade 6×10): o servidor (Vercel) não tem
+// fontes, e <text> em SVG sai INVISÍVEL lá — era a prévia "sem marca d'água".
+const GLIFOS: Record<string, string[]> = {
+  A: ['0,10 3,0 6,10', '1,6.5 5,6.5'], B: ['0,10 0,0 4,0 5.5,1.5 5.5,3.5 4,5 0,5', '4,5 6,6.5 6,8.5 4.5,10 0,10'],
+  C: ['6,1 4.5,0 1.5,0 0,1.5 0,8.5 1.5,10 4.5,10 6,9'], D: ['0,0 0,10 3.5,10 6,7.5 6,2.5 3.5,0 0,0'],
+  E: ['6,0 0,0 0,10 6,10', '0,5 4.5,5'], F: ['6,0 0,0 0,10', '0,5 4.5,5'],
+  G: ['6,1 4.5,0 1.5,0 0,1.5 0,8.5 1.5,10 4.5,10 6,8.5 6,5.5 3.5,5.5'], I: ['3,0 3,10', '1,0 5,0', '1,10 5,10'],
+  O: ['1.5,0 4.5,0 6,1.5 6,8.5 4.5,10 1.5,10 0,8.5 0,1.5 1.5,0'], P: ['0,10 0,0 4.5,0 6,1.5 6,3.5 4.5,5 0,5'],
+  R: ['0,10 0,0 4.5,0 6,1.5 6,3.5 4.5,5 0,5', '3,5 6,10'], S: ['6,1 4.5,0 1.5,0 0,1.5 0,3.5 1.5,5 4.5,5 6,6.5 6,8.5 4.5,10 1.5,10 0,9'],
+  T: ['0,0 6,0', '3,0 3,10'], U: ['0,0 0,8.5 1.5,10 4.5,10 6,8.5 6,0'], V: ['0,0 3,10 6,0'],
+  'É': ['6,0 0,0 0,10 6,10', '0,5 4.5,5', '2.5,-1.5 4.5,-3'], '·': ['2.6,5 3.4,5'], ' ': [],
+}
+function sem(acento: string) { return acento.normalize('NFD').replace(/[\u0300-\u036f]/g, '') }
+
+/** Texto em traços SVG (sem fonte). Letra desconhecida vira espaço. */
+export function textoEmTracos(texto: string, x: number, y: number, alt: number): { d: string; largura: number } {
+  const k = alt / 10, passo = 8.5 * k
+  let d = ''; let cx = x
+  for (const ch0 of texto.toUpperCase()) {
+    const ch = GLIFOS[ch0] ? ch0 : GLIFOS[sem(ch0)] ? sem(ch0) : ' '
+    for (const linha of GLIFOS[ch]) {
+      const pts = linha.split(' ').map(par => { const [a, b] = par.split(',').map(Number); return `${(cx + a * k).toFixed(1)} ${(y + b * k).toFixed(1)}` })
+      d += `M${pts.join(' L')} `
+    }
+    cx += passo
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><g transform="rotate(-30 ${w / 2} ${h / 2})">${linhas.join('')}</g>` +
-    `<rect x="0" y="${h - fs * 2}" width="${w}" height="${fs * 2}" fill="black" fill-opacity="0.45"/>` +
-    `<text x="${w / 2}" y="${h - fs * 0.65}" font-size="${fs}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="white">${esc}</text></svg>`
+  return { d, largura: cx - x }
+}
+
+export function svgMarcaDagua(w: number, h: number, texto = MARCA_PREVIA): string {
+  const alt = Math.round(Math.max(w, h) / 28)
+  const sw = Math.max(2, alt / 6.5)
+  const faixa = textoEmTracos(`${texto}   ·   `, 0, 0, alt).largura
+  const linhas: string[] = []
+  for (let y = -h; y < h * 2; y += alt * 4.5) {
+    for (let x = -w; x < w * 2; x += faixa) linhas.push(textoEmTracos(`${texto}   ·   `, x, y, alt).d)
+  }
+  const larg1 = textoEmTracos(texto, 0, 0, 10).largura / 10
+  const altR = Math.min(alt, (w * 0.9) / larg1)
+  const rodape = textoEmTracos(texto, 0, 0, altR)
+  const rx = (w - rodape.largura) / 2, ry = h - alt * 1.2 - altR / 2
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
+    `<!-- ${texto.replace(/-->/g, '')} -->` +
+    `<g transform="rotate(-30 ${w / 2} ${h / 2})" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="${linhas.join('')}" stroke="black" stroke-opacity="0.18" stroke-width="${(sw * 2).toFixed(1)}"/>` +
+    `<path d="${linhas.join('')}" stroke="white" stroke-opacity="0.42" stroke-width="${sw.toFixed(1)}"/></g>` +
+    `<rect x="0" y="${h - alt * 2.4}" width="${w}" height="${alt * 2.4}" fill="black" fill-opacity="0.5"/>` +
+    `<path d="${textoEmTracos(texto, rx, ry, altR).d}" fill="none" stroke="white" stroke-width="${Math.max(2, altR / 6.5).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 }
