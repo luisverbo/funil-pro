@@ -15,9 +15,10 @@ import {
   chavePushEstudio, inscreverPushEstudio,
 } from '@/lib/estudio/client'
 import { ConferenciaPix, CustoDaConversa } from './pix-ui'
+import { Risquinhos } from '@/components/risquinhos'
 import { createClient } from '@/lib/supabase/client'
 import { webmParaOgg } from '@/lib/whatsapp-cloud/webm-para-ogg'
-import { bandeira, tempoDaJanela, tick, tipoCloudDoMime } from '@/lib/estudio/chat'
+import { bandeira, tempoDaJanela, tipoCloudDoMime } from '@/lib/estudio/chat'
 import { BUCKET_CLIENTES } from '@/lib/estudio/catalogo'
 
 type Lista = Awaited<ReturnType<typeof listarConversasChat>>['contatos']
@@ -357,7 +358,6 @@ function Conversa({ aberta, painel, setPainel, voltar, recarregar, setErro }: {
 
 function Bolha({ m }: { m: Msg }) {
   const minha = m.direcao === 'saida'
-  const t = tick(m.status_entrega)
   const autor = minha ? (m.autor === 'ana' ? '🤖 Ana' : m.autor === 'luis' ? 'Você' : 'Sistema') : null
   const legenda = m.texto && !m.texto.startsWith('[') ? m.texto : null
   return (
@@ -369,7 +369,7 @@ function Bolha({ m }: { m: Msg }) {
         {m.erro && <p className="mt-1 text-[11px] text-red-600">⚠ {m.erro}</p>}
         <p className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-slate-500">
           {hora(m.criado_em)}
-          {minha && <span className={t.azul ? 'text-sky-500' : t.falhou ? 'text-red-600' : ''}>{t.simbolo}</span>}
+          {minha && <Risquinhos status={m.status_entrega} />}
         </p>
         {!minha && m.tempos && <p className="mt-0.5 border-t border-slate-100 pt-0.5 text-[10px] text-slate-400" title="Tempo da resposta da Ana a esta mensagem">{m.tempos}</p>}
       </div>
