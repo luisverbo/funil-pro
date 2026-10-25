@@ -9,7 +9,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CRON_UNAUTHORIZED_BODY, evaluateCronAuth, logCronAuth } from '@/lib/security/cron-auth'
-import { rodadaDeCobrancas } from '@/lib/estudio/ana/executor'
+import { rodadaDeCobrancas, fecharPreferenciasVencidas } from '@/lib/estudio/ana/executor'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -30,8 +30,10 @@ async function executar(request: Request) {
     logCronAuth(auth, request, 200)
   }
   try {
+    // Antes das retomadas: quem pagou e não respondeu as preferências em 10 min segue com o padrão.
+    const preferencias = await fecharPreferenciasVencidas(createAdminClient()).catch(() => 0)
     const enviadas = await rodadaDeCobrancas(createAdminClient())
-    return NextResponse.json({ success: true, enviadas })
+    return NextResponse.json({ success: true, enviadas, preferencias })
   } catch (err) {
     console.error('[cron/estudio-cobrancas]', String(err).slice(0, 300))
     return NextResponse.json({ success: false, error: 'falhou' }, { status: 500 })

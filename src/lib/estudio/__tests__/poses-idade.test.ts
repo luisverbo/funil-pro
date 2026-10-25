@@ -8,7 +8,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { poseLevaIdade } from '@/lib/estudio/catalogo'
-import { proximoPasso, type Contexto, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { proximoPasso, preferenciasVencidas, MIN_PREFERENCIAS_PAGO, type Contexto, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { faltaParaFila } from '@/lib/estudio/producao'
 import { promptDaAna } from '@/lib/estudio/ana/ia'
 import { TEXTOS, IDIOMAS } from '@/lib/estudio/ana/textos'
 
@@ -61,6 +62,21 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(ex, /\[leva o NÚMERO da idade\]/)
     const p = promptDaAna({ idioma: 'pt-BR', objetivo: 'x', tabelaPrecos: 'y', prazoMin: 60, temas: 'z', historico: [], poses: `06: ${cena('aniversario', '06')} [leva o NÚMERO da idade]` })
     assert.match(p, /CATÁLOGO DO TEMA ESCOLHIDO/); assert.match(p, /06: .*vestido vermelho de cetim/)
+  },
+  'pagou no meio das perguntas: a fila espera a Ana terminar; 10 min sem resposta → padrão e produção': () => {
+    const srv = ler('src/lib/estudio/producao-servidor.ts')
+    assert.match(srv, /if \(!opts\.forcar && cid && ped\.tipo !== 'previa'\)/, 'pagamento com conversa em andamento não entra na fila')
+    assert.match(ler('src/lib/estudio/ana/executor.ts'), /entrarNaFila\(admin, pedidoId, \{ forcar: true \}\)   \/\/ a conversa terminou agora/)
+    assert.match(ler('src/app/api/cron/estudio-cobrancas/route.ts'), /fecharPreferenciasVencidas\(createAdminClient\(\)\)/)
+    const agora = Date.parse('2026-11-11T12:00:00Z')
+    const d = { maquiagem: true, aguardando_desde: new Date(agora - (MIN_PREFERENCIAS_PAGO + 1) * 60e3).toISOString() }
+    assert.equal(preferenciasVencidas(d, 'idade_prefs', true, agora - 5 * 60e3), null, 'ainda no prazo')
+    assert.equal(preferenciasVencidas(d, 'idade_prefs', false, agora), null, 'sem pagamento não fecha')
+    const r = preferenciasVencidas(d, 'idade_prefs', true, agora)!
+    assert.deepEqual(r.padrao, ['decote discreto', 'cores e acessórios a critério do estúdio'], 'só completa o que faltou')
+    assert.match(r.dados.preferencias ?? '', /padrão: cliente não respondeu/)
+    assert.deepEqual(faltaParaFila({ tipo: 'pacote', pacote_qtd: 1, poses: ['01'], foto_rosto_path: 'a', foto_corpo_path: 'b', idade: null } as never, { semIdade: true }), [])
+    for (const i of IDIOMAS) assert.ok(TEXTOS.prefs_padrao?.[i]?.trim(), `prefs_padrao/${i}`)
   },
   'textos novos nos 4 idiomas': () => {
     for (const k of ['previa_pede_idade', 'pref_idade_numero']) for (const i of IDIOMAS) assert.ok(TEXTOS[k]?.[i]?.includes('{poses}'), `${k}/${i}`)

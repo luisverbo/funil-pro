@@ -147,7 +147,7 @@ export async function gerarPorApiAgora(id: string): Promise<{ success: boolean; 
     if (!['pago', 'aguardando_fotos', 'aguardando_producao', 'gerando', 'ajuste'].includes(p.status)) return { success: false, error: `Pedido está "${p.status}".` }
     const admin = createAdminClient()
     if (p.status === 'pago' || p.status === 'aguardando_fotos') {
-      const r = await (await producao()).entrarNaFila(admin, id)
+      const r = await (await producao()).entrarNaFila(admin, id, { forcar: true })
       if (!r.ok) return { success: false, error: `Falta: ${(r.falta ?? []).join(', ')}` }
     }
     const { error } = await admin.from('estudio_pedidos').update({

@@ -1004,3 +1004,23 @@ export function pedePrevia(texto: string): boolean { return PEDE_PREVIA.test(sem
 
 const SEM_NUMERO = /\b(sem|sin|without|no|nao|não|so (com )?(a )?vela|solo (con )?(la )?vela|just (the )?candle|tanto faz|da igual|nenhum|ninguno)\b/
 
+/** Minutos que a cliente que JÁ PAGOU tem para responder as preferências antes de a Ana seguir com o padrão. */
+export const MIN_PREFERENCIAS_PAGO = 10
+
+/**
+ * Pagou e parou de responder as preferências: completa o que faltou com o
+ * padrão do estúdio (natural, a critério) para o pedido seguir para a produção.
+ * Devolve null se ainda está no prazo ou não é o caso.
+ */
+export function preferenciasVencidas(d: Dados, etapa: Etapa, pedidoPago: boolean, agora = Date.now()): { dados: Dados; padrao: string[] } | null {
+  if (etapa !== 'idade_prefs' || !pedidoPago || !d.aguardando_desde) return null
+  if (agora - new Date(d.aguardando_desde).getTime() < MIN_PREFERENCIAS_PAGO * 60e3) return null
+  const n: Dados = { ...d }
+  const padrao: string[] = []
+  if (n.maquiagem === undefined || n.maquiagem === null) padrao.push('maquiagem natural e leve')
+  if (n.decote === undefined || n.decote === null) padrao.push('decote discreto')
+  if (n.cores === undefined) { n.cores = 'a critério do estúdio'; padrao.push('cores e acessórios a critério do estúdio') }
+  n.preferencias = [n.preferencias, ...padrao.map(x => `${x} (padrão: cliente não respondeu)`)].filter(Boolean).join(' · ')
+  return { dados: n, padrao }
+}
+

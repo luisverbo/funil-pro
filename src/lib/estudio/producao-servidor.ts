@@ -64,11 +64,22 @@ async function evento(admin: SupabaseClient, pedidoId: string, tipo: string, det
 // ── 1) Entrar na fila ───────────────────────────────────────────────────────
 
 /** Pedido pago (ou prévia) com fotos + poses + idade → 'aguardando_producao' + aviso ao Luís. */
-export async function entrarNaFila(admin: SupabaseClient, pedidoId: string): Promise<{ ok: boolean; falta?: string[] }> {
+/**
+ * `forcar`: quem chama é a própria Ana ao terminar a conversa, o tempo das
+ * preferências acabou ou o Luís mandou na mão. Sem `forcar`, um pagamento que
+ * chega com a conversa ainda em andamento (fotos/poses/preferências) NÃO entra
+ * na fila — senão a produção começa antes das respostas (maquiagem, decote…).
+ */
+export async function entrarNaFila(admin: SupabaseClient, pedidoId: string, opts: { forcar?: boolean; semIdade?: boolean } = {}): Promise<{ ok: boolean; falta?: string[] }> {
   const { data: p } = await admin.from('estudio_pedidos').select('*').eq('id', pedidoId).single()
   if (!p) return { ok: false, falta: ['pedido'] }
   const ped = p as PedidoFila & { tenant_id: string }
-  const falta = faltaParaFila(ped)
+  const cid = (p as { contato_id?: string | null }).contato_id
+  if (!opts.forcar && cid && ped.tipo !== 'previa') {
+    const { data: ct } = await admin.from('estudio_contatos').select('etapa, modo').eq('id', cid).maybeSingle()
+    if (ct && ct.modo !== 'humano' && ['fotos_poses', 'idade_prefs'].includes(String(ct.etapa))) return { ok: false, falta: ['conversa em andamento'] }
+  }
+  const falta = faltaParaFila(ped, { semIdade: opts.semIdade })
   const cfg = await configProducao(admin, ped.tenant_id)
   if (falta.length) {
     await admin.from('estudio_pedidos').update({ status: 'aguardando_fotos' }).eq('id', pedidoId)
