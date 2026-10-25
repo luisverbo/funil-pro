@@ -30,13 +30,25 @@ const palavras = (s: string) => semAcento(s).replace(/[^a-z0-9 ]/g, ' ').split(/
 /**
  * Nome do recebedor confere? Bancos abreviam ("LUIS C DA SILVA") e cortam:
  * basta o 1º nome bater e as demais palavras do comprovante existirem no
- * nome cadastrado (inteiras ou como inicial).
+ * nome cadastrado (inteiras ou como inicial). A abreviação pode estar dos
+ * DOIS lados: cadastro "Mary Ellen S M da Silva" × comprovante com o nome
+ * inteiro também confere (cada inicial do cadastro casa uma palavra, em ordem).
  */
 export function nomeConfere(lido: string | null, cadastrado: string | null): boolean {
   if (!lido || !cadastrado) return false
   const a = palavras(lido); const b = palavras(cadastrado)
   if (a.length === 0 || b.length === 0 || a[0] !== b[0]) return false
-  return a.slice(1).every(p => p.length === 1 ? b.some(x => x.startsWith(p)) : b.includes(p))
+  const casa = (x: string, y: string) => x === y || (x.length === 1 && y.startsWith(x)) || (y.length === 1 && x.startsWith(y))
+  // Lado mais curto inteiro dentro do mais longo, na mesma ordem.
+  const [curto, longo] = a.length <= b.length ? [a, b] : [b, a]
+  if (curto.length < 2 && a.length !== b.length) return false   // só o 1º nome não basta
+  let j = 0
+  for (const p of curto) {
+    while (j < longo.length && !casa(p, longo[j])) j++
+    if (j >= longo.length) return false
+    j++
+  }
+  return true
 }
 
 /** Chave confere? Comprovantes costumam mascarar CPF/telefone (***.123.456-**). */
