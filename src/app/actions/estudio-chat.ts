@@ -295,7 +295,7 @@ export async function enviarModeloChat(contatoId: string, nome: string, idioma: 
 // ── Atendimento ─────────────────────────────────────────────────────────────
 
 /** Assumir: Luís atende e a Ana NÃO volta sozinha. Devolver: Ana volta já. */
-export async function definirAtendimentoChat(contatoId: string, quem: 'luis' | 'ana'): Promise<{ success: boolean; error?: string; retomou?: 'respondeu' | 'perguntou' | 'nada' }> {
+export async function definirAtendimentoChat(contatoId: string, quem: 'luis' | 'ana'): Promise<{ success: boolean; error?: string; retomou?: 'respondeu' | 'nada' }> {
   try {
     const tenantId = await getTenantId()
     await contatoDoTenant(tenantId, contatoId)

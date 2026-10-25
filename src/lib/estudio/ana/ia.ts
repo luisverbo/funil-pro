@@ -370,15 +370,17 @@ export interface ClasseFoto {
   fracao_corpo: number               // 0 = só rosto … 1 = corpo inteiro
   rosto_caixa: { x: number; y: number; w: number; h: number } | null   // normalizado 0–1
   cabelo: string | null              // "loiro, longo"
+  /** É comprovante/recibo de pagamento (Pix, transferência, tela do banco) — não é foto do ensaio. */
+  comprovante?: boolean
 }
 
 const SCHEMA_CLASSE = {
   type: 'object', additionalProperties: false,
-  required: ['tipo', 'motivo', 'pessoas', 'nitida', 'parece_menor', 'famosa_ou_print', 'fracao_corpo', 'rosto_caixa', 'cabelo'],
+  required: ['tipo', 'motivo', 'pessoas', 'nitida', 'parece_menor', 'famosa_ou_print', 'comprovante', 'fracao_corpo', 'rosto_caixa', 'cabelo'],
   properties: {
     tipo: { type: 'string', enum: ['rosto', 'corpo_inteiro', 'rosto_e_corpo', 'invalida'] },
     motivo: { type: ['string', 'null'] },
-    pessoas: { type: 'integer' }, nitida: { type: 'boolean' }, parece_menor: { type: 'boolean' }, famosa_ou_print: { type: 'boolean' },
+    pessoas: { type: 'integer' }, nitida: { type: 'boolean' }, parece_menor: { type: 'boolean' }, famosa_ou_print: { type: 'boolean' }, comprovante: { type: 'boolean' },
     fracao_corpo: { type: 'number' },
     rosto_caixa: { anyOf: [{ type: 'null' }, { type: 'object', additionalProperties: false, required: ['x', 'y', 'w', 'h'], properties: { x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' } } }] },
     cabelo: { type: ['string', 'null'] },
@@ -391,7 +393,9 @@ export function lerClasse(bruto: string): ClasseFoto | null {
   const m = (bruto ?? '').match(/\{[\s\S]*\}/)
   if (!m) return null
   try {
-    const j = JSON.parse(m[0]) as { tipo?: string; motivo?: string | null; pessoas?: number; nitida?: boolean; parece_menor?: boolean; famosa_ou_print?: boolean; fracao_corpo?: number; rosto_caixa?: ClasseFoto['rosto_caixa']; cabelo?: string | null }
+    const j = JSON.parse(m[0]) as { tipo?: string; motivo?: string | null; pessoas?: number; nitida?: boolean; parece_menor?: boolean; famosa_ou_print?: boolean; comprovante?: boolean; fracao_corpo?: number; rosto_caixa?: ClasseFoto['rosto_caixa']; cabelo?: string | null }
+    // Comprovante de pagamento (print do banco/Pix) NÃO é "print de outra pessoa": é o Pix chegando.
+    if (j.comprovante) return { tipo: 'invalida', motivo: 'comprovante de pagamento', recusada: false, fracao_corpo: 0, rosto_caixa: null, cabelo: null, comprovante: true }
     const recusada = !!(j.parece_menor || j.famosa_ou_print)
     let tipo = (['rosto', 'corpo_inteiro', 'rosto_e_corpo', 'invalida'].includes(String(j.tipo)) ? j.tipo : 'invalida') as ClasseFoto['tipo']
     let motivo = j.motivo ?? null
@@ -411,7 +415,7 @@ export async function classificarFoto(bytes: Uint8Array, mime: string, f: Fetch 
       output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA_CLASSE } },
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: tipoImagem(mime), data: Buffer.from(bytes).toString('base64') } },
-        { type: 'text', text: 'Foto enviada por uma cliente para um ensaio fotográfico feito com IA. Classifique: tipo = "rosto" (rosto de frente ocupando boa parte), "corpo_inteiro" (da cabeça aos pés), "rosto_e_corpo" (corpo inteiro E rosto nítido o bastante para servir de referência), "invalida" (sem pessoa, mais de uma pessoa, escura/borrada, print de tela, desenho). fracao_corpo = quanto do corpo aparece (0 só rosto, 1 corpo inteiro). rosto_caixa = caixa do rosto normalizada 0–1 (x,y do canto superior esquerdo). cabelo = cor e comprimento em português (ex.: "loiro, longo"). motivo = por que é inválida, curto, em português.' },
+        { type: 'text', text: 'Foto enviada por uma cliente para um ensaio fotográfico feito com IA. Classifique: tipo = "rosto" (rosto de frente ocupando boa parte), "corpo_inteiro" (da cabeça aos pés), "rosto_e_corpo" (corpo inteiro E rosto nítido o bastante para servir de referência), "invalida" (sem pessoa, mais de uma pessoa, escura/borrada, print de tela, desenho). comprovante = true se for comprovante/recibo de PAGAMENTO (Pix, transferência, boleto pago, tela do app do banco com valor) — nesse caso tipo = "invalida". fracao_corpo = quanto do corpo aparece (0 só rosto, 1 corpo inteiro). rosto_caixa = caixa do rosto normalizada 0–1 (x,y do canto superior esquerdo). cabelo = cor e comprimento em português (ex.: "loiro, longo"). motivo = por que é inválida, curto, em português.' },
       ] }],
     }, f)
     return { classe: lerClasse(texto) ?? CLASSE_DESCONHECIDA, uso }

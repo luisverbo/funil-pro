@@ -522,6 +522,21 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Comprovante fora da hora + devolver sem repetir**
+- CAUSA: print do Pix era classificado `famosa_ou_print` → `recusada` → "só
+  consigo com foto"; e comprovante só era conferido com `pagamento_enviado`.
+  Agora `classificarFoto` tem `comprovante` (não é recusada, não entra nas
+  fotos do ensaio); em QUALQUER etapa (antes de aguardando_pagamento):
+  com pacote → `fechar_pedido` (se preciso) + `comprovante` (pago guardado,
+  coleta segue); sem pacote → `guardar_comprovante` + `comprovante_sem_pacote`
+  e confere ao escolher (`comprovante_pendente`); já pago → `comprovante_ja_pago`.
+  PDF conta como comprovante (zip não)
+- Devolver p/ Ana: NÃO manda mais a pergunta da etapa (repetia "decote?"
+  depois da resposta do Luís). Só sincroniza (pedido na produção → etapa
+  'pago'; entregue → 'entregue'; retomadas recomeçam) e responde só se a
+  última msg for da cliente sem resposta
+- Bateria: **1198/1198**
+
 **2026-11-11 — Marca d'água da prévia mais suave**
 - Diagonal branca 0,42 → 0,22 (traço mais fino, contorno 0,07, linhas mais
   espaçadas), faixa do rodapé 0,5 → 0,32. Obs.: a "PRÉVIA · Estúdio" com
