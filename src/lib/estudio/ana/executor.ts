@@ -743,3 +743,117 @@ export async function fecharPreferenciasVencidas(admin: SupabaseClient, agora: D
   return fechados
 }
 
+
+// ── Luís no comando: pedido/prévia criados pela tela + devolver para a Ana ───
+
+export interface PedidoDoLuis {
+  tipo: 'previa' | 'pacote'
+  tema: string
+  poses: string[]
+  pacote_qtd?: number | null
+  /** Pacote já pago (Pix conferido pelo Luís): vai direto para a produção. */
+  pago?: boolean
+}
+
+/**
+ * O Luís assumiu e quer gerar o pedido (ou a prévia) por conta própria. Usa as
+ * fotos que a cliente já mandou (mesma escolha rosto/corpo da Ana), grava as
+ * poses e: prévia → fila na hora; pacote pago → pago + fila; pacote não pago
+ * → aguardando Pix (a Ana cobra e confere o comprovante quando voltar).
+ * A conversa da Ana fica sabendo (tema, pacote, poses, etapa).
+ */
+export async function criarPedidoPeloLuis(admin: SupabaseClient, tenantId: string, contatoId: string, v: PedidoDoLuis): Promise<{ pedido_id?: string; falta?: string[]; error?: string }> {
+  const { data: c } = await admin.from('estudio_contatos').select('*').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
+  if (!c) return { error: 'Conversa não encontrada.' }
+  const previa = v.tipo === 'previa'
+  const poses = [...new Set((v.poses ?? []).map(p => String(p).replace(/\D/g, '').padStart(2, '0')).filter(p => p !== '00'))]
+  if (!v.tema) return { error: 'Escolha o tema.' }
+  if (!poses.length) return { error: 'Informe o número da(s) pose(s).' }
+  const d = { ...((c.dados ?? {}) as Dados) }
+  let qtd = 1, valor = 0, moeda = 'BRL'
+  if (!previa) {
+    const precos = await precosDoPais(admin, tenantId, c.pais)
+    const preco = precos.find(p => p.pacote_qtd === Number(v.pacote_qtd))
+    if (!preco) return { error: 'Escolha um pacote da tabela.' }
+    qtd = preco.pacote_qtd; valor = preco.valor_cents; moeda = preco.moeda
+    if (poses.length > qtd) return { error: `O pacote de ${qtd} fotos leva no máximo ${qtd} poses.` }
+  } else if (d.previa_feita) return { error: 'Esta cliente já recebeu a prévia (é uma só).' }
+  const idioma = idiomaDaAna(c.idioma)
+  const base = {
+    tenant_id: tenantId, contato_id: c.id, cliente_nome: d.nome ?? c.nome, wa_id: c.wa_id, tema_slug: v.tema,
+    pacote_qtd: qtd, valor_cents: valor, moeda, idioma, pais: c.pais, status: 'novo', tipo: v.tipo, idade: d.idade ?? null,
+    poses: previa ? poses.slice(0, 1) : poses, preferencias: d.preferencias ?? null,
+  }
+  const prim = await admin.from('estudio_pedidos').insert({ ...base, origem: c.ad_id ? 'anuncio' : (c.origem ?? 'organico'), ad_id: c.ad_id ?? null, ctwa_clid: c.ctwa_clid ?? null }).select('id').single()
+  let p = prim.data
+  if (prim.error && /ctwa_clid|ad_id|origem|column|schema cache/i.test(prim.error.message)) p = (await admin.from('estudio_pedidos').insert(base).select('id').single()).data
+  if (!p) return { error: prim.error?.message ?? 'Não consegui criar o pedido.' }
+  await admin.from('estudio_eventos').insert({ pedido_id: p.id, tipo: 'pedido_criado', detalhe: { tipo: v.tipo, pacote_qtd: qtd, por: 'luis' } })
+  const lista = Array.isArray(c.fotos_recebidas) ? c.fotos_recebidas as FotoRecebida[] : []
+  if (lista.length) await aplicarEscolhaDeFotos(admin, p.id, lista, d)
+
+  const { entrarNaFila } = await import('../producao-servidor')
+  let falta: string[] = []
+  if (previa) {
+    await admin.from('estudio_pedidos').update({ status: 'pago', pago_em: new Date().toISOString(), valor_pago_cents: 0 }).eq('id', p.id)
+    await admin.from('estudio_eventos').insert({ pedido_id: p.id, tipo: 'previa_na_fila', detalhe: { por: 'luis' } })
+    d.previa_feita = true; d.aguardando_previa = true
+    if (!d.tema) d.tema = v.tema
+    const r = await entrarNaFila(admin, p.id, { forcar: true })
+    falta = 'falta' in r ? (r.falta ?? []) : []
+    await admin.from('estudio_contatos').update({ dados: d }).eq('id', c.id)
+  } else {
+    Object.assign(d, { tema: v.tema, pacote_qtd: qtd, valor_cents: valor, moeda, poses })
+    if (v.pago) {
+      const { marcarPago } = await import('../pix-servidor')
+      await admin.from('estudio_pedidos').update({ status: 'aguardando_pagamento' }).eq('id', p.id)
+      const m = await marcarPago(admin, p.id, { pago_por: 'manual', forma_pagamento: 'pix_comprovante', valor_pago_cents: valor, moeda })
+      if (m.error) return { pedido_id: p.id, error: `Pedido criado, mas não marquei como pago: ${m.error}` }
+      const r = await entrarNaFila(admin, p.id, { forcar: true, semIdade: true })
+      falta = 'falta' in r ? (r.falta ?? []) : []
+      await admin.from('estudio_contatos').update({ dados: d, etapa: 'pago', pedido_atual_id: p.id }).eq('id', c.id)
+    } else {
+      await admin.from('estudio_pedidos').update({ status: 'aguardando_pagamento' }).eq('id', p.id)
+      await admin.from('estudio_contatos').update({ dados: { ...d, pagamento_enviado: true }, etapa: 'aguardando_pagamento', pedido_atual_id: p.id }).eq('id', c.id)
+    }
+  }
+  return { pedido_id: p.id, falta }
+}
+
+/**
+ * Devolveu para a Ana: ela lê onde a conversa está e CONTINUA sozinha.
+ * • a última mensagem é da cliente (texto, sem resposta) → a Ana responde a ela
+ *   pelo fluxo normal (a IA vê o histórico, inclusive o que o Luís falou);
+ * • senão → manda a pergunta da etapa atual (o próximo passo), uma vez.
+ * Fora da janela de 24 h não manda nada (a Meta recusaria).
+ */
+export async function retomarConversa(admin: SupabaseClient, tenantId: string, contatoId: string): Promise<'respondeu' | 'perguntou' | 'nada'> {
+  const { data: c } = await admin.from('estudio_contatos').select('id, tenant_id, wa_id, etapa, dados, janela_ate, modo').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
+  if (!c || c.modo !== 'ana') return 'nada'
+  const { dentroDaJanela } = await import('../whatsapp')
+  if (!dentroDaJanela(c.janela_ate)) return 'nada'
+  const { data: cfg } = await admin.from('estudio_config').select('tenant_id, phone_number_id, access_token, whatsapp_avisos').eq('tenant_id', tenantId).maybeSingle()
+  if (!cfg?.access_token) return 'nada'
+  await admin.from('estudio_contatos').update({ cobrancas: 0 }).eq('id', c.id)
+  const { data: ult } = await admin.from('estudio_mensagens').select('direcao, tipo, texto, wamid').eq('contato_id', c.id).order('criado_em', { ascending: false }).limit(1)
+  const m = ult?.[0]
+  if (m && m.direcao === 'entrada' && m.tipo === 'texto' && (m.texto ?? '').trim()) {
+    await rodarAna(admin, cfg as Conexao, c.id, { tipo: 'texto', texto: m.texto ?? '', wamid: m.wamid ?? null }, false)
+    return 'respondeu'
+  }
+  const { repetirPergunta } = await import('./maquina')
+  const d = (c.dados ?? {}) as Dados
+  const etapa = ((c.etapa as Etapa) || 'inicio')
+  if (d.aguardando_previa) return 'nada'   // prévia na produção: a entrega fala por ela
+  const acao = repetirPergunta(etapa, d).find(a => a.t === 'texto') as Extract<Acao, { t: 'texto' }> | undefined
+  if (!acao) return 'nada'
+  const precos = await precosDoPais(admin, tenantId, (await admin.from('estudio_contatos').select('pais, idioma').eq('id', c.id).single()).data?.pais ?? null)
+  const { data: ci } = await admin.from('estudio_contatos').select('idioma').eq('id', c.id).single()
+  const idioma = idiomaDaAna(ci?.idioma)
+  const extra: Record<string, string | number> = {
+    tabela: tabelaDePrecos(precos, idioma), link: linkDoCatalogo(APP_URL(), d.tema, idioma), poses: (d.poses ?? []).join(', '),
+    ...Object.fromEntries(Object.entries(acao.vars ?? {}).map(([k, x]) => [k, x as string | number])),
+  }
+  const r = await falarComCliente(admin, tenantId, c.id, acao.chave, undefined, extra)
+  return r.ok ? 'perguntou' : 'nada'
+}

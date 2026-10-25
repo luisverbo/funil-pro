@@ -522,6 +522,17 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Luís cria pedido/prévia pela conversa + Ana retoma ao devolver**
+- Painel da conversa: **🧾 Criar pedido / prévia** (`opcoesPedidoManualChat`,
+  `criarPedidoManualChat` → `criarPedidoPeloLuis`): tema, pacote, poses,
+  "já pagou"; usa as fotos recebidas (`aplicarEscolhaDeFotos`); prévia (1
+  pose, só se ainda não fez) → fila; pacote pago → `marcarPago` manual + fila;
+  não pago → `aguardando_pagamento` (Ana cobra/confere ao voltar)
+- Devolver para a Ana → `retomarConversa`: última msg da cliente sem resposta
+  → `rodarAna` com ela; senão a pergunta da etapa (`repetirPergunta`); fora da
+  janela 24 h não manda. Antes a Ana só falava na próxima msg da cliente
+- Bateria: **1198/1198**
+
 **2026-11-11 — UM ajuste só e UMA foto de prévia**
 - IA dizia "qualquer ajuste é só pedir" depois do ajuste feito. Prompt: 1
   ajuste SÓ, nunca oferecer 2º; prévia = 1 foto; `ContextoIa.ajusteUsado`

@@ -27,6 +27,21 @@ const PED = { id: 'a1b2c3d4-0000-4000-8000-000000000001', tipo: 'pacote', status
 const DADOS_ENTREGUE: Dados = { nome: 'Maryana', tema: 'aniversario', pacote_qtd: 3, valor_cents: 2990, moeda: 'BRL', poses: ['03', '07', '12'], tem_rosto: true, tem_corpo: true, idade: 42, cabelo: 'castanho', upsell_oferecido: true, maquiagem: true, decote: false, cores: 'rosa' }
 
 const tests: Record<string, () => void | Promise<void>> = {
+  'Luís no comando: cria pedido/prévia pela conversa e, ao devolver, a Ana continua o fluxo': () => {
+    const ex = ler('src/lib/estudio/ana/executor.ts')
+    assert.match(ex, /export async function criarPedidoPeloLuis/)
+    assert.match(ex, /Esta cliente já recebeu a prévia \(é uma só\)/)
+    assert.match(ex, /poses: previa \? poses\.slice\(0, 1\) : poses/)
+    assert.match(ex, /entrarNaFila\(admin, p\.id, \{ forcar: true \}\)/)
+    assert.match(ex, /etapa: 'aguardando_pagamento', pedido_atual_id: p\.id/)
+    assert.match(ex, /export async function retomarConversa/)
+    assert.match(ex, /m\.direcao === 'entrada' && m\.tipo === 'texto'/)
+    const ch = ler('src/app/actions/estudio-chat.ts')
+    assert.match(ch, /if \(quem === 'ana'\) \{[\s\S]*retomarConversa\(admin, tenantId, contatoId\)/)
+    const rota = ler('src/app/api/estudio/route.ts')
+    assert.equal((rota.match(/criarPedidoManualChat/g) ?? []).length, 2); assert.equal((rota.match(/opcoesPedidoManualChat/g) ?? []).length, 2)
+    assert.match(ler('src/app/(dashboard)/estudio-ia/aba-conversas.tsx'), /<CriarPedido contatoId=/)
+  },
   'regra do estúdio: UM ajuste só e UMA foto de prévia (IA não oferece 2º ajuste)': () => {
     const ia = ler('src/lib/estudio/ana/ia.ts')
     assert.match(ia, /UM SÓ, em até 24 h/); assert.match(ia, /prévia grátis é de UMA foto só/); assert.match(ia, /JÁ USOU o ajuste grátis/)
