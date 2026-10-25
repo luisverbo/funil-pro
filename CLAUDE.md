@@ -522,6 +522,12 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Marca d'água da prévia mais suave**
+- Diagonal branca 0,42 → 0,22 (traço mais fino, contorno 0,07, linhas mais
+  espaçadas), faixa do rodapé 0,5 → 0,32. Obs.: a "PRÉVIA · Estúdio" com
+  fonte que aparece junto NÃO é deste código (vem da imagem já marcada no PC)
+- Bateria: **1198/1198**
+
 **2026-11-11 — Luís cria pedido/prévia pela conversa + Ana retoma ao devolver**
 - Painel da conversa: **🧾 Criar pedido / prévia** (`opcoesPedidoManualChat`,
   `criarPedidoManualChat` → `criarPedidoPeloLuis`): tema, pacote, poses,

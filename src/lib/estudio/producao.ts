@@ -125,7 +125,7 @@ export function svgMarcaDagua(w: number, h: number, texto = MARCA_PREVIA): strin
   const sw = Math.max(2, alt / 6.5)
   const faixa = textoEmTracos(`${texto}   ·   `, 0, 0, alt).largura
   const linhas: string[] = []
-  for (let y = -h; y < h * 2; y += alt * 4.5) {
+  for (let y = -h; y < h * 2; y += alt * 6) {
     for (let x = -w; x < w * 2; x += faixa) linhas.push(textoEmTracos(`${texto}   ·   `, x, y, alt).d)
   }
   const larg1 = textoEmTracos(texto, 0, 0, 10).largura / 10
@@ -135,8 +135,8 @@ export function svgMarcaDagua(w: number, h: number, texto = MARCA_PREVIA): strin
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
     `<!-- ${texto.replace(/-->/g, '')} -->` +
     `<g transform="rotate(-30 ${w / 2} ${h / 2})" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
-    `<path d="${linhas.join('')}" stroke="black" stroke-opacity="0.18" stroke-width="${(sw * 2).toFixed(1)}"/>` +
-    `<path d="${linhas.join('')}" stroke="white" stroke-opacity="0.42" stroke-width="${sw.toFixed(1)}"/></g>` +
-    `<rect x="0" y="${h - alt * 2.4}" width="${w}" height="${alt * 2.4}" fill="black" fill-opacity="0.5"/>` +
+    `<path d="${linhas.join('')}" stroke="black" stroke-opacity="0.07" stroke-width="${(sw * 1.6).toFixed(1)}"/>` +
+    `<path d="${linhas.join('')}" stroke="white" stroke-opacity="0.22" stroke-width="${(sw * 0.8).toFixed(1)}"/></g>` +
+    `<rect x="0" y="${h - alt * 2.4}" width="${w}" height="${alt * 2.4}" fill="black" fill-opacity="0.32"/>` +
     `<path d="${textoEmTracos(texto, rx, ry, altR).d}" fill="none" stroke="white" stroke-width="${Math.max(2, altR / 6.5).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 }
