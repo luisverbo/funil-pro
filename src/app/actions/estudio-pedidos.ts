@@ -66,9 +66,36 @@ export async function salvarProducaoConfig(v: {
     }
     const chave = String(v.gemini_api_key ?? '').trim()
     if (chave) linha.gemini_api_key = chave.slice(0, 200)
-    const { error } = await createAdminClient().from('estudio_config').update(linha).eq('tenant_id', tenantId)
+    const admin = createAdminClient()
+    if (v.motor === 'api_gemini' && !chave && !process.env.GEMINI_API_KEY) {
+      const { data } = await admin.from('estudio_config').select('gemini_api_key').eq('tenant_id', tenantId).maybeSingle()
+      if (!data?.gemini_api_key) return { success: false, error: 'Para usar a API automática, cole antes a chave do Gemini (Google AI Studio) e clique em "Testar o Gemini".' }
+    }
+    const { error } = await admin.from('estudio_config').update(linha).eq('tenant_id', tenantId)
     return error ? { success: false, error: aviso(error.message) } : { success: true }
   } catch (e) { return { success: false, error: String(e) } }
+}
+
+/** Gera 1 imagem de teste com a chave colada (ainda não salva) ou a salva. Sem cliente, sem envio. */
+export async function testarGeminiEstudio(chaveNova?: string | null): Promise<{ ok: boolean; imagem?: string; ms?: number; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    let chave = String(chaveNova ?? '').trim() || process.env.GEMINI_API_KEY || ''
+    if (!chave) {
+      const { data } = await createAdminClient().from('estudio_config').select('gemini_api_key').eq('tenant_id', tenantId).maybeSingle()
+      chave = String(data?.gemini_api_key ?? '')
+    }
+    if (!chave) return { ok: false, error: 'Nenhuma chave do Gemini salva. Cole a chave do Google AI Studio no campo acima.' }
+    const { testarGemini } = await import('@/lib/estudio/gemini')
+    const t0 = Date.now()
+    const img = await testarGemini(chave)
+    return { ok: true, ms: Date.now() - t0, imagem: `data:${img.mime};base64,${Buffer.from(img.bytes).toString('base64')}` }
+  } catch (e) {
+    const m = String((e as Error)?.message ?? e)
+    const dica = /api key not valid|API_KEY_INVALID|permission|403/i.test(m) ? ' — a chave está errada ou sem permissão.'
+      : /billing|quota|RESOURCE_EXHAUSTED|429/i.test(m) ? ' — a conta do Google AI Studio está sem crédito/faturamento ativo para geração de imagem.' : ''
+    return { ok: false, error: `${m.slice(0, 300)}${dica}` }
+  }
 }
 
 // ── Fila de pedidos ─────────────────────────────────────────────────────────

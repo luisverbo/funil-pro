@@ -44,8 +44,31 @@ export function imagemDaResposta(j: RespostaGemini): Imagem | null {
   return null
 }
 
+/** Nome do modelo de imagem mudou entre "preview" e GA: tenta o principal e, se a Google disser que não existe, o outro. */
+export const MODELOS_IMAGEM = [MODELO_IMAGEM, `${MODELO_IMAGEM}-preview`]
+const naoExiste = (m: string) => /not found|is not supported|NOT_FOUND|404/i.test(m)
+
+async function chamarImagem(chave: string, corpo: unknown, f: Fetch): Promise<RespostaGemini> {
+  let ultimo: unknown = null
+  for (const m of MODELOS_IMAGEM) {
+    try { return await chamar(m, chave, corpo, f) } catch (e) { ultimo = e; if (!naoExiste(String((e as Error)?.message ?? e))) throw e }
+  }
+  throw ultimo
+}
+
+/** Teste do botão "Testar o Gemini": 1 imagem simples, sem foto de cliente. */
+export async function testarGemini(chave: string, f: Fetch = fetch): Promise<Imagem> {
+  const j = await chamarImagem(chave, {
+    contents: [{ role: 'user', parts: [{ text: 'Foto de estúdio profissional de um buquê de rosas cor-de-rosa sobre fundo bege liso, luz suave.' }] }],
+    generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '1:1', imageSize: '1K' } },
+  }, f)
+  const img = imagemDaResposta(j)
+  if (!img) throw new Error(`Gemini não devolveu imagem (${j.candidates?.[0]?.finishReason ?? 'sem motivo'})`)
+  return img
+}
+
 export async function gerarFotoGemini(prompt: string, rosto: Imagem, corpo: Imagem, chave: string, f: Fetch = fetch): Promise<Imagem> {
-  const j = await chamar(MODELO_IMAGEM, chave, {
+  const j = await chamarImagem(chave, {
     contents: [{ role: 'user', parts: [{ text: prompt }, parteImagem(rosto), parteImagem(corpo)] }],
     generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '4:5', imageSize: '2K' } },
   }, f)
