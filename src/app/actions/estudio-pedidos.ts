@@ -126,7 +126,8 @@ export async function abrirPedidoEstudio(id: string): Promise<PedidoDetalhe> {
       }))),
       eventos: (evs ?? []) as PedidoDetalhe['eventos'],
       anuncio: p.ad_id ? await (async () => {
-        const { data: a } = await admin.from('estudio_anuncios').select('nome, conjunto, campanha, headline').eq('tenant_id', tenantId).eq('ad_id', p.ad_id).maybeSingle().then(r => r, () => ({ data: null }))
+        const { nomesDosAnuncios } = await import('@/lib/estudio/anuncios-servidor')
+        const a = (await nomesDosAnuncios(admin, tenantId, [String(p.ad_id)]).catch(() => new Map())).get(String(p.ad_id))
         return { ad_id: String(p.ad_id), nome: a?.nome ?? null, conjunto: a?.conjunto ?? null, campanha: a?.campanha ?? null, headline: a?.headline ?? null }
       })() : null,
     }
@@ -256,7 +257,7 @@ export async function usarFotoComoEstudio(id: string, path: string, papel: 'rost
 // ── De onde vem a venda (por anúncio) ───────────────────────────────────────
 
 export interface LinhaOrigemTela {
-  ad_id: string | null; nome: string | null; campanha: string | null; headline: string | null
+  ad_id: string | null; nome: string | null; conjunto: string | null; campanha: string | null; headline: string | null
   conversas: number; pedidos: number; vendas: number; faturamento: Record<string, number>; taxa: number | null
 }
 
@@ -266,10 +267,9 @@ export async function origemDasVendas(de: string, ate: string): Promise<{ linhas
     if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) return { linhas: [], error: 'Período inválido.' }
     const ini = new Date(`${de}T00:00:00-03:00`).toISOString(), fim = new Date(new Date(`${ate}T00:00:00-03:00`).getTime() + 86400e3).toISOString()
     const admin = createAdminClient()
-    const [ct, pd, an] = await Promise.all([
+    const [ct, pd] = await Promise.all([
       admin.from('estudio_contatos').select('ad_id, ad_id_primeiro, origem').eq('tenant_id', tenantId).gte('primeira_msg_em', ini).lt('primeira_msg_em', fim).limit(20000),
       admin.from('estudio_pedidos').select('ad_id, status, pago_em, valor_pago_cents, moeda, tipo, criado_em').eq('tenant_id', tenantId).gte('criado_em', ini).lt('criado_em', fim).neq('tipo', 'previa').limit(20000),
-      admin.from('estudio_anuncios').select('ad_id, nome, campanha, headline').eq('tenant_id', tenantId),
     ])
     if (ct.error) return { linhas: [], error: /ad_id|column/i.test(ct.error.message) ? 'Falta rodar o SQL 20261101000000_estudio_ia_anuncios.sql no Supabase.' : ct.error.message }
     const { agruparPorAnuncio } = await import('@/lib/estudio/anuncios')
@@ -278,8 +278,9 @@ export async function origemDasVendas(de: string, ate: string): Promise<{ linhas
       (ct.data ?? []).map(c => ({ ad_id: (c.ad_id_primeiro ?? c.ad_id) || null })),
       (pd.data ?? []).map(p => ({ ad_id: p.ad_id || null, status: p.status, pago: !!p.pago_em, valor_pago_cents: p.valor_pago_cents, moeda: p.moeda })),
     )
-    const nomes = new Map((an.data ?? []).map(a => [a.ad_id, a]))
-    return { linhas: linhas.map(l => ({ ...l, nome: l.ad_id ? nomes.get(l.ad_id)?.nome ?? null : null, campanha: l.ad_id ? nomes.get(l.ad_id)?.campanha ?? null : null, headline: l.ad_id ? nomes.get(l.ad_id)?.headline ?? null : null })) }
+    const { nomesDosAnuncios } = await import('@/lib/estudio/anuncios-servidor')
+    const nomes = await nomesDosAnuncios(admin, tenantId, linhas.map(l => l.ad_id).filter((x): x is string => !!x))
+    return { linhas: linhas.map(l => { const n = l.ad_id ? nomes.get(l.ad_id) : undefined; return { ...l, nome: n?.nome ?? null, conjunto: n?.conjunto ?? null, campanha: n?.campanha ?? null, headline: n?.headline ?? null } }) }
   } catch (e) { return { linhas: [], error: String(e) } }
 }
 
@@ -320,7 +321,7 @@ export async function salvarCodigoTesteMeta(codigo: string): Promise<{ success: 
 
 type KpisTela = import('@/lib/estudio/painel').Kpis
 type PaisTela = import('@/lib/estudio/painel').LinhaPais
-type AnuncioTela = import('@/lib/estudio/painel').LinhaAnuncio & { nome: string | null; campanha: string | null }
+type AnuncioTela = import('@/lib/estudio/painel').LinhaAnuncio & { nome: string | null; conjunto: string | null; campanha: string | null }
 
 export async function painelEstudio(de: string, ate: string): Promise<{
   atual: KpisTela | null; anterior: KpisTela | null; paises: PaisTela[]; anuncios: AnuncioTela[]
@@ -361,9 +362,10 @@ export async function painelEstudio(de: string, ate: string): Promise<{
     }
 
     const [a, b] = await Promise.all([carregar(de, ate), carregar(ant.de, ant.ate)])
-    const { data: nomes } = await admin.from('estudio_anuncios').select('ad_id, nome, campanha').eq('tenant_id', tenantId)
-    const mapa = new Map((nomes ?? []).map(n => [n.ad_id, n]))
-    const anuncios = P.porAnuncio(a, cot).map(l => ({ ...l, nome: l.ad_id ? mapa.get(l.ad_id)?.nome ?? null : null, campanha: l.ad_id ? mapa.get(l.ad_id)?.campanha ?? null : null }))
+    const linhasAd = P.porAnuncio(a, cot)
+    const { nomesDosAnuncios } = await import('@/lib/estudio/anuncios-servidor')
+    const mapa = await nomesDosAnuncios(admin, tenantId, linhasAd.map(l => l.ad_id).filter((x): x is string => !!x)).catch(() => new Map<string, { nome: string | null; conjunto: string | null; campanha: string | null }>())
+    const anuncios = linhasAd.map(l => { const n = l.ad_id ? mapa.get(l.ad_id) : undefined; return { ...l, nome: n?.nome ?? null, conjunto: n?.conjunto ?? null, campanha: n?.campanha ?? null } })
     return {
       atual: P.calcularKpis(a, cot), anterior: P.calcularKpis(b, cot), paises: P.porPais(a, cot), anuncios,
       cotacao_usd: Number(cot.USD) || 0, gasto_sincronizado: !a.temAds || a.gastos.length > 0, avisos,
