@@ -32,7 +32,7 @@ export function CartaoHotmart() {
           <button onClick={() => { void navigator.clipboard?.writeText(c.url_webhook); setMsg({ ok: true, t: 'URL copiada.' }) }} className="rounded border border-slate-200 bg-white px-2 py-1 font-medium text-slate-700">copiar</button>
         </div>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-sm"><span className="text-xs font-medium text-slate-600">Hottok (Hotmart → Ferramentas → Webhook)</span>
           <input type="password" autoComplete="off" value={hottok} onChange={e => setHottok(e.target.value)} placeholder={c.tem_hottok ? '•••••••• (já salvo — cole outro para trocar)' : 'cole o hottok'} className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm" /></label>
         <label className="text-sm"><span className="text-xs font-medium text-slate-600">ID do produto na Hotmart</span>
@@ -116,7 +116,7 @@ export function Faturamento() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-base font-semibold text-slate-900">💰 Faturamento</h2>
       {erro && <p className="mt-2 text-xs text-red-600">{erro}</p>}
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {(p ?? []).map(x => (
           <div key={x.periodo} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{x.periodo}</p>

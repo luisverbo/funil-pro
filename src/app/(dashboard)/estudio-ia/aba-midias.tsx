@@ -97,7 +97,7 @@ export function AbaMidias() {
         </div>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-base font-semibold text-slate-900">Imagem do menu</h2>
           <p className="text-xs text-slate-500">Vai junto com o menu de temas (3 exemplos: aniversário, corporativo, casual). JPG ou PNG, até 5 MB.</p>

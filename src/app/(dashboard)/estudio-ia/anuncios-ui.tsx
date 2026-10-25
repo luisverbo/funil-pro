@@ -20,7 +20,7 @@ export function CartaoMetaCapi() {
     <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-base font-semibold text-slate-900">📈 Meta — vendas do WhatsApp para os anúncios</h2>
       <p className="text-xs text-slate-500">Quem veio de anúncio &quot;clique para o WhatsApp&quot; gera <strong>LeadSubmitted</strong> quando o pedido é registrado e <strong>Purchase</strong> quando o pagamento confirma (Pix ou Hotmart). Orgânico não envia. Cada pedido manda cada evento uma vez só.</p>
-      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+      <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
         <div><dt className="text-[11px] uppercase tracking-wider text-slate-500">WABA</dt><dd className="font-mono text-slate-800">{e.waba_id ?? '—'}</dd></div>
         <div><dt className="text-[11px] uppercase tracking-wider text-slate-500">Dataset do WhatsApp</dt><dd className="font-mono text-slate-800">{e.dataset_id ?? <span className="text-amber-700">ainda não obtido</span>}</dd></div>
         <div><dt className="text-[11px] uppercase tracking-wider text-slate-500">Eventos com erro</dt><dd className={e.pendentes ? 'font-semibold text-red-600' : 'text-slate-800'}>{e.pendentes}</dd></div>

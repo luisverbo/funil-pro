@@ -71,7 +71,7 @@ export function AbaConfig() {
   const registrado = status?.platform_type === 'CLOUD_API' || status?.status === 'CONNECTED'
 
   return (
-    <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_360px]">
+    <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
       <div className="space-y-5">
         {aviso && (
           <div className={`rounded-xl border px-4 py-3 text-sm ${aviso.tipo === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{aviso.texto}</div>
@@ -90,7 +90,7 @@ export function AbaConfig() {
             </label>
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Campo rotulo="Número de exibição" dica="Vai no botão do catálogo (wa.me)"><input {...campo('display_number')} placeholder="+55 21 99077-3595" className={inp} /></Campo>
             <Campo rotulo="phone_number_id"><input {...campo('phone_number_id')} inputMode="numeric" placeholder="1418653454665224" className={inp} /></Campo>
             <Campo rotulo="WABA id"><input {...campo('waba_id')} inputMode="numeric" placeholder="2250778325757289" className={inp} /></Campo>

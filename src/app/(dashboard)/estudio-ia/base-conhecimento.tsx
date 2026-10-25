@@ -33,7 +33,7 @@ export function BaseConhecimento() {
       <p className="text-xs text-slate-500">A IA nunca inventa preço, prazo, desconto ou promessa. Ela responde só com os fatos do estúdio + o que estiver aqui. Fora disso: &quot;vou confirmar com a equipe&quot; e você recebe o aviso.</p>
       {erro && <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">{erro}</p>}
       {!itens ? <p className="mt-2 text-sm text-slate-500">Carregando…</p> : (
-        <div className="mt-3 grid gap-4 lg:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-3">
           {GRUPOS.map(([tipo, titulo, dica]) => (
             <div key={tipo}>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{titulo}</p>
