@@ -39,7 +39,7 @@ export function CartaoPix() {
     <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-base font-semibold text-slate-900">💸 Pix (Brasil)</h2>
       <p className="text-xs text-slate-500">No fechamento a Ana manda esta chave e o valor exato. O comprovante é lido pela IA e aprovado sozinho quando valor, recebedor, data (até 24 h) e ID da transação batem; senão vem para você conferir.</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="text-sm"><span className="text-xs font-medium text-slate-600">Tipo da chave</span>
           <select value={v.tipo} onChange={e => setV({ ...v, tipo: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm">
             {TIPOS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
@@ -157,7 +157,7 @@ export function AbaPainelPix() {
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">🧾 Comprovantes para conferir {pend.length > 0 && <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{pend.length}</span>}</h2>
         {pend.length === 0 ? <p className="mt-2 text-sm text-slate-500">Nada pendente. 🎉</p>
-          : <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{pend.map(p => <CartaoConferencia key={p.id} p={p} onMudou={recarregar} />)}</div>}
+          : <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{pend.map(p => <CartaoConferencia key={p.id} p={p} onMudou={recarregar} />)}</div>}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -219,7 +219,7 @@ function PainelAvisos({ versao }: { versao: number }) {
   }, [versao, n])
   const cor = (s: string) => s === 'enviado' ? 'text-emerald-700' : s === 'pulado' ? 'text-slate-500' : 'text-red-600'
   return (
-    <section className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <section className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
       <a href="/estudio-ia?aba=pedidos" className={`flex flex-col items-center justify-center rounded-xl border p-5 text-center shadow-sm ${a && a.na_fila > 0 ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white'}`}>
         <span className="text-5xl font-bold tabular-nums text-slate-900">{a?.na_fila ?? '—'}</span>
         <span className="mt-1 text-sm font-semibold text-slate-700">pedidos na fila</span>
@@ -236,11 +236,12 @@ function PainelAvisos({ versao }: { versao: number }) {
         <ul className="mt-2 max-h-56 divide-y divide-slate-100 overflow-y-auto text-xs">
           {(a?.avisos ?? []).length === 0 && <li className="py-2 text-slate-500">Nenhum aviso registrado ainda.</li>}
           {(a?.avisos ?? []).map(v => (
-            <li key={v.id} className="flex gap-2 py-1.5">
+            <li key={v.id} className="flex flex-wrap gap-x-2 gap-y-0.5 py-1.5 sm:flex-nowrap">
               <span className="w-24 shrink-0 text-slate-500">{hora(v.criado_em)}</span>
               <span className="w-16 shrink-0 font-medium text-slate-700">{v.canal === 'whatsapp' ? 'WhatsApp' : v.canal === 'modelo' ? 'Modelo' : 'Push'}</span>
               <span className={`w-16 shrink-0 font-semibold ${cor(v.status)}`}>{v.status}</span>
-              <span className="min-w-0 flex-1 truncate text-slate-700" title={v.texto ?? ''}>{(v.texto ?? '').split('\n')[0]}{v.erro ? <span className="text-red-600"> — {v.erro}</span> : null}</span>
+              {/* celular: a mensagem vai na linha de baixo (até 2 linhas); tela grande: na mesma linha */}
+              <span className="line-clamp-2 min-w-0 basis-full break-words text-slate-700 sm:flex-1 sm:basis-auto sm:truncate" title={v.texto ?? ''}>{(v.texto ?? '').split('\n')[0]}{v.erro ? <span className="text-red-600"> — {v.erro}</span> : null}</span>
             </li>
           ))}
         </ul>

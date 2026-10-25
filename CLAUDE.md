@@ -522,6 +522,16 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Estúdio no celular: página não "encolhe" mais**
+- CAUSA RAIZ: grades `grid` sem `grid-cols-*` no mobile → coluna implícita
+  `auto` cresce até o conteúdo (linha longa de aviso com `truncate` vira
+  largura mínima) → página 4× mais larga e o celular dava zoom out. Todas as
+  grades do estudio-ia ganharam `grid-cols-1`; contêiner do Estúdio com
+  `min-w-0 overflow-x-clip` (proteção) e sem padding duplo no celular
+- Avisos no celular: mensagem na linha de baixo (até 2 linhas)
+- Conferido em 390 px: painel, supervisor, pedidos, atendente, mídias,
+  config, conversas, catálogo = largura 390
+
 **2026-11-11 — Risquinhos mais grossos**
 - `src/components/risquinhos.tsx`: ✓/✓✓ desenhados em SVG (traço 2,4,
   dois vês separados), cinza #64748b / azul #0ea5e9, ⚠ e 🕓; no balão

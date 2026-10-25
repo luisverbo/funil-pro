@@ -51,7 +51,7 @@ export function AbaPedidos() {
   }, [filtro, versao])
 
   return (
-    <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="-mx-1 flex gap-1 overflow-x-auto px-1">
           {FILTROS.map(([k, l]) => (
@@ -204,7 +204,7 @@ export function CartaoMotor() {
     <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-base font-semibold text-slate-900">🏭 Motor de produção</h2>
       <p className="text-xs text-slate-500">A entrega é automática nas duas posições: assim que as fotos ficam prontas, a Ana manda para a cliente.</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {([['chatgpt_site', '💻 ChatGPT site (padrão)', 'Melhor qualidade. Você recebe o aviso e pede ao Claude Code do PC: "gera o pedido <id>".'],
            ['api_gemini', '🤖 API automática', 'Gemini gera sozinho (~US$ 0,14/foto), confere o rosto (nota ≥ 7) e entrega. Sem ninguém.']] as const).map(([k, t, dica]) => (
           <button key={k} onClick={() => setC({ ...c, motor: k })} className={`rounded-xl border p-3 text-left ${c.motor === k ? 'border-violet-500 bg-violet-50 ring-1 ring-violet-500' : 'border-slate-200'}`}>
@@ -212,7 +212,7 @@ export function CartaoMotor() {
           </button>
         ))}
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {num('prazo_min', 'Prazo prometido', 'min')}
         {num('ajustes_gratis', 'Ajustes grátis', 'por pedido')}
         {num('upsell_qtd', 'Oferta pós-entrega', 'fotos')}

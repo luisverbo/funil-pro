@@ -45,7 +45,7 @@ export default function EstudioClient({ inicial, supabaseUrl }: { inicial: Catal
   const info = SUBABAS.find(s => s.chave === aba)!
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full min-w-0 max-w-7xl overflow-x-clip px-0 py-4 sm:px-6 sm:py-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-rose-600">Ensaio fotográfico com IA</p>
@@ -135,7 +135,7 @@ function AbaCatalogo({ inicial, supabaseUrl }: { inicial: Catalogo; supabaseUrl:
           </div>
         </div>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_1fr]">
           {/* Temas */}
           <aside className="space-y-3">
             <div className="flex items-center justify-between">
@@ -277,7 +277,7 @@ function ModalPose({ pose, supabaseUrl, onFechar, onSalvo }: { pose: Pose; supab
           <h3 className="text-lg font-semibold text-slate-900">Pose <span className="font-serif text-2xl">{pose.numero}</span> · {pose.tema_slug}</h3>
           <button onClick={onFechar} className="text-slate-400 hover:text-slate-700" aria-label="Fechar">✕</button>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-[200px_1fr]">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[200px_1fr]">
           <div>
             <div className="aspect-[4/5] overflow-hidden rounded-xl bg-slate-100">
               <FotoOuPlaceholder src={foto} alt="" className="h-full w-full object-cover"
