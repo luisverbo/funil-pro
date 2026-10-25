@@ -522,6 +522,21 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — A Ana conhece cada foto do catálogo (idade na pose)**
+- Problema: prévia de pose com a idade na cena (ex.: Aniversário 01, bolo com
+  a idade) ia para a fila sem idade → saía só com vela
+- `poseLevaIdade(cena)` (catalogo.ts; palavra inteira, "cidade" não conta):
+  no catálogo real = Aniversário 01, 02, 04, 05, 06, 07
+- Prévia: antes de fechar, pose com idade e sem `d.idade` → `previa_pede_idade`
+  ("quantos anos está fazendo? ou SEM = só velas"); resposta lida ANTES dos
+  números de pose (35 não vira pose); "sem" → `sem_numero` + preferência
+  "SEM número da idade na cena"; <18 → recusa
+- Pacote: `pref_idade` vira `pref_idade_numero` ("a pose 01 leva o número da
+  sua idade") quando alguma pose escolhida mostra a idade
+- IA: `ContextoIa.poses` = cena de cada pose do tema (+ marca "[leva o NÚMERO
+  da idade]") no prompt — descreve, orienta e sugere
+- Bateria: **1193/1193**
+
 **2026-11-10 — Estúdio IA: Espanha (teste)**
 - Migration `20261110000000_estudio_ia_espanha.sql` (PENDENTE no Studio):
   5 linhas `estudio_precos` pais='ES' EUR com o valor FINAL (IVA 4% somado

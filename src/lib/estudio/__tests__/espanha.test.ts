@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { paisDoWaId } from '@/lib/estudio/chat'
 import { TEXTOS, texto, idiomaDaAna, dinheiro } from '@/lib/estudio/ana/textos'
 import { tabelaDePrecos } from '@/lib/estudio/ana/executor'
-import { proximoPasso, mensagensDaRetomada, pedePrevia, type Contexto, type Acao, type Entrada } from '@/lib/estudio/ana/maquina'
+import { proximoPasso, mensagensDaRetomada, pedePrevia, type Contexto, type Entrada } from '@/lib/estudio/ana/maquina'
 import { conferirCompra, lerCompraHotmart, linkComPedido, ofertaDoLink, produtosAceitos, valorPagoNaMoeda, PRODUTO_HOTMART_ES } from '@/lib/estudio/hotmart'
 import { linkDoCatalogo, textosDoCatalogo, tituloDoTema } from '@/lib/estudio/catalogo-idiomas'
 import { promptDaAna } from '@/lib/estudio/ana/ia'
@@ -21,7 +21,6 @@ const PRECOS_ES = [[2, 822, 'h4m9qqsz'], [3, 1030, '0i4gjuy7'], [5, 1550, 'knnon
 const POSES = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0'))
 const ctx: Contexto = { idioma: 'es-ES', precos: PRECOS_ES, posesDoTema: () => POSES, temasAtivos: ['aniversario', 'corporativo', 'casual', 'sensual'], pix: true }
 const txt = (t: string): Entrada => ({ tipo: 'texto', texto: t })
-const chaves = (a: Acao[]) => a.map(x => x.t === 'texto' || x.t === 'audio' ? `${x.t}:${x.chave}` : x.t)
 const VOSEO = /(?<![A-Za-zÀ-ÿ])(podés|pagás|tenés|elegí|escribime|enviame|mandame|acá|querés|decime|contame|avisame|vos|recibís|fijate|sabés|tranqui)(?![A-Za-zÀ-ÿ])/i
 
 const payload = (o: { produto?: number; oferta?: string; valor?: number; moeda?: string; oferta_valor?: number } = {}) => ({

@@ -530,6 +530,18 @@ export const TEXTOS: Tabela = {
     es: '¡Hola, {nome}! Solo paso a saber si pudieron conversar 😊 Cualquier duda, acá estoy. Sin ningún apuro 💖',
     en: "Hi {nome}! Just checking whether you got a chance to talk it over 😊 Any questions, I'm here. No rush at all 💖",
   },
+  previa_pede_idade: {
+    'pt-BR': 'A pose {poses} leva o número da sua idade 🎂 Quantos anos você está fazendo? Se preferir sem número, é só responder SEM que eu faço só com as velas 💖',
+    'pt-PT': 'A pose {poses} leva o número da tua idade 🎂 Quantos anos estás a fazer? Se preferires sem número, responde SEM e faço só com as velas 💖',
+    es: 'La pose {poses} lleva el número de tu edad 🎂 ¿Cuántos años cumples? Si la prefieres sin número, responde SIN y la hago solo con las velas 💖',
+    en: 'Pose {poses} shows your age number 🎂 How old are you turning? If you prefer no number, just reply NONE and I will do it with candles only 💖',
+  },
+  pref_idade_numero: {
+    'pt-BR': 'Última coisinha: quantos anos você está fazendo? 🎂 A pose {poses} leva o número da sua idade.',
+    'pt-PT': 'Última coisinha: quantos anos estás a fazer? 🎂 A pose {poses} leva o número da tua idade.',
+    es: 'Última cosita: ¿cuántos años cumples? 🎂 La pose {poses} lleva el número de tu edad.',
+    en: 'One last thing: how old are you turning? 🎂 Pose {poses} shows your age number.',
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',

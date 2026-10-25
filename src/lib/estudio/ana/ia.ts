@@ -53,6 +53,8 @@ export interface ContextoIa {
   temas: string               // "Aniversário, Corporativo, Casual, Sensual"
   historico: { de: 'cliente' | 'ana'; texto: string }[]
   base?: ItemBase[]
+  /** O que tem em cada foto do tema escolhido ("01: sentada na poltrona…"). */
+  poses?: string
   /** Como ESTA cliente paga (Pix no Brasil / cartão pela Hotmart, na moeda dela). */
   pagamento?: string
 }
@@ -75,7 +77,7 @@ FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - Pagamento DESTA cliente: ${c.pagamento ?? 'Pix (Brasil), conferido pelo comprovante'}. Nunca fale de Pix com quem paga com cartão pela Hotmart, nem de cartão com quem paga por Pix.
 - As imagens são geradas por IA; uma pessoa da equipe revisa todas.
 - De onde somos: estúdio 100% on-line, atendemos clientes de vários países pelo WhatsApp. NUNCA diga que o estúdio fica no país ou na cidade da cliente. Se perguntarem, diga com naturalidade que é tudo on-line e que atendemos clientes do país dela.
-${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE — REGRAS:\n${regras}\n` : ''}${proibido ? `\nNUNCA DIGA:\n${proibido}\n` : ''}
+${c.poses ? `\nCATÁLOGO DO TEMA ESCOLHIDO (o que aparece em cada foto — use para descrever, orientar e sugerir; a pose marcada [leva o NÚMERO da idade] precisa da idade da cliente):\n${c.poses.slice(0, 4000)}\n` : ''}${faq ? `\nBASE — PERGUNTAS E RESPOSTAS:\n${faq}\n` : ''}${regras ? `\nBASE — REGRAS:\n${regras}\n` : ''}${proibido ? `\nNUNCA DIGA:\n${proibido}\n` : ''}
 PROIBIDO: inventar preço, valor, desconto, cupom, brinde, prazo, garantia ou qualquer promessa que não esteja acima. Nada de currículo, depoimentos ou anos de experiência.
 PROIBIDO dizer que vai "confirmar com a equipe", "verificar", "chamar alguém" ou "já te respondo": VOCÊ resolve agora.
 

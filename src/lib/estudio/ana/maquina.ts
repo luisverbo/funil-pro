@@ -61,6 +61,10 @@ export interface Dados {
   pedido_antes_previa?: string | null
   /** Poses mandadas antes de escolher o pacote. */
   poses_cedo?: string[]
+  /** Prévia de pose com a idade: perguntou "quantos anos?" e espera a resposta (ou "sem número"). */
+  perguntou_idade_pose?: boolean
+  /** A cliente preferiu a foto SEM o número da idade (só velas). */
+  sem_numero?: boolean
   /** "Depois te falo": quando respondeu e por quantos minutos adiar a retomada. */
   pausa_em?: string
   adiar_retomada_min?: number
@@ -97,6 +101,8 @@ export interface Contexto {
   entrega?: { pode_ajustar: boolean; poses: string[]; upsell_qtd: number; upsell_valor_cents: number; moeda: string }
   /** Fotos que a cliente JÁ mandou (todas, classificadas) — vale em qualquer etapa. */
   fotos?: { tem_rosto: boolean; tem_corpo: boolean; rosto_recortado: boolean; unica: boolean }
+  /** A pose (tema + número) mostra a idade da cliente na cena (número/velas)? */
+  poseLevaIdade?: (slug: string, numero: string) => boolean
   /** Nome do perfil do WhatsApp (a Ana não pergunta o nome quando dá para usar). */
   nomePerfil?: string | null
   /** O pedido atual já está pago (pagou antes de mandar tudo). */
@@ -528,6 +534,20 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       const qtd = previa ? 1 : (d.pacote_qtd ?? 0)
       const acoes: Acao[] = []
 
+      // Resposta a "a pose leva o número da sua idade — quantos anos?" (antes de ler números como pose).
+      if (d.perguntou_idade_pose && e.tipo === 'texto') {
+        const i = idadeDoTexto(txt)
+        if (i !== null) {
+          if (i < 18) return fim('humano', [{ t: 'texto', chave: 'foto_recusada' }, { t: 'humano', motivo: `cliente informou idade ${i}` }])
+          d.idade = i
+        } else if (SEM_NUMERO.test(sem(txt))) {
+          d.sem_numero = true
+          d.preferencias = [d.preferencias, 'SEM número da idade na cena: só velas comuns, sem algarismos'].filter(Boolean).join(' · ')
+        } else return fim(etapa, [{ t: 'texto', chave: 'previa_pede_idade', vars: { poses: (d.poses ?? []).join(', ') } }])
+        d.perguntou_idade_pose = false
+        return seguirColeta(etapa, d, acoes, ctx, previa)
+      }
+
       // Comprovante no meio das fotos (o pagamento já foi enviado): confere na hora.
       const comprov = comprovanteNaColeta(etapa, d, e, ctx)
       if (comprov) return fim(etapa, comprov)
@@ -719,6 +739,11 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
   const falta = faltaReal.filter(a => !(jaDisseFoto && a.t === 'texto' && a.chave === 'lembrete_fotos'))
   if (faltaReal.length) return { etapa, dados: d, acoes: [...acoes, ...falta] }
 
+  // Prévia de pose que mostra a idade e a cliente ainda não disse: pergunta (ou faz sem número).
+  if (previa && !d.idade && !d.sem_numero && d.tema && ctx.poseLevaIdade && (d.poses ?? []).some(n => ctx.poseLevaIdade!(d.tema!, n))) {
+    d.perguntou_idade_pose = true
+    return { etapa, dados: d, acoes: [...acoes, { t: 'texto', chave: 'previa_pede_idade', vars: { poses: (d.poses ?? []).join(', ') } }] }
+  }
   // Garante rosto.jpg/corpo.jpg no pedido antes de fechar (fotos podem ter vindo antes dele).
   if (!acoes.some(a => a.t === 'fotos_escolher')) acoes.push({ t: 'fotos_escolher' })
   // As poses vão FIXAS na ação: na prévia, `d.poses` volta a ser a do pacote logo abaixo
@@ -976,4 +1001,6 @@ export function pausaPedida(texto: string): boolean {
 const PEDE_PREVIA = /\b(previa|preview|amostra|muestra|demo|prueba gratis|teste gratis|foto de teste|foto de prueba|ver como (fica|queda)|ver como quedaria|ver uma antes|ver una antes)\b/
 /** A cliente pede para ver uma prévia/amostra antes de comprar. */
 export function pedePrevia(texto: string): boolean { return PEDE_PREVIA.test(sem(texto)) }
+
+const SEM_NUMERO = /\b(sem|sin|without|no|nao|não|so (com )?(a )?vela|solo (con )?(la )?vela|just (the )?candle|tanto faz|da igual|nenhum|ninguno)\b/
 
