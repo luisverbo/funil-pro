@@ -542,6 +542,13 @@ export const TEXTOS: Tabela = {
     es: 'Última cosita: ¿cuántos años cumples? 🎂 La pose {poses} lleva el número de tu edad.',
     en: 'One last thing: how old are you turning? 🎂 Pose {poses} shows your age number.',
   },
+  prefs_padrao: {
+    'pt-BR': 'Pra não te deixar esperando, {nome}, segui com um visual natural e elegante 💖 Seu ensaio já entrou na produção! Se quiser mudar algum detalhe depois, você tem 1 ajuste grátis.',
+    'pt-PT': 'Para não ficares à espera, {nome}, segui com um visual natural e elegante 💖 A tua sessão já entrou em produção! Se quiseres mudar algum detalhe depois, tens 1 ajuste grátis.',
+    es: 'Para no hacerte esperar, {nome}, seguí con un estilo natural y elegante 💖 ¡Tu sesión ya entró en producción! Si después quieres cambiar algún detalle, tienes 1 ajuste gratis.',
+    en: "So you don't have to wait, {nome}, I went with a natural, elegant look 💖 Your photoshoot is now in production! If you want to change any detail later, you get 1 free adjustment.",
+    'es-ES': 'Para no hacerte esperar, {nome}, he seguido con un estilo natural y elegante 💖 ¡Tu sesión ya está en producción! Si luego quieres cambiar algún detalle, tienes 1 retoque gratis.',
+  },
   nao_entendi: {
     'pt-BR': 'Desculpa, não entendi muito bem 🥺 Pode me explicar de outro jeito?',
     'pt-PT': 'Desculpa, não percebi muito bem 🥺 Podes explicar de outra forma?',

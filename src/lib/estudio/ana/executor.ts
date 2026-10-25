@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
 import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo, poseLevaIdade as poseLevaIdadeCena } from '../catalogo'
-import { proximoPasso, lembreteDaEtapa, mensagensDaRetomada, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
+import { proximoPasso, lembreteDaEtapa, mensagensDaRetomada, preferenciasVencidas, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
 import { caminhoPdfIdioma, linkDoCatalogo, nomeDoPdf } from '../catalogo-idiomas'
 import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
 import { responderDuvida, classificarFoto, extrairPreferencias, type ItemBase } from './ia'
@@ -481,7 +481,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
         case 'fila': {
           if (!pedidoId) break
           const { entrarNaFila } = await import('../producao-servidor')
-          await entrarNaFila(admin, pedidoId)
+          await entrarNaFila(admin, pedidoId, { forcar: true })   // a conversa terminou agora
           break
         }
         case 'upsell': {
@@ -710,5 +710,31 @@ export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string,
   await admin.from('estudio_contatos').update({ dados: d, pedido_atual_id: pedidoId, ...(previa ? { etapa: 'previa_fotos' } : { etapa: 'fotos_poses' }) }).eq('id', p.contato_id)
   const r = await falarComCliente(admin, p.tenant_id, p.contato_id, 'falta_foto_cliente', undefined, { faltam })
   return r.ok
+}
+
+/**
+ * Cron (5 min): quem já PAGOU e parou de responder as preferências há 10 min
+ * → a Ana completa com o padrão, avisa a cliente e manda para a produção.
+ */
+export async function fecharPreferenciasVencidas(admin: SupabaseClient, agora: Date = new Date()): Promise<number> {
+  const { data: contatos } = await admin.from('estudio_contatos')
+    .select('id, tenant_id, etapa, dados, modo, pedido_atual_id').eq('modo', 'ana').eq('etapa', 'idade_prefs').not('pedido_atual_id', 'is', null).limit(100)
+  let fechados = 0
+  for (const c of contatos ?? []) {
+    try {
+      const { data: p } = await admin.from('estudio_pedidos').select('status').eq('id', c.pedido_atual_id).maybeSingle()
+      const pago = ['pago', 'aguardando_fotos'].includes(String(p?.status ?? ''))
+      const r = preferenciasVencidas((c.dados ?? {}) as Dados, 'idade_prefs', pago, agora.getTime())
+      if (!r) continue
+      await admin.from('estudio_pedidos').update({ preferencias: r.dados.preferencias ?? null, cores_acessorios: r.dados.cores ?? null }).eq('id', c.pedido_atual_id)
+      await admin.from('estudio_contatos').update({ dados: r.dados, etapa: 'pago' }).eq('id', c.id)
+      await falarComCliente(admin, c.tenant_id, c.id, 'prefs_padrao', 'pago').catch(() => {})
+      const { entrarNaFila } = await import('../producao-servidor')
+      await entrarNaFila(admin, c.pedido_atual_id!, { forcar: true, semIdade: true })
+      await admin.from('estudio_eventos').insert({ pedido_id: c.pedido_atual_id, tipo: 'preferencias_padrao', detalhe: { padrao: r.padrao } })
+      fechados++
+    } catch (err) { console.error('[estudio/ana] preferências vencidas:', String(err).slice(0, 200)) }
+  }
+  return fechados
 }
 

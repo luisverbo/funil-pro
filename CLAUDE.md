@@ -522,6 +522,22 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Produção só depois das preferências (pagou no meio da conversa)**
+- Problema: cliente pagou antes de responder maquiagem/decote/acessórios →
+  `marcarPago` → `entrarNaFila` (fotos+poses+idade ok) → fila + aviso ao
+  Luís enquanto a Ana ainda perguntava
+- `entrarNaFila(admin, id, { forcar, semIdade })`: sem `forcar`, pacote com
+  conversa em `fotos_poses`/`idade_prefs` (modo ana) NÃO entra (fica pago).
+  `forcar`: ação `fila` da Ana (conversa terminou), botão manual do Luís,
+  tempo das preferências esgotado
+- `preferenciasVencidas` (puro, `MIN_PREFERENCIAS_PAGO` = 10 min): pagou e
+  não respondeu → completa só o que faltou (maquiagem natural, decote
+  discreto, cores/acessórios a critério; marcado "padrão: cliente não
+  respondeu"); `fecharPreferenciasVencidas` no cron estudio-cobrancas (antes
+  das retomadas) → `prefs_padrao` à cliente + fila (`semIdade`: sem idade sai
+  sem número); `faltaParaFila(p, { semIdade })`
+- Bateria: **1194/1194**
+
 **2026-11-11 — Estúdio no celular: página não "encolhe" mais**
 - CAUSA RAIZ: grades `grid` sem `grid-cols-*` no mobile → coluna implícita
   `auto` cresce até o conteúdo (linha longa de aviso com `truncate` vira

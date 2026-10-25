@@ -20,13 +20,13 @@ export interface PedidoFila {
 }
 
 /** Pago + 2 fotos + todas as poses + idade (prévia: sem idade) → pode entrar na fila. */
-export function faltaParaFila(p: PedidoFila): string[] {
+export function faltaParaFila(p: PedidoFila, opts: { semIdade?: boolean } = {}): string[] {
   const falta: string[] = []
   if (!p.foto_rosto_path) falta.push('foto do rosto')
   if (!p.foto_corpo_path) falta.push('foto de corpo inteiro')
   const qtd = p.tipo === 'previa' ? 1 : (p.pacote_qtd ?? 0)
   if ((p.poses ?? []).length < qtd || qtd === 0) falta.push('poses')
-  if (!p.idade && p.tipo !== 'previa') falta.push('idade')   // a prévia só pede 1 foto + 1 pose
+  if (!p.idade && p.tipo !== 'previa' && !opts.semIdade) falta.push('idade')   // a prévia só pede 1 foto + 1 pose
   return falta
 }
 
