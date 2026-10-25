@@ -522,6 +522,12 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-11 — Prévia saía SEM marca d'água**
+- CAUSA RAIZ: marca era `<text>` em SVG; na Vercel não há fontes → texto
+  invisível. Agora `textoEmTracos` desenha as letras como traços (sem fonte);
+  teste reprova `<text>` na marca
+- Bateria: **1196/1196**
+
 **2026-11-11 — Motor API do Gemini: "sem chave" de madrugada**
 - CAUSA: motor trocado para API sem chave do Gemini salva → `gerarPorApi`
   falhava "sem chave" e voltava para o modo site. Agora `salvarProducaoConfig`
