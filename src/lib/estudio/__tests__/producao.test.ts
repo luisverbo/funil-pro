@@ -35,7 +35,10 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.match(ex, /entrarNaFila\(admin, p\.id, \{ forcar: true \}\)/)
     assert.match(ex, /etapa: 'aguardando_pagamento', pedido_atual_id: p\.id/)
     assert.match(ex, /export async function retomarConversa/)
-    assert.match(ex, /m\.direcao === 'entrada' && m\.tipo === 'texto'/)
+    assert.match(ex, /m && m\.direcao === 'entrada' && m\.tipo === 'texto'/)
+    // devolver NÃO repete pergunta: sem repetirPergunta/falarComCliente na retomada; pedido na produção → etapa 'pago'
+    const ret = ex.slice(ex.indexOf('export async function retomarConversa'))
+    assert.ok(!/repetirPergunta|falarComCliente/.test(ret)); assert.match(ret, /upd\.etapa = 'pago'/)
     const ch = ler('src/app/actions/estudio-chat.ts')
     assert.match(ch, /if \(quem === 'ana'\) \{[\s\S]*retomarConversa\(admin, tenantId, contatoId\)/)
     const rota = ler('src/app/api/estudio/route.ts')

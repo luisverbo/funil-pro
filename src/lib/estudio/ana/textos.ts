@@ -404,6 +404,18 @@ export const TEXTOS: Tabela = {
     es: '¡Pago confirmado! ✅ En cuanto tenga todo, tu sesión entra en la fila de producción 📸',
     en: 'Payment confirmed! ✅ As soon as I have everything, your photoshoot goes into production 📸',
   },
+  comprovante_sem_pacote: {
+    'pt-BR': 'Recebi seu comprovante 💖 Me diz só qual pacote você escolheu (o número da tabela) que eu já confiro o valor e deixo tudo certinho!',
+    'pt-PT': 'Recebi o teu comprovativo 💖 Diz-me só qual pacote escolheste (o número da tabela) que eu confiro o valor e fica tudo tratado!',
+    es: '¡Recibí tu comprobante! 💖 Solo dime qué paquete elegiste (el número de la tabla) y ya confirmo el valor.',
+    en: 'Got your receipt! 💖 Just tell me which package you chose (the number on the list) and I\'ll confirm the amount.',
+  },
+  comprovante_ja_pago: {
+    'pt-BR': 'Seu pagamento já está confirmado por aqui ✅ Não precisa mandar de novo 💖',
+    'pt-PT': 'O teu pagamento já está confirmado ✅ Não precisas de enviar outra vez 💖',
+    es: 'Tu pago ya está confirmado ✅ No hace falta enviarlo de nuevo 💖',
+    en: 'Your payment is already confirmed ✅ No need to send it again 💖',
+  },
   tudo_certo_producao: {
     'pt-BR': 'Tudo certo, {nome}! ✅ Pagamento, fotos e poses recebidos. Seu ensaio já entrou na fila de produção e em até {prazo} minutos te mando as fotos 📸✨',
     'pt-PT': 'Tudo certo, {nome}! ✅ Pagamento, fotos e poses recebidos. O teu ensaio já entrou na fila de produção e em até {prazo} minutos envio-te as fotos 📸✨',

@@ -76,8 +76,15 @@ const tests: Record<string, () => void | Promise<void>> = {
     assert.deepEqual(chaves(img.acoes), ['comprovante'])
     const pdf = proximoPasso('idade_prefs', coleta({ poses: POSES.slice(0, 10) }), { tipo: 'documento', texto: 'comprovante.pdf' }, { ...ctx, fotos: FOTOS })
     assert.deepEqual(chaves(pdf.acoes), ['comprovante'])
-    // sem pagamento enviado, PDF continua sendo "preciso de foto"
-    assert.deepEqual(chaves(proximoPasso('fotos_poses', coleta({ pagamento_enviado: false }), { tipo: 'documento', texto: 'x.pdf' }, ctx).acoes), ['texto:documento_nao'])
+    // pagou ANTES de a Ana mandar o Pix: PDF é comprovante mesmo assim (registra o pedido e confere)
+    assert.deepEqual(chaves(proximoPasso('fotos_poses', coleta({ pagamento_enviado: false }), { tipo: 'documento', texto: 'x.pdf' }, ctx).acoes), ['fechar_pedido', 'comprovante'])
+    // print do banco (classificado como comprovante) ANTES das fotos/pacote: guarda e pergunta o pacote; nunca "só consigo com foto"
+    const cedo = proximoPasso('tema', { nome: 'Elisa' }, { tipo: 'imagem', texto: '', fotos: { novas: 1, invalida: 'comprovante de pagamento', comprovante: true } }, ctx)
+    assert.ok(chaves(cedo.acoes).includes('guardar_comprovante') && chaves(cedo.acoes).includes('texto:comprovante_sem_pacote'))
+    assert.ok(!chaves(cedo.acoes).some(k => /foto_ruim|foto_recusada/.test(k)))
+    // escolheu o pacote depois: confere o comprovante guardado
+    const esc = proximoPasso('pacote', { ...cedo.dados, tema: 'casual' }, txt('2'), ctx)
+    assert.ok(chaves(esc.acoes).includes('comprovante_pendente'))
   },
   'pagou antes de mandar tudo → ao completar vai DIRETO para a fila (sem pedir pagamento de novo)': () => {
     const d = coleta({ poses: POSES.slice(0, 10), maquiagem: true, decote: false, cores: 'azul' })

@@ -54,6 +54,10 @@ export interface Dados {
   aguardando_desde?: string
   /** Pix/link da Hotmart já enviado (logo depois da escolha do pacote). */
   pagamento_enviado?: boolean
+  /** Mandou comprovante antes de escolher o pacote: confere assim que escolher. */
+  comprovante_pendente?: boolean
+  comprovante_path?: string
+  comprovante_mime?: string
   /** Escolheu mais poses que o pacote: oferta de trocar para o pacote maior (1 = fica, 2 = troca). */
   troca_pacote?: { qtd: number; valor_cents: number; moeda: string; link: string | null; poses: string[] }
   /** Prévia pedida no meio da venda: o que volta quando ela termina. */
@@ -82,7 +86,7 @@ export interface Entrada {
   /** Resultado da conferência da foto (o executor roda a visão antes). */
   foto?: 'ok' | 'ruim' | 'recusada'
   /** Fotos novas desta vez (o executor classifica e guarda TODAS antes). */
-  fotos?: { novas: number; invalida?: string | null; recusada?: boolean }
+  fotos?: { novas: number; invalida?: string | null; recusada?: boolean; comprovante?: boolean }
   /** Preferências extraídas pela IA da resposta (campos separados). */
   prefs?: { maquiagem: boolean | null; decote: boolean | null; cores_acessorios: string | null; idade: number | null; cabelo_mudar: string | null } | null
 }
@@ -125,6 +129,8 @@ export type Acao =
   | { t: 'idioma'; idioma: IdiomaAna }
   | { t: 'pix' }
   | { t: 'comprovante' }
+  | { t: 'guardar_comprovante' }
+  | { t: 'comprovante_pendente' }
   | { t: 'ajuste'; poses: string[]; obs: string }
   | { t: 'upsell' }
   | { t: 'hotmart'; chave?: string }
@@ -383,6 +389,21 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
   }
 
   // Quer pagar já (escolheu o pacote, ainda mandando fotos/poses): manda o pagamento na hora.
+  // COMPROVANTE fora da hora (antes das fotos, no meio do catálogo…): a Ana olha o que é ANTES de
+  // responder. Com pacote escolhido → confere já (pago fica guardado e a coleta continua);
+  // sem pacote → guarda e pergunta qual pacote, para conferir o valor certo.
+  const ehComprovante = (e.tipo === 'documento' && /pdf/i.test(txt)) || (e.tipo === 'imagem' && !!e.fotos?.comprovante)
+  if (ehComprovante && !['aguardando_pagamento', 'conferindo', 'entregue', 'ajuste_detalhe', 'previa_fotos'].includes(etapa)) {
+    if (ctx.pago || etapa === 'pago') return fim(etapa, [{ t: 'texto', chave: 'comprovante_ja_pago' }])
+    if (d.pacote_qtd && d.valor_cents) {
+      const garante: Acao[] = d.pagamento_enviado ? [] : [{ t: 'fechar_pedido', tipo: 'pacote' }]
+      d.pagamento_enviado = true
+      return fim(etapa, [...garante, { t: 'comprovante' }])
+    }
+    d.comprovante_pendente = true
+    return fim(etapa, [{ t: 'guardar_comprovante' }, { t: 'texto', chave: 'comprovante_sem_pacote' }, ...(etapa === 'pacote' ? [] : repetirPergunta(etapa, d))])
+  }
+
   if (e.tipo === 'texto' && querPagar(txt) && ['fotos_poses', 'idade_prefs'].includes(etapa) && d.pacote_qtd && !ctx.pago) {
     const pag = acoesDePagamento(d, ctx)
     if (pag.length) { d.pagamento_enviado = true; return fim(etapa, [...pag, ...lembreteDaEtapa(etapa, d, ctx)]) }
@@ -716,6 +737,8 @@ const FALA_DE_PAGAMENTO = /\b(paguei|ja paguei|pago|pagamento|pix|comprovante|tr
 
 /** Pagamento do pacote escolhido: Pix (Brasil) ou link da Hotmart (fora). Vazio se não houver forma cadastrada. */
 function acoesDePagamento(d: Dados, ctx: Contexto): Acao[] {
+  // Já mandou o comprovante antes de escolher: registra o pedido e confere (sem mandar o Pix de novo).
+  if (d.comprovante_pendente) { d.comprovante_pendente = false; return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'comprovante_pendente' }] }
   if (ctx.pix && (d.moeda ?? 'BRL') === 'BRL') return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'texto', chave: 'pagar_ja' }, { t: 'pix' }, { t: 'audio', chave: 'a5' }]
   if (pagaPelaHotmart(d)) return [{ t: 'fechar_pedido', tipo: 'pacote' }, { t: 'hotmart', chave: 'hotmart_link_coleta' }]
   return []
@@ -724,7 +747,7 @@ function acoesDePagamento(d: Dados, ctx: Contexto): Acao[] {
 /** Imagem/PDF que NÃO é foto de pessoa, depois do pagamento enviado = comprovante. */
 function comprovanteNaColeta(etapa: Etapa, d: Dados, e: Entrada, ctx: Contexto): Acao[] | null {
   if (!d.pagamento_enviado || ctx.pago || etapa === 'previa_fotos') return null
-  const naoEPessoa = e.tipo === 'documento' || (e.tipo === 'imagem' && !!e.fotos?.invalida && !e.fotos?.recusada)
+  const naoEPessoa = e.tipo === 'documento' || (e.tipo === 'imagem' && (!!e.fotos?.comprovante || (!!e.fotos?.invalida && !e.fotos?.recusada)))
   if (!naoEPessoa) return null
   if (pagaPelaHotmart(d)) return [{ t: 'texto', chave: 'hotmart_print' }, ...lembreteDaEtapa(etapa, d, ctx).filter(a => !(a.t === 'texto' && a.chave === 'hotmart_lembrete'))]
   return [{ t: 'comprovante' }]

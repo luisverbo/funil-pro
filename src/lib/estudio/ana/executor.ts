@@ -204,17 +204,20 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
       const bytes = new Uint8Array(await arq.arrayBuffer())
       const { classe, uso } = await crono.medir('ia', () => classificarFoto(bytes, f.mime))
       await usou('foto', uso)
-      const foto: FotoRecebida = { path: f.path, mime: f.mime, wamid: f.wamid ?? null, em: new Date().toISOString(), tipo: classe.tipo, motivo: classe.motivo, recusada: classe.recusada, fracao_corpo: classe.fracao_corpo, rosto_caixa: classe.rosto_caixa, cabelo: classe.cabelo }
+      const foto: FotoRecebida & { comprovante?: boolean } = { path: f.path, mime: f.mime, wamid: f.wamid ?? null, em: new Date().toISOString(), tipo: classe.tipo, motivo: classe.motivo, recusada: classe.recusada, fracao_corpo: classe.fracao_corpo, rosto_caixa: classe.rosto_caixa, cabelo: classe.cabelo, comprovante: !!classe.comprovante }
       return foto
     }))
     for (const foto of classificadas) {
-      if (!foto) continue
+      if (!foto || foto.comprovante) continue   // comprovante não é foto do ensaio
       const { data: lista, error } = await admin.rpc('estudio_add_foto', { p_contato: c.id, p_foto: foto })
       if (error) { console.warn('[estudio/ana] estudio_add_foto (SQL pendente?):', error.message); if (!fotosLista.some(x => x.path === foto.path)) fotosLista = [...fotosLista, foto] }
       else if (Array.isArray(lista)) fotosLista = lista as FotoRecebida[]
     }
-    const validas = classificadas.filter((x): x is FotoRecebida => !!x)
+    const validas = classificadas.filter((x): x is FotoRecebida & { comprovante?: boolean } => !!x)
+    const comprovante = validas.find(x => x.comprovante)
+    if (comprovante) { msg.media_path = comprovante.path; msg.media_mime = comprovante.mime ?? msg.media_mime }
     fotosEntrada = {
+      comprovante: !!comprovante,
       novas: validas.length,
       recusada: validas.some(x => x.recusada),
       invalida: validas.length && validas.every(x => x.tipo === 'invalida') ? (validas[0].motivo ?? 'não deu para usar') : null,
@@ -440,12 +443,18 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           await enviarTexto(renderTexto(a.chave ?? 'hotmart_link', idioma, vars(), sob.textos), a.chave ?? 'hotmart_link')
           break
         }
+        case 'guardar_comprovante':
+          if (msg.media_path) { dados.comprovante_path = msg.media_path; dados.comprovante_mime = msg.media_mime ?? 'image/jpeg' }
+          break
+        case 'comprovante_pendente':
+          if (dados.comprovante_path) { msg.media_path = dados.comprovante_path; msg.media_mime = dados.comprovante_mime ?? 'image/jpeg'; dados.comprovante_path = undefined; dados.comprovante_mime = undefined }
+        // falls through
         case 'comprovante': {
           if (!pedidoId || !msg.media_path) { await enviarTexto(renderTexto('pede_comprovante', idioma, vars(), sob.textos)); break }
           const res = await processarComprovante(admin, c, pedidoId, { path: msg.media_path, mime: msg.media_mime ?? 'image/jpeg' })
           const quem = dados.nome ?? c.nome ?? `+${c.wa_id}`
           const valor = vars().valor
-          const coletando = ['fotos_poses', 'idade_prefs'].includes(etapaAtual)
+          const coletando = ['fotos_poses', 'idade_prefs'].includes(etapaAtual) || ['fotos_poses', 'idade_prefs'].includes(etapa)
           if (res.resultado === 'pago' && coletando) {
             // Pagou antes de mandar tudo: confirma e segue pedindo o que falta.
             await enviarTexto(renderTexto('pago_ok_coleta', idioma, vars(), sob.textos))
@@ -821,39 +830,31 @@ export async function criarPedidoPeloLuis(admin: SupabaseClient, tenantId: strin
 }
 
 /**
- * Devolveu para a Ana: ela lê onde a conversa está e CONTINUA sozinha.
- * • a última mensagem é da cliente (texto, sem resposta) → a Ana responde a ela
- *   pelo fluxo normal (a IA vê o histórico, inclusive o que o Luís falou);
- * • senão → manda a pergunta da etapa atual (o próximo passo), uma vez.
- * Fora da janela de 24 h não manda nada (a Meta recusaria).
+ * Devolveu para a Ana: ela NÃO fala sozinha (o Luís acabou de responder) — só
+ * se atualiza: se o pedido já foi pago/está na produção, a etapa vira 'pago'
+ * (nada de perguntar maquiagem/decote de novo) e as retomadas contam a partir
+ * de agora. Única exceção: a última mensagem é da cliente e ninguém respondeu
+ * → a Ana responde a ELA, pelo fluxo, com o histórico (inclusive o do Luís).
  */
-export async function retomarConversa(admin: SupabaseClient, tenantId: string, contatoId: string): Promise<'respondeu' | 'perguntou' | 'nada'> {
-  const { data: c } = await admin.from('estudio_contatos').select('id, tenant_id, wa_id, etapa, dados, janela_ate, modo').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
+export async function retomarConversa(admin: SupabaseClient, tenantId: string, contatoId: string): Promise<'respondeu' | 'nada'> {
+  const { data: c } = await admin.from('estudio_contatos').select('id, tenant_id, wa_id, etapa, dados, janela_ate, modo, pedido_atual_id').eq('id', contatoId).eq('tenant_id', tenantId).maybeSingle()
   if (!c || c.modo !== 'ana') return 'nada'
+  const d = (c.dados ?? {}) as Dados
+  const upd: Record<string, unknown> = { cobrancas: 0, dados: { ...d, aguardando_desde: new Date().toISOString(), retomadas: undefined } }
+  if (c.pedido_atual_id) {
+    const { data: p } = await admin.from('estudio_pedidos').select('status').eq('id', c.pedido_atual_id).maybeSingle()
+    const st = String(p?.status ?? '')
+    if (['aguardando_producao', 'gerando', 'pronto', 'aguardando_aprovacao'].includes(st)) upd.etapa = 'pago'
+    else if (['entregue', 'ajuste', 'finalizado'].includes(st)) upd.etapa = 'entregue'
+  }
+  await admin.from('estudio_contatos').update(upd).eq('id', c.id)
   const { dentroDaJanela } = await import('../whatsapp')
   if (!dentroDaJanela(c.janela_ate)) return 'nada'
-  const { data: cfg } = await admin.from('estudio_config').select('tenant_id, phone_number_id, access_token, whatsapp_avisos').eq('tenant_id', tenantId).maybeSingle()
-  if (!cfg?.access_token) return 'nada'
-  await admin.from('estudio_contatos').update({ cobrancas: 0 }).eq('id', c.id)
   const { data: ult } = await admin.from('estudio_mensagens').select('direcao, tipo, texto, wamid').eq('contato_id', c.id).order('criado_em', { ascending: false }).limit(1)
   const m = ult?.[0]
-  if (m && m.direcao === 'entrada' && m.tipo === 'texto' && (m.texto ?? '').trim()) {
-    await rodarAna(admin, cfg as Conexao, c.id, { tipo: 'texto', texto: m.texto ?? '', wamid: m.wamid ?? null }, false)
-    return 'respondeu'
-  }
-  const { repetirPergunta } = await import('./maquina')
-  const d = (c.dados ?? {}) as Dados
-  const etapa = ((c.etapa as Etapa) || 'inicio')
-  if (d.aguardando_previa) return 'nada'   // prévia na produção: a entrega fala por ela
-  const acao = repetirPergunta(etapa, d).find(a => a.t === 'texto') as Extract<Acao, { t: 'texto' }> | undefined
-  if (!acao) return 'nada'
-  const precos = await precosDoPais(admin, tenantId, (await admin.from('estudio_contatos').select('pais, idioma').eq('id', c.id).single()).data?.pais ?? null)
-  const { data: ci } = await admin.from('estudio_contatos').select('idioma').eq('id', c.id).single()
-  const idioma = idiomaDaAna(ci?.idioma)
-  const extra: Record<string, string | number> = {
-    tabela: tabelaDePrecos(precos, idioma), link: linkDoCatalogo(APP_URL(), d.tema, idioma), poses: (d.poses ?? []).join(', '),
-    ...Object.fromEntries(Object.entries(acao.vars ?? {}).map(([k, x]) => [k, x as string | number])),
-  }
-  const r = await falarComCliente(admin, tenantId, c.id, acao.chave, undefined, extra)
-  return r.ok ? 'perguntou' : 'nada'
+  if (!(m && m.direcao === 'entrada' && m.tipo === 'texto' && (m.texto ?? '').trim())) return 'nada'
+  const { data: cfg } = await admin.from('estudio_config').select('tenant_id, phone_number_id, access_token, whatsapp_avisos').eq('tenant_id', tenantId).maybeSingle()
+  if (!cfg?.access_token) return 'nada'
+  await rodarAna(admin, cfg as Conexao, c.id, { tipo: 'texto', texto: m.texto ?? '', wamid: m.wamid ?? null }, false)
+  return 'respondeu'
 }
