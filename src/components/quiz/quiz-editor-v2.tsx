@@ -1005,6 +1005,36 @@ function RightPanelEmpty({ settings, onUpdateSettings }: {
 
       {tab === 'general' && (
         <>
+          {/* Formato: páginas (como sempre) ou conversa (chat estilo WhatsApp/Typebot) */}
+          <div>
+            <label className={labelCls}>Formato do quiz</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([['paginas', '📄 Páginas', 'Uma tela por página, como hoje'], ['conversa', '💬 Conversa', 'Chat: uma pergunta por vez, balões, digitando…']] as const).map(([k, t, d]) => {
+                const on = (settings.layout ?? 'paginas') === k
+                return (
+                  <button key={k} onClick={() => onUpdateSettings({ layout: k })}
+                    className={`rounded-lg border-2 p-2 text-left transition ${on ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-indigo-300'}`}>
+                    <p className="text-xs font-semibold text-gray-900">{t}</p><p className="text-[10px] text-gray-500 leading-tight">{d}</p>
+                  </button>
+                )
+              })}
+            </div>
+            {settings.layout === 'conversa' && (
+              <div className="mt-3 space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/40 p-2.5">
+                <p className="text-[11px] text-gray-600">As mesmas páginas e perguntas viram uma conversa: textos/títulos saem como mensagens, opções viram botões, campos viram a caixa de digitar. Leads, pontuação, ramificação e pixel continuam iguais.</p>
+                <div><label className={labelCls}>Nome do atendente</label><input value={settings.chat?.nome ?? ''} onChange={e => onUpdateSettings({ chat: { ...settings.chat, nome: e.target.value } })} className={inputCls} placeholder="ex.: Ana" /></div>
+                <div><label className={labelCls}>Foto do atendente (opcional)</label><ImageUploadField value={settings.chat?.avatar_url ?? ''} onChange={url => onUpdateSettings({ chat: { ...settings.chat, avatar_url: url } })} /></div>
+                <div><label className={labelCls}>Status no topo</label><input value={settings.chat?.status ?? ''} onChange={e => onUpdateSettings({ chat: { ...settings.chat, status: e.target.value } })} className={inputCls} placeholder="online" /></div>
+                <div><label className={labelCls}>Saudação antes da 1ª pergunta (opcional)</label><input value={settings.chat?.saudacao ?? ''} onChange={e => onUpdateSettings({ chat: { ...settings.chat, saudacao: e.target.value } })} className={inputCls} placeholder="Oi! Vou te fazer algumas perguntas rápidas 😊" /></div>
+                <div><label className={labelCls}>Velocidade do &quot;digitando…&quot;</label>
+                  <div className="flex gap-1">{(['rapida', 'normal', 'lenta'] as const).map(v => (
+                    <button key={v} onClick={() => onUpdateSettings({ chat: { ...settings.chat, velocidade: v } })} className={`flex-1 py-1.5 text-xs rounded-lg border transition ${(settings.chat?.velocidade ?? 'normal') === v ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-600'}`}>{v === 'rapida' ? 'Rápida' : v === 'normal' ? 'Normal' : 'Lenta'}</button>
+                  ))}</div></div>
+                <div><label className={labelCls}>Texto do botão de seguir</label><input value={settings.chat?.texto_continuar ?? ''} onChange={e => onUpdateSettings({ chat: { ...settings.chat, texto_continuar: e.target.value } })} className={inputCls} placeholder="Continuar" /></div>
+                <Toggle on={settings.chat?.mostrar_horario !== false} onToggle={() => onUpdateSettings({ chat: { ...settings.chat, mostrar_horario: settings.chat?.mostrar_horario === false } })} label="Mostrar hora nos balões" />
+              </div>
+            )}
+          </div>
           <div>
             <label className={labelCls}>Cor principal</label>
             <div className="flex items-center gap-2">

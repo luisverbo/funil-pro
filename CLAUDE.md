@@ -522,6 +522,27 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-12 — Quiz em MODO CONVERSA (chat estilo Typebot/WhatsApp)**
+- Engenharia reversa do diagnostico.bilhon.com (HTML do dono): React+Vite na
+  Cloudflare Pages, chat = Typebot embutido, respostas num Worker ("porta"),
+  GTM/Stape + 2 Pixels (eventID) + OpenAI/Clickmax carregados após o load
+- `QuizSettings.layout` 'paginas' (padrão) | 'conversa' + `QuizSettings.chat`
+  (nome, avatar_url, status, velocidade, saudacao, texto_continuar,
+  mostrar_horario). Editor: "Formato do quiz" na aba Geral com os campos
+- `src/lib/quiz/motor.ts` (PURO): `calcularPontuacao`, `proximaPagina`,
+  `validarBloco`, `contatoDaPagina`, `personalizar`, `passosDaPagina` (página →
+  passos: falas antes de cada pergunta; opções = botões; campos = caixa de
+  digitar; hero/button = botão de seguir; loading = espera; página só de
+  resultado = sem "Continuar"), `falasDoBloco` (HTML limpo; blocos ricos viram
+  cartão), `textoDaResposta`, `tempoDigitando`, `campoDaEntrada`
+- `src/app/pg/[slug]/quiz-chat-renderer.tsx`: cabeçalho (avatar/nome/
+  status/progresso), balões + "digitando…", botões/escala/múltipla/captura
+  final/caixa de digitar, resultado em balões + CTA; mesmos endpoints
+  (track/submit/webhook/enroll via `components/quiz/use-quiz-tracker.ts`),
+  `capturarOrigem`. `pg/[slug]/page.tsx` escolhe pelo layout. Renderer de
+  páginas intocado. Prévia conferida em 390 px (fluxo inteiro)
+- Bateria: **1209/1209**
+
 **2026-11-12 — Tema "Ensaio de Casal" (slug casal, 2 pessoas, 4 fotos)**
 - Tema/poses já no banco (PC, ativo=false). Migration
   `20261112000000_estudio_ia_casal.sql` (PENDENTE no Studio): `estudio_pedidos`
