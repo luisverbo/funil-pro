@@ -123,7 +123,9 @@ export async function listarPedidosEstudio(filtro: string): Promise<{ pedidos: P
 
 export interface PedidoDetalhe {
   pedido: Record<string, unknown>
-  fotos: { rosto: string | null; corpo: string | null; comprovante: string | null }
+  fotos: { rosto: string | null; corpo: string | null; comprovante: string | null; /** casal: pessoa 2 */ rosto2?: string | null; corpo2?: string | null; extras?: string[] }
+  /** Casal: a 2ª pessoa (só quando o tema é casal). */
+  casal?: { pessoa2_nome: string | null; pessoa2_idade: number | null; pessoa2_cabelo: string | null } | null
   entregas: { id: string; pose_numero: string; status: string; nota_rosto: number | null; motor: string | null; url: string | null; enviada_em: string | null }[]
   eventos: { tipo: string; detalhe: unknown; criado_em: string }[]
   /** "Veio do anúncio X (campanha Y)" — null = orgânico. */
@@ -146,7 +148,12 @@ export async function abrirPedidoEstudio(id: string): Promise<PedidoDetalhe> {
     void _x
     return {
       pedido: semSegredo,
-      fotos: { rosto: await assinar(BUCKET_CLIENTES, p.foto_rosto_path), corpo: await assinar(BUCKET_CLIENTES, p.foto_corpo_path), comprovante: await assinar(BUCKET_CLIENTES, p.comprovante_path) },
+      fotos: {
+        rosto: await assinar(BUCKET_CLIENTES, p.foto_rosto_path), corpo: await assinar(BUCKET_CLIENTES, p.foto_corpo_path), comprovante: await assinar(BUCKET_CLIENTES, p.comprovante_path),
+        rosto2: await assinar(BUCKET_CLIENTES, p.foto_rosto2_path), corpo2: await assinar(BUCKET_CLIENTES, p.foto_corpo2_path),
+        extras: (await Promise.all(((p.fotos_extras_paths as string[] | null) ?? []).map(x => assinar(BUCKET_CLIENTES, x)))).filter((x): x is string => !!x),
+      },
+      casal: p.tema_slug === 'casal' || p.pessoa2_nome ? { pessoa2_nome: p.pessoa2_nome ?? null, pessoa2_idade: p.pessoa2_idade ?? null, pessoa2_cabelo: p.pessoa2_cabelo ?? null } : null,
       entregas: await Promise.all((ents ?? []).map(async e => ({
         id: e.id, pose_numero: e.pose_numero, status: e.status, nota_rosto: e.nota_rosto === null ? null : Number(e.nota_rosto), motor: e.motor ?? null,
         enviada_em: e.enviada_em ?? null, url: await assinar(BUCKET_ENTREGAS, e.foto_path),
@@ -244,38 +251,55 @@ export async function listarAvisosEstudio(): Promise<{ avisos: AvisoLinha[]; na_
 
 // ── Fotos recebidas: trocar qual é rosto / corpo (um clique) ────────────────
 
-export async function fotosRecebidasDoPedido(id: string): Promise<{ fotos: { path: string; url: string | null; tipo: string; motivo: string | null; em: string | null; papel: 'rosto' | 'corpo' | null }[]; rosto_recortado: boolean; error?: string }> {
+export type PapelFoto = 'rosto' | 'corpo' | 'rosto2' | 'corpo2'
+
+export async function fotosRecebidasDoPedido(id: string): Promise<{ fotos: { path: string; url: string | null; tipo: string; motivo: string | null; em: string | null; papel: PapelFoto | null; pessoa: 1 | 2 | null; extra: boolean }[]; rosto_recortado: boolean; casal: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
     const admin = createAdminClient()
-    const { data: p } = await admin.from('estudio_pedidos').select('contato_id, rosto_origem, corpo_origem, rosto_recortado, fotos_recebidas').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
-    if (!p) return { fotos: [], rosto_recortado: false, error: 'Pedido não encontrado.' }
+    const { data: p } = await admin.from('estudio_pedidos').select('*').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
+    if (!p) return { fotos: [], rosto_recortado: false, casal: false, error: 'Pedido não encontrado.' }
     const { data: c } = p.contato_id ? await admin.from('estudio_contatos').select('fotos_recebidas').eq('id', p.contato_id).maybeSingle() : { data: null }
-    const lista = ((c?.fotos_recebidas as unknown[]) ?? (p.fotos_recebidas as unknown[]) ?? []) as { path: string; tipo: string; motivo?: string | null; em?: string }[]
+    const lista = ((c?.fotos_recebidas as unknown[]) ?? (p.fotos_recebidas as unknown[]) ?? []) as { path: string; tipo: string; motivo?: string | null; em?: string; pessoa?: 1 | 2; extra?: boolean }[]
+    const casal = p.tema_slug === 'casal' || !!p.pessoa2_nome
     const fotos = await Promise.all(lista.map(async f => ({
-      path: f.path, tipo: f.tipo, motivo: f.motivo ?? null, em: f.em ?? null,
+      path: f.path, tipo: f.tipo, motivo: f.motivo ?? null, em: f.em ?? null, pessoa: f.pessoa ?? null, extra: !!f.extra,
       url: (await admin.storage.from(BUCKET_CLIENTES).createSignedUrl(f.path, 3600)).data?.signedUrl ?? null,
-      papel: (f.path === p.rosto_origem ? 'rosto' : f.path === p.corpo_origem ? 'corpo' : null) as 'rosto' | 'corpo' | null,
+      papel: (f.path === p.rosto_origem ? 'rosto' : f.path === p.corpo_origem ? 'corpo' : f.path === p.rosto2_origem ? 'rosto2' : f.path === p.corpo2_origem ? 'corpo2' : null) as PapelFoto | null,
     })))
-    return { fotos, rosto_recortado: !!p.rosto_recortado }
-  } catch (e) { return { fotos: [], rosto_recortado: false, error: String(e) } }
+    return { fotos, rosto_recortado: !!p.rosto_recortado, casal }
+  } catch (e) { return { fotos: [], rosto_recortado: false, casal: false, error: String(e) } }
 }
 
-export async function usarFotoComoEstudio(id: string, path: string, papel: 'rosto' | 'corpo'): Promise<{ success: boolean; error?: string }> {
+export async function usarFotoComoEstudio(id: string, path: string, papel: PapelFoto): Promise<{ success: boolean; error?: string }> {
   try {
     const tenantId = await getTenantId()
-    if (papel !== 'rosto' && papel !== 'corpo') return { success: false, error: 'Papel inválido.' }
+    if (!['rosto', 'corpo', 'rosto2', 'corpo2'].includes(papel)) return { success: false, error: 'Papel inválido.' }
     const admin = createAdminClient()
-    const { data: p } = await admin.from('estudio_pedidos').select('contato_id, rosto_origem, corpo_origem').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
+    const { data: p } = await admin.from('estudio_pedidos').select('*').eq('id', id).eq('tenant_id', tenantId).maybeSingle()
     if (!p?.contato_id) return { success: false, error: 'Pedido não encontrado.' }
-    if ((papel === 'rosto' ? p.corpo_origem : p.rosto_origem) === path) return { success: false, error: 'Essa foto já é a do outro papel — rosto e corpo nunca podem ser o mesmo arquivo.' }
-    const { data: c } = await admin.from('estudio_contatos').select('fotos_recebidas').eq('id', p.contato_id).single()
+    const par: Record<PapelFoto, string | null> = { rosto: p.corpo_origem, corpo: p.rosto_origem, rosto2: p.corpo2_origem, corpo2: p.rosto2_origem }
+    if (par[papel] === path) return { success: false, error: 'Essa foto já é a do outro papel — rosto e corpo nunca podem ser o mesmo arquivo.' }
+    const { data: c } = await admin.from('estudio_contatos').select('fotos_recebidas, dados').eq('id', p.contato_id).single()
     const lista = (c?.fotos_recebidas ?? []) as import('@/lib/estudio/ana/fotos').FotoRecebida[]
-    if (!lista.some(f => f.path === path)) return { success: false, error: 'Foto não é desta conversa.' }
-    // Escolha manual: vira a "origem" e a cópia rosto.jpg/corpo.jpg é refeita.
-    await admin.from('estudio_pedidos').update(papel === 'rosto' ? { rosto_origem: path, rosto_recortado: false } : { corpo_origem: path }).eq('id', id)
+    const foto = lista.find(f => f.path === path)
+    if (!foto) return { success: false, error: 'Foto não é desta conversa.' }
+    // Casal: "usar como rosto2" também diz de quem é a foto (pessoa 2); rosto/corpo → pessoa 1.
+    const casal = p.tema_slug === 'casal' || !!p.pessoa2_nome
+    if (casal) {
+      foto.pessoa = papel.endsWith('2') ? 2 : 1
+      foto.extra = false
+      await admin.from('estudio_contatos').update({ fotos_recebidas: lista }).eq('id', p.contato_id)
+    }
+    // Escolha manual: vira a "origem" e a cópia rosto.jpg/corpo.jpg (rosto2/corpo2) é refeita.
+    const origem: Record<PapelFoto, Record<string, unknown>> = {
+      rosto: { rosto_origem: path, rosto_recortado: false }, corpo: { corpo_origem: path },
+      rosto2: { rosto2_origem: path, rosto_recortado: false }, corpo2: { corpo2_origem: path },
+    }
+    const { error: eUp } = await admin.from('estudio_pedidos').update(origem[papel]).eq('id', id)
+    if (eUp) return { success: false, error: /rosto2|corpo2|column/i.test(eUp.message) ? 'Falta rodar o SQL 20261112000000_estudio_ia_casal.sql no Supabase.' : eUp.message }
     const { aplicarEscolhaDeFotos } = await import('@/lib/estudio/ana/executor')
-    await aplicarEscolhaDeFotos(admin, id, lista)
+    await aplicarEscolhaDeFotos(admin, id, lista, (c?.dados ?? undefined) as import('@/lib/estudio/ana/maquina').Dados | undefined)
     await admin.from('estudio_eventos').insert({ pedido_id: id, tipo: 'foto_trocada', detalhe: { papel, path } })
     return { success: true }
   } catch (e) { return { success: false, error: String(e) } }

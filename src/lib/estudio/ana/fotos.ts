@@ -12,6 +12,10 @@ export interface FotoRecebida {
   path: string; mime?: string | null; wamid?: string | null; em?: string
   tipo: ClasseFoto['tipo']; motivo?: string | null; recusada?: boolean
   fracao_corpo: number; rosto_caixa?: ClasseFoto['rosto_caixa']; cabelo?: string | null
+  /** Casal: de quem é a foto (1 = quem conversa, 2 = parceiro/a); undefined = ainda não disse. */
+  pessoa?: 1 | 2
+  /** Casal: foto dos DOIS juntos — referência extra, não substitui as individuais. */
+  extra?: boolean
 }
 
 export interface Escolha {
@@ -38,6 +42,28 @@ export function escolherFotos(lista: FotoRecebida[], manual?: { rosto?: string |
   // Só a foto de corpo: o rosto sai dela por recorte (pede um close depois).
   if (corpo) return { rosto: corpo.tipo === 'rosto_e_corpo' || corpo.rosto_caixa ? { path: corpo.path, recorte: corpo.rosto_caixa ?? 'topo' } : null, corpo: corpo.path, rosto_recortado: corpo.tipo === 'rosto_e_corpo' || !!corpo.rosto_caixa, cabelo: corpo.cabelo ?? null }
   return { rosto: null, corpo: null, rosto_recortado: false, cabelo: null }
+}
+
+/** Casal: rosto/corpo de CADA pessoa, só entre as fotos atribuídas a ela (mesma régua de uma pessoa). */
+export function escolherFotosCasal(lista: FotoRecebida[], manual?: { rosto?: string | null; corpo?: string | null; rosto2?: string | null; corpo2?: string | null }): { p1: Escolha; p2: Escolha; extras: string[]; sem_dono: FotoRecebida[] } {
+  const de = (n: 1 | 2) => lista.filter(f => f.pessoa === n && !f.extra)
+  return {
+    p1: escolherFotos(de(1), { rosto: manual?.rosto, corpo: manual?.corpo }),
+    p2: escolherFotos(de(2), { rosto: manual?.rosto2, corpo: manual?.corpo2 }),
+    extras: lista.filter(f => f.extra).map(f => f.path),
+    sem_dono: lista.filter(f => !f.extra && f.pessoa === undefined && f.tipo !== 'invalida' && !f.recusada),
+  }
+}
+
+export interface ResumoCasal { p1: { rosto: boolean; corpo: boolean }; p2: { rosto: boolean; corpo: boolean }; sem_dono: number; extras: number; rosto_recortado: boolean }
+
+/** Estado do casal para a máquina: o que cada pessoa já tem e quantas fotos esperam dono. */
+export function resumoDasFotosCasal(lista: FotoRecebida[]): ResumoCasal {
+  const e = escolherFotosCasal(lista)
+  return {
+    p1: { rosto: !!e.p1.rosto, corpo: !!e.p1.corpo }, p2: { rosto: !!e.p2.rosto, corpo: !!e.p2.corpo },
+    sem_dono: e.sem_dono.length, extras: e.extras.length, rosto_recortado: e.p1.rosto_recortado || e.p2.rosto_recortado,
+  }
 }
 
 /** Estado para a máquina: tem rosto de verdade? tem corpo? (recorte conta como rosto) */

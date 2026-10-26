@@ -14,7 +14,7 @@
 async function carregarSharp() { return (await import('sharp')).default }
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
-import { BUCKET_CLIENTES, BUCKET_ENTREGAS, preencherPrompt, urlPublicaDoCatalogo } from './catalogo'
+import { BUCKET_CLIENTES, BUCKET_ENTREGAS, preencherPrompt, urlPublicaDoCatalogo, ehTemaCasal } from './catalogo'
 import {
   faltaParaFila, mensagemNovoPedido, atrasado, melhorTentativa, precisaRefazer, posesPendentes,
   valorComDesconto, svgMarcaDagua, PRECO_FOTO_GEMINI_USD, PRECO_NOTA_ROSTO_USD, type PedidoFila,
@@ -79,7 +79,10 @@ export async function entrarNaFila(admin: SupabaseClient, pedidoId: string, opts
     const { data: ct } = await admin.from('estudio_contatos').select('etapa, modo').eq('id', cid).maybeSingle()
     if (ct && ct.modo !== 'humano' && ['fotos_poses', 'idade_prefs'].includes(String(ct.etapa))) return { ok: false, falta: ['conversa em andamento'] }
   }
-  const falta = faltaParaFila(ped, { semIdade: opts.semIdade })
+  // Casal (sujeito do tema): precisa das 4 fotos.
+  const { data: temaRow } = ped.tema_slug ? await admin.from('estudio_temas').select('sujeito').eq('tenant_id', ped.tenant_id).eq('slug', ped.tema_slug).maybeSingle().then(r => r, () => ({ data: null })) : { data: null }
+  const casal = ehTemaCasal(ped.tema_slug, (temaRow as { sujeito?: string } | null)?.sujeito)
+  const falta = faltaParaFila(ped, { semIdade: opts.semIdade, casal })
   const cfg = await configProducao(admin, ped.tenant_id)
   if (falta.length) {
     await admin.from('estudio_pedidos').update({ status: 'aguardando_fotos' }).eq('id', pedidoId)
@@ -146,6 +149,8 @@ export async function gerarPorApi(admin: SupabaseClient, pedidoId: string, orcam
     return { geradas: 0, terminou: false, erro: msg }
   }
   if (!cfg.gemini_key) return falhar('sem chave do Gemini (Configurações → Motor de produção)')
+  // Casal: duas pessoas na cena — produção pelo site (o producao.py do PC lê as 4 fotos).
+  if (ehTemaCasal(p.tema_slug) || (p as { pessoa2_nome?: string | null }).pessoa2_nome) return falhar('ensaio de CASAL é produzido pelo site (Claude Code do PC), não pela API')
   const [rosto, corpo] = await Promise.all([
     p.foto_rosto_path ? baixar(admin, BUCKET_CLIENTES, p.foto_rosto_path) : null,
     p.foto_corpo_path ? baixar(admin, BUCKET_CLIENTES, p.foto_corpo_path) : null,
@@ -339,9 +344,10 @@ export async function criarUpsell(admin: SupabaseClient, origemId: string, conta
     tenant_id: o.tenant_id, contato_id: contatoId, cliente_nome: o.cliente_nome, wa_id: o.wa_id, tema_slug: o.tema_slug,
     pacote_qtd: qtd, valor_cents: valorCents, moeda, idioma: o.idioma, pais: o.pais, status: 'novo', tipo: 'pacote',
     idade: o.idade, cabelo: o.cabelo, preferencias: o.preferencias, upsell_de: origemId,
+    ...(o.pessoa2_nome ? { pessoa2_nome: o.pessoa2_nome, pessoa2_idade: o.pessoa2_idade ?? null, pessoa2_cabelo: o.pessoa2_cabelo ?? null } : {}),
   }).select('id').single()
   if (!novo) return null
-  for (const [campo, nome] of [['foto_rosto_path', 'rosto.jpg'], ['foto_corpo_path', 'corpo.jpg']] as const) {
+  for (const [campo, nome] of [['foto_rosto_path', 'rosto.jpg'], ['foto_corpo_path', 'corpo.jpg'], ['foto_rosto2_path', 'rosto2.jpg'], ['foto_corpo2_path', 'corpo2.jpg']] as const) {
     if (!o[campo]) continue
     const destino = `${novo.id}/${nome}`
     const { error } = await admin.storage.from(BUCKET_CLIENTES).copy(o[campo], destino)

@@ -59,6 +59,8 @@ export interface ContextoIa {
   pagamento?: string
   /** A cliente já usou o (único) ajuste deste pedido. */
   ajusteUsado?: boolean
+  /** Tema CASAL: duas pessoas na mesma foto (4 fotos). pessoa2 = nome do(a) parceiro(a), se já disse. */
+  casal?: { pessoa2?: string | null }
 }
 
 export function promptDaAna(c: ContextoIa): string {
@@ -72,6 +74,7 @@ Escreva a "resposta" SEMPRE em ${NOME_IDIOMA[c.idioma]}. Frases curtas, no máxi
 FATOS (a única fonte de verdade, junto com a BASE abaixo):
 - O ensaio é 100% on-line: a cliente manda 2 fotos (rosto de frente e corpo inteiro), escolhe tema e poses num catálogo numerado e recebe as fotos prontas.
 - Temas disponíveis: ${c.temas}. Outros temas: "em breve".
+- ENSAIO DE CASAL (tema "Casal"): os DOIS aparecem juntos na mesma foto. Precisa de 4 fotos — rosto e corpo inteiro de CADA um, cada foto com UMA pessoa só (a foto dos dois juntos é só referência extra). Mesmo preço e prazo. Romântico e elegante, os dois vestidos (ensaio ousado é o tema sensual, individual). Qualquer casal de adultos (mesmo sexo também). Sem filhos, pets ou terceiros. Roupas/cores personalizáveis pela preferência do casal; o lugar/cenário é o da pose.${c.casal ? `\n- ESTA conversa é do ENSAIO DE CASAL${c.casal.pessoa2 ? ` (a cliente e ${c.casal.pessoa2})` : ''}: fale das fotos dos DOIS, nunca "2 fotos suas".` : ''}
 - Preços: ${c.tabelaPrecos}
 - Prazo: até ${c.prazoMin} minutos após o pagamento e as fotos, no horário de produção.
 - 1 ajuste grátis por pacote — UM SÓ, em até 24 h após a entrega. Nunca ofereça um 2º ajuste nem diga "qualquer ajuste é só pedir"/"se quiser mudar mais alguma coisa, me fala".
@@ -372,6 +375,8 @@ export interface ClasseFoto {
   cabelo: string | null              // "loiro, longo"
   /** É comprovante/recibo de pagamento (Pix, transferência, tela do banco) — não é foto do ensaio. */
   comprovante?: boolean
+  /** Quantas pessoas aparecem (casal: 2 juntas vira foto EXTRA de referência, não substitui as individuais). */
+  pessoas?: number
 }
 
 const SCHEMA_CLASSE = {
@@ -402,7 +407,7 @@ export function lerClasse(bruto: string): ClasseFoto | null {
     if ((j.pessoas ?? 1) !== 1 && tipo !== 'invalida') { tipo = 'invalida'; motivo = motivo ?? ((j.pessoas ?? 0) === 0 ? 'não aparece ninguém' : 'tem mais de uma pessoa') }
     if (j.nitida === false && tipo !== 'invalida') { tipo = 'invalida'; motivo = motivo ?? 'ficou escura ou borrada' }
     const fr = Number(j.fracao_corpo)
-    return { tipo, motivo: tipo === 'invalida' ? (motivo ?? 'não deu para usar') : null, recusada, fracao_corpo: Number.isFinite(fr) ? Math.max(0, Math.min(1, fr)) : 0.5, rosto_caixa: j.rosto_caixa ?? null, cabelo: j.cabelo ?? null }
+    return { tipo, motivo: tipo === 'invalida' ? (motivo ?? 'não deu para usar') : null, recusada, fracao_corpo: Number.isFinite(fr) ? Math.max(0, Math.min(1, fr)) : 0.5, rosto_caixa: j.rosto_caixa ?? null, cabelo: j.cabelo ?? null, pessoas: Number.isInteger(j.pessoas) ? j.pessoas : undefined }
   } catch { return null }
 }
 

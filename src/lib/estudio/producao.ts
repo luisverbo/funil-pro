@@ -17,13 +17,22 @@ export interface PedidoFila {
   id: string; tipo?: string | null; status: string; cliente_nome?: string | null; wa_id?: string | null
   tema_slug?: string | null; pacote_qtd?: number | null; poses?: string[] | null; idade?: number | null
   foto_rosto_path?: string | null; foto_corpo_path?: string | null
+  /** Casal (2 pessoas): fotos e nome da pessoa 2. */
+  foto_rosto2_path?: string | null; foto_corpo2_path?: string | null; pessoa2_nome?: string | null
 }
 
-/** Pago + 2 fotos + todas as poses + idade (prévia: sem idade) → pode entrar na fila. */
-export function faltaParaFila(p: PedidoFila, opts: { semIdade?: boolean } = {}): string[] {
+/** Pago + 2 fotos (casal: 4) + todas as poses + idade (prévia: sem idade) → pode entrar na fila. */
+export function faltaParaFila(p: PedidoFila, opts: { semIdade?: boolean; casal?: boolean } = {}): string[] {
   const falta: string[] = []
-  if (!p.foto_rosto_path) falta.push('foto do rosto')
-  if (!p.foto_corpo_path) falta.push('foto de corpo inteiro')
+  const casal = opts.casal ?? p.tema_slug === 'casal'
+  const quem1 = casal ? ` (${p.cliente_nome ?? 'pessoa 1'})` : ''
+  if (!p.foto_rosto_path) falta.push(`foto do rosto${quem1}`)
+  if (!p.foto_corpo_path) falta.push(`foto de corpo inteiro${quem1}`)
+  if (casal) {
+    const quem2 = ` (${p.pessoa2_nome ?? 'pessoa 2'})`
+    if (!p.foto_rosto2_path) falta.push(`foto do rosto${quem2}`)
+    if (!p.foto_corpo2_path) falta.push(`foto de corpo inteiro${quem2}`)
+  }
   const qtd = p.tipo === 'previa' ? 1 : (p.pacote_qtd ?? 0)
   if ((p.poses ?? []).length < qtd || qtd === 0) falta.push('poses')
   if (!p.idade && p.tipo !== 'previa' && !opts.semIdade) falta.push('idade')   // a prévia só pede 1 foto + 1 pose
@@ -37,6 +46,7 @@ export function mensagemNovoPedido(p: PedidoFila, nomeTema: string, motor: strin
     cab,
     `👤 ${p.cliente_nome ?? (p.wa_id ? `+${p.wa_id}` : 'cliente')}`,
     `🎨 ${nomeTema} · 📸 ${qtd} foto${qtd === 1 ? '' : 's'} · poses ${(p.poses ?? []).join(', ')}`,
+    ...(p.tema_slug === 'casal' || p.pessoa2_nome ? [`💑 Casal: ${p.cliente_nome ?? 'pessoa 1'} + ${p.pessoa2_nome ?? 'pessoa 2'} (4 fotos: rosto/corpo + rosto2/corpo2)`] : []),
     `🆔 ${p.id}`,
   ]
   linhas.push(motor === 'api_gemini'

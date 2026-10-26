@@ -5,12 +5,13 @@
 // ============================================================================
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { enviarMidiaCloud, enviarTextoCloud } from '@/lib/whatsapp-cloud'
-import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo, poseLevaIdade as poseLevaIdadeCena } from '../catalogo'
-import { proximoPasso, lembreteDaEtapa, mensagensDaRetomada, preferenciasVencidas, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
+import { BUCKET_CATALOGO, BUCKET_CLIENTES, caminhosDaCliente, urlPublicaDoCatalogo, ehTemaCasal, poseLevaIdade as poseLevaIdadeCena } from '../catalogo'
+import { proximoPasso, lembreteDaEtapa, mensagensDaRetomada, preferenciasVencidas, idiomaDaMensagem, cobrancaDevida, proximaPreferencia, ordemDosTemas, type Acao, type Contexto, type Dados, type Entrada, type Etapa, type Preco } from './maquina'
 import { caminhoPdfIdioma, linkDoCatalogo, nomeDoPdf } from '../catalogo-idiomas'
-import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, type IdiomaAna } from './textos'
+import { texto as renderTexto, nomeDoTema, dinheiro, idiomaDaAna, opcoesDoMenu, type IdiomaAna } from './textos'
 import { responderDuvida, classificarFoto, extrairPreferencias, type ItemBase } from './ia'
-import { escolherFotos, resumoDasFotos, caixaDoRecorte, type FotoRecebida } from './fotos'
+import { escolherFotos, escolherFotosCasal, resumoDasFotos, resumoDasFotosCasal, caixaDoRecorte, type FotoRecebida } from './fotos'
+import { donoDoTexto, donoAutomatico } from './casal'
 import { atrasoDeTexto, atrasoDeAudio, atrasoDeMidia, esperaRestante, marcarLidaDigitando, reagir, enviarVoz, ATRASO_MAX_PADRAO_MS } from '../envio'
 import { Cronometro } from '../tempos'
 import { avisarLuisRegistrado } from '../avisos'
@@ -121,10 +122,10 @@ export interface MensagemDaCliente {
 }
 
 /** Lembretes que a máquina põe depois da IA (pulados se a IA já perguntou). */
-const LEMBRETES_DA_IA = new Set(['lembrete_nome', 'lembrete_tema', 'pacote_de_novo', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete'])
+const LEMBRETES_DA_IA = new Set(['lembrete_nome', 'lembrete_tema', 'pacote_de_novo', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete', 'casal_falta_fotos', 'casal_pede_fotos_poses'])
 
 /** Lembretes da etapa: nunca saem duas vezes seguidas iguais. */
-const LEMBRETES = new Set(['pacote_de_novo', 'lembrete_nome', 'lembrete_tema', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete', 'pede_nome', 'tabela_precos'])
+const LEMBRETES = new Set(['pacote_de_novo', 'lembrete_nome', 'lembrete_tema', 'lembrete_fotos', 'pede_poses', 'poses_faltam', 'falta_foto', 'pede_comprovante', 'hotmart_lembrete', 'pede_nome', 'tabela_precos', 'casal_falta_fotos', 'casal_foto_de_quem', 'casal_fotos_de_quem', 'casal_pede_fotos_poses', 'casal_pede_nomes', 'casal_pede_nome_parceiro'])
 
 /** Textos de informação: não repetir em menos de 30 min. */
 const INFO_SEM_REPETIR = new Set(['pedido_pago_duvida', 'pago_ok', 'conferindo', 'previa_na_fila', 'aguardando_pagamento', 'entrega_ajuste'])
@@ -150,7 +151,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   const [precos, sob, temasQ, posesQ, pix, baseQ] = await Promise.all([
     precosDoPais(admin, c.tenant_id, c.pais),
     sobrescritas(admin, c.tenant_id),
-    admin.from('estudio_temas').select('slug, nome').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem'),
+    admin.from('estudio_temas').select('slug, nome, sujeito').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem'),
     admin.from('estudio_poses').select('tema_slug, numero, cena').eq('tenant_id', c.tenant_id).eq('ativa', true).limit(5000),
     pixDoTenant(admin, c.tenant_id),
     admin.from('estudio_conhecimento').select('tipo, pergunta, resposta').eq('tenant_id', c.tenant_id).eq('ativo', true).order('ordem').limit(200),
@@ -159,7 +160,10 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   const pixOk = !!linhasDoPix(pix)
   const usou = (finalidade: string, uso: Parameters<typeof registrarUsoIa>[1]['uso'] | undefined, intencao?: string | null) =>
     uso ? registrarUsoIa(admin, { tenant_id: c.tenant_id, contato_id: c.id, pedido_id: pedidoId, finalidade, intencao, uso }) : Promise.resolve()
-  const temasAtivos = (temasQ.data ?? []).map(t => t.slug)
+  // Ordem do menu (1..n): os 4 do lançamento e depois os outros ativos (casal = 5).
+  const temasAtivos = ordemDosTemas((temasQ.data ?? []).map(t => t.slug))
+  const sujeitos = new Map((temasQ.data ?? []).map(t => [t.slug, (t as { sujeito?: string | null }).sujeito ?? null]))
+  const sujeitoDoTema = (slug: string) => sujeitos.get(slug)
   const posesPorTema = new Map<string, string[]>()
   // A Ana "conhece" cada foto: a cena de cada pose (o que tem nela) por tema.
   const cenas = new Map<string, string>()
@@ -170,6 +174,10 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
   const poseLevaIdade = (slug: string, numero: string) => poseLevaIdadeCena(cenas.get(`${slug}|${numero}`))
 
   let dados: Dados = (c.dados ?? {}) as Dados
+  // Casal: 4 fotos (2 pessoas). O tema diz; a flag nos dados vale para conversas que escolheram antes da flag existir.
+  const casal = !!dados.casal || ehTemaCasal(dados.tema, dados.tema ? sujeitoDoTema(dados.tema) : null)
+  if (casal && !dados.casal) dados.casal = true
+  const nomesCasal = () => ({ p1: dados.nome ?? c.nome ?? null, p2: dados.pessoa2_nome ?? null })
   const etapaAtual = ((c.etapa as Etapa) || 'inicio')
   const crono = msg.cronometro ?? new Cronometro()
 
@@ -205,8 +213,18 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
       const { classe, uso } = await crono.medir('ia', () => classificarFoto(bytes, f.mime))
       await usou('foto', uso)
       const foto: FotoRecebida & { comprovante?: boolean } = { path: f.path, mime: f.mime, wamid: f.wamid ?? null, em: new Date().toISOString(), tipo: classe.tipo, motivo: classe.motivo, recusada: classe.recusada, fracao_corpo: classe.fracao_corpo, rosto_caixa: classe.rosto_caixa, cabelo: classe.cabelo, comprovante: !!classe.comprovante }
+      // Casal: a foto dos DOIS juntos vale como referência extra (não é inválida, não é recusada).
+      if (casal && classe.tipo === 'invalida' && classe.pessoas === 2 && !classe.recusada) { foto.extra = true; foto.motivo = null }
       return foto
     }))
+    // Casal: de quem é cada foto — pela legenda ("essa é do João") ou, se uma pessoa já está
+    // completa, da outra. Sem saber, fica sem dono e a Ana pergunta.
+    if (casal) {
+      const legenda = msg.texto && !msg.texto.startsWith('[') ? msg.texto : ''
+      const validas = classificadas.filter((x): x is FotoRecebida => !!x && !x.comprovante && !x.extra && x.tipo !== 'invalida' && !x.recusada)
+      const donos = legenda ? donoDoTexto(legenda, nomesCasal(), validas.length) : null
+      validas.forEach((f, i) => { f.pessoa = donos?.[i] ?? donoAutomatico(fotosLista) ?? undefined })
+    }
     for (const foto of classificadas) {
       if (!foto || foto.comprovante) continue   // comprovante não é foto do ensaio
       const { data: lista, error } = await admin.rpc('estudio_add_foto', { p_contato: c.id, p_foto: foto })
@@ -216,14 +234,28 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     const validas = classificadas.filter((x): x is FotoRecebida & { comprovante?: boolean } => !!x)
     const comprovante = validas.find(x => x.comprovante)
     if (comprovante) { msg.media_path = comprovante.path; msg.media_mime = comprovante.mime ?? msg.media_mime }
+    const juntos = validas.some(x => x.extra)
     fotosEntrada = {
       comprovante: !!comprovante,
       novas: validas.length,
       recusada: validas.some(x => x.recusada),
-      invalida: validas.length && validas.every(x => x.tipo === 'invalida') ? (validas[0].motivo ?? 'não deu para usar') : null,
+      invalida: validas.length && validas.every(x => x.tipo === 'invalida' && !x.extra) ? (validas[0].motivo ?? 'não deu para usar') : null,
+      juntos,
     }
   }
-  const ctxFotos = resumoDasFotos(fotosLista)
+  // Casal: resposta a "essa foto é de quem?" — atribui as fotos pendentes e segue como foto nova.
+  if (casal && msg.tipo === 'texto' && msg.texto.trim() && !novas.length) {
+    const pendentes = fotosLista.filter(f => !f.extra && f.pessoa === undefined && f.tipo !== 'invalida' && !f.recusada)
+    if (pendentes.length) {
+      const donos = donoDoTexto(msg.texto, nomesCasal(), pendentes.length)
+      if (donos) {
+        pendentes.forEach((f, i) => { f.pessoa = donos[i] ?? donos[0] })
+        await admin.from('estudio_contatos').update({ fotos_recebidas: fotosLista }).eq('id', c.id).then(() => {}, () => {})
+        fotosEntrada = { novas: 0, atribuidas: pendentes.length }
+      }
+    }
+  }
+  const ctxFotos = { ...resumoDasFotos(fotosLista), casal: casal ? resumoDasFotosCasal(fotosLista) : undefined }
 
   // Pós-entrega: o que a cliente pode fazer com o pedido entregue (ajuste / +5 fotos).
   let ctxEntrega: Contexto['entrega']
@@ -246,6 +278,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     const { valor_cents: vc, ...resto } = extra
     return {
       nome: dados.nome ?? c.nome ?? '', tema: nomeDoTema(dados.tema, idioma), qtd: dados.pacote_qtd ?? '',
+      pessoa2: dados.pessoa2_nome ?? '', opcoes: opcoesDoMenu(temasAtivos, idioma), n: temasAtivos.length,
       valor: vc !== undefined ? dinheiro(Number(vc), dados.moeda ?? precos[0]?.moeda ?? 'BRL', idioma)
         : dados.valor_cents !== undefined ? dinheiro(dados.valor_cents, dados.moeda ?? 'BRL', idioma) : '',
       poses: (dados.poses ?? []).join(', '), tabela: tabelaDePrecos(precos, idioma), prazo: PRAZO_MIN,
@@ -269,7 +302,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
     const { data: st } = await admin.from('estudio_pedidos').select('status').eq('id', pedidoId).maybeSingle()
     pedidoPago = ['pago', 'aguardando_fotos'].includes(String(st?.status ?? ''))
   }
-  const ctxAna = { poseLevaIdade, nomePerfil: c.nome ?? null, idioma, precos, temasAtivos, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
+  const ctxAna: Contexto = { poseLevaIdade, nomePerfil: c.nome ?? null, idioma, precos, temasAtivos, sujeitoDoTema, posesDoTema: (slug: string) => posesPorTema.get(slug) ?? [], pix: pixOk, entrega: ctxEntrega, fotos: ctxFotos, pago: pedidoPago }
   const r = proximoPasso(etapaAtual, dados, { tipo: msg.tipo, texto: msg.texto ?? '', fotos: fotosEntrada, prefs }, ctxAna)
   dados = r.dados
   let etapa: string = r.etapa === 'humano' ? etapaAtual : r.etapa   // humano pausa, não apaga a etapa
@@ -372,6 +405,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             tenant_id: c.tenant_id, contato_id: c.id, cliente_nome: dados.nome ?? c.nome, wa_id: c.wa_id,
             tema_slug: dados.tema ?? null, pacote_qtd: previa ? 1 : dados.pacote_qtd, valor_cents: previa ? 0 : dados.valor_cents,
             moeda: dados.moeda ?? 'BRL', idioma, pais: c.pais, status: 'novo', tipo: a.tipo, idade: dados.idade ?? null,
+            ...(dados.casal && dados.pessoa2_nome ? { pessoa2_nome: dados.pessoa2_nome } : {}),
           }
           // De onde veio (anúncio → clique), para o painel e para o evento da Meta.
           const primeira = await admin.from('estudio_pedidos').insert({
@@ -379,7 +413,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
           }).select('id').single()
           let p = primeira.data
           // SQL do rastreio ainda não rodou: cria o pedido mesmo assim (sem a origem).
-          if (primeira.error && /ctwa_clid|ad_id|origem|column|schema cache/i.test(primeira.error.message)) p = (await admin.from('estudio_pedidos').insert(basePedido).select('id').single()).data
+          if (primeira.error && /ctwa_clid|ad_id|origem|pessoa2|column|schema cache/i.test(primeira.error.message)) p = (await admin.from('estudio_pedidos').insert({ ...basePedido, pessoa2_nome: undefined }).select('id').single()).data
           if (p) {
             // Prévia no meio da venda: guarda o pedido do pacote para voltar a ele depois.
             if (previa) dados.pedido_antes_previa = pedidoId ?? null
@@ -401,9 +435,11 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             poses: a.poses ?? dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null,
             preferencias: dados.preferencias ?? null, cliente_nome: dados.nome ?? c.nome, tema_slug: dados.tema ?? null,
             maquiagem: dados.maquiagem ?? null, decote: dados.decote ?? null, cores_acessorios: dados.cores ?? null,
+            // Casal: a 2ª pessoa (colunas do SQL 20261112; sem elas cai no fallback abaixo)
+            ...(dados.casal ? { pessoa2_nome: dados.pessoa2_nome ?? null, pessoa2_idade: dados.pessoa2_idade ?? null, pessoa2_cabelo: dados.pessoa2_cabelo ?? null } : {}),
           }).eq('id', pedidoId).then(async res => {
             // SQL da rodada humanizada pendente: grava ao menos o que já existia.
-            if (res.error && /maquiagem|decote|cores_acessorios|column/i.test(res.error.message)) await admin.from('estudio_pedidos').update({
+            if (res.error && /maquiagem|decote|cores_acessorios|pessoa2|column/i.test(res.error.message)) await admin.from('estudio_pedidos').update({
               poses: a.poses ?? dados.poses ?? [], idade: dados.idade ?? null, cabelo: dados.cabelo ?? null, preferencias: dados.preferencias ?? null,
             }).eq('id', pedidoId!)
           })
@@ -511,6 +547,7 @@ export async function rodarAna(admin: SupabaseClient, con: Conexao, contatoId: s
             pagamento: (c.pais && c.pais !== 'BR') || (precos[0]?.moeda ?? 'BRL') !== 'BRL'
               ? `cartão de crédito/débito pelo link seguro da Hotmart, em ${precos[0]?.moeda ?? 'USD'} (a Hotmart converte para a moeda dela); a confirmação chega sozinha`
               : 'Pix (Brasil) para a chave do estúdio, conferido pelo comprovante',
+            casal: casal ? { pessoa2: dados.pessoa2_nome ?? null } : undefined,
             ajusteUsado: await (async () => {
               if (!pedidoId) return false
               const { data: pd } = await admin.from('estudio_pedidos').select('ajustes_usados, ajuste_em').eq('id', pedidoId).maybeSingle().then(r => r, () => ({ data: null }))
@@ -647,9 +684,12 @@ export async function falarComCliente(admin: SupabaseClient, tenantId: string, c
  * e o pedido fica marcado "rosto recortado — pedir close".
  */
 export async function aplicarEscolhaDeFotos(admin: SupabaseClient, pedidoId: string, lista: FotoRecebida[], dados?: Dados): Promise<void> {
-  const { data: ped } = await admin.from('estudio_pedidos').select('rosto_origem, corpo_origem').eq('id', pedidoId).maybeSingle()
-  const e = escolherFotos(lista, { rosto: (ped as { rosto_origem?: string } | null)?.rosto_origem ?? null, corpo: (ped as { corpo_origem?: string } | null)?.corpo_origem ?? null })
+  const sel = await admin.from('estudio_pedidos').select('rosto_origem, corpo_origem, rosto2_origem, corpo2_origem, tema_slug').eq('id', pedidoId).maybeSingle()
+    .then(r => r.error ? admin.from('estudio_pedidos').select('rosto_origem, corpo_origem, tema_slug').eq('id', pedidoId).maybeSingle() : r)
+  const ped = (sel.data ?? {}) as { rosto_origem?: string | null; corpo_origem?: string | null; rosto2_origem?: string | null; corpo2_origem?: string | null; tema_slug?: string | null }
   const destinos = caminhosDaCliente(pedidoId)
+  if (dados?.casal || ehTemaCasal(ped.tema_slug)) return aplicarEscolhaCasal(admin, pedidoId, lista, ped, destinos, dados)
+  const e = escolherFotos(lista, { rosto: ped.rosto_origem ?? null, corpo: ped.corpo_origem ?? null })
   const salvarJpeg = async (origem: string, destino: string, recorte?: FotoRecebida['rosto_caixa'] | 'topo' | null) => {
     const { data: arq } = await admin.storage.from(BUCKET_CLIENTES).download(origem)
     if (!arq) return false
@@ -679,6 +719,49 @@ export async function aplicarEscolhaDeFotos(admin: SupabaseClient, pedidoId: str
   }
 }
 
+/** Baixa uma foto recebida, converte para JPEG (recorte opcional) e grava no caminho do pedido. */
+async function salvarFotoDoPedido(admin: SupabaseClient, origem: string, destino: string, recorte?: FotoRecebida['rosto_caixa'] | 'topo' | null): Promise<boolean> {
+  const { data: arq } = await admin.storage.from(BUCKET_CLIENTES).download(origem)
+  if (!arq) return false
+  let bytes: Buffer = Buffer.from(await arq.arrayBuffer())
+  try {
+    const sharp = (await import('sharp')).default
+    let img = sharp(bytes).rotate()
+    if (recorte) {
+      const meta = await img.metadata()
+      const cx = caixaDoRecorte(meta.width ?? 1000, meta.height ?? 1000, recorte)
+      img = sharp(await img.toBuffer()).extract(cx)
+    }
+    bytes = await img.jpeg({ quality: 92 }).toBuffer()
+  } catch (err) { console.warn('[estudio/ana] conversão da foto (segue o original):', String(err).slice(0, 160)) }
+  await admin.storage.from(BUCKET_CLIENTES).upload(destino, bytes, { contentType: 'image/jpeg', upsert: true })
+  return true
+}
+
+/**
+ * Casal: rosto.jpg/corpo.jpg = pessoa 1 (quem conversa), rosto2.jpg/corpo2.jpg =
+ * pessoa 2 — só entre as fotos atribuídas a cada um. A foto dos dois juntos vai
+ * para fotos_extras_paths (referência). Recorte do rosto vale para os dois.
+ */
+async function aplicarEscolhaCasal(admin: SupabaseClient, pedidoId: string, lista: FotoRecebida[], ped: { rosto_origem?: string | null; corpo_origem?: string | null; rosto2_origem?: string | null; corpo2_origem?: string | null }, destinos: ReturnType<typeof caminhosDaCliente>, dados?: Dados): Promise<void> {
+  const e = escolherFotosCasal(lista, { rosto: ped.rosto_origem, corpo: ped.corpo_origem, rosto2: ped.rosto2_origem, corpo2: ped.corpo2_origem })
+  const upd: Record<string, unknown> = { fotos_recebidas: lista, fotos_extras_paths: e.extras }
+  if (e.p1.corpo && await salvarFotoDoPedido(admin, e.p1.corpo, destinos.corpo)) { upd.foto_corpo_path = destinos.corpo; upd.corpo_origem = e.p1.corpo }
+  if (e.p1.rosto && await salvarFotoDoPedido(admin, e.p1.rosto.path, destinos.rosto, e.p1.rosto.recorte)) { upd.foto_rosto_path = destinos.rosto; upd.rosto_origem = e.p1.rosto.path }
+  if (e.p2.corpo && await salvarFotoDoPedido(admin, e.p2.corpo, destinos.corpo2)) { upd.foto_corpo2_path = destinos.corpo2; upd.corpo2_origem = e.p2.corpo }
+  if (e.p2.rosto && await salvarFotoDoPedido(admin, e.p2.rosto.path, destinos.rosto2, e.p2.rosto.recorte)) { upd.foto_rosto2_path = destinos.rosto2; upd.rosto2_origem = e.p2.rosto.path }
+  upd.rosto_recortado = e.p1.rosto_recortado || e.p2.rosto_recortado
+  if (e.p1.cabelo) upd.cabelo = e.p1.cabelo
+  if (e.p2.cabelo) upd.pessoa2_cabelo = e.p2.cabelo
+  if (dados) { if (e.p1.cabelo && !dados.cabelo) dados.cabelo = e.p1.cabelo; if (e.p2.cabelo && !dados.pessoa2_cabelo) dados.pessoa2_cabelo = e.p2.cabelo }
+  const { error } = await admin.from('estudio_pedidos').update(upd).eq('id', pedidoId)
+  if (error && /pessoa2|rosto2|corpo2|fotos_recebidas|rosto_origem|column/i.test(error.message)) {
+    // SQL do casal pendente: grava ao menos as fotos da pessoa 1 (e avisa no log).
+    console.warn('[estudio/ana] SQL 20261112000000_estudio_ia_casal.sql pendente:', error.message)
+    await admin.from('estudio_pedidos').update({ ...(upd.foto_rosto_path ? { foto_rosto_path: upd.foto_rosto_path } : {}), ...(upd.foto_corpo_path ? { foto_corpo_path: upd.foto_corpo_path } : {}), fotos_extras_paths: e.extras }).eq('id', pedidoId)
+  }
+}
+
 /**
  * A produção viu que falta foto: em vez de avisar o Luís, a Ana pede para a
  * CLIENTE e abre a etapa certa — a foto que chegar completa o mesmo pedido
@@ -687,7 +770,7 @@ export async function aplicarEscolhaDeFotos(admin: SupabaseClient, pedidoId: str
  */
 export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string, falta: string[]): Promise<boolean> {
   const fotos = falta.filter(f => /foto/.test(f))
-  const { data: p } = await admin.from('estudio_pedidos').select('tenant_id, contato_id, tipo, poses, tema_slug').eq('id', pedidoId).maybeSingle()
+  const { data: p } = await admin.from('estudio_pedidos').select('*').eq('id', pedidoId).maybeSingle()
   if (!p?.contato_id) return false
   // Prévia sem a pose: a Ana pede a pose para a cliente (e não avisa o Luís).
   if (p.tipo === 'previa' && !fotos.length && falta.includes('poses')) {
@@ -712,7 +795,9 @@ export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string,
     'es-ES': { rosto: '1 foto de tu CARA, de frente y nítida (tipo selfie)', corpo: '1 foto de cuerpo entero' },
     en: { rosto: '1 FACE photo, from the front and sharp (like a selfie)', corpo: '1 full-body photo' },
   }
-  const faltam = fotos.map(f => (/rosto/.test(f) ? F[idioma].rosto : F[idioma].corpo)).join(' + ')
+  // Casal: cada item diz de quem é ("foto do rosto (João)") — mantém o nome na frase.
+  const quem = (f: string) => { const m = f.match(/\(([^)]+)\)/); return m ? ` — ${m[1]}` : '' }
+  const faltam = fotos.map(f => (/rosto/.test(f) ? F[idioma].rosto : F[idioma].corpo) + quem(f)).join(' + ')
   const d = (c.dados ?? {}) as Dados
   const previa = p.tipo === 'previa'
   const etapaAtual = (c.etapa as Etapa) || 'pacote'
@@ -720,7 +805,11 @@ export async function pedirFotoQueFalta(admin: SupabaseClient, pedidoId: string,
     d.etapa_antes_previa = etapaAtual; d.poses_antes_previa = d.poses ?? []; d.pedido_antes_previa = c.pedido_atual_id ?? null
     d.poses = (p.poses ?? []) as string[]; d.previa_feita = false
   }
-  d.tem_rosto = !fotos.some(f => /rosto/.test(f)); d.tem_corpo = !fotos.some(f => /corpo/.test(f))
+  if (d.casal) {
+    const p2 = (f: string) => /\(/.test(f) && !!(p as { pessoa2_nome?: string | null }).pessoa2_nome && f.includes(String((p as { pessoa2_nome?: string | null }).pessoa2_nome))
+    d.tem_rosto = !fotos.some(f => /rosto/.test(f) && !p2(f)); d.tem_corpo = !fotos.some(f => /corpo/.test(f) && !p2(f))
+    d.tem_rosto2 = !fotos.some(f => /rosto/.test(f) && p2(f)); d.tem_corpo2 = !fotos.some(f => /corpo/.test(f) && p2(f))
+  } else { d.tem_rosto = !fotos.some(f => /rosto/.test(f)); d.tem_corpo = !fotos.some(f => /corpo/.test(f)) }
   await admin.from('estudio_contatos').update({ dados: d, pedido_atual_id: pedidoId, ...(previa ? { etapa: 'previa_fotos' } : { etapa: 'fotos_poses' }) }).eq('id', p.contato_id)
   const r = await falarComCliente(admin, p.tenant_id, p.contato_id, 'falta_foto_cliente', undefined, { faltam })
   return r.ok
@@ -792,7 +881,10 @@ export async function criarPedidoPeloLuis(admin: SupabaseClient, tenantId: strin
     tenant_id: tenantId, contato_id: c.id, cliente_nome: d.nome ?? c.nome, wa_id: c.wa_id, tema_slug: v.tema,
     pacote_qtd: qtd, valor_cents: valor, moeda, idioma, pais: c.pais, status: 'novo', tipo: v.tipo, idade: d.idade ?? null,
     poses: previa ? poses.slice(0, 1) : poses, preferencias: d.preferencias ?? null,
+    // Casal: a 2ª pessoa (se a Ana já anotou)
+    ...(ehTemaCasal(v.tema) && d.pessoa2_nome ? { pessoa2_nome: d.pessoa2_nome, pessoa2_idade: d.pessoa2_idade ?? null } : {}),
   }
+  if (ehTemaCasal(v.tema)) d.casal = true
   const prim = await admin.from('estudio_pedidos').insert({ ...base, origem: c.ad_id ? 'anuncio' : (c.origem ?? 'organico'), ad_id: c.ad_id ?? null, ctwa_clid: c.ctwa_clid ?? null }).select('id').single()
   let p = prim.data
   if (prim.error && /ctwa_clid|ad_id|origem|column|schema cache/i.test(prim.error.message)) p = (await admin.from('estudio_pedidos').insert(base).select('id').single()).data

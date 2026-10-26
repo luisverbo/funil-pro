@@ -20,6 +20,7 @@ const AUDIOS: [string, string, string][] = [
   ['a4', 'A4 · Catálogo', '~15 s — "Cada foto tem um número: me manda só os números…"'],
   ['a5', 'A5 · Pix', '~7 s — "Te mandei o Pix aqui em cima…" (Fase 4)'],
   ['a6', 'A6 · Entrega', '"Seu ensaio ficou lindo!…" (Fase 5)'],
+  ['a2_casal', 'A2 · Casal', '~15 s — "O ensaio de casal é com os DOIS na mesma foto: preciso de rosto e corpo de cada um…" (sem áudio, sai o texto)'],
 ]
 
 export function AbaMidias() {

@@ -177,7 +177,7 @@ const tests: Record<string, () => void | Promise<void>> = {
   'ligações: pedido copia ad_id/ctwa_clid; fechamento manda LeadSubmitted; pagamento manda Purchase; robô reenvia; SQL': () => {
     const ex = ler('src/lib/estudio/ana/executor.ts')
     assert.ok(ex.includes("ad_id: c.ad_id ?? null, ctwa_clid: c.ctwa_clid ?? null") && ex.includes("enviarEventoPedido(admin, pid, 'LeadSubmitted')"))
-    assert.ok(ex.includes('insert(basePedido)'), 'sem o SQL novo o pedido é criado mesmo assim')
+    assert.ok(ex.includes('insert({ ...basePedido, pessoa2_nome: undefined })'), 'sem o SQL novo o pedido é criado mesmo assim')
     assert.ok(ler('src/lib/estudio/pix-servidor.ts').includes("enviarEventoPedido(admin, pedidoId, 'Purchase')"), 'Pix e Hotmart passam por marcarPago')
     assert.ok(ler('src/lib/estudio/producao-servidor.ts').includes('reenviarEventosPendentes(admin)'))
     const sql = ler('supabase/migrations/20261101000000_estudio_ia_anuncios.sql')

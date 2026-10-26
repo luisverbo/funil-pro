@@ -22,7 +22,7 @@ export function idiomaDaAna(idioma: string | null | undefined): IdiomaAna {
   return 'en'
 }
 
-export const CHAVES_AUDIO = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'] as const
+export const CHAVES_AUDIO = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a2_casal'] as const
 
 type Tabela = Record<string, Record<(typeof IDIOMAS)[number], string> & Partial<Record<'es-ES', string>>>
 
@@ -39,23 +39,24 @@ export const TEXTOS: Tabela = {
     es: '¿Me dices tu nombre para guardar tu contacto? 💖',
     en: "What's your name, so I can save your contact? 💖",
   },
+  // {opcoes} = lista montada dos temas ATIVOS (opcoesDoMenu); {n} = quantos são.
   menu: {
-    'pt-BR': 'Prazer, {nome}! É só me contar qual tema você gostaria:\n\n🎂 1 - ANIVERSÁRIO\n💼 2 - CORPORATIVO\n👗 3 - CASUAL\n🌹 4 - SENSUAL',
-    'pt-PT': 'Muito prazer, {nome}! Diz-me qual o tema que gostavas:\n\n🎂 1 - ANIVERSÁRIO\n💼 2 - CORPORATIVO\n👗 3 - CASUAL\n🌹 4 - SENSUAL',
-    es: '¡Encantada, {nombre}! Cuéntame qué temática te gustaría:\n\n🎂 1 - CUMPLEAÑOS\n💼 2 - CORPORATIVO\n👗 3 - CASUAL\n🌹 4 - SENSUAL',
-    en: 'Nice to meet you, {nome}! Just tell me which theme you would like:\n\n🎂 1 - BIRTHDAY\n💼 2 - CORPORATE\n👗 3 - CASUAL\n🌹 4 - SENSUAL',
+    'pt-BR': 'Prazer, {nome}! É só me contar qual tema você gostaria:\n\n{opcoes}',
+    'pt-PT': 'Muito prazer, {nome}! Diz-me qual o tema que gostavas:\n\n{opcoes}',
+    es: '¡Encantada, {nombre}! Cuéntame qué temática te gustaría:\n\n{opcoes}',
+    en: 'Nice to meet you, {nome}! Just tell me which theme you would like:\n\n{opcoes}',
   },
   menu_de_novo: {
-    'pt-BR': 'Me manda só o número do tema, tá? 1, 2, 3 ou 4 😊',
-    'pt-PT': 'Manda-me só o número do tema, está bem? 1, 2, 3 ou 4 😊',
-    es: 'Envíame solo el número de la temática: 1, 2, 3 o 4 😊',
-    en: 'Just send me the theme number: 1, 2, 3 or 4 😊',
+    'pt-BR': 'Me manda só o número do tema, tá? De 1 a {n} 😊',
+    'pt-PT': 'Manda-me só o número do tema, está bem? De 1 a {n} 😊',
+    es: 'Envíame solo el número de la temática: del 1 al {n} 😊',
+    en: 'Just send me the theme number: 1 to {n} 😊',
   },
   outro_tema: {
-    'pt-BR': 'Por enquanto trabalhamos com esses 4, em breve teremos mais! 💖 Qual deles você prefere?',
-    'pt-PT': 'Por agora trabalhamos com estes 4, em breve teremos mais! 💖 Qual preferes?',
-    es: 'Por ahora trabajamos con estas 4, ¡pronto tendremos más! 💖 ¿Cuál prefieres?',
-    en: "For now we work with these 4, more coming soon! 💖 Which one do you prefer?",
+    'pt-BR': 'Por enquanto trabalhamos com esses {n}, em breve teremos mais! 💖 Qual deles você prefere?',
+    'pt-PT': 'Por agora trabalhamos com estes {n}, em breve teremos mais! 💖 Qual preferes?',
+    es: 'Por ahora trabajamos con estas {n}, ¡pronto tendremos más! 💖 ¿Cuál prefieres?',
+    en: "For now we work with these {n}, more coming soon! 💖 Which one do you prefer?",
   },
   sensual_idade: {
     'pt-BR': 'O ensaio sensual é só para maiores de 18 anos e é sem nudez, tá? Me confirma sua idade?',
@@ -235,8 +236,8 @@ export const TEXTOS: Tabela = {
     'pt-BR': 'Me fala seu nome? 😊', 'pt-PT': 'Dizes-me o teu nome? 😊', es: '¿Me dices tu nombre? 😊', en: "What's your name? 😊",
   },
   lembrete_tema: {
-    'pt-BR': 'Quando quiser, me manda o NÚMERO do tema (1 a 4) 😉', 'pt-PT': 'Quando quiseres, envia o NÚMERO do tema (1 a 4) 😉',
-    es: 'Cuando quieras, envíame el NÚMERO de la temática (1 a 4) 😉', en: 'Whenever you are ready, send me the theme NUMBER (1 to 4) 😉',
+    'pt-BR': 'Quando quiser, me manda o NÚMERO do tema (1 a {n}) 😉', 'pt-PT': 'Quando quiseres, envia o NÚMERO do tema (1 a {n}) 😉',
+    es: 'Cuando quieras, envíame el NÚMERO de la temática (1 a {n}) 😉', en: 'Whenever you are ready, send me the theme NUMBER (1 to {n}) 😉',
   },
   lembrete_fotos: {
     'pt-BR': 'Quando puder, me manda {faltam} 😉', 'pt-PT': 'Quando puderes, envia-me {faltam} 😉',
@@ -427,6 +428,109 @@ export const TEXTOS: Tabela = {
     'pt-PT': 'Os valores e condições são exatamente os da tabela 😊 Posso ajudar-te a escolher o melhor pacote?',
     es: 'Los valores y condiciones son exactamente los de la tabla 😊 ¿Te ayudo a elegir el mejor paquete para ti?',
     en: 'Prices and terms are exactly the ones in the table 😊 Can I help you pick the best package for you?',
+  },
+  // ── Casal (duas pessoas na mesma foto) ────────────────────────────────────
+  a2_casal: {
+    'pt-BR': 'Que lindo! 💑 O ensaio de casal é 100% on-line, com os DOIS na mesma foto, sem sair de casa. Pra isso eu preciso de fotos dos dois: 📸 uma do rosto de cada um (de frente, nítida, sem filtro) e uma de corpo inteiro de cada um. Pode ser da galeria! Só adultos, e cada foto com uma pessoa só.',
+    'pt-PT': 'Que lindo! 💑 A sessão de casal é 100% online, com os DOIS na mesma foto, sem sair de casa. Preciso de fotos dos dois: 📸 uma do rosto de cada um (de frente, nítida, sem filtro) e uma de corpo inteiro de cada um. Pode ser da galeria! Só adultos, e cada foto com uma pessoa só.',
+    es: '¡Qué lindo! 💑 La sesión de pareja es 100% online, con los DOS en la misma foto, sin salir de casa. Necesito fotos de los dos: 📸 una de la cara de cada uno (de frente, nítida, sin filtro) y una de cuerpo entero de cada uno. ¡Puede ser de la galería! Solo adultos, y cada foto con una sola persona.',
+    en: 'How lovely! 💑 The couple shoot is 100% online, with BOTH of you in the same photo, without leaving home. I need photos of both: 📸 one face photo of each (front-facing, sharp, no filter) and one full-body photo of each. From your gallery is fine! Adults only, and each photo with just one person.',
+  },
+  casal_que_lindo: {
+    'pt-BR': 'Que lindo! 💑 O ensaio de casal é feito com os DOIS na mesma foto.',
+    'pt-PT': 'Que lindo! 💑 A sessão de casal é feita com os DOIS na mesma foto.',
+    es: '¡Qué lindo! 💑 La sesión de pareja se hace con los DOS en la misma foto.',
+    en: 'How lovely! 💑 The couple shoot is made with BOTH of you in the same photo.',
+  },
+  casal_pede_nomes: {
+    'pt-BR': 'Qual o seu nome e o nome do(a) seu(sua) parceiro(a)? 💑 (ex.: "Maria e João")',
+    'pt-PT': 'Qual é o teu nome e o nome do(a) teu(tua) parceiro(a)? 💑 (ex.: "Maria e João")',
+    es: '¿Cuál es tu nombre y el de tu pareja? 💑 (ej.: "María y Juan")',
+    en: "What's your name and your partner's name? 💑 (e.g. \"Mary and John\")",
+  },
+  casal_pede_nome_parceiro: {
+    'pt-BR': 'E qual o nome do(a) seu(sua) parceiro(a), {nome}? 💑',
+    'pt-PT': 'E qual é o nome do(a) teu(tua) parceiro(a), {nome}? 💑',
+    es: '¿Y cómo se llama tu pareja, {nombre}? 💑',
+    en: "And what's your partner's name, {nome}? 💑",
+  },
+  casal_nomes_ok: {
+    'pt-BR': 'Anotado: você e {pessoa2} 💑',
+    'pt-PT': 'Anotado: tu e {pessoa2} 💑',
+    es: 'Anotado: tú y {pessoa2} 💑',
+    en: 'Noted: you and {pessoa2} 💑',
+  },
+  casal_pede_fotos_poses: {
+    'pt-BR': 'Agora preciso das 4 fotos: 📸 rosto e corpo inteiro SEU e rosto e corpo inteiro de {pessoa2} (cada foto com uma pessoa só, de frente, nítida, sem filtro). Pode mandar uma de cada vez e me dizer de quem é 😉 E os {qtd} NÚMEROS das poses do catálogo de casal (ex.: 03, 12, 27).',
+    'pt-PT': 'Agora preciso das 4 fotos: 📸 rosto e corpo inteiro TEU e rosto e corpo inteiro de {pessoa2} (cada foto com uma pessoa só, de frente, nítida, sem filtro). Podes enviar uma de cada vez e dizer-me de quem é 😉 E os {qtd} NÚMEROS das poses do catálogo de casal (ex.: 03, 12, 27).',
+    es: 'Ahora necesito las 4 fotos: 📸 cara y cuerpo entero TUYOS y cara y cuerpo entero de {pessoa2} (cada foto con una sola persona, de frente, nítida, sin filtro). Puedes enviar una a una y decirme de quién es 😉 Y los {qtd} NÚMEROS de las poses del catálogo de pareja (ej.: 03, 12, 27).',
+    en: "Now I need the 4 photos: 📸 YOUR face and full body, and {pessoa2}'s face and full body (each photo with one person only, front-facing, sharp, no filter). You can send them one at a time and tell me whose it is 😉 And the {qtd} NUMBERS of the poses from the couple catalog (e.g. 03, 12, 27).",
+  },
+  casal_foto_de_quem: {
+    'pt-BR': 'Recebi ✅ Essa foto é de quem: sua ou de {pessoa2}? 💑',
+    'pt-PT': 'Recebi ✅ Essa foto é de quem: tua ou de {pessoa2}? 💑',
+    es: 'Recibida ✅ ¿De quién es esa foto: tuya o de {pessoa2}? 💑',
+    en: 'Got it ✅ Whose photo is that: yours or {pessoa2}\'s? 💑',
+  },
+  casal_fotos_de_quem: {
+    'pt-BR': 'Recebi {n} fotos ✅ Me diz de quem é cada uma, por favor (ex.: "a primeira é minha e a segunda de {pessoa2}") 💑',
+    'pt-PT': 'Recebi {n} fotos ✅ Diz-me de quem é cada uma, por favor (ex.: "a primeira é minha e a segunda de {pessoa2}") 💑',
+    es: 'Recibí {n} fotos ✅ Dime de quién es cada una, por favor (ej.: "la primera es mía y la segunda de {pessoa2}") 💑',
+    en: 'Got {n} photos ✅ Please tell me whose each one is (e.g. "the first is mine and the second is {pessoa2}\'s") 💑',
+  },
+  casal_foto_juntos: {
+    'pt-BR': 'Que casal lindo! 😍 Guardei essa dos dois como referência, mas pro ensaio ficar fiel eu preciso das fotos SEPARADAS: rosto e corpo inteiro de cada um, cada foto com uma pessoa só 📸',
+    'pt-PT': 'Que casal lindo! 😍 Guardei essa dos dois como referência, mas para a sessão ficar fiel preciso das fotos SEPARADAS: rosto e corpo inteiro de cada um, cada foto com uma pessoa só 📸',
+    es: '¡Qué pareja tan linda! 😍 Guardé esa de los dos como referencia, pero para que la sesión quede fiel necesito las fotos SEPARADAS: cara y cuerpo entero de cada uno, cada foto con una sola persona 📸',
+    en: 'What a lovely couple! 😍 I saved that one of you both as a reference, but for the shoot to look like you I need SEPARATE photos: face and full body of each, one person per photo 📸',
+  },
+  casal_foto_recusada: {
+    'pt-BR': 'Desculpa, só consigo fazer o ensaio com fotos de vocês dois, adultos, cada foto com uma pessoa só (nada de crianças, famosos ou prints de outras pessoas) 💖 Me manda outra?',
+    'pt-PT': 'Desculpa, só consigo fazer a sessão com fotos de vocês os dois, adultos, cada foto com uma pessoa só (nada de crianças, famosos ou capturas de outras pessoas) 💖 Envias outra?',
+    es: 'Lo siento, solo puedo hacer la sesión con fotos de ustedes dos, adultos, cada foto con una sola persona (nada de niños, famosos o capturas de otras personas) 💖 ¿Me mandas otra?',
+    en: "Sorry, I can only do the shoot with photos of the two of you, adults, one person per photo (no kids, celebrities or screenshots of other people) 💖 Can you send another?",
+  },
+  casal_falta_fotos: {
+    'pt-BR': 'Agora só falta {faltam} 📸 (cada foto com uma pessoa só, de frente, nítida)',
+    'pt-PT': 'Agora só falta {faltam} 📸 (cada foto com uma pessoa só, de frente, nítida)',
+    es: 'Ahora solo falta {faltam} 📸 (cada foto con una sola persona, de frente, nítida)',
+    en: 'Now I just need {faltam} 📸 (one person per photo, front-facing, sharp)',
+  },
+  casal_fotos_ok: {
+    'pt-BR': 'Perfeito! 💖 Recebi as 4 fotos: as suas e as de {pessoa2} ✅',
+    'pt-PT': 'Perfeito! 💖 Recebi as 4 fotos: as tuas e as de {pessoa2} ✅',
+    es: '¡Perfecto! 💖 Recibí las 4 fotos: las tuyas y las de {pessoa2} ✅',
+    en: "Perfect! 💖 Got all 4 photos: yours and {pessoa2}'s ✅",
+  },
+  casal_foto_guardada: {
+    'pt-BR': 'Recebi a foto ✅ Já guardei aqui! Na hora das fotos eu te pergunto de quem é cada uma 💑',
+    'pt-PT': 'Recebi a foto ✅ Já guardei! Na hora das fotos pergunto-te de quem é cada uma 💑',
+    es: 'Recibí la foto ✅ ¡Ya la guardé! Cuando lleguemos a las fotos te pregunto de quién es cada una 💑',
+    en: "Got the photo ✅ Saved it! When we get to the photos I'll ask whose each one is 💑",
+  },
+  casal_pref_roupas: {
+    'pt-BR': 'Tem alguma cor ou estilo de roupa que vocês queiram? (ex.: ela de vestido rosa, ele de camisa azul) Ou posso escolher? 😊 (maquiagem fica natural, tá?)',
+    'pt-PT': 'Há alguma cor ou estilo de roupa que queiram? (ex.: ela de vestido rosa, ele de camisa azul) Ou posso escolher? 😊 (a maquilhagem fica natural)',
+    es: '¿Hay algún color o estilo de ropa que quieran? (ej.: ella de vestido rosa, él de camisa azul) ¿O lo elijo yo? 😊 (el maquillaje queda natural)',
+    en: 'Any color or clothing style you would like? (e.g. her in a pink dress, him in a blue shirt) Or shall I choose? 😊 (makeup stays natural)',
+  },
+  casal_pref_idades: {
+    'pt-BR': 'Última coisinha: a idade de cada um? (ex.: "eu 32 e {pessoa2} 35") É pra deixar o ensaio fiel a vocês 💑',
+    'pt-PT': 'Última coisinha: a idade de cada um? (ex.: "eu 32 e {pessoa2} 35") É para a sessão ficar fiel a vocês 💑',
+    es: 'Última cosita: ¿la edad de cada uno? (ej.: "yo 32 y {pessoa2} 35") Es para que la sesión sea fiel a ustedes 💑',
+    en: 'Last little thing: how old is each of you? (e.g. "me 32 and {pessoa2} 35") So the shoot stays true to you 💑',
+  },
+  casal_pref_idade2: {
+    'pt-BR': 'E {pessoa2}, quantos anos tem? 😊',
+    'pt-PT': 'E {pessoa2}, quantos anos tem? 😊',
+    es: '¿Y {pessoa2}, cuántos años tiene? 😊',
+    en: 'And {pessoa2}, how old? 😊',
+  },
+  casal_previa_pede_fotos: {
+    'pt-BR': 'Oba! 💖 Pra prévia do casal eu preciso das 4 fotos (rosto e corpo inteiro de cada um, cada foto com uma pessoa só) e o número de 1 pose do catálogo de casal. Faço rapidinho só pra vocês verem que é sério!',
+    'pt-PT': 'Boa! 💖 Para a prévia do casal preciso das 4 fotos (rosto e corpo inteiro de cada um, cada foto com uma pessoa só) e o número de 1 pose do catálogo de casal. Faço rapidinho!',
+    es: '¡Genial! 💖 Para la vista previa de pareja necesito las 4 fotos (cara y cuerpo entero de cada uno, cada foto con una sola persona) y el número de 1 pose del catálogo de pareja. ¡La hago enseguida!',
+    en: 'Great! 💖 For the couple preview I need the 4 photos (face and full body of each, one person per photo) and 1 pose number from the couple catalog. I\'ll do it quickly!',
   },
   catalogo_de_novo: {
     'pt-BR': 'Pra facilitar, aqui está o catálogo de novo 👇\n{link}',
@@ -644,6 +748,15 @@ export const NOMES_TEMA: Record<string, Record<IdiomaAna, string>> = {
   corporativo: { 'pt-BR': 'Corporativo', 'pt-PT': 'Corporativo', es: 'Corporativo', en: 'Corporate', 'es-ES': 'Corporativo' },
   casual: { 'pt-BR': 'Casual', 'pt-PT': 'Casual', es: 'Casual', en: 'Casual', 'es-ES': 'Casual' },
   sensual: { 'pt-BR': 'Sensual', 'pt-PT': 'Sensual', es: 'Sensual', en: 'Sensual', 'es-ES': 'Sensual' },
+  casal: { 'pt-BR': 'Casal', 'pt-PT': 'Casal', es: 'Pareja', en: 'Couple', 'es-ES': 'Pareja' },
+}
+
+export const EMOJI_TEMA: Record<string, string> = { aniversario: '🎂', corporativo: '💼', casual: '👗', sensual: '🌹', casal: '💑' }
+const TEMAS_PADRAO = ['aniversario', 'corporativo', 'casual', 'sensual']
+
+/** Linhas do menu de temas, na ordem dos ATIVOS: "🎂 1 - ANIVERSÁRIO". */
+export function opcoesDoMenu(ativos: string[], idioma: IdiomaAna): string {
+  return ativos.map((slug, i) => `${EMOJI_TEMA[slug] ?? '✨'} ${i + 1} - ${nomeDoTema(slug, idioma).toUpperCase()}`).join('\n')
 }
 
 export function nomeDoTema(slug: string | null | undefined, idioma: IdiomaAna): string {
@@ -656,6 +769,10 @@ export function texto(chave: string, idioma: IdiomaAna, vars: Record<string, str
   const base = sobrescritas?.get(`${chave}|${idioma}`)?.trim() || TEXTOS[chave]?.[idioma]
     || (idioma === 'es-ES' ? sobrescritas?.get(`${chave}|es`)?.trim() || TEXTOS[chave]?.es : '')
     || TEXTOS[chave]?.['pt-BR'] || ''
+  // {opcoes}/{n} do menu de temas: sem a lista dos ativos, os 4 do lançamento.
+  if (/\{opcoes\}|\{n\}/.test(base) && (vars.opcoes === undefined || vars.n === undefined)) {
+    vars = { opcoes: opcoesDoMenu(TEMAS_PADRAO, idioma), n: TEMAS_PADRAO.length, ...vars }
+  }
   // {nombre} no espanhol = {nome}
   return base.replace(/\{(\w+)\}/g, (_, k: string) => {
     const v = vars[k === 'nombre' ? 'nome' : k]
