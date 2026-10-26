@@ -120,7 +120,11 @@ function DetalhePedido({ id, onMudou }: { id: string; onMudou: () => void }) {
           <h2 className="text-base font-semibold text-slate-900">{String(p.cliente_nome ?? `+${p.wa_id}`)} <Selo s={status} /></h2>
           <p className="text-xs text-slate-500">🆔 <span className="font-mono">{id}</span></p>
           <p className="mt-1 text-sm text-slate-700">{String(p.tema_slug ?? '—')} · {p.tipo === 'previa' ? 'prévia (1 pose)' : `${p.pacote_qtd} fotos`} · poses {poses.join(', ') || '—'}</p>
-          <p className="text-xs text-slate-500">Idade {String(p.idade ?? '—')} · cabelo {String(p.cabelo ?? '—')} · {String(p.preferencias ?? 'sem preferências')}</p>
+          {d.casal ? (
+            <p className="text-xs text-slate-500">💑 Casal: <strong>{String(p.cliente_nome ?? 'pessoa 1')}</strong> (idade {String(p.idade ?? '—')} · cabelo {String(p.cabelo ?? '—')}) + <strong>{d.casal.pessoa2_nome ?? 'pessoa 2'}</strong> (idade {String(d.casal.pessoa2_idade ?? '—')} · cabelo {d.casal.pessoa2_cabelo ?? '—'}) · {String(p.preferencias ?? 'sem preferências')}</p>
+          ) : (
+            <p className="text-xs text-slate-500">Idade {String(p.idade ?? '—')} · cabelo {String(p.cabelo ?? '—')} · {String(p.preferencias ?? 'sem preferências')}</p>
+          )}
           {d.anuncio ? <p className="text-xs font-medium text-violet-800">📣 Veio do anúncio {d.anuncio.nome ?? d.anuncio.headline ?? d.anuncio.ad_id}{d.anuncio.campanha ? ` (campanha ${d.anuncio.campanha}${d.anuncio.conjunto ? ` › conjunto ${d.anuncio.conjunto}` : ''})` : ''}{p.meta_purchase_enviado_em ? ' · ✅ Purchase na Meta' : p.meta_erro ? ` · ⚠️ Meta: ${String(p.meta_erro).slice(0, 80)}` : ''}</p> : <p className="text-xs text-slate-400">🌱 Orgânico</p>}
           {p.forma_pagamento === 'hotmart' && p.hotmart_transacao ? <p className="text-xs font-medium text-sky-800">🌎 Pago via Hotmart · transação {String(p.hotmart_transacao)} · {reais(p.valor_pago_cents, p.moeda)}</p> : null}
           <p className="text-xs text-slate-500">Pago {reais(p.valor_pago_cents, p.moeda)} em {hora(p.pago_em)} ({String(p.pago_por ?? '—')}) · motor {p.motor === 'api_gemini' ? '🤖 API (Gemini)' : '💻 ChatGPT site'} · custo IA US$ {Number(p.custo_ia_usd ?? 0).toFixed(3)}</p>
@@ -129,11 +133,13 @@ function DetalhePedido({ id, onMudou }: { id: string; onMudou: () => void }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {([['Rosto', d.fotos.rosto], ['Corpo', d.fotos.corpo], ['Comprovante', d.fotos.comprovante]] as const).map(([t, u]) => (
+      <div className={`grid gap-2 ${d.casal ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-3'}`}>
+        {((d.casal
+          ? [[`Rosto · ${String(p.cliente_nome ?? 'pessoa 1')}`, d.fotos.rosto], [`Corpo · ${String(p.cliente_nome ?? 'pessoa 1')}`, d.fotos.corpo], [`Rosto · ${d.casal.pessoa2_nome ?? 'pessoa 2'}`, d.fotos.rosto2 ?? null], [`Corpo · ${d.casal.pessoa2_nome ?? 'pessoa 2'}`, d.fotos.corpo2 ?? null], ['Comprovante', d.fotos.comprovante]]
+          : [['Rosto', d.fotos.rosto], ['Corpo', d.fotos.corpo], ['Comprovante', d.fotos.comprovante]]) as [string, string | null][]).map(([t, u]) => (
           <a key={t} href={u ?? undefined} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {u ? <img src={u} alt={t} className="aspect-[4/5] w-full object-cover" /> : <div className="flex aspect-[4/5] items-center justify-center text-xs text-slate-400">sem {t.toLowerCase()}</div>}
+            {u ? <img src={u} alt={t} className="aspect-[4/5] w-full object-cover" /> : <div className="flex aspect-[4/5] items-center justify-center p-1 text-center text-xs text-slate-400">sem {t.toLowerCase()}</div>}
             <p className="px-2 py-1 text-[11px] text-slate-600">{t}</p>
           </a>
         ))}
@@ -257,7 +263,7 @@ function FotosRecebidas({ id, versao, onMudou }: { id: string; versao: number; o
     return () => { vivo = false }
   }, [id, versao])
   if (!r || (r.fotos.length === 0 && !r.error)) return null
-  const usar = async (path: string, papel: 'rosto' | 'corpo') => {
+  const usar = async (path: string, papel: 'rosto' | 'corpo' | 'rosto2' | 'corpo2') => {
     setErro(null)
     const x = await usarFotoComoEstudio(id, path, papel)
     if (!x.success) setErro(x.error ?? 'falhou'); else onMudou()
@@ -274,12 +280,16 @@ function FotosRecebidas({ id, versao, onMudou }: { id: string; versao: number; o
             <a href={f.url ?? undefined} target="_blank" rel="noreferrer" className="relative block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {f.url ? <img src={f.url} alt={f.tipo} className="aspect-[4/5] w-full object-cover" /> : <div className="aspect-[4/5] bg-slate-100" />}
-              {f.papel && <span className="absolute left-1 top-1 rounded bg-violet-600 px-1 text-[10px] font-bold text-white">{f.papel === 'rosto' ? 'ROSTO' : 'CORPO'}</span>}
+              {f.papel && <span className="absolute left-1 top-1 rounded bg-violet-600 px-1 text-[10px] font-bold text-white">{({ rosto: 'ROSTO', corpo: 'CORPO', rosto2: 'ROSTO 2', corpo2: 'CORPO 2' })[f.papel]}</span>}
+              {r.casal && !f.papel && (f.extra ? <span className="absolute left-1 top-1 rounded bg-sky-600 px-1 text-[10px] font-bold text-white">OS DOIS</span>
+                : <span className="absolute left-1 top-1 rounded bg-slate-700 px-1 text-[10px] font-bold text-white">{f.pessoa === 1 ? 'pessoa 1' : f.pessoa === 2 ? 'pessoa 2' : 'de quem?'}</span>)}
             </a>
             <p className="px-1.5 pt-1 text-[10px] text-slate-500" title={f.motivo ?? ''}>{rotulo[f.tipo] ?? f.tipo}{f.motivo ? ` · ${f.motivo}` : ''}</p>
-            <div className="flex gap-1 p-1">
-              <button onClick={() => void usar(f.path, 'rosto')} disabled={f.papel === 'rosto'} className="flex-1 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">usar como rosto</button>
-              <button onClick={() => void usar(f.path, 'corpo')} disabled={f.papel === 'corpo'} className="flex-1 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">usar como corpo</button>
+            <div className={`grid gap-1 p-1 ${r.casal ? 'grid-cols-2' : 'grid-cols-2'}`}>
+              <button onClick={() => void usar(f.path, 'rosto')} disabled={f.papel === 'rosto'} className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">{r.casal ? 'rosto 1' : 'usar como rosto'}</button>
+              <button onClick={() => void usar(f.path, 'corpo')} disabled={f.papel === 'corpo'} className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">{r.casal ? 'corpo 1' : 'usar como corpo'}</button>
+              {r.casal && <button onClick={() => void usar(f.path, 'rosto2')} disabled={f.papel === 'rosto2'} className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">rosto 2</button>}
+              {r.casal && <button onClick={() => void usar(f.path, 'corpo2')} disabled={f.papel === 'corpo2'} className="rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-700 disabled:opacity-40">corpo 2</button>}
             </div>
           </div>
         ))}

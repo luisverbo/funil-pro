@@ -44,7 +44,7 @@ const tests: Record<string, () => void> = {
     assert.ok(sql.includes("('estudio-clientes', 'estudio-clientes', false)"))
     assert.ok(sql.includes("('estudio-entregas', 'estudio-entregas', false)"))
     assert.ok(sql.includes("('estudio-catalogo', 'estudio-catalogo', true)"))
-    assert.deepEqual(caminhosDaCliente('abc'), { rosto: 'abc/rosto.jpg', corpo: 'abc/corpo.jpg' })
+    assert.deepEqual(caminhosDaCliente('abc'), { rosto: 'abc/rosto.jpg', corpo: 'abc/corpo.jpg', rosto2: 'abc/rosto2.jpg', corpo2: 'abc/corpo2.jpg' })
     assert.equal(caminhoExemplo('aniversario', '01'), 'aniversario/01.jpg')
   },
   'segurança: RLS ligado e nada legível pela chave pública': () => {

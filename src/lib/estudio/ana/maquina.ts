@@ -12,11 +12,14 @@
 //         prévia grátis: previa_fotos → volta para onde estava
 // ============================================================================
 import type { IdiomaAna } from './textos'
+import type { ResumoCasal } from './fotos'
+import { PEDE_CASAL, nomesDoCasal, idadesDoCasal, faltaDoCasal, juntar } from './casal'
 
 export type Etapa =
   | 'inicio' | 'nome' | 'tema' | 'idade_sensual' | 'pacote' | 'fotos_poses'
   | 'idade_prefs' | 'aguardando_pagamento' | 'conferindo' | 'pago' | 'entregue' | 'ajuste_detalhe'
   | 'previa_fotos' | 'humano'
+  | 'casal_nomes'            // casal: nome do(a) parceiro(a) antes das fotos
 
 export interface Dados {
   nome?: string
@@ -28,6 +31,13 @@ export interface Dados {
   tem_rosto?: boolean
   tem_corpo?: boolean
   idade?: number
+  /** Tema de DUAS pessoas (casal): 4 fotos, nome/idade da pessoa 2. */
+  casal?: boolean
+  pessoa2_nome?: string
+  pessoa2_idade?: number
+  pessoa2_cabelo?: string | null
+  tem_rosto2?: boolean
+  tem_corpo2?: boolean
   cabelo?: string | null
   preferencias?: string | null
   previa_oferecida?: boolean
@@ -86,7 +96,7 @@ export interface Entrada {
   /** Resultado da conferência da foto (o executor roda a visão antes). */
   foto?: 'ok' | 'ruim' | 'recusada'
   /** Fotos novas desta vez (o executor classifica e guarda TODAS antes). */
-  fotos?: { novas: number; invalida?: string | null; recusada?: boolean; comprovante?: boolean }
+  fotos?: { novas: number; invalida?: string | null; recusada?: boolean; comprovante?: boolean; /** casal: fotos que a cliente acabou de dizer de quem são */ atribuidas?: number; /** casal: foto dos dois juntos (vira referência extra) */ juntos?: boolean }
   /** Preferências extraídas pela IA da resposta (campos separados). */
   prefs?: { maquiagem: boolean | null; decote: boolean | null; cores_acessorios: string | null; idade: number | null; cabelo_mudar: string | null } | null
 }
@@ -104,7 +114,9 @@ export interface Contexto {
   /** Pós-entrega do pedido atual (Fase 5). */
   entrega?: { pode_ajustar: boolean; poses: string[]; upsell_qtd: number; upsell_valor_cents: number; moeda: string }
   /** Fotos que a cliente JÁ mandou (todas, classificadas) — vale em qualquer etapa. */
-  fotos?: { tem_rosto: boolean; tem_corpo: boolean; rosto_recortado: boolean; unica: boolean }
+  fotos?: { tem_rosto: boolean; tem_corpo: boolean; rosto_recortado: boolean; unica: boolean; /** casal: o que cada pessoa já tem */ casal?: ResumoCasal }
+  /** Sujeito do tema em estudio_temas ('mulher' | 'casal' …). */
+  sujeitoDoTema?: (slug: string) => string | null | undefined
   /** A pose (tema + número) mostra a idade da cliente na cena (número/velas)? */
   poseLevaIdade?: (slug: string, numero: string) => boolean
   /** Nome do perfil do WhatsApp (a Ana não pergunta o nome quando dá para usar). */
@@ -155,14 +167,22 @@ const TEMAS_PALAVRAS: [string, RegExp][] = [
   ['corporativo', /corpor|empresa|linkedin|profissional|profesional|business/],
   ['casual', /casual|dia a dia|lifestyle/],
   ['sensual', /sensual|sexy|boudoir|lingerie/],
+  ['casal', PEDE_CASAL],   // só vale se o tema casal estiver ATIVO; senão cai em "em breve"
 ]
+const ORDEM_FIXA = ['aniversario', 'corporativo', 'casual', 'sensual']
 const OUTROS_TEMAS = /\b(casal|couple|pareja|namorad|infantil|crianc|nino|nina|kid|child|bebe|baby|pet|cachorr|perro|dog|gat[oa]|cat\b|casamento|boda|wedding|noiva|country|gestante|gravida|embaraz|pregnan|familia|family)/
+
+/** Ordem do menu: os 4 do lançamento primeiro, depois os outros ativos (casal = 5) na ordem do banco. */
+export function ordemDosTemas(ativos: string[]): string[] {
+  return [...ORDEM_FIXA.filter(t => ativos.includes(t)), ...ativos.filter(t => !ORDEM_FIXA.includes(t))]
+}
 
 export function temaDoTexto(texto: string, ativos: string[]): { tema: string } | { outro: true } | null {
   const n = numeroDaOpcao(texto)
-  const ordem = ['aniversario', 'corporativo', 'casual', 'sensual'].filter(t => ativos.includes(t))
+  const ordem = ordemDosTemas(ativos)
   if (n !== null) return n >= 1 && n <= ordem.length ? { tema: ordem[n - 1] } : null
   const t = sem(texto)
+  // "casal" sem "casual": a palavra inteira (TEMAS_PALAVRAS do casual não casa "casal").
   for (const [slug, re] of TEMAS_PALAVRAS) if (re.test(t) && ativos.includes(slug)) return { tema: slug }
   if (OUTROS_TEMAS.test(t)) return { outro: true }
   return null
@@ -327,15 +347,44 @@ const FALTA: Record<IdiomaAna, { rosto: string; corpo: string; ambas: string }> 
   en: { rosto: 'the face photo', corpo: 'the full-body photo', ambas: 'the 2 photos (face and full body)' },
 }
 
-function explicarTema(tema: string): Acao[] {
+function explicarTema(tema: string, casal = false): Acao[] {
   // Menos é mais (Supervisor): 1 áudio de explicação, o catálogo e a tabela.
   // As 2 fotos (A3) são pedidas na hora certa, depois do pacote.
+  // Casal: o áudio A2 do casal (enquanto não existir, sai o texto) explica que são os DOIS na foto.
   return [
-    { t: 'audio', chave: 'a2' },
+    { t: 'audio', chave: casal ? 'a2_casal' : 'a2' },
     { t: 'catalogo', tema },
     { t: 'texto', chave: 'tabela_precos' },
   ]
 }
+
+/** O tema escolhido é de casal? (sujeito do tema no banco; o slug "casal" vale sem consulta) */
+function temaEhCasal(tema: string | undefined, ctx: Contexto): boolean {
+  return !!tema && (tema === 'casal' || ctx.sujeitoDoTema?.(tema) === 'casal')
+}
+
+/** Escolheu um tema: zera o que é do tema anterior (fotos continuam valendo). */
+function escolherTema(d: Dados, tema: string, ctx: Contexto) {
+  d.tema = tema
+  d.casal = temaEhCasal(tema, ctx)
+  if (!d.casal) { d.pessoa2_nome = undefined; d.pessoa2_idade = undefined; d.tem_rosto2 = undefined; d.tem_corpo2 = undefined }
+}
+
+/** Casal: as 4 fotos (rosto + corpo de cada um) já chegaram? */
+function casalCompleto(d: Dados): boolean { return !!d.tem_rosto && !!d.tem_corpo && !!d.tem_rosto2 && !!d.tem_corpo2 }
+
+/** Copia o estado das fotos (ctx) para os dados, pessoa 1 e, no casal, pessoa 2. */
+function lerFotos(d: Dados, ctx: Contexto) {
+  if (d.casal && ctx.fotos?.casal) {
+    const c = ctx.fotos.casal
+    d.tem_rosto = c.p1.rosto; d.tem_corpo = c.p1.corpo; d.tem_rosto2 = c.p2.rosto; d.tem_corpo2 = c.p2.corpo; d.rosto_recortado = c.rosto_recortado
+  } else {
+    d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo; d.rosto_recortado = !!ctx.fotos?.rosto_recortado
+  }
+}
+
+/** Fotos completas para fechar (casal = 4; individual = 2). */
+function fotosCompletas(d: Dados): boolean { return d.casal ? casalCompleto(d) : !!d.tem_rosto && !!d.tem_corpo }
 
 export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Contexto): Resultado {
   const d: Dados = { ...dadosIn }
@@ -420,11 +469,11 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
     d.poses_antes_previa = d.poses ?? []
-    // Já tem as 2 fotos: só falta escolher 1 pose.
-    const temFotos = !!ctx.fotos?.tem_rosto && !!ctx.fotos?.tem_corpo
-    if (temFotos) { d.tem_rosto = true; d.tem_corpo = true }
+    // Já tem as fotos (casal: as 4): só falta escolher 1 pose.
+    lerFotos(d, ctx)
+    const temFotos = fotosCompletas(d)
     // As fotos chegaram ANTES de existir o pedido da prévia: copia para ele já.
-    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, ...(temFotos ? [{ t: 'fotos_escolher' } as Acao] : []), { t: 'texto', chave: temFotos ? 'previa_pede_pose' : 'previa_pede_fotos' }])
+    return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, ...(temFotos ? [{ t: 'fotos_escolher' } as Acao] : []), { t: 'texto', chave: temFotos ? 'previa_pede_pose' : d.casal ? 'casal_previa_pede_fotos' : 'previa_pede_fotos' }])
   }
 
   // Prévia oferecida e a cliente responde MANDANDO A FOTO: é o "sim" — já começa a prévia.
@@ -435,8 +484,9 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
     d.etapa_antes_previa = etapa
     d.previa_oferecida = false
     d.poses_antes_previa = d.poses ?? []
-    d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo; d.rosto_recortado = !!ctx.fotos?.rosto_recortado
-    const pronta = d.tem_rosto && d.tem_corpo
+    lerFotos(d, ctx)
+    const pronta = fotosCompletas(d)
+    if (d.casal && !pronta) return fim('previa_fotos', [{ t: 'criar_pedido', tipo: 'previa' }, { t: 'fotos_escolher' }, ...oQueFalta(d, 1, ctx).slice(0, 1)])
     return fim('previa_fotos', [
       { t: 'criar_pedido', tipo: 'previa' }, { t: 'fotos_escolher' },
       // Falta uma das fotos: diz qual (a pose é pedida quando as 2 chegarem).
@@ -446,9 +496,11 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
 
   // Foto fora da etapa das fotos: o executor já guardou e classificou; aqui
   // só segue a pergunta da etapa atual (não vai pedir de novo depois).
-  if (['imagem', 'video', 'documento', 'figurinha'].includes(e.tipo) && ['nome', 'tema', 'idade_sensual', 'pacote'].includes(etapa)) {
+  if (['imagem', 'video', 'documento', 'figurinha'].includes(e.tipo) && ['nome', 'tema', 'idade_sensual', 'pacote', 'casal_nomes'].includes(etapa)) {
     // Foto antes da hora: guarda (o executor já classificou) e diz o que recebeu, sem perder o passo.
-    if (e.tipo === 'imagem' && (e.fotos?.novas ?? 0) > 0 && !e.fotos?.recusada && !e.fotos?.invalida) {
+    if (e.tipo === 'imagem' && (e.fotos?.novas ?? 0) > 0 && !e.fotos?.recusada && (!e.fotos?.invalida || e.fotos?.juntos)) {
+      // Casal: só diz que guardou (de quem é cada uma, ela diz na hora das fotos).
+      if (d.casal) return fim(etapa, [{ t: 'texto', chave: e.fotos?.juntos ? 'casal_foto_juntos' : 'casal_foto_guardada' }, ...lembreteCurto(etapa, d)])
       const f = ctx.fotos
       const chave = f?.tem_rosto && f?.tem_corpo && !f.rosto_recortado ? 'foto_cedo_ambas' : f?.tem_rosto && !f?.tem_corpo ? 'foto_cedo_rosto' : 'foto_cedo_corpo'
       return fim(etapa, [{ t: 'texto', chave }, ...lembreteCurto(etapa, d)])
@@ -477,18 +529,20 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
 
     case 'tema': {
       const r = e.tipo === 'texto' ? temaDoTexto(txt, ctx.temasAtivos) : null
-      if (!r) return fim('tema', ia('tema', d, 'a cliente escolher um dos 4 temas (1 a 4)'))
+      if (!r) return fim('tema', ia('tema', d, `a cliente escolher um dos ${ctx.temasAtivos.length} temas (1 a ${ctx.temasAtivos.length})`))
       if ('outro' in r) return fim('tema', [{ t: 'texto', chave: 'outro_tema' }])
-      d.tema = r.tema
+      escolherTema(d, r.tema, ctx)
       if (r.tema === 'sensual' && !(d.idade && d.idade >= 18)) return fim('idade_sensual', [{ t: 'texto', chave: 'sensual_idade' }])
-      return fim('pacote', explicarTema(r.tema))
+      // Casal pedido por texto ("eu e meu marido"): confirma que são os DOIS na foto.
+      const abre: Acao[] = d.casal && numeroDaOpcao(txt) === null ? [{ t: 'texto', chave: 'casal_que_lindo' }] : []
+      return fim('pacote', [...abre, ...explicarTema(r.tema, d.casal)])
     }
 
     case 'idade_sensual': {
       const idade = e.tipo === 'texto' ? idadeDoTexto(txt) : null
       if (idade === null) return fim('idade_sensual', [{ t: 'texto', chave: 'idade_falta' }])
       d.idade = idade
-      if (idade < 18) { d.tema = undefined; return fim('tema', [{ t: 'texto', chave: 'sensual_menor' }]) }
+      if (idade < 18) { d.tema = undefined; d.casal = false; return fim('tema', [{ t: 'texto', chave: 'sensual_menor' }]) }
       return fim('pacote', explicarTema('sensual'))
     }
 
@@ -496,9 +550,9 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       // Pode querer trocar de tema antes de escolher o pacote.
       const trocaTema = e.tipo === 'texto' && numeroDaOpcao(txt) === null ? temaDoTexto(txt, ctx.temasAtivos) : null
       if (trocaTema && 'tema' in trocaTema && trocaTema.tema !== d.tema) {
-        d.tema = trocaTema.tema
+        escolherTema(d, trocaTema.tema, ctx)
         if (trocaTema.tema === 'sensual' && !(d.idade && d.idade >= 18)) return fim('idade_sensual', [{ t: 'texto', chave: 'sensual_idade' }])
-        return fim('pacote', explicarTema(trocaTema.tema))
+        return fim('pacote', [...(d.casal ? [{ t: 'texto', chave: 'casal_que_lindo' } as Acao] : []), ...explicarTema(trocaTema.tema, d.casal)])
       }
       // Esperando o "sim" do pacote entendido com dúvida.
       let p: Preco | null = null
@@ -534,11 +588,23 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       // Poses que ela já mandou antes de escolher o pacote continuam valendo.
       d.poses = (d.poses_cedo ?? []).slice(0, p.pacote_qtd); d.poses_cedo = undefined
       // Fotos que ela já mandou antes continuam valendo (não pede de novo).
-      d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo
-      const jaTemFotos = d.tem_rosto && d.tem_corpo
+      lerFotos(d, ctx)
+      const jaTemFotos = fotosCompletas(d)
       // Escolheu o pacote = já recebe o pagamento (Pix ou link), junto do pedido das fotos/poses.
       const pagamento = acoesDePagamento(d, ctx)
       if (pagamento.length) d.pagamento_enviado = true
+      // Casal: antes das fotos, o nome do(a) parceiro(a) (e o dela, se ainda não souber).
+      if (d.casal && !d.pessoa2_nome) {
+        return fim('casal_nomes', [{ t: 'criar_pedido', tipo: 'pacote' }, { t: 'texto', chave: d.nome ? 'casal_pede_nome_parceiro' : 'casal_pede_nomes' }, ...pagamento])
+      }
+      if (d.casal) {
+        return fim('fotos_poses', [
+          { t: 'criar_pedido', tipo: 'pacote' },
+          ...(jaTemFotos ? [{ t: 'fotos_escolher' } as Acao, { t: 'texto', chave: 'pede_poses', vars: { qtd: p.pacote_qtd } } as Acao]
+            : [{ t: 'texto', chave: 'casal_pede_fotos_poses', vars: { qtd: p.pacote_qtd, pessoa2: d.pessoa2_nome ?? '' } } as Acao, { t: 'texto', chave: 'catalogo_de_novo' } as Acao]),
+          ...pagamento,
+        ])
+      }
       return fim('fotos_poses', [
         { t: 'criar_pedido', tipo: 'pacote' },
         ...(jaTemFotos ? [{ t: 'fotos_escolher' } as Acao, { t: 'texto', chave: 'pede_poses', vars: { qtd: p.pacote_qtd } } as Acao]
@@ -547,6 +613,19 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         ...(jaTemFotos ? [] : [{ t: 'texto', chave: 'catalogo_de_novo' } as Acao]),
         ...pagamento,
       ])
+    }
+
+    case 'casal_nomes': {
+      if (e.tipo !== 'texto') return fim('casal_nomes', repetirPergunta('casal_nomes', d))
+      const n = nomesDoCasal(txt, d.nome)
+      if (n.p1 && !d.nome) d.nome = n.p1
+      if (!n.p2) return fim('casal_nomes', ia('casal_nomes', d, 'saber o nome do(a) parceiro(a) da cliente (os dois aparecem na foto)'))
+      d.pessoa2_nome = n.p2
+      lerFotos(d, ctx)
+      const qtd = d.pacote_qtd ?? 0
+      const acoes: Acao[] = [{ t: 'atualizar_pedido' }, { t: 'texto', chave: 'casal_nomes_ok', vars: { pessoa2: n.p2 } }]
+      if (fotosCompletas(d)) return seguirColeta('fotos_poses', d, [...acoes, { t: 'fotos_escolher' }], ctx, false)
+      return fim('fotos_poses', [...acoes, { t: 'texto', chave: 'casal_pede_fotos_poses', vars: { qtd, pessoa2: n.p2 } }, { t: 'texto', chave: 'catalogo_de_novo' }])
     }
 
     case 'fotos_poses':
@@ -592,7 +671,20 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         if (fica) { d.troca_pacote = undefined; return seguirColeta(etapa, d, acoes, ctx, previa) }
       }
 
-      if (e.tipo === 'imagem') {
+      // Casal: foto nova OU resposta "essa é minha / do João" (o executor já atribuiu).
+      if (d.casal && (e.tipo === 'imagem' || (e.fotos?.atribuidas ?? 0) > 0)) {
+        const antes = { r1: !!d.tem_rosto, c1: !!d.tem_corpo, r2: !!d.tem_rosto2, c2: !!d.tem_corpo2 }
+        lerFotos(d, ctx)
+        const mudou = antes.r1 !== !!d.tem_rosto || antes.c1 !== !!d.tem_corpo || antes.r2 !== !!d.tem_rosto2 || antes.c2 !== !!d.tem_corpo2
+        if (mudou) acoes.push({ t: 'fotos_escolher' })
+        if (e.fotos?.juntos) acoes.push({ t: 'texto', chave: 'casal_foto_juntos' })
+        else if (e.fotos?.recusada && !casalCompleto(d)) return fim(etapa, [...acoes, { t: 'texto', chave: 'casal_foto_recusada' }])
+        else if (e.fotos?.invalida && !mudou && !(ctx.fotos?.casal?.sem_dono)) return fim(etapa, [...acoes, { t: 'texto', chave: 'foto_ruim', vars: { motivo: e.fotos.invalida } }])
+        if (casalCompleto(d) && mudou) acoes.push({ t: 'texto', chave: 'casal_fotos_ok', vars: { pessoa2: d.pessoa2_nome ?? '' } })
+        // Sem número de pose junto: o que falta (ou "essa é de quem?") sai em seguirColeta.
+        const numsCasal = txt && !(e.tipo === 'imagem' && txt.startsWith('[')) ? posesDoTexto(txt) : []
+        if (!numsCasal.length) return seguirColeta(etapa, d, acoes, ctx, previa)
+      } else if (e.tipo === 'imagem') {
         const antes = { rosto: !!d.tem_rosto, corpo: !!d.tem_corpo }
         d.tem_rosto = !!ctx.fotos?.tem_rosto; d.tem_corpo = !!ctx.fotos?.tem_corpo; d.rosto_recortado = !!ctx.fotos?.rosto_recortado
         if (e.fotos?.recusada && !(d.tem_rosto && d.tem_corpo)) return fim(etapa, [{ t: 'texto', chave: 'foto_recusada' }])
@@ -627,7 +719,9 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
           } else d.poses = juntas
         }
       } else if (e.tipo === 'texto' && txt) {
-        acoes.push(...ia(etapa, d, `receber as 2 fotos e os números de ${qtd} pose(s)`))
+        acoes.push(...ia(etapa, d, d.casal
+          ? `receber as 4 fotos do casal (rosto e corpo inteiro de ${d.nome || 'ela'} e de ${d.pessoa2_nome || 'parceiro/a'}, cada foto com uma pessoa só) e os números de ${qtd} pose(s) do catálogo de casal`
+          : `receber as 2 fotos e os números de ${qtd} pose(s)`, ctx))
         return fim(etapa, acoes)
       }
 
@@ -640,12 +734,14 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
       if (!pergunta) return fechar(d, [{ t: 'atualizar_pedido' }], ctx)
       const comprov = comprovanteNaColeta(etapa, d, e, ctx)
       if (comprov) return fim('idade_prefs', comprov)
-      if (e.tipo !== 'texto') return fim('idade_prefs', [{ t: 'texto', chave: pergunta }])
+      const pv = (k: string): Acao => ({ t: 'texto', chave: k, vars: { pessoa2: d.pessoa2_nome ?? '' } })
+      if (e.tipo !== 'texto') return fim('idade_prefs', [pv(pergunta)])
       const capt = aplicarPreferencias(d, pergunta, txt, e.prefs ?? null)
-      if (d.idade !== undefined && d.idade !== null && d.idade < 18) return fim('humano', [{ t: 'texto', chave: 'foto_recusada' }, { t: 'humano', motivo: `cliente informou idade ${d.idade}` }])
-      if (!capt) return fim('idade_prefs', [{ t: 'texto', chave: pergunta === 'pref_idade' ? 'idade_falta' : pergunta }])
+      const menor = [d.idade, d.pessoa2_idade].find(i => i !== undefined && i !== null && i < 18)
+      if (menor !== undefined) return fim('humano', [{ t: 'texto', chave: 'foto_recusada' }, { t: 'humano', motivo: `cliente informou idade ${menor}` }])
+      if (!capt) return fim('idade_prefs', [pv(pergunta === 'pref_idade' ? 'idade_falta' : pergunta)])
       const prox = proximaPreferencia(d)
-      if (prox) return fim('idade_prefs', [{ t: 'atualizar_pedido' }, { t: 'texto', chave: prox }])
+      if (prox) return fim('idade_prefs', [{ t: 'atualizar_pedido' }, pv(prox)])
       return fechar(d, [{ t: 'atualizar_pedido' }], ctx)
     }
 
@@ -677,6 +773,7 @@ export function proximoPasso(etapa: Etapa, dadosIn: Dados, e: Entrada, ctx: Cont
         d.upsell_oferecido = false
         d.pacote_qtd = ent.upsell_qtd; d.valor_cents = ent.upsell_valor_cents; d.moeda = ent.moeda
         d.poses = []; d.tem_rosto = true; d.tem_corpo = true
+        if (d.casal) { d.tem_rosto2 = true; d.tem_corpo2 = true }
         return fim('fotos_poses', [{ t: 'upsell' }, { t: 'texto', chave: 'upsell_poses', vars: { qtd: ent.upsell_qtd } }])
       }
       const nums = fotosCitadas(txt, ent.poses)
@@ -757,7 +854,7 @@ function comprovanteNaColeta(etapa: Etapa, d: Dados, e: Entrada, ctx: Contexto):
 function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, previa: boolean): Resultado {
   const qtd = previa ? 1 : (d.pacote_qtd ?? 0)
   // A frase da foto ("Recebi a do rosto ✅ Falta só a de corpo") já diz o que falta de foto.
-  const jaDisseFoto = acoes.some(a => a.t === 'texto' && ['foto_rosto_ok', 'foto_so_corpo'].includes(a.chave))
+  const jaDisseFoto = acoes.some(a => a.t === 'texto' && ['foto_rosto_ok', 'foto_so_corpo', 'casal_foto_juntos', 'casal_foto_recusada'].includes(a.chave))
   const faltaReal = oQueFalta(d, qtd, ctx)
   const falta = faltaReal.filter(a => !(jaDisseFoto && a.t === 'texto' && a.chave === 'lembrete_fotos'))
   if (faltaReal.length) return { etapa, dados: d, acoes: [...acoes, ...falta] }
@@ -787,7 +884,7 @@ function seguirColeta(etapa: Etapa, d: Dados, acoes: Acao[], ctx: Contexto, prev
   // Toda transição já manda a pergunta da etapa nova (preferências, uma por vez).
   const prox = proximaPreferencia(d)
   if (!prox) return fechar(d, acoes, ctx)
-  return { etapa: 'idade_prefs', dados: d, acoes: [...acoes, { t: 'texto', chave: prox }] }
+  return { etapa: 'idade_prefs', dados: d, acoes: [...acoes, { t: 'texto', chave: prox, vars: { pessoa2: d.pessoa2_nome ?? '' } }] }
 }
 
 function fechar(d: Dados, acoes: Acao[], ctx: Contexto): Resultado {
@@ -813,9 +910,12 @@ export function repetirPergunta(etapa: Etapa, d: Dados): Acao[] {
     case 'tema': return [{ t: 'texto', chave: 'menu', vars: { nome: d.nome ?? '' } }]
     case 'idade_sensual': return [{ t: 'texto', chave: 'sensual_idade' }]
     case 'pacote': return [{ t: 'texto', chave: 'tabela_precos' }]
-    case 'fotos_poses': return [{ t: 'texto', chave: 'pede_fotos_poses', vars: { qtd: d.pacote_qtd ?? '' } }]
-    case 'previa_fotos': return [{ t: 'texto', chave: 'previa_pede_fotos' }]
-    case 'idade_prefs': { const p = proximaPreferencia(d); return p ? [{ t: 'texto', chave: p }] : [] }
+    case 'casal_nomes': return [{ t: 'texto', chave: d.nome ? 'casal_pede_nome_parceiro' : 'casal_pede_nomes' }]
+    case 'fotos_poses': return d.casal
+      ? [{ t: 'texto', chave: 'casal_pede_fotos_poses', vars: { qtd: d.pacote_qtd ?? '', pessoa2: d.pessoa2_nome ?? '' } }]
+      : [{ t: 'texto', chave: 'pede_fotos_poses', vars: { qtd: d.pacote_qtd ?? '' } }]
+    case 'previa_fotos': return [{ t: 'texto', chave: d.casal ? 'casal_previa_pede_fotos' : 'previa_pede_fotos' }]
+    case 'idade_prefs': { const p = proximaPreferencia(d); return p ? [{ t: 'texto', chave: p, vars: { pessoa2: d.pessoa2_nome ?? '' } }] : [] }
     case 'aguardando_pagamento': return [{ t: 'texto', chave: 'pede_comprovante' }]
     default: return []
   }
@@ -831,6 +931,7 @@ export function lembreteDaEtapa(etapa: Etapa, d: Dados, ctx?: Contexto): Acao[] 
     case 'nome': return [{ t: 'texto', chave: 'lembrete_nome' }]
     case 'tema': return [{ t: 'texto', chave: 'lembrete_tema' }]
     case 'pacote': return [{ t: 'texto', chave: 'pacote_de_novo' }]
+    case 'casal_nomes': return repetirPergunta(etapa, d)
     case 'fotos_poses': case 'previa_fotos': {
       const qtd = etapa === 'previa_fotos' ? 1 : (d.pacote_qtd ?? 0)
       return oQueFalta(d, qtd, ctx).slice(0, 1)
@@ -846,6 +947,7 @@ export function lembreteDaEtapa(etapa: Etapa, d: Dados, ctx?: Contexto): Acao[] 
 /** O que ainda falta nas fotos/poses — SEMPRE uma pergunta clara (nunca para calado). */
 function oQueFalta(d: Dados, qtd: number, ctx?: Contexto): Acao[] {
   const poses = d.poses ?? []
+  if (d.casal) return oQueFaltaCasal(d, qtd, ctx)
   const f = FALTA[ctx?.idioma ?? 'pt-BR']
   const faltaFoto = !d.tem_rosto && !d.tem_corpo ? f.ambas : !d.tem_rosto ? f.rosto : !d.tem_corpo ? f.corpo : null
   if (faltaFoto && poses.length >= qtd) return [{ t: 'texto', chave: 'falta_foto', vars: { faltam: faltaFoto } }]
@@ -856,10 +958,35 @@ function oQueFalta(d: Dados, qtd: number, ctx?: Contexto): Acao[] {
   return []
 }
 
+/** Casal: 1) foto sem dono → "essa é de quem?"; 2) as 4 fotos (lista do que falta); 3) poses. */
+function oQueFaltaCasal(d: Dados, qtd: number, ctx?: Contexto): Acao[] {
+  const poses = d.poses ?? []
+  const idioma = ctx?.idioma ?? 'pt-BR'
+  const nomes = { p1: d.nome, p2: d.pessoa2_nome }
+  const semDono = ctx?.fotos?.casal?.sem_dono ?? 0
+  if (semDono > 0) return [{ t: 'texto', chave: semDono === 1 ? 'casal_foto_de_quem' : 'casal_fotos_de_quem', vars: { n: semDono, pessoa2: d.pessoa2_nome ?? '' } }]
+  const faltam = faltaDoCasal({ p1: { rosto: !!d.tem_rosto, corpo: !!d.tem_corpo }, p2: { rosto: !!d.tem_rosto2, corpo: !!d.tem_corpo2 } }, nomes, idioma)
+  const lista = juntar(faltam, idioma)
+  if (faltam.length && poses.length >= qtd) return [{ t: 'texto', chave: 'casal_falta_fotos', vars: { faltam: lista } }]
+  if (!faltam.length && poses.length === 0) return [{ t: 'texto', chave: 'pede_poses', vars: { qtd } }]
+  if (!faltam.length && poses.length < qtd) return [{ t: 'texto', chave: 'poses_faltam', vars: { poses: poses.join(', '), faltam: qtd - poses.length } }]
+  if (faltam.length && poses.length > 0) return [{ t: 'texto', chave: 'poses_faltam', vars: { poses: poses.join(', '), faltam: qtd - poses.length } }, { t: 'texto', chave: 'casal_falta_fotos', vars: { faltam: lista } }]
+  if (faltam.length) return [{ t: 'texto', chave: 'casal_falta_fotos', vars: { faltam: lista } }]
+  return []
+}
+
 // ── Preferências: perguntas curtas, uma por vez ─────────────────────────────
 
 export const PREFS_ORDEM = ['pref_maquiagem', 'pref_decote', 'pref_cores', 'pref_idade'] as const
-export function proximaPreferencia(d: Dados): (typeof PREFS_ORDEM)[number] | null {
+/** Casal: roupas/cores dos dois numa pergunta só, depois as duas idades (maquiagem fica natural, decote discreto). */
+export const PREFS_CASAL = ['casal_pref_roupas', 'casal_pref_idades', 'casal_pref_idade2'] as const
+export function proximaPreferencia(d: Dados): (typeof PREFS_ORDEM)[number] | (typeof PREFS_CASAL)[number] | null {
+  if (d.casal) {
+    if (d.cores === undefined) return 'casal_pref_roupas'
+    if (!d.idade) return 'casal_pref_idades'
+    if (!d.pessoa2_idade) return 'casal_pref_idade2'
+    return null
+  }
   if (d.maquiagem === undefined || d.maquiagem === null) return 'pref_maquiagem'
   if (d.decote === undefined || d.decote === null) return 'pref_decote'
   if (d.cores === undefined) return 'pref_cores'
@@ -893,6 +1020,21 @@ const SIM_NAO = (t: string, alvo: 'maquiagem' | 'decote'): boolean | null => {
 export function aplicarPreferencias(d: Dados, pergunta: string, txt: string, prefs: Entrada['prefs']): boolean {
   let capt = false
   const set = <K extends keyof Dados>(k: K, v: Dados[K]) => { if (v !== null && v !== undefined) { d[k] = v; capt = true } }
+  if (d.casal) {
+    if (pergunta === 'casal_pref_roupas' && txt.trim()) {
+      const livre = /\b(pode escolher|voce escolhe|voces escolhem|tanto faz|qualquer|nao tenho|nenhum|nenhuma|nada|you choose|puedes elegir|da igual)\b/.test(sem(txt))
+      set('cores', livre ? 'a critério do estúdio' : txt.trim().slice(0, 300))
+    } else {
+      const i = idadesDoCasal(txt, { p1: d.nome, p2: d.pessoa2_nome })
+      if (pergunta === 'casal_pref_idade2' && i.idade1 && !i.idade2) set('pessoa2_idade', i.idade1)   // "35" sozinho = a idade que faltava
+      else { if (i.idade1 && !d.idade) set('idade', i.idade1); if (i.idade2) set('pessoa2_idade', i.idade2) }
+    }
+    d.preferencias = [
+      'maquiagem natural (se houver mulher) · decote discreto',
+      d.cores ? `roupas/cores do casal: ${d.cores}` : null,
+    ].filter(Boolean).join(' · ')
+    return capt
+  }
   if (prefs) {
     if (prefs.maquiagem !== null) set('maquiagem', prefs.maquiagem)
     if (prefs.decote !== null) set('decote', prefs.decote)
@@ -926,7 +1068,7 @@ export function semPerguntaPendente(etapa: Etapa, d: Dados): boolean {
   if (['pago', 'conferindo'].includes(etapa)) return true
   // Na venda, "ok"/👍 não responde nome/tema/pacote/poses: não repete a pergunta (evita ok ↔ Ana sem fim).
   // Pergunta de sim/não pendente (pacote a confirmar, prévia oferecida, pacote maior) → "ok" vale como SIM.
-  if (['nome', 'tema', 'pacote', 'fotos_poses', 'previa_fotos'].includes(etapa)) return !d.pacote_confirmar && !d.previa_oferecida && !d.troca_pacote
+  if (['nome', 'tema', 'pacote', 'fotos_poses', 'previa_fotos', 'casal_nomes'].includes(etapa)) return !d.pacote_confirmar && !d.previa_oferecida && !d.troca_pacote
   if (etapa === 'aguardando_pagamento') return true      // espera comprovante, não "ok"
   if (etapa === 'entregue') return !d.upsell_oferecido
   return false
@@ -989,7 +1131,7 @@ function mensagensDaRetomadaBase(chave: 'cobranca_1' | 'cobranca_2' | 'cobranca_
   const podePrevia = !!d.tema && !d.previa_feita
   if (chave === 'cobranca_1') {
     const k = pagamento ? 'rmk_pagamento'
-      : ['fotos_poses', 'idade_prefs', 'previa_fotos'].includes(etapa) ? 'rmk_coleta'
+      : ['fotos_poses', 'idade_prefs', 'previa_fotos', 'casal_nomes'].includes(etapa) ? 'rmk_coleta'
       : ['pacote', 'idade_sensual'].includes(etapa) ? 'rmk_pacote'
       : etapa === 'tema' ? 'rmk_tema' : 'cobranca_1'
     return { chaves: pagamento && pagaPelaHotmart(d) ? ['rmk_duvida', 'hotmart_lembrete'] : [k], oferecePrevia: false }
@@ -1041,6 +1183,11 @@ export function preferenciasVencidas(d: Dados, etapa: Etapa, pedidoPago: boolean
   if (agora - new Date(d.aguardando_desde).getTime() < MIN_PREFERENCIAS_PAGO * 60e3) return null
   const n: Dados = { ...d }
   const padrao: string[] = []
+  if (n.casal) {
+    if (n.cores === undefined) { n.cores = 'a critério do estúdio'; padrao.push('roupas e cores do casal a critério do estúdio') }
+    n.preferencias = [n.preferencias, ...padrao.map(x => `${x} (padrão: cliente não respondeu)`)].filter(Boolean).join(' · ')
+    return { dados: n, padrao }
+  }
   if (n.maquiagem === undefined || n.maquiagem === null) padrao.push('maquiagem natural e leve')
   if (n.decote === undefined || n.decote === null) padrao.push('decote discreto')
   if (n.cores === undefined) { n.cores = 'a critério do estúdio'; padrao.push('cores e acessórios a critério do estúdio') }

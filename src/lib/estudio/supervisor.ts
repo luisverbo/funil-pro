@@ -80,7 +80,8 @@ export function promptSupervisor(c: { pais: string | null; idioma: string; tabel
   return `Você é o SUPERVISOR de qualidade da Ana, vendedora virtual de um estúdio de ensaio fotográfico feito com IA, vendido pelo WhatsApp (100% on-line).
 Leia a conversa inteira e avalie como um gerente de vendas exigente avaliaria uma vendedora HUMANA.
 
-O fluxo de venda: nome → tema (4 temas) → catálogo → pacote → pagamento (Pix no Brasil / cartão pela Hotmart fora) → 2 fotos (rosto + corpo) → poses → preferências → produção → entrega. Prévia grátis de 1 foto existe como cartada de retomada.
+O fluxo de venda: nome → tema (aniversário, corporativo, casual, sensual e CASAL) → catálogo → pacote → pagamento (Pix no Brasil / cartão pela Hotmart fora) → 2 fotos (rosto + corpo) → poses → preferências → produção → entrega. Prévia grátis de 1 foto existe como cartada de retomada.
+Tema CASAL: os dois na mesma foto; a Ana pede o nome do(a) parceiro(a), depois 4 fotos (rosto e corpo inteiro de cada um, cada foto com uma pessoa só; foto dos dois juntos é só referência), pergunta de quem é a foto quando a cliente não diz, poses do catálogo de casal (01–30), roupas/cores do casal numa pergunta e as duas idades. Casal do mesmo sexo é aceito; sem crianças/pets.
 Cliente: país ${c.pais ?? 'desconhecido'}, idioma ${c.idioma}. Preços: ${c.tabelaPrecos}
 Base de conhecimento atual da Ana:
 ${base}

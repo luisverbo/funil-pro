@@ -107,6 +107,7 @@ const TITULOS: Record<string, Partial<Record<IdiomaAna, string>>> = {
   corporativo: { es: 'Sesión corporativa', en: 'Corporate Photoshoot' },
   casual: { es: 'Sesión casual', en: 'Casual Photoshoot' },
   sensual: { es: 'Sesión sensual', en: 'Sensual Photoshoot' },
+  casal: { es: 'Sesión de pareja', en: 'Couple Photoshoot' },
 }
 
 export function tituloDoTema(slug: string, nomeCadastrado: string, idiomaIn: IdiomaAna): string {

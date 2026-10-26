@@ -116,8 +116,14 @@ export function caminhoExemplo(slug: string, numero: string): string {
 }
 
 /** Caminhos das fotos da cliente (seção 4/8): estudio-clientes/<pedido_id>/rosto.jpg e corpo.jpg */
-export function caminhosDaCliente(pedidoId: string): { rosto: string; corpo: string } {
-  return { rosto: `${pedidoId}/rosto.jpg`, corpo: `${pedidoId}/corpo.jpg` }
+export function caminhosDaCliente(pedidoId: string): { rosto: string; corpo: string; rosto2: string; corpo2: string } {
+  // Casal: a 2ª pessoa vai em rosto2.jpg / corpo2.jpg (o producao.py lê os 4).
+  return { rosto: `${pedidoId}/rosto.jpg`, corpo: `${pedidoId}/corpo.jpg`, rosto2: `${pedidoId}/rosto2.jpg`, corpo2: `${pedidoId}/corpo2.jpg` }
+}
+
+/** Tema de DUAS pessoas na mesma cena (sujeito 'casal' em estudio_temas; o slug "casal" vale sem consulta). */
+export function ehTemaCasal(slug: string | null | undefined, sujeito?: string | null): boolean {
+  return sujeito === 'casal' || slug === 'casal'
 }
 
 // ── Escolha das poses na página pública ─────────────────────────────────────
@@ -139,11 +145,14 @@ export function linkWhatsApp(numero: string | null | undefined, texto: string): 
 }
 
 /** Preenche os placeholders do prompt_cliente (seção 8: {idade}, {cabelo}, {preferencias}). */
-export function preencherPrompt(prompt: string, v: { idade?: number | null; cabelo?: string | null; preferencias?: string | null }): string {
+export function preencherPrompt(prompt: string, v: { idade?: number | null; cabelo?: string | null; preferencias?: string | null; pessoa1?: string | null; pessoa2?: string | null }): string {
   return prompt
     .replaceAll('{idade}', v.idade ? String(v.idade) : 'a mesma da foto')
     .replaceAll('{cabelo}', v.cabelo?.trim() || 'igual ao da foto')
     .replaceAll('{preferencias}', v.preferencias?.trim() || 'sem preferências especiais')
+    // Casal ({pessoa1}/{pessoa2} são do producao.py; aqui só para não sobrar chave no prompt da API)
+    .replaceAll('{pessoa1}', v.pessoa1?.trim() || 'pessoa 1 (foto rosto.jpg/corpo.jpg)')
+    .replaceAll('{pessoa2}', v.pessoa2?.trim() || 'pessoa 2 (foto rosto2.jpg/corpo2.jpg)')
 }
 
 /**

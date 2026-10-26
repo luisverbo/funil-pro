@@ -522,6 +522,38 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-12 — Tema "Ensaio de Casal" (slug casal, 2 pessoas, 4 fotos)**
+- Tema/poses já no banco (PC, ativo=false). Migration
+  `20261112000000_estudio_ia_casal.sql` (PENDENTE no Studio): `estudio_pedidos`
+  + pessoa2_nome/idade/cabelo, foto_rosto2_path/foto_corpo2_path,
+  rosto2_origem/corpo2_origem; base de conhecimento (FAQ 7 e 9 reescritas,
+  5 FAQs novas, regra "só 4 temas" desligada). Convenção: rosto/corpo =
+  pessoa 1 (quem conversa), rosto2/corpo2 = pessoa 2 (`caminhosDaCliente`)
+- Menu montado dos temas ATIVOS (`ordemDosTemas`: os 4 + casal = 5;
+  `opcoesDoMenu`, `{opcoes}/{n}` em menu/menu_de_novo/lembrete_tema/
+  outro_tema; sem lista = os 4). `temaDoTexto` entende "casal/eu e meu
+  marido/nós dois" (`PEDE_CASAL`) SÓ se o casal estiver ativo; senão "em breve"
+- `ana/casal.ts` (puro): `nomesDoCasal`, `donoDoTexto` ("minha"/"do João"/
+  "a primeira é minha e a segunda dele"), `donoAutomatico` (só quando a outra
+  pessoa está completa), `idadesDoCasal`, `faltaDoCasal`. `fotos.ts`:
+  `FotoRecebida.pessoa` (1|2) e `extra` (os dois juntos), `escolherFotosCasal`,
+  `resumoDasFotosCasal` (`Contexto.fotos.casal`)
+- Máquina: etapa nova `casal_nomes` (pacote → nome do parceiro → fotos);
+  `Dados.casal/pessoa2_*/tem_rosto2/tem_corpo2`; `oQueFaltaCasal` ("essa é de
+  quem?" → lista do que falta das 4 → poses 01–30); prefs do casal =
+  `casal_pref_roupas` → `casal_pref_idades` → `casal_pref_idade2` (sem
+  maquiagem/decote); prévia do casal exige as 4; menor de idade (qualquer um)
+  → humano. `explicarTema(tema, casal)` manda `a2_casal` (áudio ou texto)
+- Executor: dono pela legenda/automático, foto com 2 pessoas = extra
+  (`fotos_extras_paths`), resposta "é minha" atribui as pendentes
+  (`fotosEntrada.atribuidas`), `aplicarEscolhaCasal` grava os 4 jpg,
+  `ContextoIa.casal` no prompt (fatos do casal), `pedirFotoQueFalta` com nome
+- Produção: `faltaParaFila(p, { casal })` pede as 4; `entrarNaFila` lê o
+  sujeito do tema; API Gemini recusa casal (volta p/ site + aviso); upsell
+  copia rosto2/corpo2; aviso "💑 Casal: A + B". Painel: 4 fotos + dados dos
+  dois, botões rosto/corpo 1 e 2, selo "de quem?"/"OS DOIS". Mídias: A2 · Casal
+- Bateria: **1206/1206**. Ativar o tema só depois do teste (Catálogo → Ativo)
+
 **2026-11-11 — Comprovante fora da hora + devolver sem repetir**
 - CAUSA: print do Pix era classificado `famosa_ou_print` → `recusada` → "só
   consigo com foto"; e comprovante só era conferido com `pagamento_enviado`.
