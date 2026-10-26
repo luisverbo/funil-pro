@@ -324,6 +324,17 @@ export interface QuizTheme {
   card_color?: string     // cor de fundo dos cards
 }
 
+/** Modo conversa: o quiz abre como um chat (uma pergunta por vez, balões, "digitando…"). */
+export interface ChatSettings {
+  nome?: string              // nome do atendente no topo (ex.: "Ana")
+  avatar_url?: string
+  status?: string            // "online" | "responde em minutos"…
+  velocidade?: 'rapida' | 'normal' | 'lenta'   // tempo do "digitando…"
+  saudacao?: string          // 1ª fala antes da 1ª página (opcional)
+  texto_continuar?: string   // botão das páginas só de conteúdo (padrão "Continuar")
+  mostrar_horario?: boolean  // hora nos balões
+}
+
 export interface QuizSettings {
   title?: string
   primary_color?: string
@@ -333,6 +344,9 @@ export interface QuizSettings {
   show_back?: boolean       // mostrar botão "Voltar" (default true)
   theme?: QuizTheme
   pixel_id?: string
+  /** 'paginas' (padrão, como sempre) ou 'conversa' (estilo chat/WhatsApp). O quiz é o mesmo. */
+  layout?: 'paginas' | 'conversa'
+  chat?: ChatSettings
 }
 
 export interface QuizData {

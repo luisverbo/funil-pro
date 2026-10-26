@@ -4,6 +4,7 @@ import Script from 'next/script'
 import PageRenderer from './page-renderer'
 import QuizRenderer from './quiz-renderer'
 import QuizRendererV2 from './quiz-renderer-v2'
+import QuizChatRenderer from './quiz-chat-renderer'
 import BioRenderer from './bio-renderer'
 import type { QuizData } from '@/app/actions/quiz-v2'
 import type { BioData } from '@/lib/bio/types'
@@ -76,7 +77,10 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
           <title>{page.meta_title || page.title || 'Quiz'}</title>
           {page.meta_description && <meta name="description" content={page.meta_description} />}
           {pixelId && <MetaPixel pixelId={pixelId} />}
-          <QuizRendererV2 data={page.quiz_data as QuizData} pageId={page.id} tenantId={page.tenant_id} />
+          {/* Modo conversa (chat) ou páginas (padrão) — o mesmo quiz, dois formatos */}
+          {(page.quiz_data as QuizData).settings?.layout === 'conversa'
+            ? <QuizChatRenderer data={page.quiz_data as QuizData} pageId={page.id} tenantId={page.tenant_id} />
+            : <QuizRendererV2 data={page.quiz_data as QuizData} pageId={page.id} tenantId={page.tenant_id} />}
         </>
       )
     }
