@@ -38,6 +38,8 @@ export interface Conteudo {
   id: string
   tenant_id: string
   conta_instagram_id: string | null
+  /** Conta conectada escolhida (instagram_contas.id); null = token da plataforma. */
+  instagram_conta_id?: string | null
   tipo: TipoConteudo
   status: StatusConteudo
   data_agendada: string

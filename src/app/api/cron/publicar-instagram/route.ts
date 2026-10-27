@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { CRON_UNAUTHORIZED_BODY, evaluateCronAuth, logCronAuth } from '@/lib/security/cron-auth'
 import { rodadaDePublicacao } from '@/lib/conteudos-ig/publicador'
 import { obterTokenInstagram, renovarTokenSeNecessario } from '@/lib/instagram/token'
+import { renovarContas } from '@/lib/instagram/contas-servidor'
 
 export const dynamic = 'force-dynamic'
 // Vídeo pode levar minutos para a Meta processar.
@@ -53,15 +54,16 @@ async function executar(request: Request) {
   // em 17/09.
   const renovacao = await renovarTokenSeNecessario()
 
+  // Contas conectadas pelo "Conectar Instagram": cada token de 60 dias renova igual.
+  const contas = await renovarContas().catch(() => ({ renovadas: 0, falhas: 0 }))
+
+  // Sem token da plataforma ainda publica os itens com conta escolhida.
   const token = await obterTokenInstagram()
-  if (!token) {
-    return NextResponse.json({ success: false, error: 'token do Instagram ausente', renovacao }, { status: 503 })
-  }
 
   try {
     const r = await rodadaDePublicacao(createAdminClient(), { token })
     if (r.falhas > 0) console.warn('[cron/publicar-instagram] falhas:', JSON.stringify(r.detalhes.filter(d => !d.ok)))
-    return NextResponse.json({ success: true, renovacao, ...r })
+    return NextResponse.json({ success: true, renovacao, contas, ...r })
   } catch (err) {
     console.error('[cron/publicar-instagram] erro na rodada:', String(err))
     return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'erro' }, { status: 500 })

@@ -131,6 +131,10 @@ export default function SettingsForm({ settings }: Props) {
           conteúdos renova sozinho a cada 24h enquanto o token estiver válido; vencido, só gerando outro.
           {settings.ig_token_renovado_em && <span className="block mt-1 text-xs text-gray-400">Última renovação automática: {new Date(settings.ig_token_renovado_em).toLocaleString('pt-BR')}</span>}
         </p>
+        <form onSubmit={handleSave(['ig_app_id'])} className="mb-4">
+          <Field label="ID do app do Instagram (para o botão Conectar Instagram)" name="ig_app_id" value={settings.ig_app_id ?? ''} placeholder="Painel da Meta → caso de uso Instagram → ID do app do Instagram" />
+          <button type="submit" disabled={isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50 transition-colors">Salvar ID do app</button>
+        </form>
         <form onSubmit={handleSave(['ig_access_token'])}>
           <Field label="Token de acesso (IGAA…)" name="ig_access_token" value={settings.ig_access_token ?? ''} type="password" placeholder="IGAA••••••••" />
           <button

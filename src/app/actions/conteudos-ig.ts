@@ -20,6 +20,7 @@ import {
 import { publicarConteudo } from '@/lib/conteudos-ig/publicador'
 import { getConnectedAccount } from '@/lib/instagram'
 import { obterTokenInstagram } from '@/lib/instagram/token'
+import { listarContas, removerConta, type ContaInstagram } from '@/lib/instagram/contas-servidor'
 
 async function getSupabase() {
   const cookieStore = await cookies()
@@ -252,7 +253,7 @@ export async function publicarAgora(id: string): Promise<{ success: boolean; per
     if (!podeFazer(item.status, 'publicar_agora')) return { success: false, error: `Não dá para publicar um item ${item.status}` }
 
     const token = await obterTokenInstagram()
-    if (!token) return { success: false, error: 'Instagram não conectado (token ausente na plataforma)' }
+    if (!token && !item.instagram_conta_id) return { success: false, error: 'Instagram não conectado: escolha uma conta conectada para este post' }
 
     const admin = createAdminClient()
     const { data: reservado, error } = await admin.from('conteudos_instagram')
@@ -276,4 +277,40 @@ export async function proximaDataLivre(tipo: TipoConteudo): Promise<{ iso?: stri
     if (error) return { error: error.message }
     return { iso: String(data) }
   } catch (err) { return { error: String(err) } }
+}
+
+// ── Contas conectadas ("Conectar Instagram") ────────────────────────────────
+
+export async function listarContasInstagram(): Promise<{ contas: ContaInstagram[]; error?: string }> {
+  try { return { contas: await listarContas(await getTenantId()) } }
+  catch (err) { return { contas: [], error: String(err) } }
+}
+
+export async function removerContaInstagram(contaId: string): Promise<{ success: boolean; error?: string }> {
+  try { await removerConta(String(contaId), await getTenantId()); return { success: true } }
+  catch (err) { return { success: false, error: String(err) } }
+}
+
+/** Conta que publica UM post (null = token da plataforma). Só antes de publicar. */
+export async function escolherContaDoConteudo(id: string, contaId: string | null): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    const item = await carregarDoTenant(id, tenantId)
+    if (!item) return { success: false, error: 'Conteúdo não encontrado' }
+    if (!['pendente', 'agendado', 'erro'].includes(item.status)) return { success: false, error: `Não dá para trocar a conta de um item ${item.status}` }
+    if (contaId && !(await listarContas(tenantId)).some(c => c.id === contaId)) return { success: false, error: 'Conta não encontrada' }
+    const { error } = await createAdminClient().from('conteudos_instagram').update({ instagram_conta_id: contaId || null }).eq('id', id).eq('tenant_id', tenantId)
+    return error ? { success: false, error: error.message } : { success: true }
+  } catch (err) { return { success: false, error: String(err) } }
+}
+
+/** Põe a conta em todos os pendentes/agendados/erros que ainda não têm conta. */
+export async function contaParaOsSemConta(contaId: string): Promise<{ success: boolean; atualizados?: number; error?: string }> {
+  try {
+    const tenantId = await getTenantId()
+    if (!(await listarContas(tenantId)).some(c => c.id === contaId)) return { success: false, error: 'Conta não encontrada' }
+    const { data, error } = await createAdminClient().from('conteudos_instagram').update({ instagram_conta_id: contaId })
+      .eq('tenant_id', tenantId).is('instagram_conta_id', null).in('status', ['pendente', 'agendado', 'erro']).select('id')
+    return error ? { success: false, error: error.message } : { success: true, atualizados: data?.length ?? 0 }
+  } catch (err) { return { success: false, error: String(err) } }
 }
