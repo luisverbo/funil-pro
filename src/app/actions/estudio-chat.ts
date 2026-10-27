@@ -64,6 +64,7 @@ export interface ContatoChat {
   origem: string; ultima_msg: string | null; ultima_msg_em: string; nao_lidas: number
   modo: string; humano_fixo: boolean; precisa_humano: boolean; etapa: string | null
   janela_ate: string | null; pedido_status: string | null
+  encerrada_em?: string | null; encerrada_motivo?: string | null
 }
 
 export async function listarConversasChat(busca?: string): Promise<{ contatos: ContatoChat[]; error?: string }> {
@@ -88,6 +89,7 @@ export async function listarConversasChat(busca?: string): Promise<{ contatos: C
         nao_lidas: Number(c.nao_lidas ?? 0), modo: c.modo ?? 'ana', humano_fixo: !!c.humano_fixo,
         precisa_humano: !!c.precisa_humano, etapa: c.etapa ?? null, janela_ate: c.janela_ate ?? null,
         pedido_status: ultimoPedido.get(c.id) ?? null,
+        encerrada_em: c.encerrada_em ?? null, encerrada_motivo: c.encerrada_motivo ?? null,
       })),
     }
   } catch (err) { return { contatos: [], error: String(err) } }
@@ -146,6 +148,7 @@ export async function abrirConversaChat(contatoId: string, marcarLida = true): P
         nao_lidas: 0, modo: (c.modo as string) ?? 'ana', humano_fixo: !!c.humano_fixo, precisa_humano: !!c.precisa_humano,
         etapa: (c.etapa as string) ?? null, janela_ate: c.janela_ate, pedido_status: pedidos[0]?.status ?? null,
         notas: (c.notas as string) ?? null, humano_desde: (c.humano_desde as string) ?? null,
+        encerrada_em: (c.encerrada_em as string) ?? null, encerrada_motivo: (c.encerrada_motivo as string) ?? null,
       },
       mensagens, pedidos,
     }
@@ -295,10 +298,14 @@ export async function enviarModeloChat(contatoId: string, nome: string, idioma: 
 // ── Atendimento ─────────────────────────────────────────────────────────────
 
 /** Assumir: Luís atende e a Ana NÃO volta sozinha. Devolver: Ana volta já. */
-export async function definirAtendimentoChat(contatoId: string, quem: 'luis' | 'ana'): Promise<{ success: boolean; error?: string; retomou?: 'respondeu' | 'nada' }> {
+export async function definirAtendimentoChat(contatoId: string, quem: 'luis' | 'ana' | 'encerrar'): Promise<{ success: boolean; error?: string; retomou?: 'respondeu' | 'nada' }> {
   try {
     const tenantId = await getTenantId()
     await contatoDoTenant(tenantId, contatoId)
+    const { encerrarConversa, limparEncerramento } = await import('@/lib/estudio/encerrar')
+    // Encerrar: Ana para de vez nesta conversa (sem push, sem IA) até reabrir.
+    if (quem === 'encerrar') { await encerrarConversa(createAdminClient(), contatoId, 'manual'); return { success: true } }
+    await limparEncerramento(createAdminClient(), contatoId)
     const upd = quem === 'luis'
       ? { modo: 'humano', humano_fixo: true, humano_desde: new Date().toISOString(), precisa_humano: false }
       : { modo: 'ana', humano_fixo: false, humano_desde: null, precisa_humano: false }

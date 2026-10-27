@@ -522,6 +522,19 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-14 — Estúdio IA: encerrar conversa + robô do outro lado**
+- Problema: empresa clica no anúncio, o atendente automático DELA responde a
+  Ana e os dois robôs conversam gastando IA
+- Botão **🚫 Encerrar** na conversa (`definirAtendimentoChat(id,'encerrar')`):
+  Ana calada (humano fixo), sem push, sem IA; mensagens novas só registradas;
+  "↩ Reabrir p/ Ana" desfaz. Selo "🚫 encerrada · robô" na lista
+- `ana/robo.ts` (PURO, sem IA): aviso "mensagem automática", saudação de
+  empresa + menu numerado, mesma resposta repetida, 2 respostas automáticas →
+  `encerrarConversa` em `entrada.ts` ANTES da Ana; nunca em pago/entregue
+- Migration `20261114000000_estudio_ia_encerrar.sql` (PENDENTE):
+  `estudio_contatos.encerrada_em/encerrada_motivo` (sem ela vira Assumir fixo)
+- Bateria: **1218/1218**
+
 **2026-11-13 — Instagram: várias contas ("Conectar Instagram")**
 - Migration `20261113000000_instagram_contas.sql` (PENDENTE no Studio):
   `instagram_contas` (token de 60 dias por conta, RLS sem política = só

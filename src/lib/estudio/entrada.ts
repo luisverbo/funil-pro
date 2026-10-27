@@ -18,6 +18,8 @@ import { avisarAparelhos } from './push'
 import { marcarLidaDigitando, marcarLida, ehSoConfirmacao } from './envio'
 import { Cronometro } from './tempos'
 import { processarConversa } from './ana/fila'
+import { pareceRobo } from './ana/robo'
+import { encerrarConversa } from './encerrar'
 import { anuncioDoReferral, atualizacaoDeOrigem } from './anuncios'
 
 export interface ConfigEstudio {
@@ -146,12 +148,28 @@ export async function processarEntradaEstudio(admin: SupabaseClient, cfg: Config
   const fechar = () => admin.from('estudio_mensagens').update({ processada_em: new Date().toISOString() }).eq('wamid', m.wamid).then(() => {}, () => {})
   if (!cfg.ativo || !cfg.access_token) { await fechar(); return }   // conectado mas desligado: só registra
 
+  // Encerrada (à mão ou robô): só registra — sem push, sem Ana, sem IA.
+  if (existente?.encerrada_em) { await fechar(); return }
+
   // Push no celular do Luís (app fechado também) — mensagem nova (reação não).
   if (tipo !== 'reacao') void avisarAparelhos(admin, cfg.tenant_id)
 
   // Luís atendendo: a Ana fica quieta.
   const modo = devolver ? 'ana' : (existente?.modo ?? 'ana')
   if (modo === 'humano') { await fechar(); return }
+
+  // Robô do outro lado (atendente automático de empresa): encerra antes de gastar IA.
+  // Nunca em quem já pagou / está em produção.
+  if (tipo === 'texto' && !['pago', 'entregue', 'ajuste_detalhe', 'conferindo'].includes(String(existente?.etapa ?? ''))) {
+    const { data: ultimas } = await admin.from('estudio_mensagens').select('texto')
+      .eq('contato_id', contatoId).eq('direcao', 'entrada').eq('tipo', 'texto').order('criado_em', { ascending: false }).limit(8)
+    const v = pareceRobo((ultimas ?? []).map(u => u.texto as string).reverse())
+    if (v.robo) {
+      await encerrarConversa(admin, contatoId, `robô: ${v.motivo}`).catch(err => console.error('[estudio] encerrar:', String(err).slice(0, 200)))
+      console.warn('[estudio] conversa encerrada — robô do outro lado:', v.motivo)
+      await fechar(); return
+    }
+  }
 
   // ── A Ana, pela fila da conversa (uma execução por vez, fotos juntas) ────
   try {
