@@ -11,10 +11,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   publicarReel, publicarCarrossel, idDaContaConectada, type ClientePublicacao, type FetchLike,
 } from '@/lib/instagram/publicar'
+import { credencialDaConta } from '@/lib/instagram/contas-servidor'
 import { montarLegenda, resumirErro, statusAposFalha, validarParaPublicar, type Conteudo } from './regras'
 
 export interface OpcoesPublicador {
-  token: string
+  /** Token da plataforma (itens sem conta escolhida). Vazio = só contas conectadas. */
+  token: string | null
   fetchImpl?: FetchLike
   intervaloMs?: number
   tempoMaximoMs?: number
@@ -41,9 +43,19 @@ export async function publicarConteudo(
     const invalido = validarParaPublicar(item)
     if (invalido) throw new Error(invalido)
 
-    const igUserId = op.igUserId ?? item.conta_instagram_id ?? await idDaContaConectada(op.token, op.fetchImpl)
+    // Conta escolhida no item (Conectar Instagram) manda; sem ela, o token da plataforma.
+    let token: string, igUserId: string
+    if (item.instagram_conta_id) {
+      const cred = await credencialDaConta(item.instagram_conta_id, item.tenant_id)
+      if (!cred) throw new Error('A conta do Instagram escolhida foi desconectada. Escolha outra ou reconecte.')
+      token = cred.token; igUserId = cred.igUserId
+    } else {
+      if (!op.token) throw new Error('Instagram não conectado: escolha uma conta conectada para este post')
+      token = op.token
+      igUserId = op.igUserId ?? item.conta_instagram_id ?? await idDaContaConectada(token, op.fetchImpl)
+    }
     const cliente: ClientePublicacao = {
-      token: op.token, igUserId, fetchImpl: op.fetchImpl,
+      token, igUserId, fetchImpl: op.fetchImpl,
       intervaloMs: op.intervaloMs, tempoMaximoMs: op.tempoMaximoMs,
     }
     const caption = montarLegenda(item.descricao, item.hashtags)
@@ -88,7 +100,8 @@ export async function rodadaDePublicacao(
   if (itens.length === 0) return { processados: 0, publicados: 0, falhas: 0, detalhes: [] }
 
   // Um /me por rodada, não por item.
-  const igUserId = op.igUserId ?? await idDaContaConectada(op.token, op.fetchImpl).catch(() => undefined)
+  const igUserId = op.igUserId ?? (op.token && itens.some(i => !i.instagram_conta_id)
+    ? await idDaContaConectada(op.token, op.fetchImpl).catch(() => undefined) : undefined)
 
   const detalhes: SaidaPublicacao[] = []
   for (const item of itens) detalhes.push(await publicarConteudo(admin, item, { ...op, igUserId }))

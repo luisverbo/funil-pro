@@ -10,6 +10,7 @@ import {
   listarConteudos, contagemPorStatus, conexaoInstagram,
   aprovarConteudo, aprovarTodosPendentes, descartarConteudo, voltarParaPendente,
   editarConteudo, tentarDeNovo, publicarAgora, proximaDataLivre, repostarConteudo,
+  listarContasInstagram, removerContaInstagram, escolherContaDoConteudo, contaParaOsSemConta,
 } from '@/app/actions/conteudos-ig'
 
 // Publicar agora espera a Meta processar vídeo — pode levar minutos.
@@ -20,6 +21,7 @@ const OPERACOES: Record<string, (...args: any[]) => Promise<unknown>> = {
   listarConteudos, contagemPorStatus, conexaoInstagram,
   aprovarConteudo, aprovarTodosPendentes, descartarConteudo, voltarParaPendente,
   editarConteudo, tentarDeNovo, publicarAgora, proximaDataLivre, repostarConteudo,
+  listarContasInstagram, removerContaInstagram, escolherContaDoConteudo, contaParaOsSemConta,
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

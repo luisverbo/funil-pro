@@ -522,6 +522,22 @@ APP_SECRET=
 - **Pendência do dono**: gerar token com `ads_read` + `ads_management` e
   reconectar para as ações funcionarem
 
+**2026-11-13 — Instagram: várias contas ("Conectar Instagram")**
+- Migration `20261113000000_instagram_contas.sql` (PENDENTE no Studio):
+  `instagram_contas` (token de 60 dias por conta, RLS sem política = só
+  service role), `conteudos_instagram.instagram_conta_id`, platform_settings
+  `ig_app_id` (colado em Admin → Configurações → Instagram)
+- `src/lib/instagram/contas.ts` (puro: state assinado com IG_APP_SECRET 15 min,
+  signed_request, URL de autorização com basic + content_publish),
+  `contas-servidor.ts` (code → token curto → 60 dias → /me, renovação no cron)
+- Rotas `/api/instagram/conectar` → `/api/instagram/callback`; exclusão de
+  dados/desautorizar em `/api/webhooks/instagram-dados` (URL para a Meta)
+- Conteúdos: cartão "Contas do Instagram" (+ Conectar, desconectar, usar nos
+  posts sem conta) e "Publicar em" no post. Sem conta = token da plataforma
+  (nada do que existia muda)
+- Bateria: **1215/1215**. Pendente do dono: rodar o SQL, colar o ID do app,
+  cadastrar `<origem>/api/instagram/callback` como URI de redirecionamento
+
 **2026-11-12 — Quiz em MODO CONVERSA (chat estilo Typebot/WhatsApp)**
 - Engenharia reversa do diagnostico.bilhon.com (HTML do dono): React+Vite na
   Cloudflare Pages, chat = Typebot embutido, respostas num Worker ("porta"),

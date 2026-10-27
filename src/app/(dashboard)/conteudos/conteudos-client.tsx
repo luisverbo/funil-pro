@@ -18,7 +18,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   listarConteudos, contagemPorStatus, aprovarConteudo, aprovarTodosPendentes, descartarConteudo,
   voltarParaPendente, editarConteudo, tentarDeNovo, publicarAgora, repostarConteudo,
+  listarContasInstagram, removerContaInstagram, escolherContaDoConteudo, contaParaOsSemConta,
 } from '@/lib/conteudos-ig/client'
+import { useSearchParams } from 'next/navigation'
+import ContasInstagram, { AVISO_DA_VOLTA, type ContaTela } from './contas-instagram'
 import {
   recorteVisivel, rotuloDataHora, paraInputLocal, gradeDaSemana, inicioDaSemana, somarDias,
   CORTE_VISIVEL, MAX_LEGENDA, HORA_DO_SLOT, acoesPermitidas, montarLegenda,
@@ -53,9 +56,10 @@ interface Props {
   erroInicial: string | null
   contagemInicial: Record<StatusConteudo, number>
   conexao: { connected: boolean; username?: string; accountId?: string; error?: string }
+  contasIniciais: ContaTela[]
 }
 
-export default function ConteudosClient({ itensIniciais, erroInicial, contagemInicial, conexao }: Props) {
+export default function ConteudosClient({ itensIniciais, erroInicial, contagemInicial, conexao, contasIniciais }: Props) {
   const [itens, setItens] = useState<Conteudo[]>(itensIniciais)
   const [contagem, setContagem] = useState(contagemInicial)
   const [visao, setVisao] = useState<Visao>('mes')
@@ -69,6 +73,14 @@ export default function ConteudosClient({ itensIniciais, erroInicial, contagemIn
   const [ocultos, setOcultos] = useState<Set<StatusConteudo>>(() => new Set<StatusConteudo>(['descartado']))
   const [abertoId, setAbertoId] = useState<string | null>(null)
   const [descartando, setDescartando] = useState<Conteudo | null>(null)
+  const [contas, setContas] = useState<ContaTela[]>(contasIniciais)
+  // Volta do login do Instagram (?ig=ok|falhou|…): lido uma vez, sem efeito.
+  const busca = useSearchParams()
+  const volta = AVISO_DA_VOLTA[busca.get('ig') ?? ''] ?? null
+
+  const recarregarContas = useCallback(async () => {
+    try { const r = await listarContasInstagram(); setContas(r.contas) } catch { /* tabela ainda não criada */ }
+  }, [])
 
   const recarregar = useCallback(async () => {
     try {
@@ -183,7 +195,21 @@ export default function ConteudosClient({ itensIniciais, erroInicial, contagemIn
         </div>
       </div>
 
-      {!conexao.connected && (
+      {volta && (
+        <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${volta.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{volta.texto}</div>
+      )}
+      <ContasInstagram contas={contas}
+        onRemover={async c => {
+          if (!confirm(`Desconectar @${c.username}? Os posts dela voltam a usar a conta da plataforma.`)) return
+          const r = await removerContaInstagram(c.id)
+          if (!r.success) setErro(r.error ?? 'Falhou'); else { avisar('Conta desconectada'); void recarregarContas(); void recarregar() }
+        }}
+        onUsarNosSemConta={async c => {
+          const r = await contaParaOsSemConta(c.id)
+          if (!r.success) setErro(r.error ?? 'Falhou'); else { avisar(`${r.atualizados ?? 0} post(s) agora saem em @${c.username}`); void recarregar() }
+        }}
+      />
+      {!conexao.connected && contas.length === 0 && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Sem conexão com o Instagram, nada será publicado.{' '}
           {explicarErroDeToken(conexao.error) ?? <>Conecte em <a href="/instagram" className="font-semibold underline">Instagram</a>.</>}
@@ -464,6 +490,8 @@ export default function ConteudosClient({ itensIniciais, erroInicial, contagemIn
                   void agir(aberto.id, () => publicarAgora(aberto.id), 'Publicado no Instagram')
                 }}
                 onSalvar={patch => agir(aberto.id, () => editarConteudo(aberto.id, patch), 'Salvo')}
+                contas={contas}
+                onConta={contaId => agir(aberto.id, () => escolherContaDoConteudo(aberto.id, contaId), 'Conta escolhida')}
                 onRepostar={dataLocal => {
                   if (!confirm('Repostar este conteúdo? Ele volta para a agenda e será publicado de novo no horário escolhido. Lembre de apagar o post antigo no Instagram, se ainda estiver lá.')) return
                   void agir(aberto.id, () => repostarConteudo(aberto.id, dataLocal || undefined), 'Reagendado para repostar')
@@ -552,8 +580,10 @@ function Miniatura({ c, className }: { c: Conteudo; className?: string }) {
 
 // ── Card ────────────────────────────────────────────────────────────────────
 
-function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, onPublicarAgora, onSalvar, onRepostar }: {
+function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, onPublicarAgora, onSalvar, onRepostar, contas, onConta }: {
   c: Conteudo
+  contas: ContaTela[]
+  onConta: (contaId: string | null) => void
   ocupado: boolean
   onAprovar: () => void
   onDescartar: () => void
@@ -631,6 +661,18 @@ function CardConteudo({ c, ocupado, onAprovar, onDescartar, onVoltar, onTentar, 
           <span className="text-xs text-gray-400">· slot {HORA_DO_SLOT[c.tipo as TipoConteudo].rotulo} · Brasília</span>
           {c.ig_permalink && <a href={c.ig_permalink} target="_blank" rel="noopener noreferrer" className="ml-auto text-xs font-semibold text-indigo-600 hover:underline">Ver no Instagram ↗</a>}
         </div>
+
+        {contas.length > 0 && (
+          <label className="mb-3 flex items-center gap-2 text-xs text-gray-600">
+            <span className="font-semibold">Publicar em</span>
+            <select value={c.instagram_conta_id ?? ''} disabled={ocupado || !['pendente', 'agendado', 'erro'].includes(c.status)}
+              onChange={e => onConta(e.target.value || null)}
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1 text-sm">
+              <option value="">Conta da plataforma</option>
+              {contas.map(ct => <option key={ct.id} value={ct.id}>@{ct.username}</option>)}
+            </select>
+          </label>
+        )}
 
         {c.status === 'erro' && c.erro && (
           <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
