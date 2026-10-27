@@ -171,7 +171,7 @@ export function AbaConversas() {
                   </span>
                   <span className="mt-1 flex flex-wrap gap-1">
                     {c.precisa_humano && <Selo cor="bg-red-100 text-red-700">🙋 precisa de você</Selo>}
-                    <Selo cor={c.modo === 'humano' ? 'bg-sky-100 text-sky-700' : 'bg-violet-100 text-violet-700'}>{c.modo === 'humano' ? '👤 você' : '🤖 Ana'}{c.etapa ? ` · ${c.etapa}` : ''}</Selo>
+                    {c.encerrada_em ? <Selo cor="bg-slate-200 text-slate-600">🚫 encerrada{c.encerrada_motivo?.startsWith('robô') ? ' · robô' : ''}</Selo> : <Selo cor={c.modo === 'humano' ? 'bg-sky-100 text-sky-700' : 'bg-violet-100 text-violet-700'}>{c.modo === 'humano' ? '👤 você' : '🤖 Ana'}{c.etapa ? ` · ${c.etapa}` : ''}</Selo>}
                     {c.pedido_status && <Selo cor="bg-amber-100 text-amber-800">{STATUS_PEDIDO[c.pedido_status] ?? c.pedido_status}</Selo>}
                     {c.origem === 'anuncio' && <Selo cor="bg-slate-100 text-slate-600">anúncio</Selo>}
                   </span>
@@ -301,16 +301,25 @@ function Conversa({ aberta, painel, setPainel, voltar, recarregar, setErro }: {
             <p className="truncate text-sm font-semibold text-slate-900">{bandeira(c.pais)} {c.nome || `+${c.wa_id}`}</p>
             <p className="truncate text-[11px] text-slate-500">+{c.wa_id} · {c.idioma ?? '—'} · {janela ? `janela aberta · ${janela}` : '⛔ janela fechada (só modelo)'}</p>
           </div>
+          {!c.encerrada_em && (
+            <button onClick={() => { if (confirm('Encerrar esta conversa? A Ana para de responder (e não gasta IA) até você reabrir.')) void acao(() => definirAtendimentoChat(c.id, 'encerrar')) }} disabled={enviando}
+              title="A Ana para de responder até você reabrir"
+              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">🚫 Encerrar</button>
+          )}
           {c.modo === 'humano' ? (
             <button onClick={() => acao(() => definirAtendimentoChat(c.id, 'ana'))} disabled={enviando}
-              className="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">🤖 Devolver p/ Ana</button>
+              className="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50">{c.encerrada_em ? '↩ Reabrir p/ Ana' : '🤖 Devolver p/ Ana'}</button>
           ) : (
             <button onClick={() => acao(() => definirAtendimentoChat(c.id, 'luis'))} disabled={enviando}
               className="shrink-0 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50">👤 Assumir</button>
           )}
           <button onClick={() => setPainel(!painel)} className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">ⓘ</button>
         </header>
-        {c.modo === 'humano' && (
+        {c.encerrada_em ? (
+          <p className="bg-slate-100 px-3 py-1.5 text-center text-[11px] text-slate-700">
+            🚫 Conversa encerrada{c.encerrada_motivo && c.encerrada_motivo !== 'manual' ? ` (${c.encerrada_motivo})` : ''} — a Ana não responde e não gasta IA. Mensagens novas só ficam registradas.
+          </p>
+        ) : c.modo === 'humano' && (
           <p className="bg-sky-50 px-3 py-1.5 text-center text-[11px] text-sky-800">
             Você está atendendo — a Ana não responde{c.humano_fixo ? ' até você devolver.' : ' (volta sozinha após 2 h sem mensagem sua).'}
           </p>
